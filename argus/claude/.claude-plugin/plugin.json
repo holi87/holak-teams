@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "argus",
+  "displayName": "Argus — QA Team",
+  "version": "1.0.0",
+  "description": "Greek-named permanent QA team. One entry point (odysseus) picks an engagement mode and fires parallel surface×mode lanes (UI / API / perf / security / a11y / DB-gated / white-box-gated) for black-box hunting plus regression automation. 23 sub-agents.",
+  "author": {
+    "name": "Grzegorz Holak",
+    "email": "holi87@gmail.com"
+  },
+  "homepage": "https://github.com/holi87/holak-teams",
+  "repository": "https://github.com/holi87/holak-teams",
+  "keywords": ["agents", "qa", "testing", "bug-hunting", "quality", "playwright", "security", "accessibility", "performance", "automation"]
+}

@@ -5,7 +5,15 @@
 - **Hephaestus** (`hephaestus/`) — **22 agents**, software delivery, **Roman names**. Entry point: **Marcus** (Team Leader). Available in both Claude Code and Codex formats.
 - **Argus** (`argus/`) — **23 agents**, permanent QA team, **Greek names**. Entry point: **Odysseus** (QA Lead). Available in both Claude Code and Codex formats.
 
-You tell **Marcus** what you want — he picks people from the roster, names them, splits up the work, merges results. On any QA / testing / bug-hunt signal he hands off to **Odysseus**, who runs the Argus lanes. Claude Code agent defs live under each team's `claude/`; Codex-compatible variants live under each team's `codex/` with the same names and slugs.
+> **This repo is a Claude Code plugin marketplace** (`holak-teams`). Install the teams as plugins:
+> ```
+> /plugin marketplace add holi87/holak-teams
+> /plugin install hephaestus@holak-teams
+> /plugin install argus@holak-teams
+> ```
+> Canonical repo + marketplace doc: **[AGENTS.md](AGENTS.md)** (mirrored as `CLAUDE.md`). Manual / Codex install: **[INSTALL.md](INSTALL.md)**.
+
+You tell **Marcus** what you want — he picks people from the roster, names them, splits up the work, merges results. On any QA / testing / bug-hunt signal he hands off to **Odysseus**, who runs the Argus lanes. Claude Code agent defs live under each team's `claude/agents/` (the plugin root is `claude/`); Codex-compatible variants live under each team's `codex/` with the same names and slugs.
 
 ## How it works
 
@@ -23,29 +31,31 @@ USER → Marcus (Team Leader) → picks agents → names them → dispatch → m
 ## Repo structure
 
 ```
-my_agents/                       # this git repo
-├── hephaestus/                  # delivery team (Roman names) — start: README.md
-│   ├── README.md                # how to start (entry: marcus)
-│   ├── claude/                  # Claude Code agent defs
-│   │   ├── marcus.md            # Team Leader (entry point)
-│   │   ├── dev/                 # vitruvius, agrippa, severus, fabricius, maximus, lucius, tiberius
-│   │   ├── QA/                  # seneca, cassius, fabius, catiline, mercury, boethius, janus
-│   │   ├── management/          # appius, numa, regulus, cicero, tacitus
-│   │   └── ba/                  # varro, cato
-│   └── codex/                   # 22 Codex-format Hephaestus agents (*.toml + *.md)
-├── argus/                       # Argus QA team (Greek names) — start: README.md
-│   ├── README.md                # how to start (entry: odysseus)
-│   ├── claude/                  # 23 Argus agent defs (core + surface×mode lanes)
-│   ├── codex/                   # 23 Codex-format Argus agents (*.toml + *.md)
-│   ├── framework-template/      # prepped Playwright+TS framework (not an agent; + PRE-EVENT-CHECKLIST.md)
+my_agents/                       # this git repo == the marketplace (holak-teams)
+├── .claude-plugin/
+│   └── marketplace.json         # catalog — source: ./hephaestus/claude, ./argus/claude
+├── .claude/settings.json        # auto-register marketplace + enable both plugins
+├── AGENTS.md  CLAUDE.md->AGENTS.md   # canonical doc + symlink
+├── hephaestus/                  # delivery team (Roman names)
+│   ├── claude/                  # == PLUGIN ROOT (Claude only)
+│   │   ├── .claude-plugin/plugin.json
+│   │   └── agents/              # 22 flat agent defs (marcus, vitruvius, …)
+│   ├── codex/                   # 22 Codex-format agents (*.toml + *.md) — separate
+│   └── README.md                # how to start (entry: marcus)
+├── argus/                       # Argus QA team (Greek names)
+│   ├── claude/                  # == PLUGIN ROOT (Claude only)
+│   │   ├── .claude-plugin/plugin.json
+│   │   └── agents/              # 23 flat agent defs (odysseus, orion, …)
+│   ├── codex/                   # 23 Codex-format agents (*.toml + *.md) — separate
+│   ├── framework-template/      # prepped Playwright+TS framework (shared reference)
 │   ├── COLOR-SCHEME.md          # colors by role type
-│   └── BROWSER-ISOLATION.md     # isolated UI-driving doctrine
+│   ├── SHARED-DOCTRINE.md       # cross-agent QA doctrine
+│   └── README.md                # how to start (entry: odysseus)
 ├── agents-roster.html           # visual roster (both teams)
-├── README.md / INSTALL.md
-└── todo.md                      # scratch (gitignored)
+└── README.md / INSTALL.md
 ```
 
-Agent slug = file name without `.md` (bare first name, e.g. `marcus`, `odysseus`). Subdirectories are just for tidiness — Claude Code scans recursively. For Codex, both teams keep the same bare slugs in paired files such as `hephaestus/codex/marcus.toml` + `hephaestus/codex/marcus.md` or `argus/codex/odysseus.toml` + `argus/codex/odysseus.md`.
+Agent slug = file name without `.md` (bare first name, e.g. `marcus`, `odysseus`). Claude Code requires plugin agents to be **flat** inside `agents/` (no subdirectories), so the old `dev/`/`QA/`/`ba/`/`management/` grouping is now a flat list under `hephaestus/claude/agents/`. For Codex, both teams keep the same bare slugs in paired files such as `hephaestus/codex/marcus.toml` + `hephaestus/codex/marcus.md` or `argus/codex/odysseus.toml` + `argus/codex/odysseus.md`.
 
 ## Roster
 
@@ -134,7 +144,7 @@ Three assignments are judgment calls — if they don't suit you, changing them =
 
 ## Argus QA team
 
-A second, **separate**, **permanent** QA team (**23 agents**) you point at any target — a live site, an API, a docker stack, a repo with or without tests. Files in `argus/claude/`, slugs = bare first names (`odysseus`, `orion`, `lynceus`, `ariadne`, …). Marcus switches into Argus QA mode on any QA / testing / bug-hunt signal (case-insensitive) and delegates everything to **Odysseus**, who picks the **engagement mode**: **A** full QA audit · **B** deep bug-hunt · **C** build a test suite from scratch · **D** add/extend tests in an existing repo (adopt-or-build). The crew is reused across engagements.
+A second, **separate**, **permanent** QA team (**23 agents**) you point at any target — a live site, an API, a docker stack, a repo with or without tests. Files in `argus/claude/agents/`, slugs = bare first names (`odysseus`, `orion`, `lynceus`, `ariadne`, …). Marcus switches into Argus QA mode on any QA / testing / bug-hunt signal (case-insensitive) and delegates everything to **Odysseus**, who picks the **engagement mode**: **A** full QA audit · **B** deep bug-hunt · **C** build a test suite from scratch · **D** add/extend tests in an existing repo (adopt-or-build). The crew is reused across engagements.
 
 **v2 architecture = parallel `surface × mode` lanes.** Odysseus fires the lanes IN PARALLEL (UI / API / Performance / Database / CyberSecurity / Accessibility / deep journeys); each lane = a hunter (manual/exploratory) + an automation engineer + (UI/API) a path-analyst (baseline) where applicable. The 8→23 restructuring driver: a single generalist caught ~60% of API bugs but only ~14% of UI ones — dedicated lanes fix that. **Doctrine: `argus/BROWSER-ISOLATION.md` for isolated UI driving and the per-agent hardening blocks embedded in the Argus QA defs.** Colors by role type: `argus/COLOR-SCHEME.md`.
 

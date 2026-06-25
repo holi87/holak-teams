@@ -1,28 +1,44 @@
-# Global install — Hephaestus + Argus agent teams
+# Install — Hephaestus + Argus agent teams
 
-The agents live in this repo (`~/Desktop/GenAI/my_agents/`), split into two teams. Each team keeps its Claude Code agent defs under a `claude/` directory and its Codex custom-agent variant under `codex/`:
+This repo is a **Claude Code plugin marketplace** (`holak-teams`) and also supports manual symlink/copy installs plus Codex.
 
-- **Hephaestus** (delivery) — `hephaestus/claude/` — 22 agents, entry point `marcus`
-- **Argus** (QA) — `argus/claude/` — 23 agents, entry point `odysseus`
+The agents live in this repo (`~/Desktop/GenAI/my_agents/`), split into two teams. Each team's **Claude Code** agent defs live under `<team>/claude/agents/` (the plugin root is `<team>/claude/`); its **Codex** custom-agent variant lives under `<team>/codex/`:
+
+- **Hephaestus** (delivery) — `hephaestus/claude/agents/` — 22 agents, entry point `marcus`
+- **Argus** (QA) — `argus/claude/agents/` — 23 agents, entry point `odysseus`
 - **Hephaestus for Codex** — `hephaestus/codex/` — the same 22 agents as paired `*.toml` + `*.md` files, entry point `marcus`
 - **Argus for Codex** — `argus/codex/` — the same 23 agents as paired `*.toml` + `*.md` files, entry point `odysseus`
 
 Codex model mapping for both teams: Claude `opus` source roles use `model = "gpt-5.5"` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles use `model = "gpt-5.5"` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles use `model = "gpt-5.4-mini"` with `model_reasoning_effort = "medium"`.
 
-`codex/` (Codex-format variant), `argus/framework-template/` (Playwright framework), and the two Argus reference docs (`argus/COLOR-SCHEME.md`, `argus/BROWSER-ISOLATION.md`) are **not** Claude agents. Claude Code reads sub-agents from:
+`codex/` (Codex-format variant), `argus/framework-template/` (Playwright framework), and the Argus reference docs (`argus/COLOR-SCHEME.md`, `argus/SHARED-DOCTRINE.md`) are **not** Claude agents.
+
+## Claude Code — plugin marketplace (recommended)
+
+Install the teams as plugins straight from this marketplace repo:
+
+```
+/plugin marketplace add holi87/holak-teams
+/plugin install hephaestus@holak-teams
+/plugin install argus@holak-teams
+```
+
+Update later with `/plugin marketplace update holak-teams`. Installed agents are namespaced (`hephaestus:marcus`, `argus:odysseus`). Opening this repo and trusting the folder auto-enables both plugins via `.claude/settings.json`.
+
+## Claude Code — manual symlink / copy (alternative)
+
+Without the marketplace, Claude Code also reads sub-agents from:
 
 - **globally:** `~/.claude/agents/`
 - **per-project:** `<repo>/.claude/agents/`
 
-## Claude Code Install
-
-### Option A — symlink (recommended, auto-update)
+### Option A — symlink (auto-update)
 
 One link per team. Editing a file here = it works globally right away.
 
 ```bash
-ln -s ~/Desktop/GenAI/my_agents/hephaestus/claude ~/.claude/agents/hephaestus
-ln -s ~/Desktop/GenAI/my_agents/argus/claude      ~/.claude/agents/argus
+ln -s ~/Desktop/GenAI/my_agents/hephaestus/claude/agents ~/.claude/agents/hephaestus
+ln -s ~/Desktop/GenAI/my_agents/argus/claude/agents      ~/.claude/agents/argus
 ```
 
 > Claude Code scans subdirectories recursively, so each symlink shows up as its own group, alongside anything else you have (e.g. an `awesome-claude-agents` link).
@@ -31,8 +47,8 @@ ln -s ~/Desktop/GenAI/my_agents/argus/claude      ~/.claude/agents/argus
 
 ```bash
 mkdir -p ~/.claude/agents/hephaestus ~/.claude/agents/argus
-cp -R ~/Desktop/GenAI/my_agents/hephaestus/claude/ ~/.claude/agents/hephaestus/
-cp -R ~/Desktop/GenAI/my_agents/argus/claude/      ~/.claude/agents/argus/
+cp -R ~/Desktop/GenAI/my_agents/hephaestus/claude/agents/ ~/.claude/agents/hephaestus/
+cp -R ~/Desktop/GenAI/my_agents/argus/claude/agents/      ~/.claude/agents/argus/
 ```
 
 ### Name collisions — check before installing
@@ -41,7 +57,7 @@ Slugs are persona names (`maximus`, not `backend-developer`), so they **do not c
 
 ```bash
 # no slug from these teams should already exist in ~/.claude/agents
-for f in $(find ~/Desktop/GenAI/my_agents/hephaestus/claude ~/Desktop/GenAI/my_agents/argus/claude -name "*.md"); do
+for f in $(find ~/Desktop/GenAI/my_agents/hephaestus/claude/agents ~/Desktop/GenAI/my_agents/argus/claude/agents -name "*.md"); do
   n=$(basename "$f" .md)
   found=$(find ~/.claude/agents -name "$n.md" 2>/dev/null | grep -v "GenAI/my_agents" | head -1)
   [ -n "$found" ] && echo "COLLISION: $n → $found"
@@ -106,8 +122,8 @@ If you want the teams in just one repo:
 
 ```bash
 mkdir -p <repo>/.claude/agents/hephaestus <repo>/.claude/agents/argus
-cp -R ~/Desktop/GenAI/my_agents/hephaestus/claude/ <repo>/.claude/agents/hephaestus/
-cp -R ~/Desktop/GenAI/my_agents/argus/claude/      <repo>/.claude/agents/argus/
+cp -R ~/Desktop/GenAI/my_agents/hephaestus/claude/agents/ <repo>/.claude/agents/hephaestus/
+cp -R ~/Desktop/GenAI/my_agents/argus/claude/agents/      <repo>/.claude/agents/argus/
 ```
 
 ## Uninstall

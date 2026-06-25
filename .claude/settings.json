@@ -1,0 +1,15 @@
+{
+  "extraKnownMarketplaces": {
+    "holak-teams": {
+      "source": {
+        "source": "github",
+        "repo": "holi87/holak-teams"
+      },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "hephaestus@holak-teams": true,
+    "argus@holak-teams": true
+  }
+}
