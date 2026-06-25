@@ -1,0 +1,26 @@
+[
+  {
+    "id": "BUG-0001",
+    "origin": ["DAW-001"],
+    "title": "IDOR: GET /api/orders/{id} returns another user's order",
+    "severity": "Critical",
+    "priority": "P1",
+    "lane": "security",
+    "req_risk": "REQ-014 / RISK-2",
+    "detected_by": "agent exploratory/manual",
+    "wired": true,
+    "test_ref": "tests/security/authz.spec.ts::@bug:BUG-0001"
+  },
+  {
+    "id": "BUG-0002",
+    "origin": ["ANI-002", "DOB-004"],
+    "title": "Cart total accepts negative quantity → negative payable",
+    "severity": "Major",
+    "priority": "P2",
+    "lane": "api",
+    "req_risk": "REQ-031 / RISK-5",
+    "detected_by": "agent exploratory/manual",
+    "wired": false,
+    "test_ref": null
+  }
+]

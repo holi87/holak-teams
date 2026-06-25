@@ -1,0 +1,7 @@
+# Private working notes — never commit
+TODO.md
+todo.md
+
+# Junk / deps — never commit
+.DS_Store
+node_modules/

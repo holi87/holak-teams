@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent roster — base + Argus QA</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #1a1d24;
+    --border: #2a2f3a;
+    --text: #e6e9ef;
+    --muted: #9aa3b2;
+    --accent: #6ea8fe;
+    --accent2: #f7a072;
+    --opus: #b794f6;
+    --sonnet: #63b3ed;
+    --haiku: #68d391;
+    --cli: #f6c177;
+    --mcp: #6ea8fe;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    padding: 2rem 1.5rem 4rem;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.8rem; margin: 0 0 .25rem; }
+  .sub { color: var(--muted); margin: 0 0 2.5rem; font-size: .95rem; }
+  h2 {
+    font-size: 1.25rem;
+    margin: 2.5rem 0 1rem;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+  }
+  h2 .count {
+    font-size: .8rem;
+    font-weight: 500;
+    color: var(--muted);
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: .15rem .55rem;
+    border-radius: 999px;
+  }
+  .note {
+    color: var(--muted);
+    font-size: .85rem;
+    margin: -.4rem 0 1rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  thead th {
+    text-align: left;
+    font-size: .75rem;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: .75rem 1rem;
+    background: #141720;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody td {
+    padding: .7rem 1rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #20242e; }
+  .name { font-weight: 600; text-transform: capitalize; }
+  .model, .mode {
+    display: inline-block;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: .78rem;
+    padding: .12rem .5rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .m-opus   { color: var(--opus);   border-color: #4a3a6e; background: #241a36; }
+  .m-sonnet { color: var(--sonnet); border-color: #2a4a6e; background: #15243a; }
+  .m-haiku  { color: var(--haiku);  border-color: #2a5a3e; background: #14301f; }
+  .t-cli { color: var(--cli); border-color: #5a4a2a; background: #2e2614; }
+  .t-mcp { color: var(--mcp); border-color: #2a4a6e; background: #15243a; }
+  .t-na  { color: var(--muted); }
+  col.c-name  { width: 13%; }
+  col.c-model { width: 10%; }
+  col.c-mode  { width: 13%; }
+  footer { margin-top: 3rem; color: var(--muted); font-size: .8rem; }
+  footer code { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Agent roster</h1>
+  <p class="sub">Base delivery team (Marcus) + standing QA team <strong>Argus QA</strong> (Odysseus). Model and tool mode per each agent's frontmatter / doctrine. Argus = Greek names, Marcus's team = Roman. Both teams are also available as Codex custom agents in <code>hephaestus/codex/</code> and <code>argus/codex/</code>. As of: 2026-06-25.</p>
+
+  <h2>1. Base agents <span class="count">22 agents</span></h2>
+  <p class="note"><strong>Codex variant:</strong> the same 22 Hephaestus agents are available in <code>hephaestus/codex/</code> as paired <code>*.toml</code> + <code>*.md</code> files. Claude <code>opus</code> source roles map to <code>gpt-5.5</code> + <code>xhigh</code>; Claude <code>sonnet</code> source roles map to <code>gpt-5.5</code> + <code>medium</code>; Claude <code>haiku</code> source roles map to <code>gpt-5.4-mini</code> + <code>medium</code>.</p>
+  <table>
+    <colgroup><col class="c-name"><col><col class="c-model"></colgroup>
+    <thead><tr><th>Name</th><th>Role</th><th>Model</th></tr></thead>
+    <tbody>
+      <tr><td class="name">Marcus</td><td>Team Leader — entry point, decomposition, delegation plan, synthesis</td><td><span class="model m-opus">opus</span></td></tr>
+      <tr><td class="name">Cato</td><td>Product Owner — backlog, value-based prioritization, increment acceptance</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+      <tr><td class="name">Varro</td><td>Business analyst — requirements, INVEST user stories, Gherkin criteria</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+      <tr><td class="name">Vitruvius</td><td>System architect — architecture, stack, ADR, NFR, integration contracts</td><td><span class="model m-opus">opus</span></td></tr>
+      <tr><td class="name">Agrippa</td><td>Tech Lead — task plan, definition of done, standards, unblocking devs</td><td><span class="model m-opus">opus</span></td></tr>
+      <tr><td class="name">Fabricius</td><td>Full-stack — complete vertical slice backend+frontend+data</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+      <tr><td class="name">Tiberius</td><td>Database engineer — schema, migrations, query optimization, indexes</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+      <tr><td class="name">Lucius</td><td>Frontend developer — components, state, accessibility, responsiveness</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+      <tr><td class="name">Severus</td><td>Reviewer — final quality gate, BLOCKER/WARNING verdict</td><td><span class="model m-opus">opus</span></td></tr>
+      <tr><td class="name">Maximus</td><td>Backend developer — API, business logic, data access, auth, jobs</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+      <tr><td class="name">Cicero</td><td>Documentation writer — README, API docs, how-to, changelog, onboarding</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+      <tr><td class="name">Tacitus</td><td>Log analyst — condensing logs/stack traces into signal, root cause</td><td><span class="model m-haiku">haiku</span></td></tr>
+      <tr><td class="name">Numa</td><td>Scrum / facilitator — stand-ups, impediments, action items, risks</td><td><span class="model m-haiku">haiku</span></td></tr>
+      <tr><td class="name">Appius</td><td>DevOps — CI/CD, IaC, containers, secrets, deploy, rollback, observability</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+      <tr><td class="name">Regulus</td><td>Checklists — turning DoD/process into atomic, tickable lists</td><td><span class="model m-haiku">haiku</span></td></tr>
+      <tr><td class="name">Janus</td><td>Environment verification — MCP, CLI, auth, services; READY/NOT-READY verdict</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+      <tr><td class="name">Cassius</td><td>Security reviewer — STRIDE, OWASP, authn/authz, secrets, injection (read-only)</td><td><span class="model m-opus">opus</span></td></tr>
+      <tr><td class="name">Fabius</td><td>Test automation engineer — unit/integration/e2e/API/UI/perf, fixtures, CI</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+      <tr><td class="name">Boethius</td><td>Test case designer — formal techniques, dedup, priorities</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+      <tr><td class="name">Seneca</td><td>QA strategist — test pyramid, quality gates, GO/NO-GO verdict</td><td><span class="model m-opus">opus</span></td></tr>
+      <tr><td class="name">Catiline</td><td>Manual/exploratory tester — charters, AC validation, bug reports</td><td><span class="model m-opus">opus</span></td></tr>
+      <tr><td class="name">Mercury</td><td>Performance tester — k6/autocannon/CWV, response-time budgets, baseline</td><td><span class="model m-sonnet">sonnet</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2>2. Argus QA agents <span class="count">23 agents</span></h2>
+  <p class="note"><strong>Codex variant:</strong> the same 23 Argus agents are available in <code>argus/codex/</code> as paired <code>*.toml</code> + <code>*.md</code> files, preserving the same bare slugs (<code>odysseus</code>, <code>talos</code>, <code>orion</code>, ...). Claude <code>sonnet</code> source roles map to <code>gpt-5.5</code> + <code>medium</code>; Claude <code>opus</code> source roles map to <code>gpt-5.5</code> + <code>xhigh</code>.</p>
+  <p class="note"><strong>Engagement modes</strong> (lead Odysseus picks per goal): <strong>A</strong> full QA audit · <strong>B</strong> deep bug-hunt (hunters as automatons) · <strong>C</strong> build tests from scratch (greenfield) · <strong>D</strong> add to / extend tests in an existing repo (adopt-or-build). Every agent appends a <strong>heartbeat</strong> every ~10 min to <code>ai_agents_internal/heartbeat/&lt;slug&gt;.log</code> (watch with: <code>tail -f</code>) — to estimate progress.</p>
+  <p class="note">The <strong>Mode (hunt)</strong> column = tool hybrid:
+    <span class="mode t-cli">CLI-first</span> (scripted curl/fetch/node/psql — request/data-level, saves tokens + cache) ·
+    <span class="mode t-mcp">browser-MCP</span> (oracle = rendered page; snapshot-frugal). The rest of the roles (core, strategy, automation, triage, report) do no direct hunting — <span class="t-na">—</span>.</p>
+  <table>
+    <colgroup><col class="c-name"><col><col class="c-model"><col class="c-mode"></colgroup>
+    <thead><tr><th>Name</th><th>Role</th><th>Model</th><th>Mode (hunt)</th></tr></thead>
+    <tbody>
+      <tr><td class="name">Odysseus</td><td>Team Lead Argus QA — picks the mode (audit / bug-hunt / build / add tests), drives parallel lanes, aggregates heartbeats</td><td><span class="model m-opus">opus</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Kalchas</td><td>System Analyst — recon: stack, endpoints, roles, data, rules + probe DB / source / adopt-or-build</td><td><span class="model m-opus">opus</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Metis</td><td>Test Strategist — risk-based TEST-STRATEGY.md, coverage grid by lanes</td><td><span class="model m-opus">opus</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Minos</td><td>Bug Triage / QA Lead — severity verification, dedup, ledger ranking</td><td><span class="model m-opus">opus</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Kleio</td><td>QA Reporter — README, IMPLEMENTATION-REPORT, completeness, final checklist</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Theseus</td><td>API path analyst — canonical baseline from OpenAPI (happy-path + CRUD)</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Penelope</td><td>UI path analyst — primary journeys as deterministic path specs</td><td><span class="model m-sonnet">sonnet</span></td><td><span class="mode t-mcp">browser-MCP</span></td></tr>
+      <tr><td class="name">Atlas</td><td>Automation architect — shared harness, run-tests.sh, one report</td><td><span class="model m-opus">opus</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Talos</td><td>API automation engineer — tests/api/, GREEN baseline + Atalanta's bugs as RED</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Daidalos</td><td>UI automation engineer — tests/ui/ (Playwright), a11y AUTO, E2E baseline + RED</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Aegis</td><td>Security automation engineer — tests/security/, authz matrix, IDOR, injection (RED)</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Nike</td><td>Performance automation engineer — tests/perf/, Hermes's oracle as RED regression</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Mnemosyne</td><td>DB automation engineer (gated) — tests/db/, integrity invariants, read-only DB</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Atalanta</td><td>Bug Hunter API — contract, data integrity, adversarial</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
+      <tr><td class="name">Orion</td><td>Bug Hunter UI — behavior, client state, forms, actions (ORI-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-mcp">browser-MCP</span></td></tr>
+      <tr><td class="name">Lynceus</td><td>Bug Hunter UI presentation — layout, format, i18n, sort, precision (LYN-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-mcp">browser-MCP</span></td></tr>
+      <tr><td class="name">Perseus</td><td>Bug Hunter security — STRIDE/OWASP, broken auth, IDOR/BOLA (PER-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
+      <tr><td class="name">Hermes</td><td>Bug Hunter performance — structural perf oracles, latency p50/p95/p99</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
+      <tr><td class="name">Antigone</td><td>Bug Hunter accessibility — WCAG 2.1 AA, keyboard-only, ARIA (ANG-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-mcp">browser-MCP</span></td></tr>
+      <tr><td class="name">Charon</td><td>Bug Hunter DB (gated) — constraints, transactions, cascades, seed (CHA-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
+      <tr><td class="name">Ariadne</td><td>Bug Hunter deep journeys — business-rule lifecycle, preconditions, e2e invariants (ARI-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
+      <tr><td class="name">Tiresias</td><td>White-box SDET (gated) — static SAST analysis, code→surface mapping</td><td><span class="model m-opus">opus</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Aristarchus</td><td>Automation code reviewer — last before the gate, clean-code/DRY/SOLID</td><td><span class="model m-opus">opus</span></td><td class="t-na">—</td></tr>
+    </tbody>
+  </table>
+
+  <footer>
+    Generated from agent frontmatter (<code>~/.claude/agents/marcus-team</code>).
+    Models: <span class="model m-opus">opus</span> · <span class="model m-sonnet">sonnet</span> · <span class="model m-haiku">haiku</span>.
+    Hunt mode: <span class="mode t-cli">CLI-first</span> · <span class="mode t-mcp">browser-MCP</span>.
+    Base: 7 opus / 12 sonnet / 3 haiku · Argus QA: 15 opus / 8 sonnet · Codex: gpt-5.5 medium/xhigh, gpt-5.4-mini medium.
+  </footer>
+</div>
+</body>
+</html>

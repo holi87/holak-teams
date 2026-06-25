@@ -1,0 +1,30 @@
+{
+  "name": "argus-playwright-ts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Argus QA test framework — Playwright + TS (API + UI). Adapt to the target app.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "gate:bugs": "node scripts/bug-coverage.mjs",
+    "gate:baseline": "node scripts/baseline-coverage.mjs",
+    "perf": "node src/perf/run-perf.mjs",
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:ui": "playwright test --project=ui",
+    "test:regression": "playwright test --project=regression",
+    "test:perf": "playwright test --project=perf",
+    "test:security": "playwright test --project=security",
+    "test:db": "playwright test --project=db",
+    "report": "playwright show-report reports/html"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.1",
+    "@playwright/test": "^1.61.0",
+    "playwright": "^1.61.0",
+    "@types/node": "^22.10.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "autocannon": "^8.0.0",
+    "typescript": "^5.7.2"
+  }
+}

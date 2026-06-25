@@ -1,0 +1,25 @@
+{
+  "_README": "Copy to driver.config.json and fill from Kalchas's recon. App-specific; driver.config.json is gitignored (may hold creds). NEVER commit real creds to the template.",
+  "baseUrl": "https://CHANGE_ME.example.com",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+
+  "_authNote": "Where the SPA keeps its session. If JWT lives in a cookie, leave tokenStorageKey null and rely on the persistent profile after a UI login instead.",
+  "tokenStorageKey": "CHANGE_ME-access-token",
+  "refreshTokenStorageKey": "CHANGE_ME-refresh-token",
+  "postAuthMarker": "[data-testid=navbar-logout-cta]",
+
+  "_apiNote": "Endpoints used to mint tokens (login) and verify identity (me). Paths are relative to baseUrl.",
+  "api": {
+    "login": "/api/auth/login",
+    "me": "/api/auth/me"
+  },
+  "accessTokenPath": "accessToken",
+  "refreshTokenPath": "refreshToken",
+
+  "_accountsNote": "Seed accounts per role. loginPayload overrides the default {email,password} body if the app's login shape differs.",
+  "accounts": {
+    "student": { "email": "student@CHANGE_ME", "password": "CHANGE_ME" },
+    "instructor": { "email": "instructor@CHANGE_ME", "password": "CHANGE_ME" },
+    "admin": { "email": "admin@CHANGE_ME", "password": "CHANGE_ME" }
+  }
+}
