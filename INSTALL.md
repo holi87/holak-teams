@@ -83,14 +83,14 @@ Then in any session:
 
 ## Codex Install — Hephaestus + Argus
 
-Codex uses paired `*.toml` + `*.md` files. The portable install is to expose the files from both `hephaestus/codex/` and `argus/codex/` directly in `~/.codex/agents/`; the Codex slugs stay the same bare first names (`marcus`, `fabricius`, `odysseus`, `talos`, ...).
+A Codex subagent is a **single standalone `*.toml`** (the persona prompt lives inside it, in `developer_instructions`). The matching `*.md` next to each `.toml` is the Claude-format companion — same content, **not read by Codex** — so for Codex you install only the `*.toml`. Codex has no marketplace/git install for subagents (Codex plugins ship skills / MCP / apps / hooks, not subagents), so the install is a copy or symlink of the `*.toml` files into `~/.codex/agents/`. Slugs stay the bare first names (`marcus`, `fabricius`, `odysseus`, `talos`, ...).
 
-### Option A — symlink each file (recommended, auto-update)
+### Option A — symlink (recommended, auto-update)
 
 ```bash
 mkdir -p ~/.codex/agents
 for dir in ~/Desktop/GenAI/my_agents/hephaestus/codex ~/Desktop/GenAI/my_agents/argus/codex; do
-  for f in "$dir"/*.{toml,md}; do
+  for f in "$dir"/*.toml; do
     ln -sf "$f" ~/.codex/agents/"$(basename "$f")"
   done
 done
@@ -101,17 +101,14 @@ done
 ```bash
 mkdir -p ~/.codex/agents
 cp ~/Desktop/GenAI/my_agents/hephaestus/codex/*.toml ~/.codex/agents/
-cp ~/Desktop/GenAI/my_agents/hephaestus/codex/*.md   ~/.codex/agents/
-cp ~/Desktop/GenAI/my_agents/argus/codex/*.toml ~/.codex/agents/
-cp ~/Desktop/GenAI/my_agents/argus/codex/*.md   ~/.codex/agents/
+cp ~/Desktop/GenAI/my_agents/argus/codex/*.toml      ~/.codex/agents/
 ```
 
 ### Verification after installing
 
 ```bash
-find ~/Desktop/GenAI/my_agents/hephaestus/codex ~/Desktop/GenAI/my_agents/argus/codex -maxdepth 1 \( -name "*.toml" -o -name "*.md" \) | wc -l   # → 90 (45 agents × 2 files)
-ls ~/.codex/agents/marcus.toml ~/.codex/agents/marcus.md
-ls ~/.codex/agents/odysseus.toml ~/.codex/agents/odysseus.md
+ls ~/.codex/agents/*.toml | wc -l   # → 45 (22 Hephaestus + 23 Argus)
+ls ~/.codex/agents/marcus.toml ~/.codex/agents/odysseus.toml
 ```
 
 Then in Codex, use `marcus` as the delivery entry point and `odysseus` as the Argus QA / testing / bug-hunt entry point.
