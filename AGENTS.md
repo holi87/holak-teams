@@ -6,7 +6,7 @@ teams as installable plugins:
 | Plugin | Theme | Agents | Entry point | Purpose |
 |---|---|:--:|---|---|
 | **hephaestus** | Roman names | 22 | `marcus` | Software delivery — goal → designed team → delivered increment |
-| **argus** | Greek names | 23 | `odysseus` | QA — black-box bug hunting + regression automation |
+| **argus** | Greek names | 27 | `odysseus` | QA — black-box bug hunting + regression automation |
 
 Both teams are **hub-and-spoke**: you talk to the entry-point agent; it decomposes the
 work, dispatches specialists, and reports back. Agents never talk to each other directly.
@@ -82,9 +82,11 @@ holak-teams/                         # this repo == the marketplace
 └── argus/                           # ── QA team ──
     ├── claude/                      # == PLUGIN ROOT (Claude only)
     │   ├── .claude-plugin/plugin.json
-    │   └── agents/                  # 23 flat agent defs (loaded by Claude Code)
+    │   └── agents/                  # 27 flat agent defs (loaded by Claude Code)
     ├── codex/                       # Codex variants (*.toml + *.md) — separate, not in the plugin
     ├── framework-template/          # prepped Playwright + TS framework (shared reference)
+    ├── framework-template-java/     # RestAssured + JUnit5 + Playwright-Java (shared reference)
+    ├── framework-template-python/   # pytest + Playwright + httpx (shared reference)
     ├── COLOR-SCHEME.md              # colors by role type (shared reference)
     ├── SHARED-DOCTRINE.md           # cross-agent QA doctrine (shared reference)
     └── README.md                    # roster + how-to-start
@@ -103,7 +105,7 @@ loaded or shipped as Claude plugin components.
 Full rosters, roles, models and lane structure live in each plugin's README:
 
 - **Hephaestus** — `hephaestus/README.md` (22 agents: ba / dev / management / QA, leader `marcus`).
-- **Argus** — `argus/README.md` (23 agents: core + surface×mode hunter/automation/path-analyst lanes, leader `odysseus`).
+- **Argus** — `argus/README.md` (27 agents: core + surface×mode hunter/automation/path-analyst lanes, plus resilience, consumer-driven contract, and test-suite-sanitation roles, leader `odysseus`).
 
 Codex runtime mapping for both teams: Claude `opus` → `gpt-5.5` + `xhigh`,
 `sonnet` → `gpt-5.5` + `medium`, `haiku` → `gpt-5.4-mini` + `medium`.

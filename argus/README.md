@@ -16,7 +16,7 @@ You don't call individual hunters by hand — everything goes through `odysseus`
 
 ## Roster (`claude/` + `codex/`)
 
-The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 23 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. Codex model mapping: source roles `sonnet` use `gpt-5.5` + `medium`, and source roles `opus` use `gpt-5.5` + `xhigh`.
+The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 27 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. Codex model mapping: source roles `sonnet` use `gpt-5.5` + `medium`, and source roles `opus` use `gpt-5.5` + `xhigh`.
 
 | Agent | Role |
 |---|---|
@@ -26,14 +26,17 @@ The Claude Code version lives in `claude/`. The Codex version lives in `codex/` 
 | metis | test strategist — TEST-STRATEGY.md, coverage grid |
 | kleio | QA reporter — README, IMPLEMENTATION-REPORT, acceptance |
 | theseus | API test-path analyst — canonical baseline |
+| pistis | consumer-driven contract analyst — Pact baseline (PIS-) |
 | penelope | UI test-path analyst — user journeys baseline |
 | atlas | automation architect — shared harness, run-tests.sh |
 | **Hunters** | |
 | atalanta | API / data-integrity (ATA-) |
+| proteus | multi-protocol API — GraphQL / gRPC / WebSocket / async (PRO-) |
 | orion | functional UI (ORI-) |
 | lynceus | UI presentation / i18n / layout (LYN-) |
 | ariadne | deep journeys + business-rule lifecycle (ARI-) |
 | hermes | performance — structural oracles (HER-) |
+| tyche | resilience / chaos — fault-injection oracles (TYC-) |
 | perseus | security — STRIDE/OWASP (PER-) |
 | antigone | accessibility — WCAG 2.1 AA (ANG-) |
 | charon | database (gated, CHA-) |
@@ -45,5 +48,6 @@ The Claude Code version lives in `claude/`. The Codex version lives in `codex/` 
 | nike | perf regression (tests/perf/) |
 | mnemosyne | DB invariants (gated, tests/db/) |
 | aristarchus | code reviewer — runs LAST, BLOCKER/WARNING |
+| asklepios | test-suite sanitation / deflaking — brownfield Mode D (ASK-) |
 
-`codex/` — Codex variant of the roster (23 `*.toml` + `*.md` pairs). `framework-template/` — project skeleton. `COLOR-SCHEME.md`, `BROWSER-ISOLATION.md` — docs.
+`codex/` — Codex variant of the roster (27 `*.toml` + `*.md` pairs). `framework-template/` (Playwright + TS), `framework-template-java/` (RestAssured + JUnit5 + Playwright-Java), `framework-template-python/` (pytest + Playwright + httpx) — project skeletons, all no-Selenium. `COLOR-SCHEME.md`, `BROWSER-ISOLATION.md` — docs.

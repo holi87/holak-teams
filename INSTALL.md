@@ -5,13 +5,13 @@ This repo is a **Claude Code plugin marketplace** (`holak-teams`) and also suppo
 The agents live in this repo (`~/Desktop/GenAI/my_agents/`), split into two teams. Each team's **Claude Code** agent defs live under `<team>/claude/agents/` (the plugin root is `<team>/claude/`); its **Codex** custom-agent variant lives under `<team>/codex/`:
 
 - **Hephaestus** (delivery) — `hephaestus/claude/agents/` — 22 agents, entry point `marcus`
-- **Argus** (QA) — `argus/claude/agents/` — 23 agents, entry point `odysseus`
+- **Argus** (QA) — `argus/claude/agents/` — 27 agents, entry point `odysseus`
 - **Hephaestus for Codex** — `hephaestus/codex/` — the same 22 agents as paired `*.toml` + `*.md` files, entry point `marcus`
-- **Argus for Codex** — `argus/codex/` — the same 23 agents as paired `*.toml` + `*.md` files, entry point `odysseus`
+- **Argus for Codex** — `argus/codex/` — the same 27 agents as paired `*.toml` + `*.md` files, entry point `odysseus`
 
 Codex model mapping for both teams: Claude `opus` source roles use `model = "gpt-5.5"` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles use `model = "gpt-5.5"` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles use `model = "gpt-5.4-mini"` with `model_reasoning_effort = "medium"`.
 
-`codex/` (Codex-format variant), `argus/framework-template/` (Playwright framework), and the Argus reference docs (`argus/COLOR-SCHEME.md`, `argus/SHARED-DOCTRINE.md`) are **not** Claude agents.
+`codex/` (Codex-format variant), the Argus framework templates (`argus/framework-template/` Playwright+TS, `argus/framework-template-java/` RestAssured+JUnit5+Playwright-Java, `argus/framework-template-python/` pytest+Playwright+httpx), and the Argus reference docs (`argus/COLOR-SCHEME.md`, `argus/SHARED-DOCTRINE.md`) are **not** Claude agents.
 
 ## Claude Code — plugin marketplace (recommended)
 
@@ -69,7 +69,7 @@ echo "audit complete"
 
 ```bash
 # count the loaded agent files (trailing slash required, otherwise find won't follow the symlink)
-find ~/.claude/agents/hephaestus/ ~/.claude/agents/argus/ -name "*.md" 2>/dev/null | wc -l   # → 45 (22 Hephaestus + 23 Argus)
+find ~/.claude/agents/hephaestus/ ~/.claude/agents/argus/ -name "*.md" 2>/dev/null | wc -l   # → 49 (22 Hephaestus + 27 Argus)
 
 # in a new Claude Code session:
 /agents        # marcus, odysseus and the rest should be on the list
@@ -107,7 +107,7 @@ cp ~/Desktop/GenAI/my_agents/argus/codex/*.toml      ~/.codex/agents/
 ### Verification after installing
 
 ```bash
-ls ~/.codex/agents/*.toml | wc -l   # → 45 (22 Hephaestus + 23 Argus)
+ls ~/.codex/agents/*.toml | wc -l   # → 49 (22 Hephaestus + 27 Argus)
 ls ~/.codex/agents/marcus.toml ~/.codex/agents/odysseus.toml
 ```
 

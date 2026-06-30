@@ -1,0 +1,17 @@
+# Maven build output
+target/
+
+# Aggregated report + per-run artifacts
+reports/
+
+# storageState (auth-once session) — never commit credentials/sessions
+.auth/
+
+# Playwright-for-Java caches / driver bundle
+.playwright/
+ms-playwright/
+playwright-report/
+
+# logs / OS cruft
+*.log
+.DS_Store
