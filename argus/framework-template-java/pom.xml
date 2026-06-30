@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.holak.argus</groupId>
+  <artifactId>argus-qa-java</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  <name>Argus QA Test Framework — Java (REST Assured + Playwright)</name>
+  <description>Prepped Argus QA scaffold. JUnit 5 + REST Assured (API/contract) + Playwright-Java (UI). Adapt to the target app.</description>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+    <!-- Dependency versions, one place. -->
+    <junit.version>5.10.2</junit.version>
+    <jackson.version>2.17.1</jackson.version>
+    <restassured.version>5.4.0</restassured.version>
+    <playwright.version>1.44.0</playwright.version>
+    <awaitility.version>4.2.1</awaitility.version>
+
+    <!-- Plugin versions. -->
+    <surefire.version>3.2.5</surefire.version>
+    <compiler.plugin.version>3.13.0</compiler.plugin.version>
+    <exec.plugin.version>3.1.1</exec.plugin.version>
+
+    <!-- Lane selection (@Tag). Empty by default → ALL lanes run. Override on the CLI
+         (-Dgroups=api) or activate a -P<lane> profile below. -->
+    <groups></groups>
+    <excludedGroups></excludedGroups>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Aligned JUnit 5 (Jupiter API/engine + platform launcher). -->
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <!-- Aligned Jackson (used by REST Assured + by SchemaOracle). -->
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- ── Runner: JUnit 5 (Jupiter) ───────────────────────────────────── -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Needed so our ServiceLoader-registered SummaryListener
+         (qa.support.SummaryListener) is on the launcher classpath. -->
+    <dependency>
+      <groupId>org.junit.platform</groupId>
+      <artifactId>junit-platform-launcher</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- ── API / contract lane: REST Assured + JSON-schema oracle ──────── -->
+    <dependency>
+      <groupId>io.rest-assured</groupId>
+      <artifactId>rest-assured</artifactId>
+      <version>${restassured.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- OpenAPI / JSON-schema as an executable oracle (SchemaOracle). -->
+    <dependency>
+      <groupId>io.rest-assured</groupId>
+      <artifactId>json-schema-validator</artifactId>
+      <version>${restassured.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- Explicit so SchemaOracle parses/rewrites the OpenAPI tree against a pinned version. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- ── UI lane: Playwright for Java (NO Selenium) ──────────────────── -->
+    <dependency>
+      <groupId>com.microsoft.playwright</groupId>
+      <artifactId>playwright</artifactId>
+      <version>${playwright.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- ── Async waits (allowed; used by the perf probe) ───────────────── -->
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <version>${awaitility.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Hamcrest is pulled in transitively by REST Assured + JUnit; declared
+         explicitly because matchers are used directly in the API specs. -->
+    <dependency>
+      <groupId>org.hamcrest</groupId>
+      <artifactId>hamcrest</artifactId>
+      <version>2.2</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${compiler.plugin.version}</version>
+      </plugin>
+
+      <!-- Surefire: JUnit 5 runner + the aggregated XML report.
+           Determinism is enforced here: rerunFailingTestsCount=0 (NO reruns —
+           flakiness gets fixed at the source, never hidden), a single reused
+           fork so the in-process SummaryListener sees the whole TestPlan. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.version}</version>
+        <configuration>
+          <rerunFailingTestsCount>0</rerunFailingTestsCount>
+          <forkCount>1</forkCount>
+          <reuseForks>true</reuseForks>
+          <trimStackTrace>false</trimStackTrace>
+          <!-- Lane selection by @Tag. Bound to the ${groups}/${excludedGroups}
+               properties so an unset build runs every lane and -Dgroups=api (or a
+               -P<lane> profile) narrows it. Gated lanes still self-skip via
+               @EnabledIfEnvironmentVariable regardless of selection. -->
+          <groups>${groups}</groups>
+          <excludedGroups>${excludedGroups}</excludedGroups>
+          <!-- XML aggregated report lands in target/surefire-reports/ (default). -->
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <!-- Convenience lane profiles — `mvn test -Papi` == `mvn test -Dgroups=api`. -->
+  <profiles>
+    <profile><id>api</id><properties><groups>api</groups></properties></profile>
+    <profile><id>ui</id><properties><groups>ui</groups></properties></profile>
+    <profile><id>perf</id><properties><groups>perf</groups></properties></profile>
+    <profile><id>security</id><properties><groups>security</groups></properties></profile>
+    <profile><id>db</id><properties><groups>db</groups></properties></profile>
+    <profile><id>regression</id><properties><groups>regression</groups></properties></profile>
+
+    <!-- Add your app's JDBC driver here to enable the @db lane's real read-only
+         check (otherwise it self-skips with a "no driver" message). Example:
+    <profile>
+      <id>postgres</id>
+      <dependencies>
+        <dependency>
+          <groupId>org.postgresql</groupId><artifactId>postgresql</artifactId>
+          <version>42.7.3</version><scope>test</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+    -->
+  </profiles>
+</project>

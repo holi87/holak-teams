@@ -23,16 +23,16 @@ No icons / emoji / custom display-name are supported — only `name` + `color`.
 > The "D-team" (additional agents beyond the first 8-agent wave) is marked by the **D- name prefix**,
 > not by colour — colour now encodes role type so the parallel run is readable by function.
 
-## Per-agent mapping (23 Argus QA agents)
+## Per-agent mapping (27 Argus QA agents)
 **cyan — core (5):** Odysseus (lead/orchestrator) · Kalchas (recon) · Metis (strategy) · Minos (triage) · Kleio (reporter)
 
-**red — hunters (8):** Atalanta (API) · Hermes (Performance) · Orion (UI behaviour) · Lynceus (UI presentation/format/locale) · Antigone (Accessibility) · Perseus (CyberSecurity) · Ariadne (deep journeys / business-rule lifecycle) · Charon (Database — gated on DB access)
+**red — hunters (10):** Atalanta (API REST / data-integrity) · Proteus (multi-protocol API — GraphQL/gRPC/WebSocket/async) · Hermes (Performance) · Tyche (Resilience / chaos) · Orion (UI behaviour) · Lynceus (UI presentation/format/locale) · Antigone (Accessibility) · Perseus (CyberSecurity) · Ariadne (deep journeys / business-rule lifecycle) · Charon (Database — gated on DB access)
 
-**green — automation (5):** Talos (API/backend) · Daidalos (frontend, incl. a11y autos) · Nike (performance) · Aegis (CyberSecurity) · Mnemosyne (Database — gated)
+**green — automation (5):** Talos (API/backend) · Daidalos (frontend, incl. a11y autos) · Nike (performance + resilience) · Aegis (CyberSecurity) · Mnemosyne (Database — gated)
 
-**yellow — path analysts (2):** Penelope (UI regression baseline) · Theseus (API regression baseline)
+**yellow — path analysts (3):** Penelope (UI regression baseline) · Theseus (API REST regression baseline) · Pistis (consumer-driven contract baseline — Pact)
 
-**magenta — cross-cutting / meta (3):** Atlas (Automation Architect) · Aristarchus (Code Reviewer, runs LAST) · Tiresias (White-box Source Analyst — gated on source-code access)
+**magenta — cross-cutting / meta (4):** Atlas (Automation Architect) · Aristarchus (Code Reviewer, runs LAST) · Tiresias (White-box Source Analyst — gated on source-code access) · Asklepios (Test-Suite Sanitation / deflaking — brownfield Mode D)
 
 ## Notes
 - Gated agents (Charon, Mnemosyne, Tiresias) only join a run when their access precondition holds

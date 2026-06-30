@@ -1,0 +1,62 @@
+# Argus QA test framework — pytest + Playwright + httpx (API + UI). Adapt to the target app.
+#
+# Deps are documented here AND mirrored in requirements.txt (run-tests.sh installs from
+# requirements.txt for a quick venv). Versions below are FLOORS (lower bounds), not exact
+# pins, so installs are NOT byte-reproducible across time — see requirements.txt for the
+# one-command lockfile route (`pip freeze`/`uv pip compile`). No build-system on purpose:
+# this is a test harness, not a distributable package — the `qa` package is put on sys.path
+# via `pythonpath` below (and a belt-and-suspenders insert in conftest.py).
+
+[project]
+name = "argus-pytest-playwright"
+version = "1.0.0"
+description = "Argus QA test framework — pytest + Playwright + httpx (API + UI)."
+requires-python = ">=3.11"
+dependencies = [
+  "pytest>=8.2",
+  "pytest-playwright>=0.5.2",   # UI lane: page/browser/context fixtures (Playwright)
+  "playwright>=1.49,<2",        # browser automation (NO Selenium anywhere)
+  "httpx>=0.27",                # API / contract lane HTTP client
+  "jsonschema>=4.21",           # OpenAPI / JSON-schema oracle
+  "referencing>=0.35",          # $ref resolution for the schema oracle (jsonschema >=4.18)
+  "pytest-html>=4.1",           # human-facing aggregated report (reports/html/index.html)
+  "pytest-json-report>=1.5",    # machine-readable aggregated report (reports/report.json)
+  "pytest-metadata>=3.1",       # report metadata (used by pytest-html / json-report)
+  "pytest-xdist>=3.6",          # OPTIONAL parallelism — off by default (set WORKERS to enable)
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# Put the `qa` package (src/) on the import path for tests.
+pythonpath = ["src"]
+
+# Lanes are pytest markers. --strict-markers makes a typo'd marker an ERROR, not a
+# silently-empty selection.
+markers = [
+  "api: API / contract lane (httpx + OpenAPI schema oracle)",
+  "ui: UI lane (pytest-playwright, role/label locators)",
+  "perf: performance-budget lane — gated on PERF_BUDGET_MS (self-skips if unset)",
+  "security: access-control lane — gated on SECURITY_ENABLED=1 (self-skips if unset)",
+  "db: direct-DB integrity lane — gated on DB_URL, read-only (self-skips if unset)",
+  "regression: bug-linked RED tests (red = evidence the suite catches the defect)",
+]
+
+# Determinism is a feature: NO retries, NO rerun plugin. Flakiness is fixed at the
+# source, never hidden. (pytest-rerunfailures is intentionally NOT a dependency.)
+# Aggregated reports are emitted on every run: human HTML + machine JSON + JUnit XML.
+addopts = """
+  -ra
+  --strict-markers
+  --strict-config
+  --html=reports/html/index.html
+  --self-contained-html
+  --json-report
+  --json-report-file=reports/report.json
+  --junitxml=reports/junit.xml
+"""
+
+# Treat unexpected warnings as visible (not errors — gated lanes emit skips, not warnings).
+filterwarnings = [
+  "default",
+]
