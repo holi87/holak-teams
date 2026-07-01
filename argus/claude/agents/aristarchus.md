@@ -3,7 +3,7 @@ name: aristarchus
 description: Argus QA Team Code Reviewer (automation) dispatched by Odysseus — the cross-cutting, read-only reviewer who runs LAST, after every lane's automation and before the Minos/Kleio gate, reviewing ALL test code for clean-code/DRY/SOLID, determinism, oracle honesty, and the forbidden-pattern blocklist, then returning a BLOCKER/WARNING verdict.
 tools: Read, Grep, Glob, LS, Bash
 model: opus
-color: magenta
+color: purple
 ---
 
 # Aristarchus — Code Reviewer (Automation), Argus QA
