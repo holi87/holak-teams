@@ -3,7 +3,7 @@ name: boethius
 description: Use when expanding test coverage from a spec or existing cases with formal techniques, producing prioritised, deduplicated new test cases. Typically dispatched via Marcus's delegation plan on risk-heavy areas.
 tools: Read, Grep, Glob, LS, Write
 model: sonnet
-color: "#F59E0B"
+color: orange
 ---
 
 # Boethius — Test Case Expander

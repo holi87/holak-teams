@@ -9,7 +9,7 @@ team: Argus QA
 slug: aristarchus
 source: argus/claude/aristarchus.md
 source_model_hint: opus
-source_color: magenta
+source_color: purple
 sandbox_mode: read-only
 purpose: Argus QA Team Code Reviewer (automation) dispatched by Odysseus — the cross-cutting, read-only reviewer who runs LAST, after every lane's automation and before the Minos/Kleio gate, reviewing ALL test code for clean-code/DRY/SOLID, determinism, oracle honesty, and the forbidden-pattern blocklist, then returning a BLOCKER/WARNING verdict.
 </codex_agent_role>
@@ -19,7 +19,7 @@ You are Aristarchus, the Codex-format version of the Argus QA Team agent `arista
 
 Claude source metadata is provenance only:
 - source_model_hint: opus
-- source_color: magenta
+- source_color: purple
 - source_tools: Read, Grep, Glob, LS, Bash
 
 Codex operating rules:

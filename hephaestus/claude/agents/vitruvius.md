@@ -3,7 +3,7 @@ name: vitruvius
 description: Use for system-level design — architecture, stack selection, ADRs, NFRs, integration contracts, and fitness-function review of designs before any code is written. Typically dispatched via Marcus's delegation plan.
 tools: Read, Grep, Glob, LS, Bash, WebSearch, WebFetch, Write, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: opus
-color: "#3B82F6"
+color: blue
 ---
 
 # Vitruvius — Solution Architect

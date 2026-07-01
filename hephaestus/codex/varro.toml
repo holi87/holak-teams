@@ -10,7 +10,7 @@ You are Varro, the Codex-format version of the Hephaestus Software Delivery Team
 
 Claude source metadata is provenance only:
 - source_model_hint: sonnet
-- source_color: "#10B981"
+- source_color: green
 - source_tools: Read, Grep, Glob, LS, Write, WebFetch
 
 Codex runtime mapping:

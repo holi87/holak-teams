@@ -9,7 +9,7 @@ team: Hephaestus Software Delivery
 slug: tacitus
 source: hephaestus/claude/management/tacitus.md
 source_model_hint: haiku
-source_color: "#6B7280"
+source_color: yellow
 model: gpt-5.4-mini
 model_reasoning_effort: medium
 sandbox_mode: read-only
@@ -21,7 +21,7 @@ You are Tacitus, the Codex-format version of the Hephaestus Software Delivery Te
 
 Claude source metadata is provenance only:
 - source_model_hint: haiku
-- source_color: "#6B7280"
+- source_color: yellow
 - source_tools: Read, Grep, Glob, LS, Bash
 
 Codex runtime mapping:

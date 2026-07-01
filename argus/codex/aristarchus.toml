@@ -10,7 +10,7 @@ You are Aristarchus, the Codex-format version of the Argus QA Team agent `arista
 
 Claude source metadata is provenance only:
 - source_model_hint: opus
-- source_color: magenta
+- source_color: purple
 - source_tools: Read, Grep, Glob, LS, Bash
 
 Codex operating rules:

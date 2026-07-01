@@ -136,8 +136,8 @@
     </tbody>
   </table>
 
-  <h2>2. Argus QA agents <span class="count">23 agents</span></h2>
-  <p class="note"><strong>Codex variant:</strong> the same 23 Argus agents are available in <code>argus/codex/</code> as paired <code>*.toml</code> + <code>*.md</code> files, preserving the same bare slugs (<code>odysseus</code>, <code>talos</code>, <code>orion</code>, ...). Claude <code>sonnet</code> source roles map to <code>gpt-5.5</code> + <code>medium</code>; Claude <code>opus</code> source roles map to <code>gpt-5.5</code> + <code>xhigh</code>.</p>
+  <h2>2. Argus QA agents <span class="count">27 agents</span></h2>
+  <p class="note"><strong>Codex variant:</strong> the same 27 Argus agents are available in <code>argus/codex/</code> as paired <code>*.toml</code> + <code>*.md</code> files, preserving the same bare slugs (<code>odysseus</code>, <code>talos</code>, <code>orion</code>, ...). Claude <code>sonnet</code> source roles map to <code>gpt-5.5</code> + <code>medium</code>; Claude <code>opus</code> source roles map to <code>gpt-5.5</code> + <code>xhigh</code>.</p>
   <p class="note"><strong>Engagement modes</strong> (lead Odysseus picks per goal): <strong>A</strong> full QA audit · <strong>B</strong> deep bug-hunt (hunters as automatons) · <strong>C</strong> build tests from scratch (greenfield) · <strong>D</strong> add to / extend tests in an existing repo (adopt-or-build). Every agent appends a <strong>heartbeat</strong> every ~10 min to <code>ai_agents_internal/heartbeat/&lt;slug&gt;.log</code> (watch with: <code>tail -f</code>) — to estimate progress.</p>
   <p class="note">The <strong>Mode (hunt)</strong> column = tool hybrid:
     <span class="mode t-cli">CLI-first</span> (scripted curl/fetch/node/psql — request/data-level, saves tokens + cache) ·
@@ -153,6 +153,7 @@
       <tr><td class="name">Kleio</td><td>QA Reporter — README, IMPLEMENTATION-REPORT, completeness, final checklist</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
       <tr><td class="name">Theseus</td><td>API path analyst — canonical baseline from OpenAPI (happy-path + CRUD)</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
       <tr><td class="name">Penelope</td><td>UI path analyst — primary journeys as deterministic path specs</td><td><span class="model m-sonnet">sonnet</span></td><td><span class="mode t-mcp">browser-MCP</span></td></tr>
+      <tr><td class="name">Pistis</td><td>Consumer-driven contract analyst — pact expectations, provider verification, version compatibility</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
       <tr><td class="name">Atlas</td><td>Automation architect — shared harness, run-tests.sh, one report</td><td><span class="model m-opus">opus</span></td><td class="t-na">—</td></tr>
       <tr><td class="name">Talos</td><td>API automation engineer — tests/api/, GREEN baseline + Atalanta's bugs as RED</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
       <tr><td class="name">Daidalos</td><td>UI automation engineer — tests/ui/ (Playwright), a11y AUTO, E2E baseline + RED</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
@@ -160,14 +161,17 @@
       <tr><td class="name">Nike</td><td>Performance automation engineer — tests/perf/, Hermes's oracle as RED regression</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
       <tr><td class="name">Mnemosyne</td><td>DB automation engineer (gated) — tests/db/, integrity invariants, read-only DB</td><td><span class="model m-sonnet">sonnet</span></td><td class="t-na">—</td></tr>
       <tr><td class="name">Atalanta</td><td>Bug Hunter API — contract, data integrity, adversarial</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
+      <tr><td class="name">Proteus</td><td>Bug Hunter multi-protocol API — GraphQL, gRPC, WebSocket/SSE, async, webhooks (PRO-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
       <tr><td class="name">Orion</td><td>Bug Hunter UI — behavior, client state, forms, actions (ORI-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-mcp">browser-MCP</span></td></tr>
       <tr><td class="name">Lynceus</td><td>Bug Hunter UI presentation — layout, format, i18n, sort, precision (LYN-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-mcp">browser-MCP</span></td></tr>
       <tr><td class="name">Perseus</td><td>Bug Hunter security — STRIDE/OWASP, broken auth, IDOR/BOLA (PER-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
       <tr><td class="name">Hermes</td><td>Bug Hunter performance — structural perf oracles, latency p50/p95/p99</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
+      <tr><td class="name">Tyche</td><td>Bug Hunter resilience / chaos — gentle fault-injection, timeout/retry/circuit-breaker oracles (TYC-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
       <tr><td class="name">Antigone</td><td>Bug Hunter accessibility — WCAG 2.1 AA, keyboard-only, ARIA (ANG-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-mcp">browser-MCP</span></td></tr>
       <tr><td class="name">Charon</td><td>Bug Hunter DB (gated) — constraints, transactions, cascades, seed (CHA-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
       <tr><td class="name">Ariadne</td><td>Bug Hunter deep journeys — business-rule lifecycle, preconditions, e2e invariants (ARI-)</td><td><span class="model m-opus">opus</span></td><td><span class="mode t-cli">CLI-first</span></td></tr>
       <tr><td class="name">Tiresias</td><td>White-box SDET (gated) — static SAST analysis, code→surface mapping</td><td><span class="model m-opus">opus</span></td><td class="t-na">—</td></tr>
+      <tr><td class="name">Asklepios</td><td>Test-suite sanitation (brownfield) — deflaking at the source, hidden-green surfacing, coverage-delta</td><td><span class="model m-opus">opus</span></td><td class="t-na">—</td></tr>
       <tr><td class="name">Aristarchus</td><td>Automation code reviewer — last before the gate, clean-code/DRY/SOLID</td><td><span class="model m-opus">opus</span></td><td class="t-na">—</td></tr>
     </tbody>
   </table>
@@ -176,7 +180,7 @@
     Generated from agent frontmatter (<code>~/.claude/agents/marcus-team</code>).
     Models: <span class="model m-opus">opus</span> · <span class="model m-sonnet">sonnet</span> · <span class="model m-haiku">haiku</span>.
     Hunt mode: <span class="mode t-cli">CLI-first</span> · <span class="mode t-mcp">browser-MCP</span>.
-    Base: 7 opus / 12 sonnet / 3 haiku · Argus QA: 15 opus / 8 sonnet · Codex: gpt-5.5 medium/xhigh, gpt-5.4-mini medium.
+    Base: 7 opus / 12 sonnet / 3 haiku · Argus QA: 18 opus / 9 sonnet · Codex: gpt-5.5 medium/xhigh, gpt-5.4-mini medium.
   </footer>
 </div>
 </body>

@@ -10,7 +10,7 @@ You are Fabius, the Codex-format version of the Hephaestus Software Delivery Tea
 
 Claude source metadata is provenance only:
 - source_model_hint: sonnet
-- source_color: "#F59E0B"
+- source_color: orange
 - source_tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 
 Codex runtime mapping:

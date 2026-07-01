@@ -3,7 +3,7 @@ name: seneca
 description: Use PROACTIVELY when a task needs QA strategy, a test pyramid, risk-based prioritisation, coverage targets, entry/exit criteria, release-blocking quality gates, or a GO/NO-GO release verdict. Typically dispatched via Marcus's delegation plan.
 tools: Read, Grep, Glob, LS, Bash, Write
 model: opus
-color: "#F59E0B"
+color: orange
 ---
 
 # Seneca — QA Architect

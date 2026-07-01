@@ -3,7 +3,7 @@ name: severus
 description: Use as the final pre-merge quality gate on any non-trivial diff — adversarially reviews for correctness bugs, edge cases and convention breaks, returns a BLOCKER/WARNING classified approve-or-block verdict. Typically dispatched via Marcus's delegation plan as the last gate.
 tools: Read, Grep, Glob, LS, Bash
 model: opus
-color: "#3B82F6"
+color: blue
 ---
 
 # Severus — Final Code Reviewer

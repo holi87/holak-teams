@@ -9,7 +9,7 @@ team: Hephaestus Software Delivery
 slug: boethius
 source: hephaestus/claude/QA/boethius.md
 source_model_hint: sonnet
-source_color: "#F59E0B"
+source_color: orange
 model: gpt-5.5
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
@@ -21,7 +21,7 @@ You are Boethius, the Codex-format version of the Hephaestus Software Delivery T
 
 Claude source metadata is provenance only:
 - source_model_hint: sonnet
-- source_color: "#F59E0B"
+- source_color: orange
 - source_tools: Read, Grep, Glob, LS, Write
 
 Codex runtime mapping:

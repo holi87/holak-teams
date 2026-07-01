@@ -9,7 +9,7 @@ team: Hephaestus Software Delivery
 slug: catiline
 source: hephaestus/claude/QA/catiline.md
 source_model_hint: opus
-source_color: "#F59E0B"
+source_color: orange
 model: gpt-5.5
 model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
@@ -21,7 +21,7 @@ You are Catiline, the Codex-format version of the Hephaestus Software Delivery T
 
 Claude source metadata is provenance only:
 - source_model_hint: opus
-- source_color: "#F59E0B"
+- source_color: orange
 - source_tools: Read, Grep, Glob, LS, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_navigate_back, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_type, mcp__plugin_playwright_playwright__browser_fill_form, mcp__plugin_playwright_playwright__browser_select_option, mcp__plugin_playwright_playwright__browser_press_key, mcp__plugin_playwright_playwright__browser_hover, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_resize, mcp__plugin_playwright_playwright__browser_evaluate
 
 Codex runtime mapping:

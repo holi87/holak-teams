@@ -3,7 +3,7 @@ name: fabius
 description: Use to build and maintain reliable automated test suites — unit, integration, e2e, API, UI, performance — fixtures, test data, page objects and CI wiring matching the project framework, killing flakiness. Typically dispatched via Marcus's delegation plan.
 tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
-color: "#F59E0B"
+color: orange
 ---
 
 # Fabius — Automation QA

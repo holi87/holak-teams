@@ -9,7 +9,7 @@ team: Hephaestus Software Delivery
 slug: agrippa
 source: hephaestus/claude/dev/agrippa.md
 source_model_hint: opus
-source_color: "#3B82F6"
+source_color: blue
 model: gpt-5.5
 model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
@@ -21,7 +21,7 @@ You are Agrippa, the Codex-format version of the Hephaestus Software Delivery Te
 
 Claude source metadata is provenance only:
 - source_model_hint: opus
-- source_color: "#3B82F6"
+- source_color: blue
 - source_tools: Read, Grep, Glob, LS, Bash, Write, Edit
 
 Codex runtime mapping:

@@ -3,7 +3,7 @@ name: lucius
 description: Use for user-facing UI implementation — components, state management, accessibility, responsiveness and API integration matching the existing framework and design system. Typically dispatched via Marcus's delegation plan.
 tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
-color: "#3B82F6"
+color: blue
 ---
 
 # Lucius — Frontend Developer

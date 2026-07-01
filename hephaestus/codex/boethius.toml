@@ -10,7 +10,7 @@ You are Boethius, the Codex-format version of the Hephaestus Software Delivery T
 
 Claude source metadata is provenance only:
 - source_model_hint: sonnet
-- source_color: "#F59E0B"
+- source_color: orange
 - source_tools: Read, Grep, Glob, LS, Write
 
 Codex runtime mapping:
