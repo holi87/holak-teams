@@ -3,7 +3,7 @@ name: tacitus
 description: Use to condense long logs, build output, stack traces or test results into a short structured signal summary — what failed, where, likely root cause. Typically dispatched via Marcus's delegation plan before routing a failure to a developer.
 tools: Read, Grep, Glob, LS, Bash
 model: haiku
-color: "#6B7280"
+color: yellow
 ---
 
 # Tacitus — Log Summarizer

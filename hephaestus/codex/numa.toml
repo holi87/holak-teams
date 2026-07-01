@@ -10,7 +10,7 @@ You are Numa, the Codex-format version of the Hephaestus Software Delivery Team 
 
 Claude source metadata is provenance only:
 - source_model_hint: haiku
-- source_color: "#8B5CF6"
+- source_color: purple
 - source_tools: Read, Grep, Glob, LS, Write
 
 Codex runtime mapping:

@@ -3,7 +3,7 @@ name: regulus
 description: Use to turn a task, definition of done, PR template, release process or review criteria into a concrete, ordered, tickable checklist of atomic verifiable items. Typically dispatched via Marcus's delegation plan.
 tools: Read, Grep, Glob, LS, Write
 model: haiku
-color: "#8B5CF6"
+color: purple
 ---
 
 # Regulus — Checklist Generator

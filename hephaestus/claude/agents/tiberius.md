@@ -3,7 +3,7 @@ name: tiberius
 description: Use for database schema design, migrations, query optimisation, indexing and data-integrity work. Typically dispatched via Marcus's delegation plan.
 tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
-color: "#3B82F6"
+color: blue
 ---
 
 # Tiberius — Database Developer

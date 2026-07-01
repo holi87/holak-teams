@@ -3,7 +3,7 @@ name: agrippa
 description: Use to turn architecture into a sequenced, acceptance-criteria-driven task plan, set the definition of done and coding standards, review implementation approach before code, and unblock developers. Typically dispatched via Marcus's delegation plan.
 tools: Read, Grep, Glob, LS, Bash, Write, Edit
 model: opus
-color: "#3B82F6"
+color: blue
 ---
 
 # Agrippa — Tech Lead

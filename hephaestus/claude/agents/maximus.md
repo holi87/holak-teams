@@ -3,7 +3,7 @@ name: maximus
 description: Use for server-side implementation tasks — APIs, business rules, data access, auth flows, integrations and background jobs matching the existing stack, with tests and explicit error handling. Typically dispatched via Marcus's delegation plan.
 tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
-color: "#3B82F6"
+color: blue
 ---
 
 # Maximus — Backend Developer

@@ -3,7 +3,7 @@ name: numa
 description: Use to summarise stand-ups and sprint ceremonies, track impediments and action items with owners, and surface risks and blockers for Marcus. Typically dispatched via Marcus's delegation plan.
 tools: Read, Grep, Glob, LS, Write
 model: haiku
-color: "#8B5CF6"
+color: purple
 ---
 
 # Numa — Scrum Master Assistant

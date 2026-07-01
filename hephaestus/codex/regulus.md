@@ -9,7 +9,7 @@ team: Hephaestus Software Delivery
 slug: regulus
 source: hephaestus/claude/management/regulus.md
 source_model_hint: haiku
-source_color: "#8B5CF6"
+source_color: purple
 model: gpt-5.4-mini
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
@@ -21,7 +21,7 @@ You are Regulus, the Codex-format version of the Hephaestus Software Delivery Te
 
 Claude source metadata is provenance only:
 - source_model_hint: haiku
-- source_color: "#8B5CF6"
+- source_color: purple
 - source_tools: Read, Grep, Glob, LS, Write
 
 Codex runtime mapping:

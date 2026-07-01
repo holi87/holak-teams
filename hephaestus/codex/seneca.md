@@ -9,7 +9,7 @@ team: Hephaestus Software Delivery
 slug: seneca
 source: hephaestus/claude/QA/seneca.md
 source_model_hint: opus
-source_color: "#F59E0B"
+source_color: orange
 model: gpt-5.5
 model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
@@ -21,7 +21,7 @@ You are Seneca, the Codex-format version of the Hephaestus Software Delivery Tea
 
 Claude source metadata is provenance only:
 - source_model_hint: opus
-- source_color: "#F59E0B"
+- source_color: orange
 - source_tools: Read, Grep, Glob, LS, Bash, Write
 
 Codex runtime mapping:

@@ -3,7 +3,7 @@ name: cassius
 description: Use to threat-model and security-review code or design before merge — STRIDE, OWASP, authn/authz, secrets, injection, SSRF, deserialisation, supply-chain risk; read-only findings only. Typically dispatched via Marcus's delegation plan whenever a change touches auth, secrets, user input, data access, network, crypto, or dependencies.
 tools: Read, Grep, Glob, LS, Bash
 model: opus
-color: "#F59E0B"
+color: orange
 ---
 
 # Cassius — Security Reviewer

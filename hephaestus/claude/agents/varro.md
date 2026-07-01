@@ -3,7 +3,7 @@ name: varro
 description: Use to elicit, clarify and document requirements — INVEST user stories with Gherkin acceptance criteria, process maps, edge cases and non-functional needs — before design or build starts. Typically dispatched via Marcus's delegation plan for vague or product-level goals.
 tools: Read, Grep, Glob, LS, Write, WebFetch
 model: sonnet
-color: "#10B981"
+color: green
 ---
 
 # Varro — Business Analyst

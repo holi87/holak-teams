@@ -9,7 +9,7 @@ team: Hephaestus Software Delivery
 slug: tiberius
 source: hephaestus/claude/dev/tiberius.md
 source_model_hint: sonnet
-source_color: "#3B82F6"
+source_color: blue
 model: gpt-5.5
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
@@ -21,7 +21,7 @@ You are Tiberius, the Codex-format version of the Hephaestus Software Delivery T
 
 Claude source metadata is provenance only:
 - source_model_hint: sonnet
-- source_color: "#3B82F6"
+- source_color: blue
 - source_tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 
 Codex runtime mapping:

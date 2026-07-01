@@ -9,7 +9,7 @@ team: Hephaestus Software Delivery
 slug: varro
 source: hephaestus/claude/ba/varro.md
 source_model_hint: sonnet
-source_color: "#10B981"
+source_color: green
 model: gpt-5.5
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
@@ -21,7 +21,7 @@ You are Varro, the Codex-format version of the Hephaestus Software Delivery Team
 
 Claude source metadata is provenance only:
 - source_model_hint: sonnet
-- source_color: "#10B981"
+- source_color: green
 - source_tools: Read, Grep, Glob, LS, Write, WebFetch
 
 Codex runtime mapping:
