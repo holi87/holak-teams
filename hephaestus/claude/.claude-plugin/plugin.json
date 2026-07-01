@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "hephaestus",
   "displayName": "Hephaestus — Delivery Team",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Roman-named software-delivery team. One entry point (marcus) decomposes the goal, designs a named team, dispatches BA / dev / management / QA specialists, and synthesises the result. 22 sub-agents, hub-and-spoke.",
   "author": {
     "name": "Grzegorz Holak",
