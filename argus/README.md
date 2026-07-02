@@ -2,6 +2,10 @@
 
 Greek code names. Black-box hunting + regression automation in a single pass.
 
+[![Argus team graph](team-graph.png)](team-graph.html)
+
+*One entry point (`odysseus`), hub-and-spoke, parallel surface × mode lanes — full-screen / print version: [`team-graph.html`](team-graph.html) (open locally in a browser).*
+
 ## How to start
 
 **Entry point = `odysseus`** (team leader, entry point).

@@ -2,6 +2,10 @@
 
 Roman code names. The forge: from goal to delivered increment.
 
+[![Hephaestus team graph](team-graph.png)](team-graph.html)
+
+*One entry point (`marcus`), hub-and-spoke — full-screen / print version: [`team-graph.html`](team-graph.html) (open locally in a browser).*
+
 ## How to start
 
 **Entry point = `marcus`** (team leader).
