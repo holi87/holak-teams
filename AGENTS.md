@@ -78,6 +78,7 @@ holak-teams/                         # this repo == the marketplace
 │   │   ├── .claude-plugin/plugin.json
 │   │   └── agents/                  # 22 flat agent defs (loaded by Claude Code)
 │   ├── codex/                       # Codex variants (*.toml + *.md) — separate, not in the plugin
+│   ├── team-graph.html + .png       # visual team graph (embedded in README)
 │   └── README.md                    # roster + how-to-start
 └── argus/                           # ── QA team ──
     ├── claude/                      # == PLUGIN ROOT (Claude only)
@@ -89,6 +90,7 @@ holak-teams/                         # this repo == the marketplace
     ├── framework-template-python/   # pytest + Playwright + httpx (shared reference)
     ├── COLOR-SCHEME.md              # colors by role type (shared reference)
     ├── SHARED-DOCTRINE.md           # cross-agent QA doctrine (shared reference)
+    ├── team-graph.html + .png       # visual team graph (embedded in README)
     └── README.md                    # roster + how-to-start
 ```
 

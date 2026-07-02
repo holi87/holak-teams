@@ -15,6 +15,14 @@
 
 You tell **Marcus** what you want — he picks people from the roster, names them, splits up the work, merges results. On any QA / testing / bug-hunt signal he hands off to **Odysseus**, who runs the Argus lanes. Claude Code agent defs live under each team's `claude/agents/` (the plugin root is `claude/`); Codex-compatible variants live under each team's `codex/` with the same names and slugs.
 
+## Team graphs
+
+| Hephaestus — delivery (22) | Argus — QA (27) |
+|---|---|
+| [![Hephaestus team graph](hephaestus/team-graph.png)](hephaestus/team-graph.html) | [![Argus team graph](argus/team-graph.png)](argus/team-graph.html) |
+
+Both graphs ship as self-contained HTML (`<team>/team-graph.html`) — open locally for the full-screen / print version.
+
 ## How it works
 
 ```
@@ -41,6 +49,7 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   │   ├── .claude-plugin/plugin.json
 │   │   └── agents/              # 22 flat agent defs (marcus, vitruvius, …)
 │   ├── codex/                   # 22 Codex-format agents (*.toml + *.md) — separate
+│   ├── team-graph.html + .png   # visual team graph (embedded in README)
 │   └── README.md                # how to start (entry: marcus)
 ├── argus/                       # Argus QA team (Greek names)
 │   ├── claude/                  # == PLUGIN ROOT (Claude only)
@@ -52,6 +61,7 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   ├── framework-template-python/ # pytest + Playwright + httpx (shared reference)
 │   ├── COLOR-SCHEME.md          # colors by role type
 │   ├── SHARED-DOCTRINE.md       # cross-agent QA doctrine
+│   ├── team-graph.html + .png   # visual team graph (embedded in README)
 │   └── README.md                # how to start (entry: odysseus)
 ├── agents-roster.html           # visual roster (both teams)
 └── README.md / INSTALL.md

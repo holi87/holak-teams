@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Argus — Team Graph</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0b0e14;
+    --outside: #07090d;
+    --panel: #10141d;
+    --chipbg: #161b26;
+    --border: #262d3c;
+    --text: #eef1f7;
+    --muted: #a4aec2;
+    --core: #b895f6;
+    --hunter: #ffb454;
+    --auto: #63b3ed;
+    --path: #5fd39a;
+    --hub: #f6c177;
+    --gate: #e6b455;
+    --wire: #3f4a61;
+    --wire-core: #2e3546;
+    --wire-gated: #987c3e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--outside);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+  }
+  .stage {
+    position: relative;
+    width: min(100vw, 177.78vh);
+    aspect-ratio: 16 / 9;
+    container-type: size;
+    background:
+      radial-gradient(ellipse 60% 55% at 50% 50%, #121826 0%, var(--bg) 70%);
+    overflow: hidden;
+  }
+
+  /* ---------- SVG wire layer (under everything) ---------- */
+  svg.wires {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+  }
+  .ring    { fill: none; stroke: #232a39; stroke-width: 1.5; stroke-dasharray: 5 7; }
+  .w-core  { stroke: var(--wire-core);  stroke-width: 2;   }
+  .w-lane  { stroke: var(--wire);       stroke-width: 2.5; }
+  .w-gated { stroke: var(--wire-gated); stroke-width: 2.5; stroke-dasharray: 9 7; }
+
+  .abs {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+  }
+
+  /* ---------- header + legend ---------- */
+  header.title {
+    position: absolute;
+    left: 2.1%;
+    top: 3%;
+    z-index: 3;
+  }
+  header.title h1 {
+    font-size: 2.35cqw;
+    letter-spacing: .12em;
+    font-weight: 800;
+    line-height: 1.05;
+  }
+  header.title h1 em {
+    font-style: normal;
+    color: var(--hub);
+  }
+  header.title p {
+    margin-top: .35cqw;
+    font-size: .85cqw;
+    color: var(--muted);
+    letter-spacing: .03em;
+  }
+
+  .legend {
+    position: absolute;
+    right: 2.1%;
+    top: 2.6%;
+    z-index: 3;
+    display: grid;
+    gap: .42cqw;
+    font-size: .72cqw;
+    color: var(--muted);
+    background: rgba(11, 14, 20, .6);
+    border: 1px solid var(--border);
+    border-radius: .6cqw;
+    padding: .7cqw .9cqw;
+  }
+  .legend .lrow { display: flex; align-items: center; gap: .55cqw; white-space: nowrap; }
+  .legend b { color: var(--text); font-weight: 600; }
+  .sw { width: .95cqw; height: .95cqw; flex: none; }
+  .sw-core   { border: .22cqw solid var(--core); border-radius: 50%; }
+  .sw-hunter { background: var(--hunter); transform: rotate(45deg) scale(.82); border-radius: .12cqw; }
+  .sw-auto   { background: var(--auto); border-radius: .14cqw; }
+  .sw-path   { background: var(--path); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+  .sw-gated  { border: .12cqw dashed var(--gate); border-radius: .2cqw; background: none; }
+  .sw-wire   { width: 1.4cqw; height: 0; border-top: .14cqw solid var(--wire); border-radius: 0; }
+
+  /* ---------- hub ---------- */
+  .hub {
+    z-index: 4;
+    width: 13.6cqw;
+    text-align: center;
+    background: linear-gradient(180deg, #1d2230, #151a26);
+    border: .14cqw solid var(--hub);
+    border-radius: 1.1cqw;
+    padding: .8cqw .9cqw .9cqw;
+    box-shadow: 0 0 3.2cqw rgba(246, 193, 119, .22);
+  }
+  .hub .pill {
+    display: inline-block;
+    font-size: .58cqw;
+    font-weight: 700;
+    letter-spacing: .18em;
+    color: #101319;
+    background: var(--hub);
+    border-radius: 99cqw;
+    padding: .16cqw .6cqw;
+  }
+  .hub .hn {
+    margin-top: .45cqw;
+    font-size: 1.55cqw;
+    font-weight: 800;
+    letter-spacing: .1em;
+  }
+  .hub .hr { margin-top: .18cqw; font-size: .8cqw; color: var(--hub); font-weight: 600; }
+  .hub .hs { margin-top: .3cqw; font-size: .68cqw; color: var(--muted); }
+
+  /* ---------- agent chips ---------- */
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: .55cqw;
+    background: var(--chipbg);
+    border: 1px solid var(--border);
+    border-radius: .55cqw;
+    padding: .48cqw .6cqw;
+    width: 100%;
+  }
+  .chip.abs { width: 10.6cqw; z-index: 3; }
+  .chip .shape { width: .95cqw; height: .95cqw; flex: none; }
+  .chip .meta { min-width: 0; }
+  .chip .n {
+    display: block;
+    font-size: 1cqw;
+    font-weight: 700;
+    line-height: 1.2;
+    text-transform: capitalize;
+    white-space: nowrap;
+  }
+  .chip .r {
+    display: block;
+    font-size: .7cqw;
+    color: var(--muted);
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+  .chip .tag {
+    margin-left: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: .58cqw;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: .3cqw;
+    padding: .08cqw .3cqw;
+    flex: none;
+  }
+  .c-core   { border-color: rgba(184, 149, 246, .38); }
+  .c-hunter { border-color: rgba(255, 180, 84, .38); }
+  .c-auto   { border-color: rgba(99, 179, 237, .38); }
+  .c-path   { border-color: rgba(95, 211, 154, .38); }
+  .g-core   { border: .22cqw solid var(--core); border-radius: 50%; }
+  .g-hunter { background: var(--hunter); transform: rotate(45deg) scale(.82); border-radius: .12cqw; }
+  .g-auto   { background: var(--auto); border-radius: .14cqw; }
+  .g-path   { background: var(--path); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+
+  /* ---------- lane clusters ---------- */
+  .cluster {
+    display: flex;
+    flex-direction: column;
+    gap: .38cqw;
+    background: var(--panel);
+    border: 1px solid #2b3345;
+    border-radius: .8cqw;
+    padding: .65cqw .65cqw .7cqw;
+    z-index: 3;
+  }
+  .cluster h3 {
+    font-size: .76cqw;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: #c7d0e2;
+    padding: 0 .15cqw .25cqw;
+  }
+  .cluster.gated { border: .12cqw dashed var(--gate); }
+  .gatelbl {
+    font-size: .6cqw;
+    font-weight: 700;
+    letter-spacing: .08em;
+    color: var(--gate);
+    border: 1px dashed var(--gate);
+    border-radius: .35cqw;
+    padding: .18cqw .45cqw;
+    margin: -.1cqw .15cqw .25cqw;
+    align-self: flex-start;
+  }
+  .duo { display: flex; gap: .45cqw; }
+  .duo .chip { min-width: 0; }
+
+  .corecap {
+    z-index: 3;
+    font-size: .68cqw;
+    font-weight: 700;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: #8a94aa;
+    background: var(--bg);
+    padding: .2cqw .8cqw;
+    border-radius: 99cqw;
+  }
+
+  /* ---------- footer ---------- */
+  footer.strap {
+    position: absolute;
+    left: 50%;
+    top: 95.6%;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+    font-size: .98cqw;
+    letter-spacing: .04em;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  footer.strap i {
+    font-style: normal;
+    color: var(--hub);
+    padding: 0 .55cqw;
+  }
+
+  /* ---------- print ---------- */
+  @page { size: landscape; margin: 0; }
+  @media print {
+    body { background: var(--outside) !important; display: block; }
+    .stage { width: 100%; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <svg class="wires" viewBox="0 0 1920 1080" preserveAspectRatio="none" aria-hidden="true">
+    <!-- core ring guide -->
+    <ellipse class="ring" cx="960" cy="545" rx="470" ry="300"/>
+    <!-- hub -> core -->
+    <line class="w-core" x1="960" y1="545" x2="960"  y2="330"/>
+    <line class="w-core" x1="960" y1="545" x2="1265" y2="430"/>
+    <line class="w-core" x1="960" y1="545" x2="1265" y2="660"/>
+    <line class="w-core" x1="960" y1="545" x2="960"  y2="760"/>
+    <line class="w-core" x1="960" y1="545" x2="655"  y2="660"/>
+    <line class="w-core" x1="960" y1="545" x2="655"  y2="430"/>
+    <!-- hub -> lanes -->
+    <line class="w-lane" x1="960" y1="545" x2="210"  y2="470"/>
+    <line class="w-lane" x1="960" y1="545" x2="1710" y2="470"/>
+    <line class="w-lane" x1="960" y1="545" x2="560"  y2="185"/>
+    <line class="w-lane" x1="960" y1="545" x2="1360" y2="185"/>
+    <line class="w-lane" x1="960" y1="545" x2="960"  y2="135"/>
+    <line class="w-lane" x1="960" y1="545" x2="330"  y2="925"/>
+    <line class="w-lane" x1="960" y1="545" x2="1580" y2="925"/>
+    <!-- hub -> gated lanes -->
+    <line class="w-gated" x1="960" y1="545" x2="795"  y2="925"/>
+    <line class="w-gated" x1="960" y1="545" x2="1210" y2="925"/>
+  </svg>
+
+  <header class="title">
+    <h1><em>ARGUS</em> QA TEAM</h1>
+    <p>27-agent QA org · hub-and-spoke<br>you talk to one agent</p>
+  </header>
+
+  <div class="legend" aria-label="Legend">
+    <div class="lrow"><span class="sw sw-core"></span><b>core</b>&nbsp;— orchestration &amp; gates</div>
+    <div class="lrow"><span class="sw sw-hunter"></span><b>hunter</b>&nbsp;— adversarial exploration</div>
+    <div class="lrow"><span class="sw sw-auto"></span><b>automation</b>&nbsp;— regression encoding</div>
+    <div class="lrow"><span class="sw sw-path"></span><b>path analyst</b>&nbsp;— baseline definition</div>
+    <div class="lrow"><span class="sw sw-gated"></span><b>gated lane</b>&nbsp;— runs only if access confirmed</div>
+    <div class="lrow"><span class="sw sw-wire"></span><b>spoke</b>&nbsp;— all context via hub, no peer-to-peer</div>
+  </div>
+
+  <!-- ================= HUB ================= -->
+  <div class="hub abs" style="left:50%; top:50.5%">
+    <span class="pill">ENTRY POINT</span>
+    <div class="hn">ODYSSEUS</div>
+    <div class="hr">team lead · orchestrator</div>
+    <div class="hs">picks the engagement mode · dispatches lanes · synthesizes</div>
+  </div>
+
+  <div class="corecap abs" style="left:50%; top:24.3%">Core — orchestration &amp; gates</div>
+
+  <!-- ================= CORE RING ================= -->
+  <div class="chip abs c-core" style="left:50%; top:30.5%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Kalchas</span><span class="r">recon &amp; access probes</span></span>
+  </div>
+  <div class="chip abs c-core" style="left:65.9%; top:39.8%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Metis</span><span class="r">test strategist · oracles</span></span>
+  </div>
+  <div class="chip abs c-core" style="left:65.9%; top:61.1%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Atlas</span><span class="r">automation architect</span></span>
+  </div>
+  <div class="chip abs c-core" style="left:50%; top:70.4%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Kleio</span><span class="r">reporter · acceptance gate</span></span>
+  </div>
+  <div class="chip abs c-core" style="left:34.1%; top:61.1%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Aristarchus</span><span class="r">test-code review gate</span></span>
+  </div>
+  <div class="chip abs c-core" style="left:34.1%; top:39.8%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Minos</span><span class="r">bug triage lead</span></span>
+  </div>
+
+  <!-- ================= UI LANE ================= -->
+  <section class="cluster abs" style="left:10.9%; top:43.5%; width:13.6%">
+    <h3>UI lane</h3>
+    <div class="chip c-path">
+      <span class="shape g-path"></span>
+      <span class="meta"><span class="n">Penelope</span><span class="r">UI journey baseline</span></span>
+      <span class="tag">PEN-</span>
+    </div>
+    <div class="chip c-hunter">
+      <span class="shape g-hunter"></span>
+      <span class="meta"><span class="n">Orion</span><span class="r">functional UI hunter</span></span>
+      <span class="tag">ORI-</span>
+    </div>
+    <div class="chip c-hunter">
+      <span class="shape g-hunter"></span>
+      <span class="meta"><span class="n">Lynceus</span><span class="r">layout · i18n · format</span></span>
+      <span class="tag">LYN-</span>
+    </div>
+    <div class="chip c-hunter">
+      <span class="shape g-hunter"></span>
+      <span class="meta"><span class="n">Antigone</span><span class="r">a11y · WCAG 2.1 AA</span></span>
+      <span class="tag">ANG-</span>
+    </div>
+    <div class="chip c-auto">
+      <span class="shape g-auto"></span>
+      <span class="meta"><span class="n">Daidalos</span><span class="r">UI &amp; a11y automation</span></span>
+    </div>
+  </section>
+
+  <!-- ================= API LANE ================= -->
+  <section class="cluster abs" style="left:89.1%; top:43.5%; width:13.6%">
+    <h3>API lane</h3>
+    <div class="chip c-path">
+      <span class="shape g-path"></span>
+      <span class="meta"><span class="n">Theseus</span><span class="r">API baseline (OpenAPI)</span></span>
+      <span class="tag">THE-</span>
+    </div>
+    <div class="chip c-path">
+      <span class="shape g-path"></span>
+      <span class="meta"><span class="n">Pistis</span><span class="r">Pact-style contracts</span></span>
+      <span class="tag">PIS-</span>
+    </div>
+    <div class="chip c-hunter">
+      <span class="shape g-hunter"></span>
+      <span class="meta"><span class="n">Atalanta</span><span class="r">REST &amp; data integrity</span></span>
+      <span class="tag">ATA-</span>
+    </div>
+    <div class="chip c-hunter">
+      <span class="shape g-hunter"></span>
+      <span class="meta"><span class="n">Proteus</span><span class="r">GraphQL · WS · async</span></span>
+      <span class="tag">PRO-</span>
+    </div>
+    <div class="chip c-auto">
+      <span class="shape g-auto"></span>
+      <span class="meta"><span class="n">Talos</span><span class="r">API regression suite</span></span>
+    </div>
+  </section>
+
+  <!-- ================= PERF LANE ================= -->
+  <section class="cluster abs" style="left:29.2%; top:17.1%; width:13.6%">
+    <h3>Performance</h3>
+    <div class="chip c-hunter">
+      <span class="shape g-hunter"></span>
+      <span class="meta"><span class="n">Hermes</span><span class="r">perf oracles p95 / p99</span></span>
+      <span class="tag">HER-</span>
+    </div>
+    <div class="chip c-auto">
+      <span class="shape g-auto"></span>
+      <span class="meta"><span class="n">Nike</span><span class="r">perf regression (k6)</span></span>
+    </div>
+  </section>
+
+  <!-- ================= SECURITY LANE ================= -->
+  <section class="cluster abs" style="left:70.8%; top:17.1%; width:13.6%">
+    <h3>Security</h3>
+    <div class="chip c-hunter">
+      <span class="shape g-hunter"></span>
+      <span class="meta"><span class="n">Perseus</span><span class="r">STRIDE · OWASP · IDOR</span></span>
+      <span class="tag">PER-</span>
+    </div>
+    <div class="chip c-auto">
+      <span class="shape g-auto"></span>
+      <span class="meta"><span class="n">Aegis</span><span class="r">authz matrix regression</span></span>
+    </div>
+  </section>
+
+  <!-- ================= DEEP JOURNEYS ================= -->
+  <section class="cluster abs" style="left:50%; top:12.5%; width:13.6%">
+    <h3>Deep journeys</h3>
+    <div class="chip c-hunter">
+      <span class="shape g-hunter"></span>
+      <span class="meta"><span class="n">Ariadne</span><span class="r">deep stateful journeys</span></span>
+      <span class="tag">ARI-</span>
+    </div>
+  </section>
+
+  <!-- ================= RESILIENCE ================= -->
+  <section class="cluster abs" style="left:17.2%; top:85.6%; width:13.6%">
+    <h3>Resilience</h3>
+    <div class="chip c-hunter">
+      <span class="shape g-hunter"></span>
+      <span class="meta"><span class="n">Tyche</span><span class="r">chaos &amp; fault injection</span></span>
+      <span class="tag">TYC-</span>
+    </div>
+  </section>
+
+  <!-- ================= DB LANE (GATED) ================= -->
+  <section class="cluster gated abs" style="left:41.4%; top:85.6%; width:24%">
+    <h3>Database</h3>
+    <span class="gatelbl">GATED — needs direct DB access</span>
+    <div class="duo">
+      <div class="chip c-hunter">
+        <span class="shape g-hunter"></span>
+        <span class="meta"><span class="n">Charon</span><span class="r">DB integrity hunter</span></span>
+        <span class="tag">CHA-</span>
+      </div>
+      <div class="chip c-auto">
+        <span class="shape g-auto"></span>
+        <span class="meta"><span class="n">Mnemosyne</span><span class="r">DB invariant tests</span></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= WHITE-BOX (GATED) ================= -->
+  <section class="cluster gated abs" style="left:63%; top:85.6%; width:13.6%">
+    <h3>White-box</h3>
+    <span class="gatelbl">GATED — needs source access</span>
+    <div class="chip c-hunter">
+      <span class="shape g-hunter"></span>
+      <span class="meta"><span class="n">Tiresias</span><span class="r">static-analysis SDET</span></span>
+      <span class="tag">TIR-</span>
+    </div>
+  </section>
+
+  <!-- ================= SANITATION ================= -->
+  <section class="cluster abs" style="left:82.3%; top:85.6%; width:13.6%">
+    <h3>Sanitation</h3>
+    <div class="chip c-auto">
+      <span class="shape g-auto"></span>
+      <span class="meta"><span class="n">Asklepios</span><span class="r">deflakes existing suites</span></span>
+      <span class="tag">ASK-</span>
+    </div>
+  </section>
+
+  <footer class="strap">27 agents <i>·</i> 1 entry point <i>·</i> lanes run concurrently <i>·</i> artifacts 100% English</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hephaestus — Team Graph</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0b0e14;
+    --outside: #07090d;
+    --panel: #10141d;
+    --chipbg: #161b26;
+    --border: #262d3c;
+    --text: #eef1f7;
+    --muted: #a4aec2;
+    --core: #b895f6;
+    --builder: #ffb454;
+    --qa: #63b3ed;
+    --biz: #5fd39a;
+    --support: #f38fb0;
+    --hub: #f6c177;
+    --gate: #e6b455;
+    --wire: #3f4a61;
+    --wire-core: #2e3546;
+    --wire-gated: #987c3e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--outside);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+  }
+  .stage {
+    position: relative;
+    width: min(100vw, 177.78vh);
+    aspect-ratio: 16 / 9;
+    container-type: size;
+    background:
+      radial-gradient(ellipse 60% 55% at 50% 50%, #121826 0%, var(--bg) 70%);
+    overflow: hidden;
+  }
+
+  /* ---------- SVG wire layer (under everything) ---------- */
+  svg.wires {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+  }
+  .ring    { fill: none; stroke: #232a39; stroke-width: 1.5; stroke-dasharray: 5 7; }
+  .w-core  { stroke: var(--wire-core);  stroke-width: 2;   }
+  .w-lane  { stroke: var(--wire);       stroke-width: 2.5; }
+  .w-gated { stroke: var(--wire-gated); stroke-width: 2.5; stroke-dasharray: 9 7; }
+
+  .abs {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+  }
+
+  /* ---------- header + legend ---------- */
+  header.title {
+    position: absolute;
+    left: 2.1%;
+    top: 3%;
+    z-index: 3;
+  }
+  header.title h1 {
+    font-size: 2.35cqw;
+    letter-spacing: .12em;
+    font-weight: 800;
+    line-height: 1.05;
+  }
+  header.title h1 em {
+    font-style: normal;
+    color: var(--hub);
+  }
+  header.title p {
+    margin-top: .35cqw;
+    font-size: .85cqw;
+    color: var(--muted);
+    letter-spacing: .03em;
+  }
+
+  .legend {
+    position: absolute;
+    right: 2.1%;
+    top: 2.6%;
+    z-index: 3;
+    display: grid;
+    gap: .42cqw;
+    font-size: .72cqw;
+    color: var(--muted);
+    background: rgba(11, 14, 20, .6);
+    border: 1px solid var(--border);
+    border-radius: .6cqw;
+    padding: .7cqw .9cqw;
+  }
+  .legend .lrow { display: flex; align-items: center; gap: .55cqw; white-space: nowrap; }
+  .legend b { color: var(--text); font-weight: 600; }
+  .sw { width: .95cqw; height: .95cqw; flex: none; }
+  .sw-core    { border: .22cqw solid var(--core); border-radius: 50%; }
+  .sw-builder { background: var(--builder); transform: rotate(45deg) scale(.82); border-radius: .12cqw; }
+  .sw-qa      { background: var(--qa); border-radius: .14cqw; }
+  .sw-biz     { background: var(--biz); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+  .sw-support { background: var(--support); clip-path: polygon(25% 6.7%, 75% 6.7%, 100% 50%, 75% 93.3%, 25% 93.3%, 0 50%); }
+  .sw-gated   { border: .12cqw dashed var(--gate); border-radius: .2cqw; background: none; }
+  .sw-wire    { width: 1.4cqw; height: 0; border-top: .14cqw solid var(--wire); border-radius: 0; }
+
+  /* ---------- hub ---------- */
+  .hub {
+    z-index: 4;
+    width: 13.6cqw;
+    text-align: center;
+    background: linear-gradient(180deg, #1d2230, #151a26);
+    border: .14cqw solid var(--hub);
+    border-radius: 1.1cqw;
+    padding: .8cqw .9cqw .9cqw;
+    box-shadow: 0 0 3.2cqw rgba(246, 193, 119, .22);
+  }
+  .hub .pill {
+    display: inline-block;
+    font-size: .58cqw;
+    font-weight: 700;
+    letter-spacing: .18em;
+    color: #101319;
+    background: var(--hub);
+    border-radius: 99cqw;
+    padding: .16cqw .6cqw;
+  }
+  .hub .hn {
+    margin-top: .45cqw;
+    font-size: 1.55cqw;
+    font-weight: 800;
+    letter-spacing: .1em;
+  }
+  .hub .hr { margin-top: .18cqw; font-size: .8cqw; color: var(--hub); font-weight: 600; }
+  .hub .hs { margin-top: .3cqw; font-size: .68cqw; color: var(--muted); }
+
+  /* ---------- agent chips ---------- */
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: .55cqw;
+    background: var(--chipbg);
+    border: 1px solid var(--border);
+    border-radius: .55cqw;
+    padding: .48cqw .6cqw;
+    width: 100%;
+  }
+  .chip.abs { width: 10.6cqw; z-index: 3; }
+  .chip .shape { width: .95cqw; height: .95cqw; flex: none; }
+  .chip .meta { min-width: 0; }
+  .chip .n {
+    display: block;
+    font-size: 1cqw;
+    font-weight: 700;
+    line-height: 1.2;
+    text-transform: capitalize;
+    white-space: nowrap;
+  }
+  .chip .r {
+    display: block;
+    font-size: .7cqw;
+    color: var(--muted);
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+  .chip .tag {
+    margin-left: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: .58cqw;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: .3cqw;
+    padding: .08cqw .3cqw;
+    flex: none;
+  }
+  .c-core    { border-color: rgba(184, 149, 246, .38); }
+  .c-builder { border-color: rgba(255, 180, 84, .38); }
+  .c-qa      { border-color: rgba(99, 179, 237, .38); }
+  .c-biz     { border-color: rgba(95, 211, 154, .38); }
+  .c-support { border-color: rgba(243, 143, 176, .38); }
+  .g-core    { border: .22cqw solid var(--core); border-radius: 50%; }
+  .g-builder { background: var(--builder); transform: rotate(45deg) scale(.82); border-radius: .12cqw; }
+  .g-qa      { background: var(--qa); border-radius: .14cqw; }
+  .g-biz     { background: var(--biz); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+  .g-support { background: var(--support); clip-path: polygon(25% 6.7%, 75% 6.7%, 100% 50%, 75% 93.3%, 25% 93.3%, 0 50%); }
+
+  /* ---------- lane clusters ---------- */
+  .cluster {
+    display: flex;
+    flex-direction: column;
+    gap: .38cqw;
+    background: var(--panel);
+    border: 1px solid #2b3345;
+    border-radius: .8cqw;
+    padding: .65cqw .65cqw .7cqw;
+    z-index: 3;
+  }
+  .cluster h3 {
+    font-size: .76cqw;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: #c7d0e2;
+    padding: 0 .15cqw .25cqw;
+  }
+  .cluster.gated { border: .12cqw dashed var(--gate); }
+  .gatelbl {
+    font-size: .6cqw;
+    font-weight: 700;
+    letter-spacing: .08em;
+    color: var(--gate);
+    border: 1px dashed var(--gate);
+    border-radius: .35cqw;
+    padding: .18cqw .45cqw;
+    margin: -.1cqw .15cqw .25cqw;
+    align-self: flex-start;
+  }
+  .duo { display: flex; gap: .45cqw; }
+  .duo .chip { min-width: 0; }
+
+  .corecap {
+    z-index: 3;
+    font-size: .68cqw;
+    font-weight: 700;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: #8a94aa;
+    background: var(--bg);
+    padding: .2cqw .8cqw;
+    border-radius: 99cqw;
+  }
+
+  /* ---------- footer ---------- */
+  footer.strap {
+    position: absolute;
+    left: 50%;
+    top: 95.6%;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+    font-size: .98cqw;
+    letter-spacing: .04em;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  footer.strap i {
+    font-style: normal;
+    color: var(--hub);
+    padding: 0 .55cqw;
+  }
+
+  /* ---------- print ---------- */
+  @page { size: landscape; margin: 0; }
+  @media print {
+    body { background: var(--outside) !important; display: block; }
+    .stage { width: 100%; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <svg class="wires" viewBox="0 0 1920 1080" preserveAspectRatio="none" aria-hidden="true">
+    <!-- core ring guide -->
+    <ellipse class="ring" cx="960" cy="545" rx="470" ry="300"/>
+    <!-- hub -> core -->
+    <line class="w-core" x1="960" y1="545" x2="960"  y2="330"/>
+    <line class="w-core" x1="960" y1="545" x2="1265" y2="430"/>
+    <line class="w-core" x1="960" y1="545" x2="1265" y2="660"/>
+    <line class="w-core" x1="960" y1="545" x2="960"  y2="760"/>
+    <line class="w-core" x1="960" y1="545" x2="655"  y2="660"/>
+    <line class="w-core" x1="960" y1="545" x2="655"  y2="430"/>
+    <!-- hub -> lanes -->
+    <line class="w-lane" x1="960" y1="545" x2="210"  y2="470"/>
+    <line class="w-lane" x1="960" y1="545" x2="1710" y2="470"/>
+    <line class="w-lane" x1="960" y1="545" x2="560"  y2="185"/>
+    <line class="w-lane" x1="960" y1="545" x2="1360" y2="185"/>
+    <line class="w-lane" x1="960" y1="545" x2="960"  y2="135"/>
+    <line class="w-lane" x1="960" y1="545" x2="384"  y2="925"/>
+    <line class="w-lane" x1="960" y1="545" x2="960"  y2="925"/>
+    <!-- hub -> external (escalation, Marcus's call) -->
+    <line class="w-gated" x1="960" y1="545" x2="1536" y2="925"/>
+  </svg>
+
+  <header class="title">
+    <h1><em>HEPHAESTUS</em> DELIVERY TEAM</h1>
+    <p>22-agent delivery org · hub-and-spoke<br>you talk to one agent</p>
+  </header>
+
+  <div class="legend" aria-label="Legend">
+    <div class="lrow"><span class="sw sw-core"></span><b>core</b>&nbsp;— design &amp; quality gates</div>
+    <div class="lrow"><span class="sw sw-builder"></span><b>builder</b>&nbsp;— code production</div>
+    <div class="lrow"><span class="sw sw-qa"></span><b>qa</b>&nbsp;— testing &amp; verification</div>
+    <div class="lrow"><span class="sw sw-biz"></span><b>business</b>&nbsp;— requirements &amp; value</div>
+    <div class="lrow"><span class="sw sw-support"></span><b>support</b>&nbsp;— process · docs · signal</div>
+    <div class="lrow"><span class="sw sw-gated"></span><b>external</b>&nbsp;— Codex escalation, Marcus's call</div>
+    <div class="lrow"><span class="sw sw-wire"></span><b>spoke</b>&nbsp;— all context via hub, no peer-to-peer</div>
+  </div>
+
+  <!-- ================= HUB ================= -->
+  <div class="hub abs" style="left:50%; top:50.5%">
+    <span class="pill">ENTRY POINT</span>
+    <div class="hn">MARCUS</div>
+    <div class="hr">team leader · orchestrator</div>
+    <div class="hs">decomposes the goal · designs the team · dispatches · merges</div>
+  </div>
+
+  <div class="corecap abs" style="left:50%; top:24.3%">Core — design &amp; quality gates</div>
+
+  <!-- ================= CORE RING ================= -->
+  <div class="chip abs c-core" style="left:50%; top:30.5%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Vitruvius</span><span class="r">solution architect · ADRs</span></span>
+    <span class="tag">opus</span>
+  </div>
+  <div class="chip abs c-core" style="left:65.9%; top:39.8%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Agrippa</span><span class="r">tech lead · task plan</span></span>
+    <span class="tag">opus</span>
+  </div>
+  <div class="chip abs c-core" style="left:65.9%; top:61.1%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Seneca</span><span class="r">QA architect · GO/NO-GO</span></span>
+    <span class="tag">opus</span>
+  </div>
+  <div class="chip abs c-core" style="left:50%; top:70.4%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Severus</span><span class="r">final review gate</span></span>
+    <span class="tag">opus</span>
+  </div>
+  <div class="chip abs c-core" style="left:34.1%; top:61.1%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Cassius</span><span class="r">security review · STRIDE</span></span>
+    <span class="tag">opus</span>
+  </div>
+  <div class="chip abs c-core" style="left:34.1%; top:39.8%">
+    <span class="shape g-core"></span>
+    <span class="meta"><span class="n">Janus</span><span class="r">environment preflight</span></span>
+    <span class="tag">sonnet</span>
+  </div>
+
+  <!-- ================= DEVELOPMENT ================= -->
+  <section class="cluster abs" style="left:10.9%; top:43.5%; width:13.6%">
+    <h3>Development</h3>
+    <div class="chip c-builder">
+      <span class="shape g-builder"></span>
+      <span class="meta"><span class="n">Fabricius</span><span class="r">fullstack · vertical slices</span></span>
+      <span class="tag">sonnet</span>
+    </div>
+    <div class="chip c-builder">
+      <span class="shape g-builder"></span>
+      <span class="meta"><span class="n">Maximus</span><span class="r">backend · APIs &amp; jobs</span></span>
+      <span class="tag">sonnet</span>
+    </div>
+    <div class="chip c-builder">
+      <span class="shape g-builder"></span>
+      <span class="meta"><span class="n">Lucius</span><span class="r">frontend · UI &amp; a11y</span></span>
+      <span class="tag">sonnet</span>
+    </div>
+    <div class="chip c-builder">
+      <span class="shape g-builder"></span>
+      <span class="meta"><span class="n">Tiberius</span><span class="r">database · schema &amp; SQL</span></span>
+      <span class="tag">sonnet</span>
+    </div>
+  </section>
+
+  <!-- ================= TESTING ================= -->
+  <section class="cluster abs" style="left:89.1%; top:43.5%; width:13.6%">
+    <h3>Testing</h3>
+    <div class="chip c-qa">
+      <span class="shape g-qa"></span>
+      <span class="meta"><span class="n">Catiline</span><span class="r">exploratory QA · bug reports</span></span>
+      <span class="tag">opus</span>
+    </div>
+    <div class="chip c-qa">
+      <span class="shape g-qa"></span>
+      <span class="meta"><span class="n">Fabius</span><span class="r">test automation · CI wiring</span></span>
+      <span class="tag">sonnet</span>
+    </div>
+    <div class="chip c-qa">
+      <span class="shape g-qa"></span>
+      <span class="meta"><span class="n">Mercury</span><span class="r">performance testing</span></span>
+      <span class="tag">sonnet</span>
+    </div>
+    <div class="chip c-qa">
+      <span class="shape g-qa"></span>
+      <span class="meta"><span class="n">Boethius</span><span class="r">test-case expansion</span></span>
+      <span class="tag">sonnet</span>
+    </div>
+  </section>
+
+  <!-- ================= BUSINESS ================= -->
+  <section class="cluster abs" style="left:29.2%; top:17.1%; width:13.6%">
+    <h3>Business</h3>
+    <div class="chip c-biz">
+      <span class="shape g-biz"></span>
+      <span class="meta"><span class="n">Varro</span><span class="r">business analyst · stories</span></span>
+      <span class="tag">sonnet</span>
+    </div>
+    <div class="chip c-biz">
+      <span class="shape g-biz"></span>
+      <span class="meta"><span class="n">Cato</span><span class="r">product owner · scope</span></span>
+      <span class="tag">sonnet</span>
+    </div>
+  </section>
+
+  <!-- ================= DELIVERY ================= -->
+  <section class="cluster abs" style="left:70.8%; top:17.1%; width:13.6%">
+    <h3>Delivery</h3>
+    <div class="chip c-builder">
+      <span class="shape g-builder"></span>
+      <span class="meta"><span class="n">Appius</span><span class="r">DevOps · CI/CD &amp; deploys</span></span>
+      <span class="tag">sonnet</span>
+    </div>
+  </section>
+
+  <!-- ================= DOCS ================= -->
+  <section class="cluster abs" style="left:50%; top:12.5%; width:13.6%">
+    <h3>Docs</h3>
+    <div class="chip c-support">
+      <span class="shape g-support"></span>
+      <span class="meta"><span class="n">Cicero</span><span class="r">docs verified vs code</span></span>
+      <span class="tag">sonnet</span>
+    </div>
+  </section>
+
+  <!-- ================= SPRINT SUPPORT ================= -->
+  <section class="cluster abs" style="left:20%; top:85.6%; width:24%">
+    <h3>Sprint support</h3>
+    <div class="duo">
+      <div class="chip c-support">
+        <span class="shape g-support"></span>
+        <span class="meta"><span class="n">Numa</span><span class="r">stand-ups · impediments</span></span>
+        <span class="tag">haiku</span>
+      </div>
+      <div class="chip c-support">
+        <span class="shape g-support"></span>
+        <span class="meta"><span class="n">Regulus</span><span class="r">checklists</span></span>
+        <span class="tag">haiku</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SIGNAL ================= -->
+  <section class="cluster abs" style="left:50%; top:85.6%; width:13.6%">
+    <h3>Signal</h3>
+    <div class="chip c-support">
+      <span class="shape g-support"></span>
+      <span class="meta"><span class="n">Tacitus</span><span class="r">log &amp; failure summarizer</span></span>
+      <span class="tag">haiku</span>
+    </div>
+  </section>
+
+  <!-- ================= EXTERNAL (ESCALATION) ================= -->
+  <section class="cluster gated abs" style="left:80%; top:85.6%; width:13.6%">
+    <h3>External</h3>
+    <span class="gatelbl">NOT A ROSTER MEMBER — Marcus's call</span>
+    <div class="chip">
+      <span class="shape sw-gated"></span>
+      <span class="meta"><span class="n">Codex</span><span class="r">cross-model 2nd opinion · rescue</span></span>
+      <span class="tag">gpt-5.5</span>
+    </div>
+  </section>
+
+  <footer class="strap">22 agents <i>·</i> 1 entry point <i>·</i> quality gates before merge <i>·</i> artifacts 100% English</footer>
+
+</div>
+</body>
+</html>
