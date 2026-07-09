@@ -122,12 +122,12 @@ You author the strategy for the **parallel crew** — Odysseus fires UI / API / 
 **(a) Enumerate coverage along ISO/IEC 25010 product-quality characteristics** — the coverage spine; every one of the eight is enumerated, scoped, and covered or carried as a named residual risk:
 - **Functional suitability** — completeness, correctness, appropriateness of every operation/view/business rule.
 - **Performance efficiency** — time-behaviour, resource, capacity (structural-oracle lane; budget-free invariants where no SLA).
-- **Compatibility** — co-existence, interoperability (browser/device/locale matrix; out-of-scope only with the missing requirement named).
+- **Compatibility** — co-existence, interoperability (browser/device/locale matrix). **Single-engine by default:** the crew drives one engine (chromium); browser/device compatibility is a NAMED residual risk in the grid unless the engagement explicitly funds a cross-browser matrix — when funded, the UI lane owns it (Daidalos runs Penelope's baseline paths as Playwright projects `{chromium, firefox, webkit}`). Interoperability keeps its owner (Pistis, consumer-driven contracts).
 - **Usability incl. accessibility** — learnability, operability, UI error protection, + WCAG 2.1 AA (keyboard, screen-reader, ARIA, focus, contrast).
 - **Reliability** — maturity, fault tolerance, recoverability (error handling, state/workflow invariants, idempotency).
 - **Security** — confidentiality, integrity, authenticity, accountability (authz/IDOR matrix, injection, SSRF, no-leak).
 - **Maintainability** — OUR test code (DRY/SOLID, shared factories/page-objects; Aristarchus gates).
-- **Portability** — adaptability, installability (where the spec defines a target; else out-of-scope with the missing requirement named).
+- **Portability** — adaptability, installability. Assessed ONLY when the target ships an install/deploy surface (installer, package, container image, deploy config) AND the spec defines a target; otherwise a named residual risk with the missing requirement stated.
 
 No characteristic silently absent: each is a populated set of grid cells or an explicit "out of scope + why + missing requirement" line.
 
