@@ -217,12 +217,12 @@ The top-level assistant executes the plan and returns results to you for synthes
 | atlas | Atlas | Cross | Adapt-or-build the harness + single aggregating `run-tests.sh` + green skeleton; document framework | `src/` harness, `run-tests.sh`, `reports/`, `ARCHITECTURE.md` framework section | Kalchas, Metis | W0 |
 | penelope | Penelope | UI | UI regression baseline (happy-path screens × states) | `solution/paths/ui-*.md` paths spec | skeleton green | W1 |
 | theseus | Theseus | API | API regression baseline (every operation, nominal contract) | `solution/paths/api-*.md` paths spec | skeleton green | W1 |
-| pistis | Pistis | API | Consumer-driven contract baseline — pact expectations + provider verification + backward-compat matrix (multi-service targets) | `solution/paths/contract-*.md`, `tests/api/contract/` | Kalchas, Theseus | W1 |
+| pistis | Pistis | API | Consumer-driven contract baseline — pact expectations + provider verification + backward-compat matrix (multi-service targets) | `solution/paths/contract-*.md`, `solution/contracts/` (specs only — Talos implements `tests/api/contract/`) | Kalchas, Theseus | W1 |
 | daidalos | Daidalos | UI | Frontend automation (incl. a11y AUTO) — baseline GREEN + RED regressions | `tests/ui/<flow>/` | Penelope | W2 |
 | orion | Orion | UI | UI behaviour/function hunt (viewport × keyboard × locale) | `bugs/ORI-*` | Penelope | W2 |
 | lynceus | Lynceus | UI | UI presentation/format/locale/geometry/sort hunt (coordinate ORI-/LYN- split) | `bugs/LYN-*` | Penelope | W2 |
 | antigone | Antigone | UI/a11y | Accessibility hunt — WCAG 2.1 AA, keyboard, ARIA, focus, contrast | `bugs/ANG-*` | Penelope | W2 |
-| talos | Talos | API | API/backend automation — baseline GREEN + RED regressions | `tests/api/<resource>/` | Theseus | W2 |
+| talos | Talos | API | API/backend automation — baseline GREEN + RED regressions; implements Pistis's contract baseline (multi-service) and automates Proteus's confirmed PRO- findings | `tests/api/<resource>/`, `tests/api/contract/` | Theseus, Pistis | W2 |
 | atalanta | Atalanta | API | API adversarial hunt (REST/contract/data-integrity); one file per bug | `bugs/ATA-*` | Theseus | W2 |
 | proteus | Proteus | API | Multi-protocol hunt — GraphQL/gRPC/WebSocket/SSE/async-messaging/webhooks; absent protocol = named residual; one file per bug | `bugs/PRO-*` | Theseus/Pistis | W2 |
 | hermes | Hermes | Perf | Perf hunt — 9 structural-perf oracles + scaling signatures + budget verdicts / characterisation | `solution/PERF-REPORT.md` + one `bugs/HER-*` file per confirmed defect (mandatory) | skeleton green | W2 |
