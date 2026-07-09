@@ -156,7 +156,7 @@ Use the EXACT lowercase slug. Staff from this roster first; pull external main-t
 | Name | Role | Slug | Model |
 |------|------|------|-------|
 | Perseus | Senior QA — CyberSecurity hunt (STRIDE/OWASP, authz/IDOR, injection, SSRF) | `perseus` | opus |
-| Aegis | Senior Test Automation Engineer — CyberSecurity (authz/IDOR/auth-flow regression) | `aegis` | sonnet |
+| Aegis | Senior Test Automation Engineer — CyberSecurity (authz/IDOR/auth-flow regression) | `aegis` | opus |
 
 **Cross (lane-spanning):**
 | Name | Role | Slug | Model |
