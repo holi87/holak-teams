@@ -164,7 +164,7 @@ Use the EXACT lowercase slug. Staff from this roster first; pull external main-t
 | Ariadne | Senior QA Bug Hunter — DEEP JOURNEYS & BUSINESS-RULE LIFECYCLE — arranges preconditions to reach deep stateful screens, hunts gate/threshold/award-once/money/capacity/state-machine invariants end-to-end; owns the seams BETWEEN screens/endpoints | `ariadne` | opus |
 | Atlas | Senior QA Automation Architect — shared harness + single `run-tests.sh` + aggregated report + separation-in-strategy | `atlas` | opus |
 | Aristarchus | Senior Fullstack dev / Code Reviewer (automation) — runs LAST; reviews all test code for clean-code/DRY/SOLID/no green-encoding | `aristarchus` | opus |
-| Tiresias | Senior SDET / White-box Source Analyst — **GATED on source-code access**; SAST + code→surface mapping that targets the black-box lanes; files code-level defects with the surface lane prefix | `tiresias` | opus |
+| Tiresias | Senior SDET / White-box Source Analyst — **GATED on source-code access**; SAST + code→surface mapping that targets the black-box lanes; read-only — returns TIR- bug candidates (manifesting surface as metadata) in the RESULT envelope, Minos persists them | `tiresias` | opus |
 | Asklepios | Senior SDET / Test-Suite Sanitation — heals a SICK existing suite: deflakes at the SOURCE (never behind retries), quarantine ledger, exposes hidden green-encoding, coverage-delta of the existing suite; **brownfield Mode D especially**; conforms to the repo's conventions; writes `solution/TEST-HEALTH.md` | `asklepios` | opus |
 
 **Lane map (fire CONCURRENTLY, in batched waves; concurrency cap ≈ cores−2; gentle load):**
@@ -233,7 +233,7 @@ The top-level assistant executes the plan and returns results to you for synthes
 | charon | Charon | DB *(gated)* | Database hunt — integrity, constraints, transactions (only if DB access) | `bugs/CHA-*` | Kalchas DB-access=yes | W2 |
 | mnemosyne | Mnemosyne | DB *(gated)* | Database automation — SQL/data-integrity regression (only if DB access) | `tests/db/` | Charon (rolling) | W2 |
 | ariadne | Ariadne | Journey | Deep lifecycle/business-rule hunt — arrange preconditions, walk full journeys, assert invariant at every edge | `bugs/ARI-*` | Atlas (recipes); Penelope/Theseus | W2 |
-| tiresias | Tiresias | Cross *(gated)* | White-box SAST + code→surface LEADS to black-box lanes (only if source access) | `solution/WHITEBOX-LEADS.md` + `bugs/TIR-*` | Kalchas source-access=yes | W1 |
+| tiresias | Tiresias | Cross *(gated)* | White-box SAST + code→surface LEADS to black-box lanes (only if source access); read-only — returns leads + TIR- candidates in the envelope | WHITEBOX-LEADS table + TIR- candidates (you route; Minos persists `solution/WHITEBOX-LEADS.md` + `bugs/TIR-*`) | Kalchas source-access=yes | W1 |
 | minos | Minos | Core | Triage ROLLING, dedup ACROSS lanes, verify severity/priority, rank | `solution/BUG-LEDGER.md` | all hunters (rolling) | W2 |
 | asklepios | Asklepios | Cross *(Mode D / existing suite)* | Test-suite sanitation — deflake at the source, quarantine ledger, expose hidden green-encoding, coverage-delta; conform to repo conventions | `solution/TEST-HEALTH.md` + deflaked tests | existing suite present (Kalchas adopt) | W2 |
 | aristarchus | Aristarchus | Cross | Code-review LAST — all test code: clean-code/DRY/SOLID/no green-encoding | review notes + go/no-go on automation | all automation done | W3 |
