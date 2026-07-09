@@ -75,6 +75,7 @@ Write to the repo, then return a structured summary to Odysseus.
 
 **Files you produce:**
 - `tests/perf/` — the performance suite: structural-oracle specs (header/cache/compression, limit-clamp, N+1/size-growth, planted-delay) + load/latency characterisation (k6/autocannon scripts; Playwright timing + CWV specs) + `tests/perf/regression/` RED-linked tests for Hermes's confirmed bugs. Shared perf helpers reused, never copy-pasted.
+- `tests/resilience/` — TYC-linked RED regressions for Tyche's confirmed fault-injection findings + the reusable fault injector (restore recorded before inject, run + verified after) on Atlas's shared layer. Distinct dir from `tests/perf/`; when the lane is unfunded, a named residual risk instead.
 - Your perf lane wired INTO Atlas's `run-tests.sh` (merged into her contract, not a fork).
 - Report rows emitted into the single aggregated report (do not hand-author).
 - Your rows in `solution/TRACEABILITY.md` and the perf-lane entry in the strategy's framework-separation table (via routing).
@@ -84,6 +85,7 @@ Write to the repo, then return a structured summary to Odysseus.
 - `command`: the one-liner the user runs (Atlas's `./run-tests.sh`), plus how to run only the perf lane.
 - `tech`: load tool chosen (k6 / autocannon) + Playwright-CWV; context7 confirmation done (yes/no); how it wired into the single runner.
 - `coverage`: structural oracles automated (headers/cache/compression, clamp, N+1, planted-delay) + load/latency scenarios, mapped to Metis's ISO 25010 performance-efficiency rows.
+- `resilience`: Tyche handoffs encoded as TYC-linked RED regressions (dependencies/write-paths × confirmed findings), all wired into `run-tests.sh`; fault-injection cleanup verified (stack restored) in the clean final run — or one named residual-risk line when the lane is unfunded.
 - `budgets`: stated budgets verified (pass/fail) vs measured p50/p95/p99 + CWV where characterised.
 - `result`: pass/fail counts from the clean final run; report paths.
 - `defects_for_hermes`: failing assertions indicating real product perf bugs (test name, endpoint, measured vs expected, repro) — for Odysseus to route to Hermes.
@@ -136,6 +138,7 @@ Overrides any reading of the above as license to test shallowly. "Smaller suite 
 "Done" only when ALL hold — file presence is necessary but NOT sufficient:
 - `./run-tests.sh` runs the full suite in one command, typecheck gate green, exit code reflects pass/fail, `reports/html/` + `reports/results.json` regenerate.
 - **Perf coverage grid filled-or-justified** across every read endpoint × the structural oracles (payload/cache/clamp/N+1/over-fetch/size-growth/compression/expensive-op) + latency characterisation + scaling regressions — every cell tested or carrying a named residual risk. (API-functional/UI/authz grids are other lanes'.)
+- **Resilience coverage grid filled-or-justified** across dependencies/write-paths × Tyche's confirmed findings — every TYC- handoff encoded as a RED-linked regression wired into `run-tests.sh` or carrying a named residual risk; fault-injection cleanup verified in the clean final run (restore ran, SUT back at baseline). When the lane is unfunded, one named residual-risk line covers it.
 - **Every found/verified defect automated**, reading RED at its naming assertion; no manual-repro-only finds; nothing green-encoded.
 - **found-vs-surface reconciled per category**; any below the floor reported to Odysseus as a named residual risk (a defect class with zero tests is a coverage smell, never clean).
 - **Perf harnesses built + reused on Atlas's shared layer** (header-assertion, limit-clamp, N+1/size-growth, hardcoded-delay detector, concurrency fan-out, CWV/timing) — no copy-paste boilerplate, no leftover `ADAPT-ME` stubs.
