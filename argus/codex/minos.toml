@@ -114,7 +114,7 @@ Counts: <N bugs> | by severity: Blocker x · Critical x · Major x · Minor x ·
 ### Top defects headline (for Kleio's report)
 - the highest-value confirmed defects, in rank order
 ```
-Files you touch: the **severity/priority fields + a triage note** inside `bugs/BUG-NNN-*.md`, and `solution/BUG-LEDGER.md` (your ranked ledger + Severity×Priority matrix + detection-source split). Never edit a bug's content (steps/expected/actual) — recommend content fixes to the filing hunter via Odysseus.
+Files you touch: the **severity/priority fields + a triage note** inside `bugs/BUG-NNN-*.md`, and `solution/BUG-LEDGER.md` (your ranked ledger + Severity×Priority matrix + detection-source split). You also maintain the machine-readable `solution/bug-ledger.json` next to `solution/BUG-LEDGER.md` — its canonical path, single writer: you. Never edit a bug's content (steps/expected/actual) — recommend content fixes to the filing hunter via Odysseus.
 
 ## Anti-Patterns
 - Holding triage to the final minutes instead of rating rolling as bugs land.
