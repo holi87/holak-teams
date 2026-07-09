@@ -64,7 +64,7 @@ Exact paths are the contract; a wrong path or off-template file does not count. 
 - **`run-tests.sh`** — SINGLE top-level command invoking every lane suite, emitting ONE aggregated report (`reports/html/` + `reports/results.json`). Owner: Atlas. In Mode D this is the repo's EXISTING runner, extended — not a new one.
 - **`bugs/`** — one file per bug, template verbatim (incl. Detected-by), distinct per-hunter prefixes (`ATA-/ORI-/LYN-/ANG-/HER-/PER-/CHA-/ARI-/TIR-`, plus `THE-/PEN-` for path-analyst leads). The lane is metadata (the `lane` field + `Detected-by`), never the filename prefix. Minos assigns canonical `BUG-NNNN` at triage, keeping the agent-initial id as an origin alias.
 - **`solution/BUG-LEDGER.md`** — ranked ledger + Severity×Priority matrix (off-diagonal justified) + detection-source split (automated vs agent exploratory) + per-lane breakdown. Owner: Minos.
-- **`solution/PERF-REPORT.md`** *(conditional)* — Hermes: verdict vs a STATED budget, or light characterisation (p50/p95/p99 + anomalies as candidate defects).
+- **`solution/PERF-REPORT.md`** *(conditional)* — Hermes: structural-oracle grid (all 9 single-request oracles) + verdict vs a STATED budget, or light characterisation (p50/p95/p99 + anomalies as candidate defects); each confirmed defect ALSO filed as its own `bugs/HER-*` file.
 - **`solution/TRACEABILITY.md`** — risk → why-this-path → tests → defects. Seeded by Metis, filled by automation engineers, defect-linked by Minos, reconciled by Kleio.
 - **`solution/STATE_MODEL.md`** *(conditional — deep-journey lane active)* — per stateful object: states · allowed/forbidden transitions · invariants, mapped to `ORC-BIZ-*`. Owner: Ariadne.
 - **`solution/IMPLEMENTATION-REPORT.md`** — delivered-vs-designed + final suite state + residual risk. Owner: Kleio.
@@ -227,7 +227,7 @@ The top-level assistant executes the plan and returns results to you for synthes
 | antigone | Antigone | UI/a11y | Accessibility hunt — WCAG 2.1 AA, keyboard, ARIA, focus, contrast | `bugs/ANG-*` | Penelope | W2 |
 | talos | Talos | API | API/backend automation — baseline GREEN + RED regressions | `tests/api/<resource>/` | Theseus | W2 |
 | atalanta | Atalanta | API | API adversarial hunt; one file per bug | `bugs/ATA-*` | Theseus | W2 |
-| hermes | Hermes | Perf | Perf hunt — 8 structural-perf oracles + budget verdicts / characterisation | `solution/PERF-REPORT.md` (`bugs/HER-*` if a discrete bug file warranted) | skeleton green | W2 |
+| hermes | Hermes | Perf | Perf hunt — 9 structural-perf oracles + scaling signatures + budget verdicts / characterisation | `solution/PERF-REPORT.md` + one `bugs/HER-*` file per confirmed defect (mandatory) | skeleton green | W2 |
 | nike | Nike | Perf | Perf automation — k6/autocannon/Playwright timing, CWV; RED regressions | `tests/perf/` | skeleton green | W2 |
 | perseus | Perseus | Sec | Security hunt — STRIDE/OWASP, authz/IDOR, injection, SSRF; files own bugs | `bugs/PER-*` | skeleton green | W2 |
 | aegis | Aegis | Sec | Security automation — authz/IDOR/auth-flow regression; RED tests | `tests/security/` | Perseus (rolling) | W2 |
