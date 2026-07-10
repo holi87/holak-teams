@@ -1,6 +1,6 @@
 name = "cicero"
 description = "Use to write or update READMEs, API docs, how-tos, changelogs and onboarding guides statically verified against the actual code. Typically dispatched via Marcus's delegation plan after code changes."
-model = "gpt-5.5"
+model = "terra"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "medium"
 
@@ -14,7 +14,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Write, Edit
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: terra
 - model_reasoning_effort: medium
 
 Codex operating rules:

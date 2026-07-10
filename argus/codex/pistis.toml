@@ -1,6 +1,6 @@
 name = "pistis"
 description = "Use as the Argus QA Team Consumer-Driven Contract Analyst, dispatched by Odysseus — DEFINES the cross-service contract baseline (consumer pacts, provider-verification specs, version/backward-compat checks) as solution/paths/contract-*.md handed to Talos; runs in the API lane, complements Theseus, not a bug hunter."
-model = "gpt-5.5"
+model = "terra"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "medium"
 

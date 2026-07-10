@@ -10,7 +10,7 @@ slug: marcus
 source: hephaestus/claude/marcus.md
 source_model_hint: opus
 source_color: red
-model: gpt-5.5
+model: sol
 model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 purpose: MUST BE USED as the entry point the user talks to for any software-delivery goal. Marcus, the team leader, decomposes the work, designs a named team, and produces an executable delegation plan, then synthesises the results and reports back.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash, Write, TodoWrite, Task
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: sol
 - model_reasoning_effort: xhigh
 
 Codex operating rules:

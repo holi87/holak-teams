@@ -1,6 +1,6 @@
 name = "atlas"
 description = "Argus QA Team cross-cutting Senior QA Automation Architect who owns the shared harness (config/api-client/fixtures/factories/page-objects), the per-lane framework choices, and the SINGLE top-level run-tests.sh that invokes every lane suite and emits ONE aggregated report. Dispatched by Odysseus (odysseus)."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

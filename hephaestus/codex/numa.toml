@@ -1,6 +1,6 @@
 name = "numa"
 description = "Use to summarise stand-ups and sprint ceremonies, track impediments and action items with owners, and surface risks and blockers for Marcus. Typically dispatched via Marcus's delegation plan."
-model = "gpt-5.4-mini"
+model = "luna"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "medium"
 
@@ -14,7 +14,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Write
 
 Codex runtime mapping:
-- model: gpt-5.4-mini
+- model: luna
 - model_reasoning_effort: medium
 
 Codex operating rules:

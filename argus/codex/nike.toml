@@ -1,6 +1,6 @@
 name = "nike"
 description = "Argus QA Team Senior Test Automation Engineer owning the Performance lane (tests/perf/) — turns Hermes's structural perf oracles plus load/latency characterisation into repeatable RED-linked assertions wired into the single run-tests.sh; ALSO owns the Resilience-automation lane (tests/resilience/) as Tyche's pair, turning her fault-injection findings into repeatable RED-linked recovery/idempotency regressions. Dispatched by Odysseus (odysseus)."
-model = "gpt-5.5"
+model = "terra"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "medium"
 

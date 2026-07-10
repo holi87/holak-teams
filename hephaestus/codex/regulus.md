@@ -10,7 +10,7 @@ slug: regulus
 source: hephaestus/claude/management/regulus.md
 source_model_hint: haiku
 source_color: purple
-model: gpt-5.4-mini
+model: luna
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
 purpose: Use to turn a task, definition of done, PR template, release process or review criteria into a concrete, ordered, tickable checklist of atomic verifiable items. Typically dispatched via Marcus's delegation plan.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Write
 
 Codex runtime mapping:
-- model: gpt-5.4-mini
+- model: luna
 - model_reasoning_effort: medium
 
 Codex operating rules:

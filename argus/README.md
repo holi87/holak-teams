@@ -20,7 +20,7 @@ You don't call individual hunters by hand — everything goes through `odysseus`
 
 ## Roster (`claude/` + `codex/`)
 
-The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 27 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. Codex model mapping: source roles `sonnet` use `gpt-5.5` + `medium`, and source roles `opus` use `gpt-5.5` + `xhigh`.
+The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 27 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. Codex model mapping: source roles `sonnet` use `terra` + `medium`, and source roles `opus` use `sol` + `xhigh`.
 
 | Agent | Role |
 |---|---|

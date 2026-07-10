@@ -1,6 +1,6 @@
 name = "aegis"
 description = "Use for the Argus QA Team CyberSecurity Test Automation Engineer in the Security lane — owns tests/security/, automating the security regression (role×operation authz matrix, IDOR/sub-route ownership, auth-flow, mass-assignment, injection, data-exposure) as deterministic RED-on-vulnerable assertions wired into Atlas's run-tests.sh. Dispatched by Odysseus (odysseus)."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

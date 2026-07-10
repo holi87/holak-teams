@@ -121,40 +121,40 @@ Example pools (Marcus extends freely, keep the team's theme):
 - **Sonnet + escalation to Opus** (12): Varro, Fabricius, Maximus, Lucius, Tiberius, Fabius, Boethius, Mercury, Cato, Appius, Janus, Cicero — daily work; flag hard/risky decisions for review by Marcus.
 - **Haiku** (3): Numa, Regulus, Tacitus — fast, narrow, cheap tasks.
 
-The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with mixed model tiers from the frontmatter (18 opus + 9 sonnet; details below).
+The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with mixed model tiers from the frontmatter (19 opus + 8 sonnet; details below).
 
-**Codex runtime mapping for both teams:** Claude `opus` source roles run on `gpt-5.5` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles run on `gpt-5.5` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles run on `gpt-5.4-mini` with `model_reasoning_effort = "medium"`.
+**Codex runtime mapping for both teams:** Claude `opus` source roles run on `sol` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles run on `terra` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles run on `luna` with `model_reasoning_effort = "medium"`.
 
 ## Full roster — model per runtime
 
-Every agent runs on an **Anthropic** model under Claude Code and on a **mapped OpenAI** model under Codex — **Codex never uses Anthropic models.** The mapping is fixed by source tier: `opus → gpt-5.5 · xhigh`, `sonnet → gpt-5.5 · medium`, `haiku → gpt-5.4-mini · medium`. The `· value` after the Codex model is `model_reasoning_effort`.
+Every agent runs on an **Anthropic** model under Claude Code and on a **mapped OpenAI** model under Codex — **Codex never uses Anthropic models.** The mapping is fixed by source tier: `opus → sol · xhigh`, `sonnet → terra · medium`, `haiku → luna · medium`. The `· value` after the Codex model is `model_reasoning_effort`.
 
 ### Hephaestus — delivery (22)
 
 | Name | Slug | Role | Claude (Anthropic) | Codex (OpenAI) |
 |------|------|------|------|------|
-| Marcus | `marcus` | Team Leader & Orchestrator | opus | gpt-5.5 · xhigh |
-| Vitruvius | `vitruvius` | Solution Architect | opus | gpt-5.5 · xhigh |
-| Agrippa | `agrippa` | Tech Lead | opus | gpt-5.5 · xhigh |
-| Severus | `severus` | Final Code Reviewer | opus | gpt-5.5 · xhigh |
-| Seneca | `seneca` | QA Architect | opus | gpt-5.5 · xhigh |
-| Cassius | `cassius` | Security Reviewer | opus | gpt-5.5 · xhigh |
-| Catiline | `catiline` | QA Engineer | opus | gpt-5.5 · xhigh |
-| Fabricius | `fabricius` | Fullstack Developer | sonnet | gpt-5.5 · medium |
-| Maximus | `maximus` | Backend Developer | sonnet | gpt-5.5 · medium |
-| Lucius | `lucius` | Frontend Developer | sonnet | gpt-5.5 · medium |
-| Tiberius | `tiberius` | Database Developer | sonnet | gpt-5.5 · medium |
-| Varro | `varro` | Business Analyst | sonnet | gpt-5.5 · medium |
-| Cato | `cato` | Product Owner | sonnet | gpt-5.5 · medium |
-| Fabius | `fabius` | Automation QA | sonnet | gpt-5.5 · medium |
-| Mercury | `mercury` | Performance Tester | sonnet | gpt-5.5 · medium |
-| Boethius | `boethius` | Test Case Expander | sonnet | gpt-5.5 · medium |
-| Appius | `appius` | DevOps Engineer | sonnet | gpt-5.5 · medium |
-| Janus | `janus` | Environment Preflight | sonnet | gpt-5.5 · medium |
-| Cicero | `cicero` | Documentation Assistant | sonnet | gpt-5.5 · medium |
-| Numa | `numa` | Scrum Master Assistant | haiku | gpt-5.4-mini · medium |
-| Regulus | `regulus` | Checklist Generator | haiku | gpt-5.4-mini · medium |
-| Tacitus | `tacitus` | Log Summarizer | haiku | gpt-5.4-mini · medium |
+| Marcus | `marcus` | Team Leader & Orchestrator | opus | sol · xhigh |
+| Vitruvius | `vitruvius` | Solution Architect | opus | sol · xhigh |
+| Agrippa | `agrippa` | Tech Lead | opus | sol · xhigh |
+| Severus | `severus` | Final Code Reviewer | opus | sol · xhigh |
+| Seneca | `seneca` | QA Architect | opus | sol · xhigh |
+| Cassius | `cassius` | Security Reviewer | opus | sol · xhigh |
+| Catiline | `catiline` | QA Engineer | opus | sol · xhigh |
+| Fabricius | `fabricius` | Fullstack Developer | sonnet | terra · medium |
+| Maximus | `maximus` | Backend Developer | sonnet | terra · medium |
+| Lucius | `lucius` | Frontend Developer | sonnet | terra · medium |
+| Tiberius | `tiberius` | Database Developer | sonnet | terra · medium |
+| Varro | `varro` | Business Analyst | sonnet | terra · medium |
+| Cato | `cato` | Product Owner | sonnet | terra · medium |
+| Fabius | `fabius` | Automation QA | sonnet | terra · medium |
+| Mercury | `mercury` | Performance Tester | sonnet | terra · medium |
+| Boethius | `boethius` | Test Case Expander | sonnet | terra · medium |
+| Appius | `appius` | DevOps Engineer | sonnet | terra · medium |
+| Janus | `janus` | Environment Preflight | sonnet | terra · medium |
+| Cicero | `cicero` | Documentation Assistant | sonnet | terra · medium |
+| Numa | `numa` | Scrum Master Assistant | haiku | luna · medium |
+| Regulus | `regulus` | Checklist Generator | haiku | luna · medium |
+| Tacitus | `tacitus` | Log Summarizer | haiku | luna · medium |
 
 **Tiers:** 7 opus · 12 sonnet · 3 haiku.
 
@@ -162,35 +162,35 @@ Every agent runs on an **Anthropic** model under Claude Code and on a **mapped O
 
 | Name | Slug | Role | Claude (Anthropic) | Codex (OpenAI) |
 |------|------|------|------|------|
-| Odysseus | `odysseus` | Team Lead & Orchestrator (entry) | opus | gpt-5.5 · xhigh |
-| Kalchas | `kalchas` | System Analyst (recon) | opus | gpt-5.5 · xhigh |
-| Metis | `metis` | Test Strategist | opus | gpt-5.5 · xhigh |
-| Minos | `minos` | Bug Triage / QA Lead | opus | gpt-5.5 · xhigh |
-| Kleio | `kleio` | QA Reporter | sonnet | gpt-5.5 · medium |
-| Theseus | `theseus` | API test-path analyst | sonnet | gpt-5.5 · medium |
-| Penelope | `penelope` | UI test-path analyst | sonnet | gpt-5.5 · medium |
-| Pistis | `pistis` | Consumer-driven contract analyst (Pact) | sonnet | gpt-5.5 · medium |
-| Atalanta | `atalanta` | API / data-integrity hunter | opus | gpt-5.5 · xhigh |
-| Proteus | `proteus` | Multi-protocol API hunter (GraphQL/gRPC/WS/async) | opus | gpt-5.5 · xhigh |
-| Orion | `orion` | UI functional hunter | opus | gpt-5.5 · xhigh |
-| Lynceus | `lynceus` | UI presentation / i18n hunter | opus | gpt-5.5 · xhigh |
-| Ariadne | `ariadne` | Deep-journey / business-rule hunter | opus | gpt-5.5 · xhigh |
-| Hermes | `hermes` | Performance hunter (structural oracles) | opus | gpt-5.5 · xhigh |
-| Tyche | `tyche` | Resilience / chaos hunter (fault injection) | opus | gpt-5.5 · xhigh |
-| Perseus | `perseus` | Security hunter (STRIDE/OWASP) | opus | gpt-5.5 · xhigh |
-| Antigone | `antigone` | Accessibility hunter (WCAG 2.1 AA) | opus | gpt-5.5 · xhigh |
-| Charon | `charon` | Database hunter *(gated: DB access)* | opus | gpt-5.5 · xhigh |
-| Tiresias | `tiresias` | White-box source analyst *(gated: source)* | opus | gpt-5.5 · xhigh |
-| Atlas | `atlas` | Automation Architect (harness, run-tests.sh) | opus | gpt-5.5 · xhigh |
-| Aristarchus | `aristarchus` | Automation code reviewer (runs LAST) | opus | gpt-5.5 · xhigh |
-| Asklepios | `asklepios` | Test-suite sanitation / deflaking (brownfield) | opus | gpt-5.5 · xhigh |
-| Talos | `talos` | API regression automation | sonnet | gpt-5.5 · medium |
-| Daidalos | `daidalos` | UI E2E + a11y automation | sonnet | gpt-5.5 · medium |
-| Aegis | `aegis` | Security regression automation | opus | gpt-5.5 · xhigh |
-| Nike | `nike` | Perf regression automation | sonnet | gpt-5.5 · medium |
-| Mnemosyne | `mnemosyne` | DB invariants automation *(gated)* | sonnet | gpt-5.5 · medium |
+| Odysseus | `odysseus` | Team Lead & Orchestrator (entry) | opus | sol · xhigh |
+| Kalchas | `kalchas` | System Analyst (recon) | opus | sol · xhigh |
+| Metis | `metis` | Test Strategist | opus | sol · xhigh |
+| Minos | `minos` | Bug Triage / QA Lead | opus | sol · xhigh |
+| Kleio | `kleio` | QA Reporter | sonnet | terra · medium |
+| Theseus | `theseus` | API test-path analyst | sonnet | terra · medium |
+| Penelope | `penelope` | UI test-path analyst | sonnet | terra · medium |
+| Pistis | `pistis` | Consumer-driven contract analyst (Pact) | sonnet | terra · medium |
+| Atalanta | `atalanta` | API / data-integrity hunter | opus | sol · xhigh |
+| Proteus | `proteus` | Multi-protocol API hunter (GraphQL/gRPC/WS/async) | opus | sol · xhigh |
+| Orion | `orion` | UI functional hunter | opus | sol · xhigh |
+| Lynceus | `lynceus` | UI presentation / i18n hunter | opus | sol · xhigh |
+| Ariadne | `ariadne` | Deep-journey / business-rule hunter | opus | sol · xhigh |
+| Hermes | `hermes` | Performance hunter (structural oracles) | opus | sol · xhigh |
+| Tyche | `tyche` | Resilience / chaos hunter (fault injection) | opus | sol · xhigh |
+| Perseus | `perseus` | Security hunter (STRIDE/OWASP) | opus | sol · xhigh |
+| Antigone | `antigone` | Accessibility hunter (WCAG 2.1 AA) | opus | sol · xhigh |
+| Charon | `charon` | Database hunter *(gated: DB access)* | opus | sol · xhigh |
+| Tiresias | `tiresias` | White-box source analyst *(gated: source)* | opus | sol · xhigh |
+| Atlas | `atlas` | Automation Architect (harness, run-tests.sh) | opus | sol · xhigh |
+| Aristarchus | `aristarchus` | Automation code reviewer (runs LAST) | opus | sol · xhigh |
+| Asklepios | `asklepios` | Test-suite sanitation / deflaking (brownfield) | opus | sol · xhigh |
+| Talos | `talos` | API regression automation | sonnet | terra · medium |
+| Daidalos | `daidalos` | UI E2E + a11y automation | sonnet | terra · medium |
+| Aegis | `aegis` | Security regression automation | opus | sol · xhigh |
+| Nike | `nike` | Perf regression automation | sonnet | terra · medium |
+| Mnemosyne | `mnemosyne` | DB invariants automation *(gated)* | sonnet | terra · medium |
 
-**Tiers:** 18 opus · 9 sonnet.
+**Tiers:** 19 opus · 8 sonnet.
 
 ## Preflight and escalation to Codex
 

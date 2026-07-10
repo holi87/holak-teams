@@ -1,6 +1,6 @@
 name = "tiresias"
 description = "Use as the Argus QA Team Senior SDET / White-box Source Analyst (GATED — only when Kalchas confirms source access), dispatched by Odysseus — read-only static analysis (SAST sinks, broken authz, mass-assignment, secrets, weak crypto) plus code→surface mapping; files code-level defects under its own TIR- prefix (manifesting surface recorded as metadata)."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

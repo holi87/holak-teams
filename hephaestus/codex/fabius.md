@@ -10,7 +10,7 @@ slug: fabius
 source: hephaestus/claude/QA/fabius.md
 source_model_hint: sonnet
 source_color: orange
-model: gpt-5.5
+model: terra
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
 purpose: Use to build and maintain reliable automated test suites — unit, integration, e2e, API, UI, performance — fixtures, test data, page objects and CI wiring matching the project framework, killing flakiness. Typically dispatched via Marcus's delegation plan.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: terra
 - model_reasoning_effort: medium
 
 Codex operating rules:

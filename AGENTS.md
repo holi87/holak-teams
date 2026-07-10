@@ -110,8 +110,8 @@ Full rosters, roles, models and lane structure live in each plugin's README:
 - **Hephaestus** — `hephaestus/README.md` (22 agents: ba / dev / management / QA, leader `marcus`).
 - **Argus** — `argus/README.md` (27 agents: core + surface×mode hunter/automation/path-analyst lanes, plus resilience, consumer-driven contract, and test-suite-sanitation roles, leader `odysseus`).
 
-Codex runtime mapping for both teams: Claude `opus` → `gpt-5.5` + `xhigh`,
-`sonnet` → `gpt-5.5` + `medium`, `haiku` → `gpt-5.4-mini` + `medium`.
+Codex runtime mapping for both teams: Claude `opus` → `sol` + `xhigh`,
+`sonnet` → `terra` + `medium`, `haiku` → `luna` + `medium`.
 
 ---
 

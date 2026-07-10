@@ -10,7 +10,7 @@ slug: tiberius
 source: hephaestus/claude/dev/tiberius.md
 source_model_hint: sonnet
 source_color: blue
-model: gpt-5.5
+model: terra
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
 purpose: Use for database schema design, migrations, query optimisation, indexing and data-integrity work. Typically dispatched via Marcus's delegation plan.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: terra
 - model_reasoning_effort: medium
 
 Codex operating rules:

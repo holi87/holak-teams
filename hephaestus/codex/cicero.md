@@ -10,7 +10,7 @@ slug: cicero
 source: hephaestus/claude/management/cicero.md
 source_model_hint: sonnet
 source_color: yellow
-model: gpt-5.5
+model: terra
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
 purpose: Use to write or update READMEs, API docs, how-tos, changelogs and onboarding guides statically verified against the actual code. Typically dispatched via Marcus's delegation plan after code changes.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Write, Edit
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: terra
 - model_reasoning_effort: medium
 
 Codex operating rules:

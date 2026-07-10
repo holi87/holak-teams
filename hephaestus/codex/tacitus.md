@@ -10,7 +10,7 @@ slug: tacitus
 source: hephaestus/claude/management/tacitus.md
 source_model_hint: haiku
 source_color: yellow
-model: gpt-5.4-mini
+model: luna
 model_reasoning_effort: medium
 sandbox_mode: read-only
 purpose: Use to condense long logs, build output, stack traces or test results into a short structured signal summary — what failed, where, likely root cause. Typically dispatched via Marcus's delegation plan before routing a failure to a developer.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash
 
 Codex runtime mapping:
-- model: gpt-5.4-mini
+- model: luna
 - model_reasoning_effort: medium
 
 Codex operating rules:

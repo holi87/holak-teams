@@ -1,6 +1,6 @@
 name = "ariadne"
 description = "Use as the Argus QA Team Bug Hunter for DEEP JOURNEYS & BUSINESS-RULE LIFECYCLE, dispatched by Odysseus — arranges preconditions to reach deep stateful screens, then hunts gate/threshold/award-once/money/capacity/state-machine invariants end-to-end; owns the seams between screens/endpoints; files one bug per defect under bugs/ with the ARI- prefix."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

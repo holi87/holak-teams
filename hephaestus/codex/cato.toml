@@ -1,6 +1,6 @@
 name = "cato"
 description = "Use when a task needs backlog ownership and ordering, value-based prioritisation, scope guarding, or accepting/rejecting increments against acceptance criteria. Typically dispatched via Marcus's delegation plan."
-model = "gpt-5.5"
+model = "terra"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "medium"
 
@@ -14,7 +14,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Write
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: terra
 - model_reasoning_effort: medium
 
 Codex operating rules:

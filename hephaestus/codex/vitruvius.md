@@ -10,7 +10,7 @@ slug: vitruvius
 source: hephaestus/claude/dev/vitruvius.md
 source_model_hint: opus
 source_color: blue
-model: gpt-5.5
+model: sol
 model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 purpose: Use for system-level design — architecture, stack selection, ADRs, NFRs, integration contracts, and fitness-function review of designs before any code is written. Typically dispatched via Marcus's delegation plan.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash, WebSearch, WebFetch, Write, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: sol
 - model_reasoning_effort: xhigh
 
 Codex operating rules:

@@ -10,7 +10,7 @@ slug: janus
 source: hephaestus/claude/QA/janus.md
 source_model_hint: sonnet
 source_color: cyan
-model: gpt-5.5
+model: terra
 model_reasoning_effort: medium
 sandbox_mode: read-only
 purpose: MUST BE USED to verify the environment is ready before the team builds — checks the required MCP servers (configured AND connected), CLIs/toolchain, auth, plugins/agents, services, and dependencies for the specific goal, then returns a READY / READY-WITH-GAPS / NOT-READY verdict with the exact remediation command. Read-only; it diagnoses and reports, it never installs or fixes.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: terra
 - model_reasoning_effort: medium
 
 Codex operating rules:

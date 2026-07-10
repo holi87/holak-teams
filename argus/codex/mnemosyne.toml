@@ -1,6 +1,6 @@
 name = "mnemosyne"
 description = "Argus QA Team agent dispatched by Odysseus — Senior Test Automation Engineer on the GATED Database lane, automating data-integrity invariants and DB-level constraints (tests/db/) via read-only DB access, wired into the single run-tests.sh."
-model = "gpt-5.5"
+model = "terra"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "medium"
 

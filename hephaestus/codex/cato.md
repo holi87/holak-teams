@@ -10,7 +10,7 @@ slug: cato
 source: hephaestus/claude/ba/cato.md
 source_model_hint: sonnet
 source_color: green
-model: gpt-5.5
+model: terra
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
 purpose: Use when a task needs backlog ownership and ordering, value-based prioritisation, scope guarding, or accepting/rejecting increments against acceptance criteria. Typically dispatched via Marcus's delegation plan.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Write
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: terra
 - model_reasoning_effort: medium
 
 Codex operating rules:

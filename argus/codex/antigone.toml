@@ -1,6 +1,6 @@
 name = "antigone"
 description = "Argus QA Team Senior QA Bug Hunter for ACCESSIBILITY, dispatched by Odysseus — hunting WCAG 2.1 AA defects (contrast, keyboard operability/focus, screen-reader semantics, ARIA, form labels, motion/timeout, cognitive) in the UI/a11y lane, driving every primary screen keyboard-only with the accessibility tree as oracle, filing one file per bug under bugs/ with the ANG- prefix."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

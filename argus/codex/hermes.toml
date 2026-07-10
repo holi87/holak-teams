@@ -1,6 +1,6 @@
 name = "hermes"
 description = "Use as the Argus QA Team PERFORMANCE Bug Hunter, dispatched by Odysseus — runs structural single-request perf oracles (payload size, cache headers, unbounded-limit clamp, N+1, over-fetch, compression) first, then characterises latency (p50/p95/p99); files one bug per defect under bugs/ with the HER- prefix; writes the coverage-grid characterisation summary to solution/PERF-REPORT.md."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

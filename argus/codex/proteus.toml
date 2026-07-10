@@ -1,6 +1,6 @@
 name = "proteus"
 description = "Use as the Argus QA Team Bug Hunter for the non-REST / multi-protocol API lane, dispatched by Odysseus — adversarially hunts GraphQL, gRPC, WebSocket/SSE, async/event messaging, and webhooks (authz, cross-tenant leakage, idempotency, contract conformance, SSRF); files one bug per defect under bugs/ with the PRO- prefix."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

@@ -1,6 +1,6 @@
 name = "kleio"
 description = "Use as the Argus QA Team QA Reporter owning README, solution/IMPLEMENTATION-REPORT.md (delivered vs designed), deliverable completeness, AI-collaboration docs, the coverage-adequacy / found-vs-surface reconciliation, and the final pre-delivery acceptance-criteria checklist. Dispatched by Odysseus (odysseus) during the engagement. Never signs off \"done\"/\"go\" on presence alone — the coverage grid must be filled-or-justified."
-model = "gpt-5.5"
+model = "terra"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "medium"
 
