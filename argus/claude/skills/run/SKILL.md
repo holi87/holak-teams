@@ -3,7 +3,7 @@ name: run
 description: Run an Argus QA engagement from the main Claude Code thread, dispatching the installed Argus specialists and collecting their results.
 argument-hint: "<target URL, running stack, repo path, and QA scope>"
 disable-model-invocation: true
-allowed-tools: Read, Agent
+allowed-tools: Read, Agent, Bash(argus-assets *)
 ---
 
 # Run Argus from the main thread
@@ -30,7 +30,10 @@ Perform these checks before claiming that the engagement started:
    minimum, the engagement must be able to resolve `argus:kalchas` and one additional
    specialist required by the selected mode. If they are unavailable, stop and return:
    `ARGUS_PREFLIGHT_ERROR: ARGUS_AGENTS_UNAVAILABLE — install/enable argus@holak-teams and run /reload-plugins`.
-4. Confirm that the target is concrete enough to probe. Ask one concise blocking question
+4. Run `argus-assets verify`. If the executable is unavailable or any packaged file,
+   hash, inventory, or size budget fails, stop and return:
+   `ARGUS_PREFLIGHT_ERROR: RUNTIME_ASSETS_UNAVAILABLE — reinstall/update argus@holak-teams and run /reload-plugins`.
+5. Confirm that the target is concrete enough to probe. Ask one concise blocking question
    only when no safe assumption can produce an executable target.
 
 Do not replace a failed preflight with a delegation plan. Never claim that agents ran

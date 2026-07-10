@@ -1,0 +1,19 @@
+# Python environments & caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Aggregated test reports (regenerated every run)
+reports/
+
+# Playwright auth state (created by the auth-once step) & browser profiles
+.auth/
+test-results/
+playwright-report/
+
+# Logs
+*.log

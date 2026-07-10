@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/driver-config.schema.json",
+  "title": "Argus isolated browser driver configuration",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["baseUrl", "api", "accounts"],
+  "properties": {
+    "baseUrl": { "type": "string", "format": "uri" },
+    "userAgent": { "type": "string", "minLength": 1 },
+    "tokenStorageKey": { "type": ["string", "null"] },
+    "refreshTokenStorageKey": { "type": ["string", "null"] },
+    "postAuthMarker": { "type": ["string", "null"] },
+    "api": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["login", "me"],
+      "properties": {
+        "login": { "type": "string", "minLength": 1 },
+        "me": { "type": "string", "minLength": 1 }
+      }
+    },
+    "accessTokenPath": { "type": "string", "minLength": 1 },
+    "refreshTokenPath": { "type": "string", "minLength": 1 },
+    "accounts": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "anyOf": [
+          { "required": ["email", "password"] },
+          { "required": ["loginPayload"] }
+        ],
+        "properties": {
+          "email": { "type": "string" },
+          "password": { "type": "string" },
+          "loginPayload": { "type": "object" }
+        }
+      }
+    }
+  }
+}

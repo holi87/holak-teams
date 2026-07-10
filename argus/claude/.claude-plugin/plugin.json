@@ -2,8 +2,8 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "argus",
   "displayName": "Argus — QA Team",
-  "version": "1.4.0",
-  "description": "Greek-named permanent QA team. Run /argus:run from the main Claude Code thread to select an engagement mode, dispatch parallel surface×mode lanes, and collect black-box hunting plus regression results from 27 specialists.",
+  "version": "1.5.0",
+  "description": "Self-contained Greek-named QA team. Run /argus:run to dispatch 27 specialists with packaged browser-isolation guidance, schemas, driver tooling, and TypeScript, Java, and Python framework templates.",
   "author": {
     "name": "Grzegorz Holak",
     "email": "holi87@gmail.com"

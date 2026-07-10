@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/runtime-assets.schema.json",
+  "title": "Argus runtime asset source manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "budgets", "assets", "maintainerOnly", "forbiddenPromptReferences"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "generated": { "type": "boolean" },
+    "generatedFrom": { "type": "string" },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generatedAssetsBytes", "installedPluginBytes"],
+      "properties": {
+        "generatedAssetsBytes": { "type": "integer", "minimum": 1 },
+        "installedPluginBytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "source", "destination"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "kind": { "enum": ["reference", "schemas", "template"] },
+          "source": { "type": "string", "pattern": "^argus/" },
+          "destination": { "type": "string", "pattern": "^(references|schemas|templates)(/|$)" },
+          "files": { "type": "integer", "minimum": 1 },
+          "bytes": { "type": "integer", "minimum": 1 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "maintainerOnly": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "reason"],
+        "properties": {
+          "source": { "type": "string", "pattern": "^argus/" },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "forbiddenPromptReferences": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

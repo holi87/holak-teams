@@ -1,0 +1,112 @@
+#!/usr/bin/env node
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, extname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const SMOKE = process.env.SMOKE === '1';
+const ledgerPath = join(ROOT, 'solution', 'bug-ledger.json');
+const summaryPath = join(ROOT, 'reports', 'summary.json');
+
+const result = {
+  status: 'pass',
+  smoke: SMOKE,
+  total_confirmed: 0,
+  wired_confirmed: 0,
+  uncovered: [],
+  errors: [],
+};
+
+if (!existsSync(ledgerPath)) {
+  fail(`missing ${rel(ledgerPath)}; Minos must create it from solution/bug-ledger.example.json`);
+} else {
+  let ledger;
+  try {
+    ledger = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+  } catch (err) {
+    fail(`${rel(ledgerPath)} is not valid JSON: ${err.message}`);
+  }
+
+  if (!Array.isArray(ledger)) {
+    fail(`${rel(ledgerPath)} must be a JSON array`);
+  } else {
+    const confirmed = ledger.filter((entry) => String(entry.status ?? 'Confirmed').toLowerCase() !== 'suspected' && entry.confirmed !== false);
+    result.total_confirmed = confirmed.length;
+
+    const tags = collectBugTags(join(ROOT, 'tests'));
+    for (const entry of confirmed) {
+      const ids = [entry.id, ...(Array.isArray(entry.origin) ? entry.origin : [])].filter(Boolean).map(String);
+      if (!ids.length) {
+        result.uncovered.push('(entry missing id/origin)');
+        continue;
+      }
+      if (ids.some((id) => tags.has(id))) {
+        result.wired_confirmed += 1;
+      } else {
+        result.uncovered.push(ids[0]);
+      }
+    }
+
+    if (confirmed.length === 0) {
+      fail(`${rel(ledgerPath)} has zero confirmed defects; add confirmed entries or run an explicit SMOKE=1 smoke check`);
+    }
+    if (result.uncovered.length) {
+      fail(`uncovered confirmed bugs: ${result.uncovered.join(', ')}`);
+    }
+  }
+}
+
+if (result.errors.length) result.status = SMOKE ? 'warning' : 'fail';
+writeSummary({ bug_coverage: result });
+
+const line = `bug_coverage: ${result.wired_confirmed}/${result.total_confirmed} wired` +
+  (result.uncovered.length ? `; uncovered: ${result.uncovered.join(', ')}` : '; uncovered: none');
+console.log(`${SMOKE && result.errors.length ? 'WARNING' : result.status.toUpperCase()}: ${line}`);
+if (result.errors.length) {
+  for (const error of result.errors) console.error(`bug-coverage: ${error}`);
+}
+process.exit(result.errors.length && !SMOKE ? 1 : 0);
+
+function fail(message) {
+  result.errors.push(message);
+}
+
+function collectBugTags(dir) {
+  const tags = new Set();
+  if (!existsSync(dir)) return tags;
+  for (const file of walk(dir)) {
+    const ext = extname(file);
+    if (!['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.md'].includes(ext)) continue;
+    const text = readFileSync(file, 'utf8');
+    for (const match of text.matchAll(/@bug:([A-Za-z]+-\d{3,4}|BUG-\d{4})/g)) {
+      tags.add(match[1]);
+    }
+  }
+  return tags;
+}
+
+function* walk(dir) {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    const st = statSync(p);
+    if (st.isDirectory()) yield* walk(p);
+    else if (st.isFile()) yield p;
+  }
+}
+
+function writeSummary(fragment) {
+  mkdirSync(dirname(summaryPath), { recursive: true });
+  let summary = {};
+  if (existsSync(summaryPath)) {
+    try {
+      summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+    } catch {
+      summary = {};
+    }
+  }
+  writeFileSync(summaryPath, JSON.stringify({ ...summary, ...fragment, generated_at: new Date().toISOString() }, null, 2) + '\n');
+}
+
+function rel(path) {
+  return path.replace(`${ROOT}/`, '');
+}

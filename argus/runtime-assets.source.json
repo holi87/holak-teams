@@ -1,0 +1,66 @@
+{
+  "$schema": "./schemas/runtime-assets.schema.json",
+  "schemaVersion": 1,
+  "budgets": {
+    "generatedAssetsBytes": 350000,
+    "installedPluginBytes": 1500000
+  },
+  "assets": [
+    {
+      "id": "browser-isolation",
+      "kind": "reference",
+      "source": "argus/BROWSER-ISOLATION.md",
+      "destination": "references/BROWSER-ISOLATION.md"
+    },
+    {
+      "id": "shared-doctrine",
+      "kind": "reference",
+      "source": "argus/SHARED-DOCTRINE.md",
+      "destination": "references/SHARED-DOCTRINE.md"
+    },
+    {
+      "id": "runtime-schemas",
+      "kind": "schemas",
+      "source": "argus/schemas",
+      "destination": "schemas"
+    },
+    {
+      "id": "typescript-template",
+      "kind": "template",
+      "source": "argus/framework-template",
+      "destination": "templates/typescript"
+    },
+    {
+      "id": "java-template",
+      "kind": "template",
+      "source": "argus/framework-template-java",
+      "destination": "templates/java"
+    },
+    {
+      "id": "python-template",
+      "kind": "template",
+      "source": "argus/framework-template-python",
+      "destination": "templates/python"
+    }
+  ],
+  "maintainerOnly": [
+    {
+      "source": "argus/COLOR-SCHEME.md",
+      "reason": "The runtime color values are embedded in agent frontmatter."
+    },
+    {
+      "source": "argus/team-graph.html",
+      "reason": "Visual roster documentation is not required by an engagement."
+    },
+    {
+      "source": "argus/team-graph.png",
+      "reason": "Visual roster documentation is not required by an engagement."
+    }
+  ],
+  "forbiddenPromptReferences": [
+    "argus/BROWSER-ISOLATION.md",
+    "argus/framework-template",
+    "repo doc — not shipped with the installed plugin",
+    "not shipped with the installed plugin"
+  ]
+}

@@ -12,6 +12,7 @@
 #      the "100% English" rule; wording drift against the team's first agent
 #      is reported as a non-fatal WARN (role-specific variants are allowed)
 #   f) the Argus plugin exposes a valid /argus:run main-thread entry point
+#   g) every Argus runtime asset is packaged, synced, inventoried, and in budget
 #
 # Exit code: 0 when every check passes, 1 otherwise.
 
@@ -172,6 +173,12 @@ if "$ROOT/scripts/smoke-argus-run.sh" --static; then
   pass "[argus] (f) /argus:run skill, preflight, and Odysseus runtime contract"
 else
   fail "[argus] (f) /argus:run main-thread orchestration contract"
+fi
+
+if "$ROOT/scripts/smoke-argus-assets.sh" --static; then
+  pass "[argus] (g) runtime assets packaged, synced, inventoried, and in budget"
+else
+  fail "[argus] (g) runtime asset packaging contract"
 fi
 
 echo ""

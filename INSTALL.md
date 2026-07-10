@@ -11,7 +11,10 @@ The agents live in this repo (`~/Desktop/GenAI/my_agents/`), split into two team
 
 Codex model mapping for both teams: Claude `opus` source roles use `model = "sol"` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles use `model = "terra"` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles use `model = "luna"` with `model_reasoning_effort = "medium"`.
 
-`codex/` (Codex-format variant), the Argus framework templates (`argus/framework-template/` Playwright+TS, `argus/framework-template-java/` RestAssured+JUnit5+Playwright-Java, `argus/framework-template-python/` pytest+Playwright+httpx), and the Argus reference docs (`argus/COLOR-SCHEME.md`, `argus/SHARED-DOCTRINE.md`) are **not** Claude agents.
+`codex/` is the Codex-format variant. The canonical Argus framework and reference sources
+remain under `argus/`; byte-identical runtime copies of the three templates,
+browser-isolation guide, shared doctrine, and schemas are shipped inside the Claude
+plugin. `argus/COLOR-SCHEME.md` and the team graphs remain maintainer-only.
 
 ## Claude Code — plugin marketplace (recommended)
 
@@ -42,12 +45,38 @@ To start a separate session with Odysseus itself as the main agent:
 claude --agent argus:odysseus
 ```
 
+Verify and inspect the self-contained runtime package from any Bash-capable Claude Code
+session:
+
+```bash
+argus-assets verify
+argus-assets list
+argus-assets path browser-isolation
+```
+
+On a greenfield BUILD engagement, Atlas can seed a framework without access to this
+repository checkout:
+
+```bash
+argus-assets copy-template typescript /tmp/argus-ts
+argus-assets copy-template java /tmp/argus-java
+argus-assets copy-template python /tmp/argus-python
+argus-assets copy-browser-driver /path/to/target-repo
+```
+
+Template copy refuses a non-empty destination. For ADAPT mode, copy to a temporary
+directory, diff against the existing harness, and merge explicitly.
+
 ## Claude Code — manual symlink / copy (alternative)
 
 Without the marketplace, Claude Code also reads sub-agents from:
 
 - **globally:** `~/.claude/agents/`
 - **per-project:** `<repo>/.claude/agents/`
+
+This alternative installs agent definitions only. It does **not** install `/argus:run`,
+`argus-assets`, references, schemas, or templates; use the marketplace path for the full
+self-contained Argus runtime.
 
 ### Option A — symlink (auto-update)
 
