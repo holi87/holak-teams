@@ -15,6 +15,7 @@
 #   g) every Argus runtime asset is packaged, synced, inventoried, and in budget
 #   h) every Argus frontmatter and runtime lane has a validated capability contract
 #   i) risky lanes share one deny-by-default authorization, audit, and redaction policy
+#   j) every lane shares the packaged immutability, ownership, barrier, and cleanup runtime
 #
 # Exit code: 0 when every check passes, 1 otherwise.
 
@@ -193,6 +194,12 @@ if "$ROOT/scripts/smoke-argus-authorization.sh"; then
   pass "[argus] (i) authorization, production safety, audit, injection boundary, and redaction"
 else
   fail "[argus] (i) shared authorization and redaction policy"
+fi
+
+if "$ROOT/scripts/smoke-argus-engagement.sh"; then
+  pass "[argus] (j) target immutability, single-writer ownership, deterministic parallel state, and cleanup"
+else
+  fail "[argus] (j) engagement immutability and concurrency contract"
 fi
 
 echo ""

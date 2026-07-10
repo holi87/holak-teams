@@ -18,7 +18,15 @@ Concurrent lanes sharing the ONE Playwright MCP `browser_*` session clobber each
   node scripts/hunt-driver.mjs --agent <slug> [--role <role>|anon] [actions...]
   ```
 
-  Each agent gets its own `.pw-profiles/<agent>` `userDataDir` ⇒ separate OS process + separate profile ⇒ separate `localStorage` ⇒ zero cross-swap; own browser ⇒ screenshots never contended. The role token is minted via the API and injected with `addInitScript` BEFORE the first navigation, so the SPA route-guard always sees a valid session. The profile (and thus the session) persists on disk between invocations — follow-up calls stay logged in; batch several actions in one call to amortise the ~1 s launch. `--whoami` asserts the identity you think you have; `--fresh` wipes the profile for a clean session.
+  The engagement controller gives each worker a unique `browserProfile`; pass it as
+  `ARGUS_BROWSER_PROFILE` so the driver uses that exact `userDataDir`. Outside a managed
+  engagement it falls back to `.pw-profiles/<agent>`. Separate OS process + separate
+  profile ⇒ separate `localStorage` ⇒ zero cross-swap; own browser ⇒ screenshots never
+  contended. The role token is minted via the API and injected with `addInitScript` BEFORE
+  the first navigation, so the SPA route-guard always sees a valid session. The profile
+  (and thus the session) persists between invocations until mandatory engagement cleanup;
+  batch several actions in one call to amortise the ~1 s launch. `--whoami` asserts the
+  identity you think you have; `--fresh` wipes only that allocated profile.
 - **The shared MCP `browser_*` tools are for THROWAWAY single-shot recon on PUBLIC pages ONLY** — never authed flows, never multi-step state, never while a peer may be driving. Stay snapshot-frugal there: `browser_snapshot` dumps the whole accessibility tree into context (a real token + cache cost in a parallel run).
 
 App-specific config (base URL, auth endpoints, roles, render marker) comes from `scripts/driver.config.json` — see `driver.config.example.json`. One launch per invocation; actions execute in the order given.
@@ -81,7 +89,8 @@ Hunt-driver-only capabilities (no `browser_*` equivalent):
 Example — sweep a screen at mobile width as a student, capture evidence:
 
 ```
-node scripts/hunt-driver.mjs --agent orion --role student \
+ARGUS_BROWSER_PROFILE=<allocated-browserProfile> \
+node scripts/hunt-driver.mjs --agent orion --role argus-orion \
   --viewport 375x812 --goto /moje-kursy \
   --shot out/mycourses-375.png --snapshot --console --net
 ```

@@ -29,6 +29,9 @@ assert(Array.isArray(report.agents) && report.agents.length === 27, `${scenario}
 assert(report.target.reachable === (scenario !== 'insufficient'), `${scenario}: target reachability mismatch`);
 assert(report.artifactRoot.writable && report.artifactRoot.safePaths, `${scenario}: artifact root contract`);
 assert(report.authorization?.sha256, `${scenario}: authorization manifest digest required`);
+assert(report.engagement?.sha256, `${scenario}: engagement manifest digest required`);
+assert(report.engagement?.hookPackaged === true, `${scenario}: packaged immutability hook required`);
+assert(report.engagement?.phase === 'discovery', `${scenario}: resumable state must start after preflight`);
 assert(report.summary.selected === 27, `${scenario}: Mode A must evaluate all 27 agents`);
 assert(report.checks.some((check) => check.id === 'packaged-assets' && check.status === 'pass'), `${scenario}: assets check`);
 
@@ -66,6 +69,8 @@ const fs = require('fs');
 const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 if (!report.target.reachable || report.status === 'blocked') throw new Error('automatic local-target detection failed');
 if (!report.checks.some((check) => check.id === 'artifact-paths-safe' && check.status === 'pass')) throw new Error('automatic artifact-path check failed');
+if (!report.checks.some((check) => check.id === 'engagement-manifest' && check.status === 'pass')) throw new Error('automatic engagement manifest check failed');
+if (!report.checks.some((check) => check.id === 'path-immutability-hook' && check.status === 'pass')) throw new Error('automatic immutability hook check failed');
 NODE
 
 for scenario in full partial; do
@@ -106,6 +111,31 @@ report="$target/ai_agents_internal/preflight.json"
 test -f "$report" || fail "blocked preflight report was not persisted"
 assert_report "$report" blocked insufficient
 
+target="$WORK/malformed-engagement-target"
+mkdir -p "$target/ai_agents_internal"
+printf '{"mode":42}\n' >"$target/ai_agents_internal/engagement.json"
+if "$CLI" preflight \
+  --target "$target" \
+  --artifact-root "$target" \
+  --mode A \
+  --profile "$FIXTURES/full.json" \
+  >/dev/null 2>&1; then
+  fail "malformed engagement manifest unexpectedly passed"
+else
+  status=$?
+  [ "$status" -eq 2 ] || fail "malformed engagement manifest exited $status instead of 2"
+fi
+report="$target/ai_agents_internal/preflight.json"
+test -f "$report" || fail "malformed engagement block did not persist a report"
+node - "$report" <<'NODE'
+const fs = require('fs');
+const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const engagement = report.checks.find((check) => check.id === 'engagement-manifest');
+if (report.status !== 'blocked' || engagement?.status !== 'fail') throw new Error('malformed engagement manifest was not fail-closed');
+if (report.engagement.sha256 !== null || report.engagement.phase !== null) throw new Error('malformed engagement manifest was treated as usable');
+NODE
+test ! -e "$target/ai_agents_internal/engagement-state.json" || fail "malformed engagement initialized state"
+
 target="$WORK/unsafe-path-target"
 mkdir -p "$target"
 if "$CLI" preflight \
@@ -129,4 +159,4 @@ const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 if (report.status !== 'blocked' || report.artifactRoot.safePaths !== false) throw new Error('unsafe artifact path was not blocked');
 NODE
 
-printf 'PASS  Argus preflight: auto, full, partial, insufficient, and unsafe-path environments\n'
+printf 'PASS  Argus preflight: auto, full, partial, insufficient, malformed-engagement, and unsafe-path environments\n'

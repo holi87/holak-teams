@@ -15,7 +15,7 @@
  * THE FIX
  * -------
  * Each hunter runs its OWN chromium via launchPersistentContext(userDataDir =
- * .pw-profiles/<agent>). Separate OS process + separate profile dir => separate
+ * ARGUS_BROWSER_PROFILE (or fallback .pw-profiles/<agent>). Separate process/profile =>
  * localStorage => zero cross-swap, and screenshots are no longer contended.
  * The role token is minted via the API and injected with addInitScript BEFORE the
  * first navigation, so the SPA route-guard always sees a valid session (the proven
@@ -215,7 +215,7 @@ async function mintTokens(apiCtx) {
 }
 
 // ---- main ----------------------------------------------------------------
-const profileDir = join(ROOT, '.pw-profiles', agent);
+const profileDir = resolve(process.env.ARGUS_BROWSER_PROFILE ?? join(ROOT, '.pw-profiles', agent));
 if (fresh && existsSync(profileDir)) rmSync(profileDir, { recursive: true, force: true });
 mkdirSync(profileDir, { recursive: true });
 

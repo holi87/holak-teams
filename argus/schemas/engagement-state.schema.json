@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/engagement-state.schema.json",
+  "title": "Argus resumable engagement state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "engagementId", "revision", "currentPhase", "completedPhases",
+    "allocations", "barriers", "exclusiveLocks", "nextIds", "checkpoints", "fragments", "merges"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "revision": { "type": "integer", "minimum": 0 },
+    "currentPhase": { "type": "string", "minLength": 1 },
+    "completedPhases": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+    "allocations": { "type": "object", "additionalProperties": { "type": "object" } },
+    "barriers": { "type": "object", "additionalProperties": { "type": "array", "uniqueItems": true, "items": { "type": "string" } } },
+    "exclusiveLocks": { "type": "object", "additionalProperties": { "type": "object" } },
+    "nextIds": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 } },
+    "checkpoints": { "type": "object", "additionalProperties": { "type": "object" } },
+    "fragments": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "object" } } },
+    "merges": { "type": "object", "additionalProperties": { "type": "object" } }
+  }
+}

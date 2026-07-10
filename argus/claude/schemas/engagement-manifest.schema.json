@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/engagement-manifest.schema.json",
+  "title": "Argus engagement manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "engagementId", "mode", "target", "artifactRoot",
+    "selectedAgents", "phasePlan", "writePolicy", "resourcePolicy",
+    "idAllocators", "cleanup", "statePath"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "mode": { "enum": ["A", "B", "C", "D"] },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identifier", "root"],
+      "properties": {
+        "identifier": { "type": "string", "minLength": 1 },
+        "root": { "type": ["string", "null"] }
+      }
+    },
+    "artifactRoot": { "type": "string", "minLength": 1 },
+    "selectedAgents": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/slug" }
+    },
+    "phasePlan": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "participants"],
+        "properties": {
+          "id": { "enum": ["preflight", "discovery", "hunting", "automation", "verification", "reporting", "complete"] },
+          "participants": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/slug" }
+          }
+        }
+      }
+    },
+    "writePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "auditPath", "fragmentRoot", "checkpointRoot", "workerRoot",
+        "allowedArtifactRoots", "generatedTestRoots", "canonicalArtifacts", "bypass"
+      ],
+      "properties": {
+        "auditPath": { "$ref": "#/$defs/relativePath" },
+        "fragmentRoot": { "$ref": "#/$defs/relativePath" },
+        "checkpointRoot": { "$ref": "#/$defs/relativePath" },
+        "workerRoot": { "$ref": "#/$defs/relativePath" },
+        "allowedArtifactRoots": { "$ref": "#/$defs/pathList" },
+        "generatedTestRoots": { "$ref": "#/$defs/pathList" },
+        "canonicalArtifacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "owner", "format"],
+            "properties": {
+              "path": { "$ref": "#/$defs/relativePath" },
+              "owner": { "$ref": "#/$defs/slug" },
+              "format": { "enum": ["markdown", "text", "json", "json-document"] }
+            }
+          }
+        },
+        "bypass": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "approvedBy", "reason", "expiresAt", "allowedPaths", "tokenSha256"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "approvedBy": { "type": ["string", "null"] },
+            "reason": { "type": ["string", "null"] },
+            "expiresAt": { "type": ["string", "null"], "format": "date-time" },
+            "allowedPaths": { "$ref": "#/$defs/pathList" },
+            "tokenSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+          }
+        }
+      }
+    },
+    "resourcePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["portRange", "exclusiveOperations"],
+      "properties": {
+        "portRange": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end"],
+          "properties": {
+            "start": { "type": "integer", "minimum": 1024, "maximum": 65535 },
+            "end": { "type": "integer", "minimum": 1024, "maximum": 65535 }
+          }
+        },
+        "exclusiveOperations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reset", "fault"],
+          "properties": {
+            "reset": { "$ref": "#/$defs/slug" },
+            "fault": { "$ref": "#/$defs/slug" }
+          }
+        }
+      }
+    },
+    "idAllocators": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["owner", "prefix", "width"],
+        "properties": {
+          "owner": { "$ref": "#/$defs/slug" },
+          "prefix": { "type": "string", "pattern": "^[A-Z][A-Z0-9-]*$" },
+          "width": { "type": "integer", "minimum": 1, "maximum": 12 }
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["removeOnRelease"],
+      "properties": {
+        "removeOnRelease": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["browser-profile", "auth", "tmp", "locks"] }
+        }
+      }
+    },
+    "statePath": { "$ref": "#/$defs/relativePath" }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "relativePath": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+" },
+    "pathList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/relativePath" }
+    }
+  }
+}

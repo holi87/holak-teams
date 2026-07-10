@@ -2,8 +2,8 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 350000,
-    "installedPluginBytes": 1500000
+    "generatedAssetsBytes": 550000,
+    "installedPluginBytes": 1750000
   },
   "assets": [
     {
@@ -12,8 +12,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 7209,
-      "sha256": "3d26c8d03005df4bb770e40dba8b1b09567a150833b1be1fba71458c44cd516d"
+      "bytes": 7424,
+      "sha256": "571cdf7d32090a15bda4b9b5d8e7e0cc2bfb7fd34f6267a6cacfb2de55b7c979"
     },
     {
       "id": "shared-doctrine",
@@ -34,13 +34,22 @@
       "sha256": "07fd2a7deb8709ead1f2805ceb41ec4b0c18c8aa2660b3e1e3ea449f1dd50718"
     },
     {
+      "id": "engagement-policy",
+      "kind": "reference",
+      "source": "argus/ENGAGEMENT-POLICY.md",
+      "destination": "references/ENGAGEMENT-POLICY.md",
+      "files": 1,
+      "bytes": 6414,
+      "sha256": "d4842e4f4d2c99fed726ee37ba7865e212efc3232751a9ca28e483e20a4ec408"
+    },
+    {
       "id": "runtime-schemas",
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 8,
-      "bytes": 21847,
-      "sha256": "272a0980992dd4b3e25ab88bd19013e2633bb3cd421811d4e20509eb7b8c2925"
+      "files": 11,
+      "bytes": 30620,
+      "sha256": "fa9b17c669751a2c66dd89c236c3be9b901f0dd3535a2c04c6c294de218d902c"
     },
     {
       "id": "capability-matrix",
@@ -48,26 +57,26 @@
       "source": "argus/capabilities",
       "destination": "capabilities",
       "files": 1,
-      "bytes": 11614,
-      "sha256": "c8d03417a3aa53b437455ebd70e578fa6fc9ae46fc824d14bffe48b0c2bbf891"
+      "bytes": 11788,
+      "sha256": "952e1d304f309e3a0b205949d09fdd3bb45933c1059716729ee1953c265ffa43"
     },
     {
       "id": "authorization-policies",
       "kind": "policies",
       "source": "argus/policies",
       "destination": "policies",
-      "files": 2,
-      "bytes": 5455,
-      "sha256": "93fb7b90aff612ac55c2da4b255b846697dc5420b7ff41186cb22fee1c9963a1"
+      "files": 3,
+      "bytes": 8741,
+      "sha256": "b12f3414550f81bb7271f34f7f8a64aa541abf56191c7a003a30460f86d0088b"
     },
     {
       "id": "runtime-library",
       "kind": "runtime",
       "source": "argus/runtime",
       "destination": "lib",
-      "files": 1,
-      "bytes": 18321,
-      "sha256": "f27a32f5cac568c808ad100a7d26ebbb6b3b3e62cf611966e382c8f8dfff88c8"
+      "files": 2,
+      "bytes": 53221,
+      "sha256": "da15e73c729b08c5c67da483eaa29ee1195900550b8795d173d4976b44237e29"
     },
     {
       "id": "typescript-template",
@@ -75,8 +84,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 46,
-      "bytes": 129598,
-      "sha256": "8a016a8ba03394d3a0477405e4a8ff08a7ed27701595bd15c5d014b5df08a549"
+      "bytes": 129652,
+      "sha256": "e05d719508571381779199f46c2c19ba7274c52e93d39d3e509649171bcb625c"
     },
     {
       "id": "java-template",

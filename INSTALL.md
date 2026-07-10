@@ -55,6 +55,8 @@ argus-assets path browser-isolation
 argus-assets preflight --target /path/to/target-repo --mode D
 argus-assets authorization check --manifest ai_agents_internal/authorization.json \
   --lane hermes --action read --target /path/to/target-repo --source-trust manifest
+argus-assets engagement status --manifest ai_agents_internal/engagement.json
+argus-assets engagement allocate --manifest ai_agents_internal/engagement.json --lane hermes
 argus-assets redact --input reports/raw.json --output reports/safe.json
 ```
 
@@ -74,6 +76,17 @@ redacted allow/deny event and rule ID to `authorization-audit.jsonl`. Edit the m
 only from explicit user authorization, then rerun preflight; never weaken a denial in the
 agent prompt. Text evidence must pass through `argus-assets redact`. Sensitive binary
 screenshots/traces are omitted unless independently masked and reviewed.
+
+Preflight also creates `ai_agents_internal/engagement.json` and atomic resumable state.
+The marketplace plugin activates its packaged `PreToolUse` hook only while that manifest
+exists. The hook blocks target-source mutation and direct canonical writes across direct
+file tools and recognized shell/process writes. Every worker allocates a unique lease,
+uses only its profile/account/namespace/port/temp/output coordinates, checkpoints
+monotonically, and arrives at phase barriers. Canonical changes travel as immutable
+fragments and are merged deterministically by the declared owner. Reset/fault windows
+are exclusive. Always run `engagement cleanup --outcome success|failure`; lease tokens,
+profiles, auth, temp state, and locks must be absent at sign-off. See the installed
+`${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 
 On a greenfield BUILD engagement, Atlas can seed a framework without access to this
 repository checkout:

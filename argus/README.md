@@ -39,17 +39,18 @@ restricted context receives the same explicit preflight error.
 
 Marketplace installs are self-contained. The plugin ships:
 
-- `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation and shared doctrine;
+- `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, and shared doctrine;
 - `${CLAUDE_PLUGIN_ROOT}/capabilities/` — the mode-aware capability matrix for all 27 roles;
-- `${CLAUDE_PLUGIN_ROOT}/policies/` + `lib/` — authorization template, redaction patterns, and evaluator;
+- `${CLAUDE_PLUGIN_ROOT}/policies/` + `lib/` — authorization/engagement templates, redaction patterns, guards, and atomic controllers;
+- `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` — active `PreToolUse` target-immutability guard;
 - `${CLAUDE_PLUGIN_ROOT}/schemas/` — runtime asset, bug-ledger, and browser-driver config schemas;
 - `${CLAUDE_PLUGIN_ROOT}/templates/` — TypeScript/Playwright, Java, and Python framework templates;
-- `argus-assets` — a PATH executable that verifies/copies runtime assets, preflights capabilities, evaluates authorization, and redacts evidence.
+- `argus-assets` — a PATH executable that verifies/copies assets, preflights, authorizes, guards writes, coordinates parallel state, and redacts evidence.
 
 Maintainers edit the canonical sources under `argus/` and run
 `scripts/sync-argus-runtime-assets.mjs --write`. Generated plugin copies are checked
 byte-for-byte by `--check`; the generated prompt inventory covers all 27 agents. The
-budget is 350 KB for generated runtime assets and 1.5 MB for the complete installed
+budget is 550 KB for generated runtime assets and 1.75 MB for the complete installed
 plugin. `COLOR-SCHEME.md` and team graphs are intentionally maintainer-only.
 
 ## Runtime preflight
@@ -84,6 +85,28 @@ artifact. Binary screenshots/traces fail closed: omit sensitive views, or mask t
 an approved image workflow and independently review the derivative. The canonical full
 contract is `AUTHORIZATION-POLICY.md`; installed path is
 `${CLAUDE_PLUGIN_ROOT}/references/AUTHORIZATION-POLICY.md`.
+
+## Target immutability and parallel coordination
+
+Preflight creates or loads `ai_agents_internal/engagement.json` and atomic
+`engagement-state.json`, and blocks the run if the packaged plugin hook is missing. The
+`PreToolUse` guard normalizes physical paths including traversal and symlinks, then denies
+target-source writes, deletes, moves, permission changes, redirections, patches, and
+recognized subprocess writes. Exact operator bypasses require an approved, expiring path
+allowlist plus a secret token hash. Every denial records a redacted `GUARD-*` event and a
+command digest, never raw command content.
+
+The default generated-test allowlist is intentionally narrow and does not broadly trust
+`src/`, `scripts/`, or root build configuration. Recon must prove a repository's actual
+test layout before the operator adds any additional root to the manifest.
+
+Each selected worker receives a unique lease with deterministic browser profile, account,
+namespace, port, temp, and output coordinates. Workers write immutable fragments;
+canonical owners merge them in stable order under an atomic lock. The controller also
+enforces discovery/hunting/automation/verification/reporting barriers, exclusive
+reset/fault windows, atomic `BUG-NNNN` allocation, monotonic resumable checkpoints, and
+idempotent success/failure cleanup. Full contract: `ENGAGEMENT-POLICY.md`; installed path:
+`${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 
 ## Roster (`claude/` + `codex/`)
 

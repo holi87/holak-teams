@@ -27,6 +27,9 @@ jobs:
       - name: Verify authorization, production safety, untrusted content, and redaction
         run: scripts/smoke-argus-authorization.sh
 
+      - name: Verify target immutability and parallel engagement coordination
+        run: scripts/smoke-argus-engagement.sh
+
   agent-contracts:
     name: Agent and packaged-runtime contracts
     runs-on: ubuntu-latest

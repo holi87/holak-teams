@@ -91,6 +91,9 @@ for (const name of agentFiles) {
   assert(!hasPlaywright || (contract.optionalCapabilities ?? []).includes('playwright-mcp'), `${name} exposes Playwright MCP without a playwright-mcp fallback contract`);
   assert(text.includes('argus-assets redact'), `${name} does not enforce the shared evidence redactor`);
   assert(text.includes('${CLAUDE_PLUGIN_ROOT}/references/AUTHORIZATION-POLICY.md'), `${name} does not reference the packaged authorization policy`);
+  assert(text.includes('## Engagement Lease and Write Guard (mandatory)'), `${name} does not enforce engagement ownership and cleanup`);
+  assert(text.includes('argus-assets engagement allocate'), `${name} does not allocate/resume its engagement lease`);
+  assert(text.includes('${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md'), `${name} does not reference the packaged engagement policy`);
 
   if ((contract.riskActions ?? []).length > 0) {
     assert(text.includes('## Authorization Gate (mandatory)'), `${name} has risk actions but no inline authorization gate`);
@@ -108,6 +111,9 @@ for (const assetId of matrix.orchestration.requiredAssets) {
 }
 
 assert(existsSync(join(ROOT, 'argus', 'schemas', 'preflight-report.schema.json')), 'preflight report schema is missing');
+assert(existsSync(join(ROOT, 'argus', 'schemas', 'engagement-manifest.schema.json')), 'engagement manifest schema is missing');
+assert(existsSync(join(ROOT, 'argus', 'schemas', 'engagement-state.schema.json')), 'engagement state schema is missing');
+assert(existsSync(join(ROOT, 'argus', 'claude', 'hooks', 'hooks.json')), 'packaged PreToolUse hook is missing');
 console.log(`PASS  Argus capability contract: ${agentFiles.length} frontmatters, ${capabilities.size} capabilities, supported tool vocabulary only`);
 
 function parseFrontmatter(text, name) {

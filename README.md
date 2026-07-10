@@ -59,6 +59,7 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   │   ├── agents/              # 27 flat agent defs (odysseus, orion, …)
 │   │   ├── skills/run/SKILL.md  # /argus:run main-thread orchestrator
 │   │   ├── bin/argus-assets     # verify/copy packaged assets
+│   │   ├── hooks/hooks.json     # packaged target-immutability guard
 │   │   ├── capabilities/        # 27-role runtime capability + fallback matrix
 │   │   ├── policies/ + lib/     # deny-by-default authorization + redaction runtime
 │   │   ├── references/ + schemas/
@@ -68,6 +69,7 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   ├── framework-template-java/   # RestAssured + JUnit5 + Playwright-Java (shared reference)
 │   ├── framework-template-python/ # pytest + Playwright + httpx (shared reference)
 │   ├── AUTHORIZATION-POLICY.md   # canonical authorization and redaction contract
+│   ├── ENGAGEMENT-POLICY.md      # canonical concurrency and ownership contract
 │   ├── policies/ + runtime/      # canonical policy data + evaluator sources
 │   ├── COLOR-SCHEME.md          # colors by role type
 │   ├── SHARED-DOCTRINE.md       # cross-agent QA doctrine
