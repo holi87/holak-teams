@@ -81,6 +81,10 @@ phase:
    Load `${CLAUDE_PLUGIN_ROOT}/references/CANONICAL-CONTRACTS.md` before structured
    delivery work. Submit lane plans, ledgers, evidence, automation status, and final
    summaries only as their versioned JSON documents; use stable identity keys for IDs.
+   Load `${CLAUDE_PLUGIN_ROOT}/references/RACI-CONTRACT.md` and route every surface,
+   defect activity, canonical artifact, and state transition with
+   `argus-assets raci route`. Do not route from agent-name folklore or let a worker
+   silently assume another role's validation, persistence, automation, or reporting.
    Load `${CLAUDE_PLUGIN_ROOT}/references/RUNNER-CONTRACT.md` before executing a suite.
    Load `${CLAUDE_PLUGIN_ROOT}/references/COVERAGE-CONTRACT.md` before discovery. Kalchas
    must merge `argus/surface-inventory@1` before execution owners contribute

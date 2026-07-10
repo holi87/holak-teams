@@ -19,6 +19,7 @@
 #   k) canonical QA contracts reject malformed fixtures and render a source-versioned summary
 #   l) all framework templates share explicit runner modes, lifecycle, categories, and exits
 #   m) coverage is derived from discovered target surfaces and defects cannot improve it
+#   n) all agent, artifact, transition, and routing ownership comes from one RACI source
 #
 # Exit code: 0 when every check passes, 1 otherwise.
 
@@ -221,6 +222,12 @@ if "$ROOT/scripts/smoke-argus-coverage.sh"; then
   pass "[argus] (m) target-derived, risk-weighted coverage and defect-neutral quality metrics"
 else
   fail "[argus] (m) surface-derived coverage contract"
+fi
+
+if "$ROOT/scripts/smoke-argus-raci.sh"; then
+  pass "[argus] (n) 27-agent RACI, single-owner artifacts/transitions, prompt descriptions, and runtime routing"
+else
+  fail "[argus] (n) RACI ownership and routing contract"
 fi
 
 echo ""

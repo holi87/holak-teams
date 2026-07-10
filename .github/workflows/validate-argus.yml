@@ -39,6 +39,9 @@ jobs:
       - name: Verify surface-derived coverage and defect-neutral quality metrics
         run: scripts/smoke-argus-coverage.sh
 
+      - name: Verify RACI ownership, descriptions, roster, and runtime routing
+        run: scripts/smoke-argus-raci.sh
+
   agent-contracts:
     name: Agent and packaged-runtime contracts
     runs-on: ubuntu-latest

@@ -168,6 +168,12 @@ TypeScript, Java, and Python runners share baseline/evidence/candidate/full mode
 standardized exit codes, and explicit product/automation/infrastructure/skip/policy
 outcomes. Denials append redacted `GUARD-*` events without raw commands.
 
+Agent responsibilities, UI/API/event/data boundaries, defect handoffs, canonical
+artifact owners, and state-transition owners are declared in `argus/raci.json` and
+rendered to `argus/RACI-CONTRACT.md`. `argus-assets raci route` is the runtime routing
+interface; `scripts/sync-argus-raci.mjs --check` keeps all 27 frontmatter descriptions,
+prompt RACI blocks, and the README roster aligned with that one source.
+
 ---
 
 ## Rosters
