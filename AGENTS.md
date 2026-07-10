@@ -6,10 +6,11 @@ teams as installable plugins:
 | Plugin | Theme | Agents | Entry point | Purpose |
 |---|---|:--:|---|---|
 | **hephaestus** | Roman names | 22 | `marcus` | Software delivery — goal → designed team → delivered increment |
-| **argus** | Greek names | 27 | `odysseus` | QA — black-box bug hunting + regression automation |
+| **argus** | Greek names | 27 | `/argus:run` | QA — black-box bug hunting + regression automation |
 
-Both teams are **hub-and-spoke**: you talk to the entry-point agent; it decomposes the
-work, dispatches specialists, and reports back. Agents never talk to each other directly.
+Both teams are **hub-and-spoke**: you use the team's entry point (`marcus` or
+`/argus:run`); its main-thread controller decomposes the work, dispatches specialists,
+and reports back. Specialists never talk to each other directly.
 
 ---
 
@@ -27,11 +28,14 @@ Then in any session:
 
 ```
 > marcus, build a REST API for task management with tests and CI
-> odysseus, run a QA audit on <target — URL / running stack / repo path>
+> /argus:run <target — URL / running stack / repo path — and QA scope>
 ```
 
-Installed plugin agents are namespaced: `hephaestus:marcus`, `argus:odysseus`, etc.
-Update later with `/plugin marketplace update holak-teams`.
+`/argus:run` stays in the main Claude Code thread, applies Odysseus's orchestration
+policy, dispatches the namespaced specialists (`argus:kalchas`, `argus:metis`, etc.),
+and collects their results. To start a new session with Odysseus as the main agent, use
+`claude --agent argus:odysseus`. Installed plugin agents remain available under their
+namespaced slugs. Update later with `/plugin marketplace update holak-teams`.
 
 ### Automatic — when working inside this repo
 
@@ -50,9 +54,10 @@ plugins enabled automatically:
 
 ### Manual / Codex install
 
-The plugins package the **Claude Code** agents only (`<team>/claude/agents/`). The repo
-also carries **Codex** variants (`<team>/codex/`, paired `*.toml` + `*.md`) and a
-Playwright framework template. For symlink/copy installs and the Codex setup, see
+The plugins package their **Claude Code** components under `<team>/claude/`: flat agent
+definitions for both teams and the `/argus:run` skill for Argus. The repo also carries
+**Codex** variants (`<team>/codex/`, paired `*.toml` + `*.md`) and Playwright framework
+templates outside the plugin roots. For symlink/copy installs and the Codex setup, see
 **INSTALL.md**.
 
 ---
@@ -83,7 +88,8 @@ holak-teams/                         # this repo == the marketplace
 └── argus/                           # ── QA team ──
     ├── claude/                      # == PLUGIN ROOT (Claude only)
     │   ├── .claude-plugin/plugin.json
-    │   └── agents/                  # 27 flat agent defs (loaded by Claude Code)
+    │   ├── agents/                  # 27 flat specialist defs (loaded by Claude Code)
+    │   └── skills/run/SKILL.md      # /argus:run main-thread orchestrator
     ├── codex/                       # Codex variants (*.toml + *.md) — separate, not in the plugin
     ├── framework-template/          # prepped Playwright + TS framework (shared reference)
     ├── framework-template-java/     # RestAssured + JUnit5 + Playwright-Java (shared reference)

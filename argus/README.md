@@ -4,19 +4,36 @@ Greek code names. Black-box hunting + regression automation in a single pass.
 
 [![Argus team graph](team-graph.png)](team-graph.html)
 
-*One entry point (`odysseus`), hub-and-spoke, parallel surface × mode lanes — full-screen / print version: [`team-graph.html`](team-graph.html) (open locally in a browser).*
+*One main-thread entry point (`/argus:run`), Odysseus orchestration policy, hub-and-spoke parallel surface × mode lanes — full-screen / print version: [`team-graph.html`](team-graph.html) (open locally in a browser).*
 
 ## How to start
 
-**Entry point = `odysseus`** (team leader, entry point).
+**Recommended entry point: `/argus:run`**
 
-You launch a single agent — `odysseus` — and it does the rest:
+After installing the marketplace plugin, invoke the skill from the Claude Code main
+conversation:
+
+```
+/argus:run <target URL, running stack, or repo path — and QA scope>
+```
+
+The main thread loads Odysseus's orchestration policy and does the rest:
 
 1. reads the target, picks the **engagement mode**,
-2. dispatches the crew in parallel in a **surface × mode** layout (UI / API / perf / security / a11y / DB-gated / white-box-gated),
-3. lands the mode's deliverable contract (reports + regression).
+2. preflights the `Agent` tool and installed `argus:<slug>` specialists,
+3. dispatches the crew in parallel in a **surface × mode** layout (UI / API / perf / security / a11y / DB-gated / white-box-gated),
+4. collects specialist results and lands the mode's deliverable contract (reports + regression).
 
-You don't call individual hunters by hand — everything goes through `odysseus`.
+You do not call individual hunters by hand. The main thread owns dispatch and synthesis;
+specialists return results only to it. If the target is missing, `Agent` delegation is
+denied, or the plugin agents are unavailable, the command stops with an actionable
+`ARGUS_PREFLIGHT_ERROR` and never claims that execution occurred.
+
+**Alternate main-session entry point:** `claude --agent argus:odysseus`. This starts a
+new Claude Code session with Odysseus's prompt active and supports the same direct
+specialist dispatch when `Agent` is available. Direct `@argus:odysseus` invocation is
+runtime-dependent; current Claude Code versions can permit nested delegation, while a
+restricted context receives the same explicit preflight error.
 
 ## Roster (`claude/` + `codex/`)
 
@@ -24,7 +41,7 @@ The Claude Code version lives in `claude/`. The Codex version lives in `codex/` 
 
 | Agent | Role |
 |---|---|
-| **odysseus** | leader / entry point — picks the mode, dispatches the crew |
+| **odysseus** | orchestration policy / alternate main-session agent — picks the mode, dispatches the crew when `Agent` is available |
 | kalchas | recon — maps the unknown stack, endpoints, roles, data |
 | minos | bug triage / QA lead — severity, dedup, reconciliation |
 | metis | test strategist — TEST-STRATEGY.md, coverage grid |
