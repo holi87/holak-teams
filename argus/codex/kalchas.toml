@@ -1,5 +1,5 @@
 name = "kalchas"
-description = "Use for the Argus QA Team System Analyst first recon — mapping an unknown app stack, endpoints, roles, data and rules for the team. Dispatched by Odysseus (odysseus) at engagement start."
+description = "Use for the Argus QA Team System Analyst first recon — mapping an unknown app stack, endpoints, roles, data and rules for the team. Dispatched by Odysseus (odysseus) at engagement start, and mid-run whenever a teammate needs ground-truth on an unknown endpoint/role/field/state."
 model = "gpt-5.5"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"

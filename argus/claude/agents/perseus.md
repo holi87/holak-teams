@@ -1,7 +1,7 @@
 ---
 name: perseus
 description: Use as the Argus QA Team Senior QA CyberSecurity Bug Hunter, dispatched by Odysseus, owning the Security lane — black-box STRIDE/OWASP hunting (broken auth, broken access control / IDOR / BOLA, mass-assignment / privilege escalation, injection, sensitive-data exposure, SSRF, misconfig, OWASP-LLM) — filing your own confirmed defects to bugs/ with the PER- prefix.
-tools: Read, Grep, Glob, LS, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_navigate_back, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_type, mcp__plugin_playwright_playwright__browser_fill_form, mcp__plugin_playwright_playwright__browser_press_key, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_resize, mcp__plugin_playwright_playwright__browser_evaluate, mcp__plugin_playwright_playwright__browser_hover, mcp__plugin_playwright_playwright__browser_select_option, mcp__plugin_playwright_playwright__browser_file_upload, mcp__plugin_playwright_playwright__browser_handle_dialog
+tools: Read, Grep, Glob, LS, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests
 model: opus
 color: red
 ---

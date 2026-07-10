@@ -24,6 +24,14 @@ noted under each block. Hephaestus (`hephaestus/claude/`) prompts carry older Ro
 variants (Marcus as lead, reassignable-name Identity policy, no Heartbeat block) — sync
 those on their own cycle.
 
+The **Parallel Lanes** block is deliberately asymmetric: each spoke names a
+representative lane summary (UI / API / Performance / Database / CyberSecurity /
+Accessibility), while `odysseus` alone carries the FULL current lane set (adding
+Resilience, Journey, and the multi-protocol + consumer-driven-contract API sub-lanes).
+The lead's roster section is the authoritative lane list; the spoke summary is a
+reminder, not the source of truth — do not treat a spoke's shorter list as a lane being
+dropped.
+
 ### Token Economy
 > Communication is overhead; artifacts are the product. Keep status updates, summaries and RESULT envelopes terse: facts in fragments over prose, no restated context, no process narration, no praise. Reference paths + line ranges (or a <=3-line excerpt) instead of pasting files or logs. Never echo your dispatch prompt or upstream results back — point at them. Full quality stays in the deliverables themselves (docs, bug reports, code, tests, READMEs); economy applies to communication, never to submitted artifacts. Status + RESULT envelopes may use caveman-terse style (drop articles/filler/pleasantries, fragments OK); this applies to inter-agent communication ONLY — every submitted artifact stays full, correct, complete prose.
 

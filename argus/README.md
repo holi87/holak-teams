@@ -51,7 +51,10 @@ The Claude Code version lives in `claude/`. The Codex version lives in `codex/` 
 | aegis | security regression (tests/security/) |
 | nike | perf regression (tests/perf/) |
 | mnemosyne | DB invariants (gated, tests/db/) |
+| **Cross-cutting** | |
 | aristarchus | code reviewer — runs LAST, BLOCKER/WARNING |
 | asklepios | test-suite sanitation / deflaking — brownfield Mode D (ASK-) |
 
-`codex/` — Codex variant of the roster (27 `*.toml` + `*.md` pairs). `framework-template/` (Playwright + TS), `framework-template-java/` (RestAssured + JUnit5 + Playwright-Java), `framework-template-python/` (pytest + Playwright + httpx) — project skeletons, all no-Selenium. `COLOR-SCHEME.md`, `BROWSER-ISOLATION.md` — docs.
+(In `odysseus.md`'s lane roster, `atlas`, `ariadne`, `aristarchus`, `tiresias` and `asklepios` form the **Cross** lane; the table above is a flattened by-function view.)
+
+`codex/` — Codex variant of the roster (27 `*.toml` + `*.md` pairs). `framework-template/` (Playwright + TS), `framework-template-java/` (RestAssured + JUnit5 + Playwright-Java), `framework-template-python/` (pytest + Playwright + httpx) — project skeletons, all no-Selenium. `COLOR-SCHEME.md`, `SHARED-DOCTRINE.md`, `BROWSER-ISOLATION.md` — docs.

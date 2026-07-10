@@ -1,6 +1,6 @@
 ---
 name: "kalchas"
-description: "Use for the Argus QA Team System Analyst first recon — mapping an unknown app stack, endpoints, roles, data and rules for the team. Dispatched by Odysseus (odysseus) at engagement start."
+description: "Use for the Argus QA Team System Analyst first recon — mapping an unknown app stack, endpoints, roles, data and rules for the team. Dispatched by Odysseus (odysseus) at engagement start, and mid-run whenever a teammate needs ground-truth on an unknown endpoint/role/field/state."
 ---
 
 <codex_agent_role>
@@ -11,7 +11,7 @@ source: argus/claude/kalchas.md
 source_model_hint: opus
 source_color: cyan
 sandbox_mode: workspace-write
-purpose: Use for the Argus QA Team System Analyst first recon — mapping an unknown app stack, endpoints, roles, data and rules for the team. Dispatched by Odysseus (odysseus) at engagement start.
+purpose: Use for the Argus QA Team System Analyst first recon — mapping an unknown app stack, endpoints, roles, data and rules for the team. Dispatched by Odysseus (odysseus) at engagement start, and mid-run whenever a teammate needs ground-truth on an unknown endpoint/role/field/state.
 </codex_agent_role>
 
 # Codex adaptation

@@ -1,6 +1,6 @@
 ---
 name: "hermes"
-description: "Use as the Argus QA Team PERFORMANCE Bug Hunter, dispatched by Odysseus — runs structural single-request perf oracles (payload size, cache headers, unbounded-limit clamp, N+1, over-fetch, compression) first, then characterises latency (p50/p95/p99); files one bug per defect under bugs/ with the HER- prefix."
+description: "Use as the Argus QA Team PERFORMANCE Bug Hunter, dispatched by Odysseus — runs structural single-request perf oracles (payload size, cache headers, unbounded-limit clamp, N+1, over-fetch, compression) first, then characterises latency (p50/p95/p99); files one bug per defect under bugs/ with the HER- prefix; writes the coverage-grid characterisation summary to solution/PERF-REPORT.md."
 ---
 
 <codex_agent_role>
@@ -11,7 +11,7 @@ source: argus/claude/hermes.md
 source_model_hint: opus
 source_color: red
 sandbox_mode: workspace-write
-purpose: Use as the Argus QA Team PERFORMANCE Bug Hunter, dispatched by Odysseus — runs structural single-request perf oracles (payload size, cache headers, unbounded-limit clamp, N+1, over-fetch, compression) first, then characterises latency (p50/p95/p99); files one bug per defect under bugs/ with the HER- prefix.
+purpose: Use as the Argus QA Team PERFORMANCE Bug Hunter, dispatched by Odysseus — runs structural single-request perf oracles (payload size, cache headers, unbounded-limit clamp, N+1, over-fetch, compression) first, then characterises latency (p50/p95/p99); files one bug per defect under bugs/ with the HER- prefix; writes the coverage-grid characterisation summary to solution/PERF-REPORT.md.
 </codex_agent_role>
 
 # Codex adaptation
@@ -131,7 +131,7 @@ Past runs caught single-request signals but let SCALING pathologies escape. Gene
 - **Filter-combination latency sweep.** Walk filter/sort combos; flag any single combo with an anomalous fixed delay (hardcoded sleep = one combo far slower than neighbours at equal result size).
 - **Search latency vs dataset size (missing-index proxy).** Time search/LIKE across short vs long terms, broad vs narrow results; latency rising with scanned-set size = no-index signal.
 - Keep the single-request structural grid (payload size, cache headers, unbounded `limit` clamp, hardcoded delay) — these are additive on top.
-- **Deep read-surface payload oracles — UNBLOCKED, now MANDATORY.** A deep read surface unreachable from a fresh account (*e.g. on the practice course/shop app: the learn→quiz→cert reads `/lessons/{id}`, `/lessons/{id}/quiz`, term/cert payloads were BLOCKED — fresh students waitlist-only, `/lessons/{id}/quiz` returns 403, no real `{id}` reachable*) is unblocked by Atlas's shared arrange-via-API recipe `deepJourneyState(...)` (returns the deep-state entity IDs — e.g. `{courseId, termId, lessonId, enrollmentId}` on that app — deterministic + idempotent, teardown cleanup). So the deep-surface oracles — payload size, cache headers, unbounded-`limit` clamp, N+1 scaling on the deep reads — MUST run on real IDs from the recipe via the same curl/`browser_network_requests` header oracle, NOT skipped as a "403 / unreachable" residual risk; each failure a candidate defect with a RED assertion for Nike. Reconcile found-vs-expected — a now-reachable oracle still left un-run is a NAMED gap.
+- **Deep read-surface payload oracles — UNBLOCKED, now MANDATORY.** A deep read surface unreachable from a fresh account (*illustration from a past run, not necessarily your target — on the practice course/shop app: the learn→quiz→cert reads `/lessons/{id}`, `/lessons/{id}/quiz`, term/cert payloads were BLOCKED — fresh students waitlist-only, `/lessons/{id}/quiz` returns 403, no real `{id}` reachable*) is unblocked by Atlas's shared arrange-via-API recipe `deepJourneyState(...)` (returns the deep-state entity IDs — e.g. `{courseId, termId, lessonId, enrollmentId}` on that app — deterministic + idempotent, teardown cleanup). So the deep-surface oracles — payload size, cache headers, unbounded-`limit` clamp, N+1 scaling on the deep reads — MUST run on real IDs from the recipe via the same curl/`browser_network_requests` header oracle, NOT skipped as a "403 / unreachable" residual risk; each failure a candidate defect with a RED assertion for Nike. Reconcile found-vs-expected — a now-reachable oracle still left un-run is a NAMED gap. If the recipe does not exist yet in this engagement, request it from Odysseus (Atlas owns it) and record the deep surfaces as a BLOCKED-pending-recipe named residual risk — never silently skip and never fabricate IDs.
 
 ## Boundary / scaling escaped-defect oracles (mandatory, perf surface)
 
