@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { validateCoverageObservations, validateSurfaceInventory } from './coverage.mjs';
 
 export const CONTRACT_VERSION = 1;
 export const CONTRACT_KINDS = Object.freeze([
@@ -7,6 +8,9 @@ export const CONTRACT_KINDS = Object.freeze([
   'evidence-reference',
   'automation-status',
   'final-summary',
+  'surface-inventory',
+  'coverage-observations',
+  'coverage-result',
 ]);
 
 const ID = {
@@ -39,6 +43,9 @@ export function validateCanonicalDocument(kind, document) {
   if (kind === 'evidence-reference') validateEvidenceReference(document, errors);
   if (kind === 'automation-status') validateAutomationStatus(document, errors);
   if (kind === 'final-summary') validateFinalSummary(document, errors);
+  if (kind === 'surface-inventory') errors.push(...validateSurfaceInventory(document));
+  if (kind === 'coverage-observations') errors.push(...validateCoverageObservations(document));
+  if (kind === 'coverage-result') validateCoverageResult(document, errors);
   return [...new Set(errors)];
 }
 
@@ -77,6 +84,17 @@ export function renderFinalSummary(document) {
     `- Skip: ${document.runner.categories.skip}`,
     `- Policy: ${document.runner.categories.policy}`,
     '',
+    ...(document.coverage ? [
+      '## Surface-derived coverage',
+      '',
+      `- Result: ${document.coverage.resultPath}`,
+      `- Discovery completeness: ${formatRatio(document.coverage.discoveryCompleteness)}`,
+      `- Execution coverage: ${formatRatio(document.coverage.executionCoverage)}`,
+      `- Assertion quality: ${formatRatio(document.coverage.assertionQuality)}`,
+      `- Evidence quality: ${formatRatio(document.coverage.evidenceQuality)}`,
+      `- Scoped outcomes: ${document.coverage.scopedOutcomes}`,
+      '',
+    ] : []),
     '## Source contracts',
     '',
     ...document.sourceSchemas.map((source) => `- ${source}`),
@@ -87,6 +105,10 @@ export function renderFinalSummary(document) {
     '',
   ];
   return lines.join('\n');
+}
+
+function formatRatio(value) {
+  return value === null ? 'n/a' : `${Math.round(value * 10000) / 100}%`;
 }
 
 export function stableIdentity(value) {
@@ -141,10 +163,22 @@ function validateFinalSummary(document, errors) {
   if (!object(document.counts) || !['bugs', 'automated', 'evidence'].every((key) => Number.isInteger(document.counts[key]) && document.counts[key] >= 0)) errors.push('counts are invalid');
   if (!list(document.sourceSchemas, (value) => /^argus\/[a-z-]+@1$/.test(value))) errors.push('sourceSchemas are invalid');
   if (!string(document.summary) || !ISO(document.generatedAt) || !ID.lane.test(document.owner ?? '')) errors.push('summary, generatedAt, or owner is invalid');
+  if (document.coverage !== undefined) {
+    const coverage = document.coverage;
+    const ratios = ['discoveryCompleteness', 'executionCoverage', 'assertionQuality', 'evidenceQuality'];
+    if (!object(coverage) || !string(coverage.resultPath) || !ratios.every((key) => coverage[key] === null || (typeof coverage[key] === 'number' && coverage[key] >= 0 && coverage[key] <= 1)) || !Number.isInteger(coverage.scopedOutcomes) || coverage.scopedOutcomes < 0) errors.push('coverage summary is invalid');
+  }
   const runner = document.runner;
   if (!object(runner) || !['baseline', 'defect-evidence', 'candidate-regression', 'full-suite'].includes(runner.mode) || !['pass', 'fail'].includes(runner.status) || ![0, 10, 11, 12, 13, 14, 15].includes(runner.exitCode) || !string(runner.resultPath)) {
     errors.push('runner mode, status, exitCode, or resultPath is invalid');
   } else if (!object(runner.categories) || !['product', 'automation', 'infrastructure', 'skip', 'policy'].every((key) => Number.isInteger(runner.categories[key]) && runner.categories[key] >= 0)) {
     errors.push('runner categories are invalid');
   }
+}
+
+function validateCoverageResult(document, errors) {
+  if (!object(document.discovery) || !object(document.overall) || !object(document.lanes)) errors.push('discovery, overall, and lanes are required');
+  if (!Array.isArray(document.scopedOutcomes) || !object(document.defectOutcomes) || document.defectOutcomes.scoreContribution !== 0) errors.push('scopedOutcomes and defect-neutral outcomes are required');
+  if (!list(document.sourceSchemas, (value) => ['argus/surface-inventory@1', 'argus/coverage-observations@1'].includes(value))) errors.push('coverage sourceSchemas are invalid');
+  if (!ISO(document.generatedAt)) errors.push('generatedAt is invalid');
 }

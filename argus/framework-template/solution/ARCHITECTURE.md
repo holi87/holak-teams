@@ -20,6 +20,10 @@ Top of the risk register — full register with scoring in [`TEST-STRATEGY.md`](
 Playwright + TypeScript, single tool for API (`request` context) and UI (browser): one runner, one report, built-in trace/screenshot/video as bug evidence. API-first + thin UI e2e smoke. <Adjust/justify per target app.>
 
 ## 4. Layers
+Coverage denominators live in `solution/surface-inventory.json`; execution, assertion,
+and evidence observations live in `solution/coverage-observations.json`. Do not use
+universal case-count or defect-count targets.
+
 ```
 src/config/    env.ts          — URLs, accounts, roles (single source of config)
 src/api/       auth.ts         — login + token cache; apiAs(role)

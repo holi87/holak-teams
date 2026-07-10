@@ -12,7 +12,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 
-for kind in bug-ledger lane-plan evidence-reference automation-status final-summary; do
+for kind in bug-ledger lane-plan evidence-reference automation-status surface-inventory coverage-observations coverage-result final-summary; do
   "$CLI" schema validate --kind "$kind" --input "$FIXTURES/valid/$kind.json" >/dev/null
   if "$CLI" schema validate --kind "$kind" --input "$FIXTURES/invalid/$kind.json" >/dev/null 2>&1; then
     fail "invalid $kind fixture unexpectedly passed"
@@ -36,5 +36,6 @@ jq '.engagementId = "schema-fixture"' "$FIXTURES/valid/final-summary.json" >"$WO
 "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/final-summary.json --id summary --input "$WORK/final-summary.json" >/dev/null
 "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/final-summary.json >/dev/null
 grep -Fq 'Source schema: argus/final-summary@1' "$TARGET/solution/FINAL-SUMMARY.md" || fail "rendered summary has no source schema"
+grep -Fq 'Execution coverage: 80%' "$TARGET/solution/FINAL-SUMMARY.md" || fail "rendered summary has no surface-derived coverage"
 
 printf 'PASS  Argus schemas: fixtures, fragment rejection, stable IDs, and source-versioned summary\n'

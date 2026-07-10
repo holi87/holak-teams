@@ -82,6 +82,11 @@ phase:
    delivery work. Submit lane plans, ledgers, evidence, automation status, and final
    summaries only as their versioned JSON documents; use stable identity keys for IDs.
    Load `${CLAUDE_PLUGIN_ROOT}/references/RUNNER-CONTRACT.md` before executing a suite.
+   Load `${CLAUDE_PLUGIN_ROOT}/references/COVERAGE-CONTRACT.md` before discovery. Kalchas
+   must merge `argus/surface-inventory@1` before execution owners contribute
+   `argus/coverage-observations@1`; calculate `argus/coverage-result@1` before reporting.
+   Universal case counts, defect quotas, predicted bug counts, and silently removed
+   inaccessible/untestable surfaces are invalid engagement inputs.
    Use `baseline`, `defect-evidence`, `candidate-regression`, and `full-suite` only for
    their documented purpose; never interpret a known RED as a green regression gate.
 
@@ -143,6 +148,9 @@ remains active, return exactly `ARGUS_SMOKE_OK: argus:kleio,argus:theseus`, and 
    Include the runner mode/result path/exit code and separate product, automation,
    infrastructure, skip, and policy outcomes. An unexpected failure remains a failed
    gate even when known defect evidence exists.
+   Include discovery completeness, per-lane risk-weighted execution coverage, assertion
+   quality, evidence quality, and explicit scoped outcomes from `coverage-result.json`.
+   Defect outcomes stay separate and have zero score contribution.
 
 The user may invoke the alternate main-session form
 `claude --agent argus:odysseus`, but `/argus:run` is the marketplace default because it

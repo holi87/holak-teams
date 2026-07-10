@@ -48,8 +48,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 4184,
-      "sha256": "a8b8b0921ed9fd520f4c54431c7da986bb6e1bb2bae76c703df672607b8ba77c"
+      "bytes": 5373,
+      "sha256": "c82e85fe3590d45be933bc8b8b925a9635965c9ce0561debdf2340e415b5b168"
     },
     {
       "id": "runner-contract",
@@ -61,13 +61,22 @@
       "sha256": "ce30e3c0297b1e711d542bcf3b888f93e43dc7a3b652b1bc2568bce6ff51210f"
     },
     {
+      "id": "coverage-contract",
+      "kind": "reference",
+      "source": "argus/COVERAGE-CONTRACT.md",
+      "destination": "references/COVERAGE-CONTRACT.md",
+      "files": 1,
+      "bytes": 2542,
+      "sha256": "6ac8096a4d6bb45aaa51e5d7c153835c3273a80b91d4f91b10712ddf6d6fa1bf"
+    },
+    {
       "id": "runtime-schemas",
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 17,
-      "bytes": 39465,
-      "sha256": "8f1df21f3176ae89af0cb6134a8501ec120118483f8f75ff6141c2bd33c9da9f"
+      "files": 20,
+      "bytes": 47377,
+      "sha256": "36ffe1e164be3f7c0118c721affc1182df49b7e37d70f37fe6b08442e4877bd6"
     },
     {
       "id": "capability-matrix",
@@ -84,17 +93,17 @@
       "source": "argus/policies",
       "destination": "policies",
       "files": 4,
-      "bytes": 9625,
-      "sha256": "0f49ce23d192ddb2a925b8e2fff61b3b8b8bf462ebaeb3dd8a558e65204473ed"
+      "bytes": 10018,
+      "sha256": "424b272e8179ecebc14e619129ccab765c063a315dffdc6421fdef668e553dfb"
     },
     {
       "id": "runtime-library",
       "kind": "runtime",
       "source": "argus/runtime",
       "destination": "lib",
-      "files": 3,
-      "bytes": 63466,
-      "sha256": "4f933fd8eca6d1c880bf55cf97ed7e64d316d92d54672132fa09f4a6bce53c2a"
+      "files": 4,
+      "bytes": 73936,
+      "sha256": "fd86965ea2044bfaeeb262a7e11dbdf582a6ab58215de5ae0e0eaa3b511f718a"
     },
     {
       "id": "typescript-template",
@@ -102,8 +111,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 48,
-      "bytes": 139219,
-      "sha256": "6429886974e8cae4af509742e8b31d644261123b5c3350244a9ea8306b05b973"
+      "bytes": 136381,
+      "sha256": "3a1face7cf9ddb89d4cf681a76cd1ec0ca0abd58eb9755ec3c1ab5d39e6292cd"
     },
     {
       "id": "java-template",

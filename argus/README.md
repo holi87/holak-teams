@@ -37,6 +37,12 @@ restricted context receives the same explicit preflight error.
 
 ## Packaged runtime assets
 
+Coverage is derived from the discovered target rather than universal test or defect
+counts. `argus-assets coverage validate|calculate` consumes the canonical UI/API/event/data
+surface inventory and execution observations, then emits separate discovery, risk-weighted
+execution, assertion, evidence, scope, and defect-neutral outcome metrics. The installed
+contract is available through `argus-assets path coverage-contract`.
+
 Marketplace installs are self-contained. The plugin ships:
 
 - `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, canonical-contract ownership, and shared doctrine;

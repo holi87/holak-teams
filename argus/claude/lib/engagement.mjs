@@ -67,7 +67,7 @@ export function validateEngagementManifest(manifest) {
   } else {
     const paths = new Set();
     for (const item of policy.canonicalArtifacts) {
-      if (!safeRelative(item?.path) || !validSlug(item?.owner) || !['markdown', 'text', 'json', 'json-document'].includes(item?.format) || (item.schema !== undefined && ![null, 'bug-ledger', 'lane-plan', 'evidence-reference', 'automation-status', 'final-summary'].includes(item.schema)) || (item.schema && item.format !== 'json-document')) {
+      if (!safeRelative(item?.path) || !validSlug(item?.owner) || !['markdown', 'text', 'json', 'json-document'].includes(item?.format) || (item.schema !== undefined && ![null, 'bug-ledger', 'lane-plan', 'evidence-reference', 'automation-status', 'surface-inventory', 'coverage-observations', 'coverage-result', 'final-summary'].includes(item.schema)) || (item.schema && item.format !== 'json-document')) {
         errors.push('canonical artifact path, owner, or format is invalid');
       } else if (paths.has(item.path)) errors.push(`duplicate canonical artifact: ${item.path}`);
       else paths.add(item.path);

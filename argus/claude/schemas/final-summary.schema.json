@@ -15,6 +15,7 @@
         "categories": { "type": "object", "additionalProperties": false, "required": ["product", "automation", "infrastructure", "skip", "policy"], "properties": { "product": { "type": "integer", "minimum": 0 }, "automation": { "type": "integer", "minimum": 0 }, "infrastructure": { "type": "integer", "minimum": 0 }, "skip": { "type": "integer", "minimum": 0 }, "policy": { "type": "integer", "minimum": 0 } } }
       }
     },
+    "coverage": { "type": "object", "additionalProperties": false, "required": ["resultPath", "discoveryCompleteness", "executionCoverage", "assertionQuality", "evidenceQuality", "scopedOutcomes"], "properties": { "resultPath": { "type": "string", "minLength": 1 }, "discoveryCompleteness": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }, "executionCoverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }, "assertionQuality": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }, "evidenceQuality": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }, "scopedOutcomes": { "type": "integer", "minimum": 0 } } },
     "sourceSchemas": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^argus/[a-z-]+@1$" } }, "summary": { "type": "string", "minLength": 1 }, "generatedAt": { "type": "string", "format": "date-time" }
   }
 }

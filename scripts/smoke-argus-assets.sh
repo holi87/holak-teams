@@ -18,6 +18,7 @@ node "$PLUGIN/templates/typescript/scripts/hunt-driver.mjs" --help >/dev/null
 test -f "$PLUGIN/hooks/hooks.json" || fail "plugin does not package hooks/hooks.json"
 jq -e '.assets[] | select(.id == "runtime-schemas")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits canonical schemas"
 jq -e '.assets[] | select(.id == "runner-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits runner contract"
+jq -e '.assets[] | select(.id == "coverage-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits coverage contract"
 jq -e '.hooks.PreToolUse[] | select(.matcher == "Write|Edit|MultiEdit|Bash")' "$PLUGIN/hooks/hooks.json" >/dev/null || fail "plugin hook does not cover direct and shell writes"
 
 if command -v claude >/dev/null 2>&1; then
@@ -88,6 +89,10 @@ cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-t
   "$INSTALLED_PLUGIN/bin/argus-assets" schema validate \
     --kind final-summary --input "$ROOT/scripts/fixtures/argus-schemas/valid/final-summary.json" \
     >/dev/null
+  "$INSTALLED_PLUGIN/bin/argus-assets" coverage validate \
+    --inventory "$ROOT/scripts/fixtures/argus-coverage/surface-inventory.json" \
+    --observations "$ROOT/scripts/fixtures/argus-coverage/coverage-observations.json" \
+    >/dev/null
   allocation="$("$INSTALLED_PLUGIN/bin/argus-assets" engagement allocate \
     --manifest "$WORK_DIR/preflight-target/ai_agents_internal/engagement.json" --lane kleio)"
   lease="$(jq -r .token <<<"$allocation")"
@@ -106,7 +111,10 @@ cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-t
     fail "packaged app-source guard allowed an application-source write"
   fi
   SMOKE=1 node typescript/scripts/bug-coverage.mjs >/dev/null 2>&1
-  SMOKE=1 node typescript/scripts/baseline-coverage.mjs >/dev/null 2>&1
+  cp "$ROOT/scripts/fixtures/argus-coverage/surface-inventory.json" typescript/solution/surface-inventory.json
+  cp "$ROOT/scripts/fixtures/argus-coverage/coverage-observations.json" typescript/solution/coverage-observations.json
+  ARGUS_ASSETS="$INSTALLED_PLUGIN/bin/argus-assets" node typescript/scripts/baseline-coverage.mjs >/dev/null
+  jq -e '."$schema" == "argus/coverage-result@1" and .defectOutcomes.scoreContribution == 0' typescript/solution/coverage-result.json >/dev/null
   bash -n typescript/run-tests.sh java/run-tests.sh python/run-tests.sh
   for template in typescript java python; do
     test -x "$template/scripts/runner-contract.sh" || fail "$template template omitted runner contract evaluator"

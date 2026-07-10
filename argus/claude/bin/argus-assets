@@ -51,6 +51,7 @@ import {
   writeFragment,
 } from '../lib/engagement.mjs';
 import { CONTRACT_KINDS, schemaId, validateCanonicalDocument } from '../lib/contracts.mjs';
+import { calculateCoverage, validateCoverageObservations, validateSurfaceInventory } from '../lib/coverage.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
@@ -96,6 +97,9 @@ switch (command) {
   case 'schema':
     process.exitCode = schemaCommand(args);
     break;
+  case 'coverage':
+    process.exitCode = coverageCommand(args);
+    break;
   case 'guard':
     process.exitCode = guardCommand(args);
     break;
@@ -125,6 +129,7 @@ Usage:
   argus-assets authorization check --manifest <path> --lane <slug> --action <action> --target <target> [options]
   argus-assets engagement <init|validate|allocate|status|claim|release|fragment|merge|id|checkpoint|barrier|cleanup> [options]
   argus-assets schema <list|validate> [options]
+  argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
   argus-assets copy-template <typescript|java|python> <empty-destination>
@@ -167,6 +172,37 @@ Engagement coordination:
 
 Templates are copied only to a new or empty directory. In ADAPT mode, copy to a
 temporary directory, diff against the target's existing harness, and merge explicitly.`);
+}
+
+function coverageCommand(args) {
+  const [operation, ...rest] = args;
+  if (!['validate', 'calculate'].includes(operation)) fail('usage: argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]');
+  const allowed = operation === 'calculate' ? new Set(['--inventory', '--observations', '--output']) : new Set(['--inventory', '--observations']);
+  const options = parseNamedOptions(rest, allowed);
+  requireOptions(options, ['inventory', 'observations'], `coverage ${operation}`);
+  let inventory;
+  let observations;
+  try {
+    inventory = JSON.parse(readTextInput(options.inventory));
+    observations = JSON.parse(readTextInput(options.observations));
+  } catch (error) {
+    fail(`coverage ${operation}: input is not valid JSON: ${error.message}`);
+  }
+  const errors = [...validateSurfaceInventory(inventory), ...validateCoverageObservations(observations, inventory)];
+  if (errors.length) fail(`coverage ${operation}: ${errors.join('; ')}`);
+  if (operation === 'validate') {
+    console.log(`PASS  coverage inventory=${options.inventory} observations=${options.observations}`);
+    return 0;
+  }
+  const output = options.output ?? '-';
+  const content = `${JSON.stringify(calculateCoverage(inventory, observations), null, 2)}\n`;
+  if (output === '-') process.stdout.write(content);
+  else {
+    mkdirSync(dirname(resolve(output)), { recursive: true });
+    writeFileSync(resolve(output), content);
+    console.log(`COVERAGE  calculated output=${resolve(output)}`);
+  }
+  return 0;
 }
 
 function schemaCommand(args) {

@@ -18,6 +18,7 @@
 #   j) every lane shares the packaged immutability, ownership, barrier, and cleanup runtime
 #   k) canonical QA contracts reject malformed fixtures and render a source-versioned summary
 #   l) all framework templates share explicit runner modes, lifecycle, categories, and exits
+#   m) coverage is derived from discovered target surfaces and defects cannot improve it
 #
 # Exit code: 0 when every check passes, 1 otherwise.
 
@@ -214,6 +215,12 @@ if "$ROOT/scripts/smoke-argus-runner-contract.sh"; then
   pass "[argus] (l) runner modes, defect lifecycle, outcome categories, and exit codes"
 else
   fail "[argus] (l) runner outcome contract"
+fi
+
+if "$ROOT/scripts/smoke-argus-coverage.sh"; then
+  pass "[argus] (m) target-derived, risk-weighted coverage and defect-neutral quality metrics"
+else
+  fail "[argus] (m) surface-derived coverage contract"
 fi
 
 echo ""

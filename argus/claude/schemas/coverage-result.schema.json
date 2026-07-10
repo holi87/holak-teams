@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/coverage-result.schema.json",
+  "title": "Argus surface-derived coverage result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "engagementId", "sourceSchemas", "discovery", "overall", "lanes", "scopedOutcomes", "defectOutcomes", "generatedAt"],
+  "properties": {
+    "$schema": { "const": "argus/coverage-result@1" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "sourceSchemas": { "const": ["argus/surface-inventory@1", "argus/coverage-observations@1"] },
+    "discovery": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidates", "characterized", "completeness"],
+      "properties": { "candidates": { "type": "integer", "minimum": 1 }, "characterized": { "type": "integer", "minimum": 0 }, "completeness": { "$ref": "#/$defs/ratio" } }
+    },
+    "overall": { "$ref": "#/$defs/metric" },
+    "lanes": { "type": "object", "additionalProperties": { "$ref": "#/$defs/metric" } },
+    "scopedOutcomes": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["surfaceId", "accessibility", "reason", "evidenceIds"],
+        "properties": { "surfaceId": { "type": "string", "pattern": "^SRF-[A-Z0-9][A-Z0-9-]*$" }, "accessibility": { "enum": ["inaccessible", "untestable"] }, "reason": { "type": "string", "minLength": 1 }, "evidenceIds": { "type": "array", "items": { "type": "string", "pattern": "^EVD-[0-9]{4}$" } } }
+      }
+    },
+    "defectOutcomes": {
+      "type": "object", "additionalProperties": false,
+      "required": ["uniqueConfirmed", "duplicate", "unsupported", "scoreContribution"],
+      "properties": { "uniqueConfirmed": { "type": "integer", "minimum": 0 }, "duplicate": { "type": "integer", "minimum": 0 }, "unsupported": { "type": "integer", "minimum": 0 }, "scoreContribution": { "const": 0 } }
+    },
+    "generatedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "ratio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "metric": {
+      "type": "object", "additionalProperties": false,
+      "required": ["discoveredItems", "testableItems", "scopedItems", "riskWeight", "executionCoverage", "assertionQuality", "evidenceQuality"],
+      "properties": {
+        "discoveredItems": { "type": "integer", "minimum": 0 }, "testableItems": { "type": "integer", "minimum": 0 }, "scopedItems": { "type": "integer", "minimum": 0 },
+        "riskWeight": { "type": "object", "additionalProperties": false, "required": ["denominator", "executed", "asserted", "evidenced"], "properties": { "denominator": { "type": "integer", "minimum": 0 }, "executed": { "type": "integer", "minimum": 0 }, "asserted": { "type": "integer", "minimum": 0 }, "evidenced": { "type": "integer", "minimum": 0 } } },
+        "executionCoverage": { "$ref": "#/$defs/ratio" }, "assertionQuality": { "$ref": "#/$defs/ratio" }, "evidenceQuality": { "$ref": "#/$defs/ratio" }
+      }
+    }
+  }
+}
