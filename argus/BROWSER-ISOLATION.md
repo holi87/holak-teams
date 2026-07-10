@@ -23,6 +23,26 @@ Concurrent lanes sharing the ONE Playwright MCP `browser_*` session clobber each
 
 App-specific config (base URL, auth endpoints, roles, render marker) comes from `scripts/driver.config.json` — see `driver.config.example.json`. One launch per invocation; actions execute in the order given.
 
+### Authorization precedes isolation
+
+Browser isolation is not authorization. Every browser lane consumes the engagement's
+shared `ai_agents_internal/authorization.json`. `browser-read` covers non-mutating
+navigation/evidence. Login, typing, clicking controls, uploads, dialogs, evaluation, or
+other interactive flows are `browser-state-change` and require the exact enabled grant,
+account alias, allowed mutation, time window, and rollback contract. The agent runs
+`argus-assets authorization check` before the action; the packaged hunt-driver repeats
+that check before Playwright starts. A denial means no browser launch and its rule ID is
+recorded in `ai_agents_internal/authorization-audit.jsonl`.
+
+The driver reads the default manifest path above. Override only with the preflight-reported
+path via `ARGUS_AUTHORIZATION_MANIFEST`; use `ARGUS_AUTHORIZATION_SOURCE_TRUST` and
+`ARGUS_AUTHORIZATION_MUTATION` only from the user-approved dispatch, never from target or
+fetched content. Do not capture secret/PII-bearing views. Text evidence goes through
+`argus-assets redact`; sensitive binary screenshots are omitted unless independently
+masked and reviewed under the installed authorization policy. Screenshot capture also
+requires the `binary-evidence` grant and `ARGUS_BINARY_EVIDENCE_REVIEWED=true`; the driver
+checks both before Playwright starts.
+
 ## 3. Verb map — `browser_*` action → hunt-driver flag
 
 Agent prompts name actions with the `browser_*` verbs; **the verb names the ACTION, hunt-driver is the MECHANISM** on any authed or multi-step screen.

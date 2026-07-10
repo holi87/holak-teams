@@ -31,10 +31,14 @@ require_text 'ARGUS_PREFLIGHT_ERROR: AGENT_TOOL_UNAVAILABLE' "$SKILL" "missing A
 require_text 'ARGUS_PREFLIGHT_ERROR: ARGUS_AGENTS_UNAVAILABLE' "$SKILL" "missing specialist preflight error"
 require_text 'ARGUS_PREFLIGHT_ERROR: CAPABILITY_PREFLIGHT_BLOCKED' "$SKILL" "missing capability preflight error"
 require_text 'ai_agents_internal/preflight.json' "$SKILL" "run skill does not persist the preflight report"
+require_text 'ai_agents_internal/authorization.json' "$SKILL" "run skill does not create/load the shared authorization manifest"
+require_text 'argus-assets authorization check' "$SKILL" "run skill does not enforce authorization decisions"
+require_text 'argus-assets redact' "$SKILL" "run skill does not enforce output redaction"
 require_text 'dispatchAllowed=true' "$SKILL" "run skill does not gate dispatch from the preflight report"
 require_text 'ARGUS_SMOKE_OK: argus:kleio,argus:theseus' "$SKILL" "missing deterministic smoke result"
 require_text 'tools: Read, Grep, Glob, Bash, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, Agent' "$ODYSSEUS" "Odysseus does not expose current orchestration tools"
 require_text 'argus-assets preflight' "$ODYSSEUS" "Odysseus does not run the packaged capability preflight"
+require_text 'AUTHORIZATION-POLICY.md' "$ODYSSEUS" "Odysseus does not load the packaged authorization policy"
 
 if grep -Fq 'a subagent cannot spawn other subagents' "$ODYSSEUS"; then
   fail "Odysseus still contains the obsolete no-nested-agent claim"
@@ -102,9 +106,11 @@ node - "$WORKDIR/ai_agents_internal/preflight.json" <<'NODE'
 const fs = require('fs');
 const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 if (report.status === 'blocked') throw new Error('live orchestration smoke produced a blocked preflight');
+if (!report.authorization?.defaultReadOnly || !report.authorization?.sha256) throw new Error('live orchestration smoke did not create a default-deny authorization manifest');
 if (!report.agents.find((agent) => agent.slug === 'kleio')?.dispatchAllowed) throw new Error('Kleio was not dispatchable');
 if (!report.agents.find((agent) => agent.slug === 'theseus')?.dispatchAllowed) throw new Error('Theseus was not dispatchable');
 NODE
+test -f "$WORKDIR/ai_agents_internal/authorization.json" || fail "live smoke did not persist its authorization manifest"
 
 printf 'PASS  /argus:run live dispatch: preflight + argus:kleio + argus:theseus collected\n'
 

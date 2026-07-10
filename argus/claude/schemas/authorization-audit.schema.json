@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/authorization-audit.schema.json",
+  "title": "Argus authorization audit event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "timestamp", "engagementId", "lane", "action", "decision",
+    "ruleId", "reason", "target", "manifestSha256", "sourceTrust"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "lane": { "type": "string", "minLength": 1 },
+    "action": { "type": "string", "minLength": 1 },
+    "decision": { "enum": ["allow", "deny"] },
+    "ruleId": { "type": "string", "pattern": "^AUTH-[A-Z0-9-]+$" },
+    "reason": { "type": "string", "minLength": 1 },
+    "target": { "type": "string", "minLength": 1 },
+    "resource": { "type": ["string", "null"] },
+    "account": { "type": ["string", "null"] },
+    "namespace": { "type": ["string", "null"] },
+    "mutation": { "type": ["string", "null"] },
+    "manifestSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "sourceTrust": { "enum": ["manifest", "user", "untrusted", "invalid"] }
+  }
+}

@@ -64,6 +64,7 @@
  *     --viewport 375x812 --goto /moje-kursy \
  *     --shot out/mycourses-375.png --snapshot --console --net
  */
+import { execFileSync } from 'node:child_process';
 import { readFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,7 +91,9 @@ Core actions:
 
 Configuration:
   Copy scripts/driver.config.example.json to scripts/driver.config.json and
-  fill it from recon. Set DRIVER_CONFIG to use another path.`);
+  fill it from recon. Set DRIVER_CONFIG to use another path.
+  The driver requires the shared authorization manifest at
+  ai_agents_internal/authorization.json (override with ARGUS_AUTHORIZATION_MANIFEST).`);
   process.exit(0);
 }
 let agent = null;
@@ -153,6 +156,49 @@ const BASE = process.env.QCA_BASE_URL ?? cfg.baseUrl;
 const ACCESS_KEY = cfg.tokenStorageKey ?? 'access-token';
 const REFRESH_KEY = cfg.refreshTokenStorageKey ?? null;
 const POST_AUTH_MARKER = cfg.postAuthMarker ?? null;
+
+// ---- shared authorization gate ------------------------------------------
+// Any interactive verb is treated as a target state change. This check is
+// defense in depth: the agent must check before calling the driver, and the
+// driver independently checks again before Playwright starts.
+const interactiveActions = new Set(['eval', 'click', 'type', 'press', 'hover', 'select', 'upload', 'dialog']);
+const authorizationAction = actions.some(([action]) => interactiveActions.has(action))
+  ? 'browser-state-change'
+  : 'browser-read';
+const authorizationManifest = process.env.ARGUS_AUTHORIZATION_MANIFEST ?? join(ROOT, 'ai_agents_internal', 'authorization.json');
+const authorizationArgs = [
+  'authorization', 'check',
+  '--manifest', authorizationManifest,
+  '--lane', agent,
+  '--action', authorizationAction,
+  '--target', BASE,
+  '--source-trust', process.env.ARGUS_AUTHORIZATION_SOURCE_TRUST ?? 'manifest',
+];
+if (authorizationAction === 'browser-state-change') {
+  authorizationArgs.push('--account', role ?? 'anon');
+  authorizationArgs.push('--mutation', process.env.ARGUS_AUTHORIZATION_MUTATION ?? 'browser:state-change');
+}
+try {
+  execFileSync('argus-assets', authorizationArgs, { stdio: 'inherit' });
+} catch {
+  fail(`authorization denied ${authorizationAction}; inspect the shared authorization audit and do not launch the browser`);
+}
+if (actions.some(([action]) => action === 'shot')) {
+  const binaryArgs = [
+    'authorization', 'check',
+    '--manifest', authorizationManifest,
+    '--lane', agent,
+    '--action', 'binary-evidence',
+    '--target', BASE,
+    '--source-trust', process.env.ARGUS_AUTHORIZATION_SOURCE_TRUST ?? 'manifest',
+    '--binary-reviewed', process.env.ARGUS_BINARY_EVIDENCE_REVIEWED ?? 'false',
+  ];
+  try {
+    execFileSync('argus-assets', binaryArgs, { stdio: 'inherit' });
+  } catch {
+    fail('authorization denied binary-evidence; do not capture the screenshot until the view is synthetic/masked and independently reviewed');
+  }
+}
 const { chromium } = await import('playwright');
 
 // ---- token mint (API login) ---------------------------------------------
@@ -173,7 +219,7 @@ const profileDir = join(ROOT, '.pw-profiles', agent);
 if (fresh && existsSync(profileDir)) rmSync(profileDir, { recursive: true, force: true });
 mkdirSync(profileDir, { recursive: true });
 
-const log = (tag, ...rest) => console.log(`[${agent}${role ? '/' + role : ''}] ${tag}`, ...rest);
+const log = (tag, ...rest) => safePrint(`[${agent}${role ? '/' + role : ''}] ${tag} ${rest.map(formatLogValue).join(' ')}`.trim());
 
 const ctx = await chromium.launchPersistentContext(profileDir, {
   headless: !headed,
@@ -286,7 +332,7 @@ try {
       case 'type': {
         const [sel, ...rest] = val.split('::');
         await page.locator(sel).first().fill(rest.join('::'));
-        log('type', `${sel} <- ${rest.join('::')}`);
+        log('type', `${sel} <- [REDACTED:INPUT]`);
         break;
       }
       case 'press':
@@ -327,16 +373,16 @@ try {
         if (!navigated) log('warn', 'snapshot before any --goto');
         const tree = await page.accessibility.snapshot({ interestingOnly: true });
         log('snapshot (a11y tree):');
-        console.log(JSON.stringify(tree, null, 1));
+        safePrint(JSON.stringify(tree, null, 1));
         break;
       }
       case 'console':
         log('console messages:');
-        console.log(consoleMsgs.length ? consoleMsgs.join('\n') : '(none)');
+        safePrint(consoleMsgs.length ? consoleMsgs.join('\n') : '(none)');
         break;
       case 'net':
         log('network:');
-        console.log(netReqs.length ? netReqs.slice(-80).join('\n') : '(none)');
+        safePrint(netReqs.length ? netReqs.slice(-80).join('\n') : '(none)');
         break;
       case 'whoami': {
         const apiCtx = ctx.request;
@@ -357,6 +403,31 @@ function dig(obj, path) {
   return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 }
 function fail(msg) {
-  console.error('hunt-driver ERROR:', msg);
+  console.error('hunt-driver ERROR:', redactForConsole(msg));
   process.exit(2);
+}
+
+function safePrint(value) {
+  process.stdout.write(`${redactForConsole(value)}\n`);
+}
+
+function redactForConsole(value) {
+  try {
+    return execFileSync('argus-assets', ['redact', '--input', '-', '--output', '-'], {
+      input: String(value),
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trimEnd();
+  } catch {
+    return '[OUTPUT SUPPRESSED: REDACTION UNAVAILABLE]';
+  }
+}
+
+function formatLogValue(value) {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '[UNSERIALIZABLE]';
+  }
 }

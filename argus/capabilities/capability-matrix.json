@@ -24,8 +24,16 @@
   },
   "orchestration": {
     "requiredTools": ["Agent", "Read", "Bash"],
-    "requiredAssets": ["capability-matrix", "runtime-schemas"],
+    "requiredAssets": [
+      "authorization-policies",
+      "authorization-policy",
+      "capability-matrix",
+      "runtime-library",
+      "runtime-schemas"
+    ],
     "artifactPaths": [
+      "ai_agents_internal/authorization.json",
+      "ai_agents_internal/authorization-audit.jsonl",
       "ai_agents_internal/preflight.json",
       "solution/",
       "bugs/"
@@ -81,6 +89,7 @@
       "lane": "security-automation",
       "modes": ["A", "C", "D"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "riskActions": ["security-passive", "security-active", "persistent-mutation"],
       "optionalCapabilities": ["context7"],
       "artifactPaths": ["tests/security/"]
     },
@@ -90,6 +99,7 @@
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
       "requiredCapabilities": ["browser-runtime"],
+      "riskActions": ["browser-read", "browser-state-change", "binary-evidence"],
       "optionalCapabilities": ["playwright-mcp"],
       "artifactPaths": ["bugs/ANG-*"]
     },
@@ -98,6 +108,7 @@
       "lane": "journey-hunt",
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "riskActions": ["browser-read", "browser-state-change", "binary-evidence", "persistent-mutation"],
       "optionalCapabilities": ["browser-runtime", "playwright-mcp"],
       "artifactPaths": ["bugs/ARI-*", "solution/STATE_MODEL.md"]
     },
@@ -122,6 +133,7 @@
       "lane": "api-hunt",
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "riskActions": ["read", "persistent-mutation"],
       "optionalCapabilities": ["playwright-mcp"],
       "artifactPaths": ["bugs/ATA-*"]
     },
@@ -139,6 +151,7 @@
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
       "requiredCapabilities": ["db-access"],
+      "riskActions": ["database-read"],
       "optionalCapabilities": ["playwright-mcp"],
       "artifactPaths": ["bugs/CHA-*"]
     },
@@ -148,6 +161,7 @@
       "modes": ["A", "C", "D"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
       "requiredCapabilities": ["browser-runtime"],
+      "riskActions": ["browser-read", "browser-state-change", "binary-evidence", "persistent-mutation"],
       "optionalCapabilities": ["context7", "playwright-mcp"],
       "artifactPaths": ["tests/ui/"]
     },
@@ -156,6 +170,7 @@
       "lane": "performance-hunt",
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "riskActions": ["read", "load"],
       "optionalCapabilities": ["playwright-mcp"],
       "artifactPaths": ["bugs/HER-*", "solution/PERF-REPORT.md"]
     },
@@ -164,6 +179,7 @@
       "lane": "recon",
       "modes": ["A", "B", "C", "D"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "riskActions": ["browser-read", "browser-state-change", "binary-evidence"],
       "optionalCapabilities": ["browser-runtime", "playwright-mcp"],
       "artifactPaths": ["ai_agents_internal/recon/"]
     },
@@ -180,6 +196,7 @@
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
       "requiredCapabilities": ["browser-runtime"],
+      "riskActions": ["browser-read", "browser-state-change", "binary-evidence"],
       "optionalCapabilities": ["playwright-mcp"],
       "artifactPaths": ["bugs/LYN-*"]
     },
@@ -203,6 +220,7 @@
       "modes": ["A", "C", "D"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
       "requiredCapabilities": ["db-access"],
+      "riskActions": ["database-read", "persistent-mutation"],
       "optionalCapabilities": ["context7"],
       "artifactPaths": ["tests/db/"]
     },
@@ -211,6 +229,7 @@
       "lane": "performance-resilience-automation",
       "modes": ["A", "C", "D"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "riskActions": ["read", "load", "chaos", "persistent-mutation"],
       "optionalCapabilities": ["context7"],
       "artifactPaths": ["tests/perf/", "tests/resilience/"]
     },
@@ -227,6 +246,7 @@
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
       "requiredCapabilities": ["browser-runtime"],
+      "riskActions": ["browser-read", "browser-state-change", "binary-evidence"],
       "optionalCapabilities": ["playwright-mcp"],
       "artifactPaths": ["bugs/ORI-*"]
     },
@@ -236,6 +256,7 @@
       "modes": ["A", "C", "D"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
       "requiredCapabilities": ["browser-runtime"],
+      "riskActions": ["browser-read", "browser-state-change", "binary-evidence"],
       "optionalCapabilities": ["playwright-mcp"],
       "artifactPaths": ["solution/paths/ui-*.md"]
     },
@@ -244,6 +265,7 @@
       "lane": "security-hunt",
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "riskActions": ["security-passive", "security-active"],
       "optionalCapabilities": ["playwright-mcp"],
       "artifactPaths": ["bugs/PER-*"]
     },
@@ -261,6 +283,7 @@
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
       "requiredCapabilities": ["non-rest-surface"],
+      "riskActions": ["security-passive", "security-active", "persistent-mutation"],
       "optionalCapabilities": ["playwright-mcp"],
       "artifactPaths": ["bugs/PRO-*"]
     },
@@ -269,6 +292,7 @@
       "lane": "api-automation",
       "modes": ["A", "C", "D"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "riskActions": ["read", "persistent-mutation"],
       "optionalCapabilities": ["context7"],
       "artifactPaths": ["tests/api/"]
     },
@@ -285,6 +309,7 @@
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash"],
       "requiredCapabilities": ["source-access"],
+      "riskActions": ["security-passive"],
       "artifactPaths": []
     },
     {
@@ -292,6 +317,7 @@
       "lane": "resilience-hunt",
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "riskActions": ["read", "chaos"],
       "optionalCapabilities": ["playwright-mcp"],
       "artifactPaths": ["bugs/TYC-*", "solution/RESILIENCE-REPORT.md"]
     }

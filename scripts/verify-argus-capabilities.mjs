@@ -13,6 +13,15 @@ const LEGACY_PROMPT_PATTERNS = [
   { pattern: /`TodoWrite`|\bTodoWrite tool\b/, label: 'TodoWrite' },
   { pattern: /`Task` tool|\bTask tool\b/, label: 'Task tool' },
 ];
+const AUTHORIZATION_ACTIONS = new Set([
+  'binary-evidence', 'browser-read', 'browser-state-change', 'chaos', 'database-read', 'database-write',
+  'destructive', 'load', 'persistent-mutation', 'read', 'security-active', 'security-passive',
+]);
+const REQUIRED_AUTHORIZATION_AGENTS = new Set([
+  'aegis', 'antigone', 'ariadne', 'atalanta', 'charon', 'daidalos', 'hermes',
+  'kalchas', 'lynceus', 'mnemosyne', 'nike', 'orion', 'penelope', 'perseus',
+  'proteus', 'talos', 'tiresias', 'tyche',
+]);
 
 const matrix = readJson(MATRIX_PATH);
 assert(matrix.schemaVersion === 1, 'capability matrix schemaVersion must be 1');
@@ -30,10 +39,17 @@ for (const agent of matrix.agents) {
   for (const tool of agent.requiredTools) {
     assert(supported.has(tool), `${agent.slug} requires unsupported built-in tool: ${tool}`);
   }
+  for (const action of agent.riskActions ?? []) {
+    assert(AUTHORIZATION_ACTIONS.has(action), `${agent.slug} references unknown authorization action: ${action}`);
+  }
   for (const path of agent.artifactPaths) {
     assert(!path.startsWith('/') && !path.split('/').includes('..'), `${agent.slug} artifact path escapes the engagement root: ${path}`);
   }
 }
+
+const contractedAuthorizationAgents = new Set(matrix.agents.filter((agent) => (agent.riskActions ?? []).length > 0).map((agent) => agent.slug));
+for (const slug of REQUIRED_AUTHORIZATION_AGENTS) assert(contractedAuthorizationAgents.has(slug), `risky agent has no shared authorization contract: ${slug}`);
+for (const slug of contractedAuthorizationAgents) assert(REQUIRED_AUTHORIZATION_AGENTS.has(slug), `unexpected authorization agent requires review: ${slug}`);
 
 for (const tool of matrix.orchestration.requiredTools) {
   assert(supported.has(tool), `orchestration requires unsupported built-in tool: ${tool}`);
@@ -73,6 +89,13 @@ for (const name of agentFiles) {
   const hasPlaywright = tools.some((tool) => tool.startsWith('mcp__plugin_playwright_playwright__'));
   assert(!hasContext7 || (contract.optionalCapabilities ?? []).includes('context7'), `${name} exposes Context7 without a context7 fallback contract`);
   assert(!hasPlaywright || (contract.optionalCapabilities ?? []).includes('playwright-mcp'), `${name} exposes Playwright MCP without a playwright-mcp fallback contract`);
+  assert(text.includes('argus-assets redact'), `${name} does not enforce the shared evidence redactor`);
+  assert(text.includes('${CLAUDE_PLUGIN_ROOT}/references/AUTHORIZATION-POLICY.md'), `${name} does not reference the packaged authorization policy`);
+
+  if ((contract.riskActions ?? []).length > 0) {
+    assert(text.includes('## Authorization Gate (mandatory)'), `${name} has risk actions but no inline authorization gate`);
+    assert(text.includes('argus-assets authorization check'), `${name} does not use the shared authorization evaluator`);
+  }
 
   for (const legacy of LEGACY_PROMPT_PATTERNS) {
     assert(!legacy.pattern.test(text), `${name} prompt still references legacy ${legacy.label}`);

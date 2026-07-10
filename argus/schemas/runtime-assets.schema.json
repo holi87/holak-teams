@@ -28,9 +28,9 @@
         "required": ["id", "kind", "source", "destination"],
         "properties": {
           "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
-          "kind": { "enum": ["capabilities", "reference", "schemas", "template"] },
+          "kind": { "enum": ["capabilities", "policies", "reference", "runtime", "schemas", "template"] },
           "source": { "type": "string", "pattern": "^argus/" },
-          "destination": { "type": "string", "pattern": "^(capabilities|references|schemas|templates)(/|$)" },
+          "destination": { "type": "string", "pattern": "^(capabilities|lib|policies|references|schemas|templates)(/|$)" },
           "files": { "type": "integer", "minimum": 1 },
           "bytes": { "type": "integer", "minimum": 1 },
           "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }

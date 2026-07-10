@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/authorization-manifest.schema.json",
+  "title": "Argus authorization manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "engagementId", "target", "accounts", "dataBoundaries",
+    "allowedMutations", "prohibitedActions", "rateLimits", "timeWindows",
+    "actionGrants", "redaction", "untrustedContent", "rollback", "escalation", "audit"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identifiers", "environment", "productionLike"],
+      "properties": {
+        "identifiers": { "$ref": "#/$defs/nonEmptyStringList" },
+        "environment": { "enum": ["unknown", "development", "test", "staging", "production"] },
+        "productionLike": { "type": ["boolean", "null"] }
+      }
+    },
+    "accounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowedAliases", "syntheticOnly"],
+      "properties": {
+        "allowedAliases": { "$ref": "#/$defs/stringList" },
+        "syntheticOnly": { "type": "boolean" }
+      }
+    },
+    "dataBoundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowedNamespaces", "prohibitedClassifications", "syntheticOnly"],
+      "properties": {
+        "allowedNamespaces": { "$ref": "#/$defs/stringList" },
+        "prohibitedClassifications": { "$ref": "#/$defs/stringList" },
+        "syntheticOnly": { "type": "boolean" }
+      }
+    },
+    "allowedMutations": { "$ref": "#/$defs/stringList" },
+    "prohibitedActions": { "$ref": "#/$defs/nonEmptyStringList" },
+    "rateLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestsPerSecond", "maxConcurrent", "maxTotalRequests", "maxDurationSeconds"],
+      "properties": {
+        "requestsPerSecond": { "type": "number", "exclusiveMinimum": 0 },
+        "maxConcurrent": { "type": "integer", "minimum": 1 },
+        "maxTotalRequests": { "type": "integer", "minimum": 1 },
+        "maxDurationSeconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "timeWindows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["startsAt", "endsAt"],
+        "properties": {
+          "startsAt": { "type": "string", "format": "date-time" },
+          "endsAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "actionGrants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binary-evidence", "browser-state-change", "chaos", "database-write", "destructive",
+        "load", "persistent-mutation", "security-active"
+      ],
+      "properties": {
+        "binary-evidence": { "$ref": "#/$defs/actionGrant" },
+        "browser-state-change": { "$ref": "#/$defs/actionGrant" },
+        "chaos": { "$ref": "#/$defs/actionGrant" },
+        "database-write": { "$ref": "#/$defs/actionGrant" },
+        "destructive": { "$ref": "#/$defs/actionGrant" },
+        "load": { "$ref": "#/$defs/actionGrant" },
+        "persistent-mutation": { "$ref": "#/$defs/actionGrant" },
+        "security-active": { "$ref": "#/$defs/actionGrant" }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredFor", "binaryEvidencePolicy", "replacement"],
+      "properties": {
+        "requiredFor": { "$ref": "#/$defs/nonEmptyStringList" },
+        "binaryEvidencePolicy": { "const": "deny-unless-reviewed" },
+        "replacement": { "type": "string", "minLength": 1 }
+      }
+    },
+    "untrustedContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sources", "mayAuthorizeActions", "mayModifyManifest"],
+      "properties": {
+        "sources": { "$ref": "#/$defs/nonEmptyStringList" },
+        "mayAuthorizeActions": { "const": false },
+        "mayModifyManifest": { "const": false }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredFor", "procedure", "verification"],
+      "properties": {
+        "requiredFor": { "$ref": "#/$defs/nonEmptyStringList" },
+        "procedure": { "type": ["string", "null"] },
+        "verification": { "type": ["string", "null"] }
+      }
+    },
+    "escalation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["abortOn", "contact"],
+      "properties": {
+        "abortOn": { "$ref": "#/$defs/nonEmptyStringList" },
+        "contact": { "type": ["string", "null"] }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.jsonl$" }
+      }
+    }
+  },
+  "$defs": {
+    "stringList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "nonEmptyStringList": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "actionGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "productionOverride", "approvedBy", "approvedAt", "expiresAt", "reason"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "productionOverride": { "type": "boolean" },
+        "approvedBy": { "type": ["string", "null"] },
+        "approvedAt": { "type": ["string", "null"], "format": "date-time" },
+        "expiresAt": { "type": ["string", "null"], "format": "date-time" },
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

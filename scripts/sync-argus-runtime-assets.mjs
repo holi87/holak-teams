@@ -73,8 +73,8 @@ function validateSourceManifest(manifest) {
     if (!asset.id || ids.has(asset.id)) fail(`duplicate or missing asset id: ${asset.id ?? '(missing)'}`);
     ids.add(asset.id);
     if (!asset.source?.startsWith('argus/')) fail(`asset ${asset.id} source must stay under argus/`);
-    if (!/^(capabilities|references|schemas|templates)(?:\/|$)/.test(asset.destination ?? '')) {
-      fail(`asset ${asset.id} destination must stay under capabilities/, references/, schemas/, or templates/`);
+    if (!/^(capabilities|lib|policies|references|schemas|templates)(?:\/|$)/.test(asset.destination ?? '')) {
+      fail(`asset ${asset.id} destination must stay under capabilities/, lib/, policies/, references/, schemas/, or templates/`);
     }
     if (destinations.has(asset.destination)) fail(`duplicate asset destination: ${asset.destination}`);
     destinations.add(asset.destination);

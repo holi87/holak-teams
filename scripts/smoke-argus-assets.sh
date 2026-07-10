@@ -58,12 +58,24 @@ fi
 mkdir "$WORK_DIR/driver-target"
 (cd "$WORK_DIR" && "$INSTALLED_PLUGIN/bin/argus-assets" copy-browser-driver "$WORK_DIR/driver-target")
 mkdir "$WORK_DIR/preflight-target"
+mkdir "$WORK_DIR/preflight-target/ai_agents_internal"
+cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-target/ai_agents_internal/authorization.json"
 (
   cd "$WORK_DIR"
   "$INSTALLED_PLUGIN/bin/argus-assets" preflight \
     --target "$WORK_DIR/preflight-target" \
     --mode A \
+    --authorization "$WORK_DIR/preflight-target/ai_agents_internal/authorization.json" \
     --profile "$ROOT/scripts/fixtures/argus-preflight/full.json" \
+    >/dev/null
+  "$INSTALLED_PLUGIN/bin/argus-assets" authorization check \
+    --manifest "$WORK_DIR/preflight-target/ai_agents_internal/authorization.json" \
+    --lane hermes --action load --target "$WORK_DIR/preflight-target" \
+    --source-trust user --rate 1 --concurrency 1 --total-requests 10 --duration 10 \
+    --at 2026-07-10T12:00:00.000Z \
+    >/dev/null
+  printf '%s\n' '{"password":"installed-secret","email":"installed@example.com"}' | \
+    "$INSTALLED_PLUGIN/bin/argus-assets" redact --input - --output "$WORK_DIR/preflight-target/redacted.json" \
     >/dev/null
 )
 
@@ -85,6 +97,10 @@ const fs = require('fs');
 const report = JSON.parse(fs.readFileSync('preflight-target/ai_agents_internal/preflight.json', 'utf8'));
 if (report.status !== 'ready' || report.summary.ready !== 27) throw new Error('installed preflight did not evaluate all 27 agents as ready');
 NODE
+  if grep -Fq 'installed-secret' preflight-target/redacted.json; then
+    fail "installed redactor leaked a secret"
+  fi
+  test -f preflight-target/ai_agents_internal/authorization-audit.jsonl
 )
 
 printf 'PASS  clean marketplace install runs packaged assets outside repository\n'

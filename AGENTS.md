@@ -92,6 +92,7 @@ holak-teams/                         # this repo == the marketplace
     │   ├── skills/run/SKILL.md      # /argus:run main-thread orchestrator
     │   ├── bin/argus-assets         # list/verify/copy packaged runtime assets
     │   ├── capabilities/            # generated 27-role capability and fallback matrix
+    │   ├── policies/ + lib/         # authorization template, redactor rules, evaluator
     │   ├── references/ + schemas/   # generated, installed runtime references/contracts
     │   ├── templates/               # generated TS / Java / Python framework copies
     │   └── runtime-*.json           # generated asset manifest + prompt inventory
@@ -99,6 +100,8 @@ holak-teams/                         # this repo == the marketplace
     ├── framework-template/          # prepped Playwright + TS framework (shared reference)
     ├── framework-template-java/     # RestAssured + JUnit5 + Playwright-Java (shared reference)
     ├── framework-template-python/   # pytest + Playwright + httpx (shared reference)
+    ├── AUTHORIZATION-POLICY.md       # canonical authorization, audit, and redaction contract
+    ├── policies/ + runtime/          # canonical manifests, patterns, and evaluator sources
     ├── COLOR-SCHEME.md              # colors by role type (shared reference)
     ├── SHARED-DOCTRINE.md           # cross-agent QA doctrine (shared reference)
     ├── BROWSER-ISOLATION.md         # browser-lane isolation spec + hunt-driver verb map (shared reference)
@@ -135,6 +138,16 @@ target-specific gates, and safe writable artifact paths. Each of the 27 roles re
 machine-readable `ready`, `degraded`, `deferred`, `skipped`, or `blocked` disposition.
 Only `ready` and `degraded` records are dispatchable; every degraded record carries a
 deterministic fallback action. CI exercises full, partial, and insufficient profiles.
+
+Preflight also creates or loads one `ai_agents_internal/authorization.json`. The packaged
+policy and evaluator cover target/environment, accounts, data boundaries, mutation and
+prohibition lists, rate/concurrency/request/duration ceilings, time windows, explicit
+high-risk grants, rollback, escalation, audit, redaction, and untrusted-content rules.
+Unknown/staging/production targets are read-only by default. The 18 target-affecting roles
+carry explicit risk-action contracts; every role uses the same packaged redactor. Runtime
+commands are `argus-assets authorization init|check` and `argus-assets redact`. Decisions
+append redacted rule-ID events to `ai_agents_internal/authorization-audit.jsonl`; binary
+evidence fails closed until independently masked and reviewed.
 
 ---
 
