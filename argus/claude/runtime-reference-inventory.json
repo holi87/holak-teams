@@ -1,0 +1,1418 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": "argus/claude/agents/*.md",
+  "agentsScanned": 27,
+  "pluginAssetReferences": [
+    {
+      "value": "references/BROWSER-ISOLATION.md",
+      "consumers": [
+        "antigone",
+        "ariadne",
+        "atalanta",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "lynceus",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "proteus",
+        "tyche"
+      ]
+    },
+    {
+      "value": "schemas/bug-ledger.schema.json",
+      "consumers": [
+        "minos"
+      ]
+    },
+    {
+      "value": "templates/java/",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "templates/python/",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "templates/typescript/",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "templates/typescript/solution/bug-ledger.example.json",
+      "consumers": [
+        "minos"
+      ]
+    },
+    {
+      "value": "templates/typescript/solution/STATE_MODEL.md",
+      "consumers": [
+        "ariadne"
+      ]
+    }
+  ],
+  "targetFileReferences": [
+    {
+      "value": ".pw-profiles/<agent>",
+      "consumers": [
+        "lynceus",
+        "odysseus",
+        "orion"
+      ]
+    },
+    {
+      "value": ".pw-profiles/<your-name>",
+      "consumers": [
+        "antigone",
+        "ariadne",
+        "atalanta",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "lynceus",
+        "orion",
+        "penelope",
+        "perseus",
+        "proteus",
+        "tyche"
+      ]
+    },
+    {
+      "value": ".pw-profiles/ariadne",
+      "consumers": [
+        "ariadne"
+      ]
+    },
+    {
+      "value": "AGENTS.md",
+      "consumers": [
+        "aristarchus",
+        "asklepios",
+        "kleio"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/",
+      "consumers": [
+        "antigone",
+        "kleio",
+        "lynceus"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/<slug>.log",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/aegis.log",
+      "consumers": [
+        "aegis"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/antigone.log",
+      "consumers": [
+        "antigone"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/ariadne.log",
+      "consumers": [
+        "ariadne"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/aristarchus.log",
+      "consumers": [
+        "aristarchus"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/asklepios.log",
+      "consumers": [
+        "asklepios"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/atalanta.log",
+      "consumers": [
+        "atalanta"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/atlas.log",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/charon.log",
+      "consumers": [
+        "charon"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/daidalos.log",
+      "consumers": [
+        "daidalos"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/hermes.log",
+      "consumers": [
+        "hermes"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/kalchas.log",
+      "consumers": [
+        "kalchas"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/kleio.log",
+      "consumers": [
+        "kleio"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/lynceus.log",
+      "consumers": [
+        "lynceus"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/metis.log",
+      "consumers": [
+        "metis"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/minos.log",
+      "consumers": [
+        "minos"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/mnemosyne.log",
+      "consumers": [
+        "mnemosyne"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/nike.log",
+      "consumers": [
+        "nike"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/odysseus.log",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/orion.log",
+      "consumers": [
+        "orion"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/penelope.log",
+      "consumers": [
+        "penelope"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/perseus.log",
+      "consumers": [
+        "perseus"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/pistis.log",
+      "consumers": [
+        "pistis"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/proteus.log",
+      "consumers": [
+        "proteus"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/talos.log",
+      "consumers": [
+        "talos"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/theseus.log",
+      "consumers": [
+        "theseus"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/tiresias.log",
+      "consumers": [
+        "tiresias"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/tyche.log",
+      "consumers": [
+        "tyche"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/REPORT_RUN1/RUN2/LAST.html",
+      "consumers": [
+        "kleio"
+      ]
+    },
+    {
+      "value": "bugs/",
+      "consumers": [
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "charon",
+        "hermes",
+        "kleio",
+        "lynceus",
+        "minos",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tyche"
+      ]
+    },
+    {
+      "value": "bugs/_TEMPLATE.md",
+      "consumers": [
+        "antigone",
+        "asklepios",
+        "atalanta",
+        "charon",
+        "kalchas",
+        "minos",
+        "odysseus",
+        "orion",
+        "perseus",
+        "pistis",
+        "proteus",
+        "tiresias",
+        "tyche"
+      ]
+    },
+    {
+      "value": "bugs/*",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/<PREFIX>-NNN-*.md",
+      "consumers": [
+        "minos"
+      ]
+    },
+    {
+      "value": "bugs/ANG-*",
+      "consumers": [
+        "daidalos",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/ANG-NNN-<slug>.md",
+      "consumers": [
+        "antigone"
+      ]
+    },
+    {
+      "value": "bugs/ARI-*",
+      "consumers": [
+        "daidalos",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/ARI-NNN-<slug>.md",
+      "consumers": [
+        "ariadne"
+      ]
+    },
+    {
+      "value": "bugs/ASK-*",
+      "consumers": [
+        "asklepios",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/ASK-NNN-<slug>.md",
+      "consumers": [
+        "asklepios"
+      ]
+    },
+    {
+      "value": "bugs/ATA-*",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/ATA-NNN-<slug>.md",
+      "consumers": [
+        "atalanta"
+      ]
+    },
+    {
+      "value": "bugs/CHA-*",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/CHA-NNN-<slug>.md",
+      "consumers": [
+        "charon"
+      ]
+    },
+    {
+      "value": "bugs/HER-*",
+      "consumers": [
+        "hermes",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/HER-NNN-<slug>.md",
+      "consumers": [
+        "hermes"
+      ]
+    },
+    {
+      "value": "bugs/LYN-*",
+      "consumers": [
+        "daidalos",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/LYN-NNN-<slug>.md",
+      "consumers": [
+        "lynceus"
+      ]
+    },
+    {
+      "value": "bugs/ORI-*",
+      "consumers": [
+        "daidalos",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/ORI-NNN-<slug>.md",
+      "consumers": [
+        "orion"
+      ]
+    },
+    {
+      "value": "bugs/PER-*",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/PER-NNN-<slug>.md",
+      "consumers": [
+        "perseus"
+      ]
+    },
+    {
+      "value": "bugs/PRO-*",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/PRO-NNN-<slug>.md",
+      "consumers": [
+        "proteus"
+      ]
+    },
+    {
+      "value": "bugs/TIR-*",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
+      "value": "bugs/TIR-NNN-<slug>.md",
+      "consumers": [
+        "tiresias"
+      ]
+    },
+    {
+      "value": "bugs/TYC-*",
+      "consumers": [
+        "odysseus",
+        "tyche"
+      ]
+    },
+    {
+      "value": "bugs/TYC-NNN-<slug>.md",
+      "consumers": [
+        "tyche"
+      ]
+    },
+    {
+      "value": "CLAUDE.md",
+      "consumers": [
+        "aristarchus",
+        "asklepios",
+        "kleio"
+      ]
+    },
+    {
+      "value": "package-lock.json",
+      "consumers": [
+        "aegis",
+        "atlas",
+        "daidalos",
+        "nike"
+      ]
+    },
+    {
+      "value": "package.json",
+      "consumers": [
+        "asklepios",
+        "tiresias"
+      ]
+    },
+    {
+      "value": "pom.xml",
+      "consumers": [
+        "tiresias"
+      ]
+    },
+    {
+      "value": "pyproject.toml",
+      "consumers": [
+        "asklepios",
+        "tiresias"
+      ]
+    },
+    {
+      "value": "README.md",
+      "consumers": [
+        "kleio",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "reports/",
+      "consumers": [
+        "atlas",
+        "kleio",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "reports/html/",
+      "consumers": [
+        "atlas",
+        "daidalos",
+        "nike",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "reports/html/index.html",
+      "consumers": [
+        "kleio"
+      ]
+    },
+    {
+      "value": "reports/perf/",
+      "consumers": [
+        "hermes"
+      ]
+    },
+    {
+      "value": "reports/resilience/",
+      "consumers": [
+        "tyche"
+      ]
+    },
+    {
+      "value": "reports/resilience/fault-windows.log",
+      "consumers": [
+        "tyche"
+      ]
+    },
+    {
+      "value": "reports/results.json",
+      "consumers": [
+        "atlas",
+        "daidalos",
+        "kleio",
+        "nike",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "reports/summary.json",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "run-tests.sh",
+      "consumers": [
+        "aegis",
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "kleio",
+        "lynceus",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
+      ]
+    },
+    {
+      "value": "scripts/",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "scripts/baseline-coverage.mjs",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "scripts/bug-coverage.mjs",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "scripts/hunt-driver.mjs",
+      "consumers": [
+        "antigone",
+        "ariadne",
+        "atalanta",
+        "charon",
+        "daidalos",
+        "hermes",
+        "lynceus",
+        "orion",
+        "penelope",
+        "perseus",
+        "proteus",
+        "tyche"
+      ]
+    },
+    {
+      "value": "solution/",
+      "consumers": [
+        "aristarchus",
+        "atlas",
+        "kleio",
+        "minos",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "solution/ tests/ bugs/ reports/",
+      "consumers": [
+        "kleio"
+      ]
+    },
+    {
+      "value": "solution/ARCHITECTURE.md",
+      "consumers": [
+        "atlas",
+        "kleio",
+        "metis",
+        "mnemosyne",
+        "odysseus",
+        "talos"
+      ]
+    },
+    {
+      "value": "solution/bug-ledger.json",
+      "consumers": [
+        "aegis",
+        "atlas",
+        "kleio",
+        "minos",
+        "mnemosyne",
+        "talos"
+      ]
+    },
+    {
+      "value": "solution/BUG-LEDGER.md",
+      "consumers": [
+        "aristarchus",
+        "kleio",
+        "minos",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "solution/CODE-REVIEW.md",
+      "consumers": [
+        "aristarchus"
+      ]
+    },
+    {
+      "value": "solution/contracts/",
+      "consumers": [
+        "odysseus",
+        "pistis"
+      ]
+    },
+    {
+      "value": "solution/discovery/",
+      "consumers": [
+        "odysseus",
+        "orion"
+      ]
+    },
+    {
+      "value": "solution/discovery/system-map.md",
+      "consumers": [
+        "kalchas"
+      ]
+    },
+    {
+      "value": "solution/FINDINGS.md",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
+      "value": "solution/findings/",
+      "consumers": [
+        "atalanta",
+        "lynceus",
+        "odysseus",
+        "penelope",
+        "proteus",
+        "theseus"
+      ]
+    },
+    {
+      "value": "solution/findings/a11y.md",
+      "consumers": [
+        "antigone"
+      ]
+    },
+    {
+      "value": "solution/findings/PEN-<NNN>-<slug>.md",
+      "consumers": [
+        "penelope"
+      ]
+    },
+    {
+      "value": "solution/findings/THE-NNN-<slug>.md",
+      "consumers": [
+        "theseus"
+      ]
+    },
+    {
+      "value": "solution/IMPLEMENTATION-REPORT.md",
+      "consumers": [
+        "kleio",
+        "metis",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "solution/lane-targets.json",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "solution/ORACLES.md",
+      "consumers": [
+        "ariadne",
+        "kalchas",
+        "metis",
+        "minos",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "solution/paths/",
+      "consumers": [
+        "penelope",
+        "pistis",
+        "theseus"
+      ]
+    },
+    {
+      "value": "solution/paths/api-*.md",
+      "consumers": [
+        "odysseus",
+        "theseus"
+      ]
+    },
+    {
+      "value": "solution/paths/api-<resource>.md",
+      "consumers": [
+        "theseus"
+      ]
+    },
+    {
+      "value": "solution/paths/contract-*.md",
+      "consumers": [
+        "odysseus",
+        "pistis",
+        "talos"
+      ]
+    },
+    {
+      "value": "solution/paths/contract-<consumer>-<provider>.md",
+      "consumers": [
+        "pistis"
+      ]
+    },
+    {
+      "value": "solution/paths/ui-*.md",
+      "consumers": [
+        "odysseus",
+        "penelope"
+      ]
+    },
+    {
+      "value": "solution/paths/ui-<journey>.md",
+      "consumers": [
+        "penelope"
+      ]
+    },
+    {
+      "value": "solution/paths/ui-selectors.md",
+      "consumers": [
+        "penelope"
+      ]
+    },
+    {
+      "value": "solution/PERF-REPORT.md",
+      "consumers": [
+        "hermes",
+        "kleio",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "solution/RESILIENCE-REPORT.md",
+      "consumers": [
+        "odysseus",
+        "tyche"
+      ]
+    },
+    {
+      "value": "solution/STATE_MODEL.md",
+      "consumers": [
+        "ariadne",
+        "kalchas",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "solution/TEST-HEALTH-<scope>.md",
+      "consumers": [
+        "asklepios"
+      ]
+    },
+    {
+      "value": "solution/TEST-HEALTH.md",
+      "consumers": [
+        "asklepios",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "solution/TEST-STRATEGY.md",
+      "consumers": [
+        "aegis",
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "kleio",
+        "lynceus",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
+      ]
+    },
+    {
+      "value": "solution/TRACEABILITY.md",
+      "consumers": [
+        "aegis",
+        "daidalos",
+        "hermes",
+        "kleio",
+        "metis",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "talos",
+        "tyche"
+      ]
+    },
+    {
+      "value": "solution/WHITEBOX-LEADS.md",
+      "consumers": [
+        "odysseus",
+        "tiresias"
+      ]
+    },
+    {
+      "value": "src/",
+      "consumers": [
+        "aegis",
+        "atlas",
+        "daidalos",
+        "odysseus",
+        "talos"
+      ]
+    },
+    {
+      "value": "src/api",
+      "consumers": [
+        "atlas",
+        "daidalos"
+      ]
+    },
+    {
+      "value": "src/api/auth.ts",
+      "consumers": [
+        "atlas",
+        "hermes",
+        "tyche"
+      ]
+    },
+    {
+      "value": "src/api/schema.ts",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "src/config",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "src/config/env.ts",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "src/data",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "src/data/",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "src/fixtures",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "src/fixtures/",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "src/pages",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "src/pages/",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "tests/",
+      "consumers": [
+        "atlas",
+        "kleio",
+        "minos",
+        "odysseus",
+        "pistis"
+      ]
+    },
+    {
+      "value": "tests/ bugs/ solution/ reports/",
+      "consumers": [
+        "kalchas"
+      ]
+    },
+    {
+      "value": "tests/api/",
+      "consumers": [
+        "ariadne",
+        "atlas",
+        "proteus",
+        "talos"
+      ]
+    },
+    {
+      "value": "tests/api/<resource>/",
+      "consumers": [
+        "metis",
+        "odysseus",
+        "talos"
+      ]
+    },
+    {
+      "value": "tests/api/contract/",
+      "consumers": [
+        "odysseus",
+        "pistis",
+        "talos"
+      ]
+    },
+    {
+      "value": "tests/db/",
+      "consumers": [
+        "atlas",
+        "mnemosyne",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "tests/perf/",
+      "consumers": [
+        "atlas",
+        "nike",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "tests/perf/regression/",
+      "consumers": [
+        "nike"
+      ]
+    },
+    {
+      "value": "tests/resilience/",
+      "consumers": [
+        "nike",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "tests/security/",
+      "consumers": [
+        "aegis",
+        "atlas",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "tests/ui/",
+      "consumers": [
+        "ariadne",
+        "atlas",
+        "daidalos",
+        "orion",
+        "talos"
+      ]
+    },
+    {
+      "value": "tests/ui/<flow>/",
+      "consumers": [
+        "metis",
+        "odysseus"
+      ]
+    }
+  ],
+  "commandReferences": [
+    {
+      "value": "autocannon",
+      "consumers": [
+        "aegis",
+        "antigone",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "kleio",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
+      ]
+    },
+    {
+      "value": "claude",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
+      "value": "curl",
+      "consumers": [
+        "ariadne",
+        "atalanta",
+        "charon",
+        "hermes",
+        "kalchas",
+        "odysseus",
+        "perseus",
+        "proteus",
+        "tyche"
+      ]
+    },
+    {
+      "value": "date",
+      "consumers": [
+        "aegis",
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "kleio",
+        "lynceus",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
+      ]
+    },
+    {
+      "value": "docker",
+      "consumers": [
+        "hermes",
+        "kalchas",
+        "metis",
+        "nike",
+        "odysseus",
+        "tyche"
+      ]
+    },
+    {
+      "value": "find",
+      "consumers": [
+        "aegis",
+        "aristarchus",
+        "asklepios",
+        "hermes",
+        "kleio",
+        "metis",
+        "minos",
+        "nike",
+        "odysseus",
+        "tiresias",
+        "tyche"
+      ]
+    },
+    {
+      "value": "git",
+      "consumers": [
+        "aristarchus",
+        "kleio",
+        "odysseus",
+        "tiresias"
+      ]
+    },
+    {
+      "value": "gradle",
+      "consumers": [
+        "talos"
+      ]
+    },
+    {
+      "value": "grep",
+      "consumers": [
+        "aristarchus",
+        "asklepios",
+        "atlas",
+        "kleio",
+        "odysseus",
+        "tiresias"
+      ]
+    },
+    {
+      "value": "java",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "k6",
+      "consumers": [
+        "aegis",
+        "antigone",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "kleio",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
+      ]
+    },
+    {
+      "value": "make",
+      "consumers": [
+        "aegis",
+        "antigone",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "daidalos",
+        "kleio",
+        "nike",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias"
+      ]
+    },
+    {
+      "value": "node",
+      "consumers": [
+        "antigone",
+        "ariadne",
+        "atalanta",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "lynceus",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "proteus",
+        "tyche"
+      ]
+    },
+    {
+      "value": "npm",
+      "consumers": [
+        "aegis",
+        "atlas",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "metis",
+        "mnemosyne",
+        "nike",
+        "pistis",
+        "talos",
+        "tiresias"
+      ]
+    },
+    {
+      "value": "playwright",
+      "consumers": [
+        "daidalos"
+      ]
+    },
+    {
+      "value": "printf",
+      "consumers": [
+        "aegis",
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "kleio",
+        "lynceus",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
+      ]
+    },
+    {
+      "value": "psql",
+      "consumers": [
+        "charon",
+        "kalchas",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "pytest",
+      "consumers": [
+        "kleio",
+        "metis",
+        "talos"
+      ]
+    },
+    {
+      "value": "python",
+      "consumers": [
+        "ariadne",
+        "atlas"
+      ]
+    },
+    {
+      "value": "rm",
+      "consumers": [
+        "tyche"
+      ]
+    },
+    {
+      "value": "tail",
+      "consumers": [
+        "asklepios",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "tsc",
+      "consumers": [
+        "atlas",
+        "daidalos"
+      ]
+    }
+  ]
+}

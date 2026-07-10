@@ -1,0 +1,194 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import {
+  chmodSync,
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+} from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
+const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
+const manifest = readJson(MANIFEST_PATH);
+const [command = 'help', ...args] = process.argv.slice(2);
+
+switch (command) {
+  case 'help':
+  case '--help':
+  case '-h':
+    usage();
+    break;
+  case 'list':
+    for (const asset of manifest.assets) {
+      console.log(`${asset.id}\t${asset.kind}\t${asset.destination}\t${asset.files} files\t${asset.bytes} bytes`);
+    }
+    break;
+  case 'path':
+    printPath(args[0]);
+    break;
+  case 'inventory':
+    console.log(INVENTORY_PATH);
+    break;
+  case 'verify':
+    verify();
+    break;
+  case 'copy-template':
+    copyTemplate(args[0], args[1]);
+    break;
+  case 'copy-browser-driver':
+    copyBrowserDriver(args[0]);
+    break;
+  default:
+    fail(`unknown command: ${command}`);
+}
+
+function usage() {
+  console.log(`Argus packaged runtime assets
+
+Usage:
+  argus-assets list
+  argus-assets path <asset-id>
+  argus-assets inventory
+  argus-assets verify
+  argus-assets copy-template <typescript|java|python> <empty-destination>
+  argus-assets copy-browser-driver <target-repo>
+
+Templates are copied only to a new or empty directory. In ADAPT mode, copy to a
+temporary directory, diff against the target's existing harness, and merge explicitly.`);
+}
+
+function printPath(id) {
+  const asset = requireAsset(id);
+  console.log(assetPath(asset));
+}
+
+function verify() {
+  let assetBytes = 0;
+  for (const asset of manifest.assets) {
+    const path = assetPath(asset);
+    if (!existsSync(path)) fail(`missing packaged asset: ${asset.id} (${asset.destination})`);
+    const stats = treeStats(path);
+    if (stats.files !== asset.files || stats.bytes !== asset.bytes || stats.sha256 !== asset.sha256) {
+      fail(`packaged asset hash mismatch: ${asset.id}`);
+    }
+    assetBytes += stats.bytes;
+  }
+  if (assetBytes > manifest.budgets.generatedAssetsBytes) {
+    fail(`generated asset budget exceeded: ${assetBytes} > ${manifest.budgets.generatedAssetsBytes}`);
+  }
+  const pluginBytes = treeStats(ROOT).bytes;
+  if (pluginBytes > manifest.budgets.installedPluginBytes) {
+    fail(`installed plugin budget exceeded: ${pluginBytes} > ${manifest.budgets.installedPluginBytes}`);
+  }
+  if (!existsSync(INVENTORY_PATH)) fail('missing runtime-reference-inventory.json');
+  const inventory = readJson(INVENTORY_PATH);
+  if (inventory.agentsScanned !== 27) fail(`runtime inventory covers ${inventory.agentsScanned} agents; expected 27`);
+  console.log(`PASS  ${manifest.assets.length} assets verified (${assetBytes} bytes); plugin ${pluginBytes} bytes`);
+}
+
+function copyTemplate(runtime, destination) {
+  const ids = {
+    typescript: 'typescript-template',
+    java: 'java-template',
+    python: 'python-template',
+  };
+  if (!ids[runtime]) fail('copy-template runtime must be typescript, java, or python');
+  if (!destination) fail('copy-template requires an empty destination path');
+  const source = assetPath(requireAsset(ids[runtime]));
+  const target = resolve(destination);
+  assertEmptyDestination(target);
+  mkdirSync(target, { recursive: true });
+  for (const name of readdirSync(source)) cpSync(join(source, name), join(target, name), { recursive: true, force: false, errorOnExist: true });
+  console.log(`COPIED  ${runtime} template -> ${target}`);
+}
+
+function copyBrowserDriver(destination) {
+  if (!destination) fail('copy-browser-driver requires a target repo path');
+  const targetRoot = resolve(destination);
+  if (!existsSync(targetRoot) || !statSync(targetRoot).isDirectory()) fail(`target repo directory does not exist: ${targetRoot}`);
+  const sourceRoot = assetPath(requireAsset('typescript-template'));
+  const scriptsDir = join(targetRoot, 'scripts');
+  mkdirSync(scriptsDir, { recursive: true });
+  const files = [
+    ['scripts/hunt-driver.mjs', 'hunt-driver.mjs'],
+    ['scripts/driver.config.example.json', 'driver.config.example.json'],
+  ];
+  for (const [sourceRelative, targetName] of files) {
+    const target = join(scriptsDir, targetName);
+    if (existsSync(target)) fail(`refusing to overwrite existing file: ${target}`);
+    copyFileSync(join(sourceRoot, sourceRelative), target);
+    chmodSync(target, statSync(join(sourceRoot, sourceRelative)).mode & 0o777);
+  }
+  const schemaTarget = join(scriptsDir, 'driver-config.schema.json');
+  if (existsSync(schemaTarget)) fail(`refusing to overwrite existing file: ${schemaTarget}`);
+  copyFileSync(assetPath(requireAsset('runtime-schemas'), 'driver-config.schema.json'), schemaTarget);
+  console.log(`COPIED  isolated browser driver -> ${scriptsDir}`);
+}
+
+function requireAsset(id) {
+  if (!id) fail('asset id is required; run argus-assets list');
+  const asset = manifest.assets.find((item) => item.id === id);
+  if (!asset) fail(`unknown asset id: ${id}; run argus-assets list`);
+  return asset;
+}
+
+function assetPath(asset, child = '') {
+  const path = resolve(ROOT, asset.destination, child);
+  if (path !== ROOT && !path.startsWith(`${ROOT}${sep}`)) fail(`asset path escapes plugin root: ${asset.destination}`);
+  return path;
+}
+
+function assertEmptyDestination(path) {
+  if (!existsSync(path)) return;
+  if (!statSync(path).isDirectory()) fail(`destination is not a directory: ${path}`);
+  if (readdirSync(path).length > 0) fail(`refusing to copy into non-empty destination: ${path}`);
+}
+
+function treeStats(path) {
+  const isFile = statSync(path).isFile();
+  const files = isFile ? [path] : walkFiles(path);
+  const hash = createHash('sha256');
+  let bytes = 0;
+  for (const file of files.sort()) {
+    const rel = isFile ? file.split(sep).at(-1) : relative(path, file).split(sep).join('/');
+    const content = readFileSync(file);
+    bytes += content.length;
+    hash.update(rel);
+    hash.update('\0');
+    hash.update(content);
+  }
+  return { files: files.length, bytes, sha256: hash.digest('hex') };
+}
+
+function walkFiles(dir) {
+  const out = [];
+  for (const name of readdirSync(dir).sort()) {
+    const path = join(dir, name);
+    const stat = statSync(path);
+    if (stat.isDirectory()) out.push(...walkFiles(path));
+    else if (stat.isFile()) out.push(path);
+    else fail(`unsupported filesystem entry in plugin: ${path}`);
+  }
+  return out;
+}
+
+function readJson(path) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    fail(`cannot parse ${path}: ${error.message}`);
+  }
+}
+
+function fail(message) {
+  console.error(`FAIL  ${message}`);
+  process.exit(1);
+}

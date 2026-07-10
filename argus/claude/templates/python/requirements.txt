@@ -1,0 +1,16 @@
+# Mirror of [project].dependencies in pyproject.toml. run-tests.sh installs from this file
+# for a quick venv. NOTE: these are version FLOORS (lower bounds), NOT exact pins — two venvs
+# built at different times may resolve different releases, so installs are NOT byte-reproducible
+# (unlike the TS sibling's `npm ci` against a committed lock). For a reproducible install, lock
+# once: `pip freeze > requirements.lock` then `pip install -r requirements.lock` (or use
+# `uv pip compile` / `uv.lock`). Keep this file in sync with pyproject.toml when bumping floors.
+pytest>=8.2
+pytest-playwright>=0.5.2
+playwright>=1.49,<2
+httpx>=0.27
+jsonschema>=4.21
+referencing>=0.35
+pytest-html>=4.1
+pytest-json-report>=1.5
+pytest-metadata>=3.1
+pytest-xdist>=3.6

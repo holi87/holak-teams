@@ -3,7 +3,7 @@
 **49 Claude Code sub-agents** in two themed teams, plus Codex-format variants for both teams:
 
 - **Hephaestus** (`hephaestus/`) — **22 agents**, software delivery, **Roman names**. Entry point: **Marcus** (Team Leader). Available in both Claude Code and Codex formats.
-- **Argus** (`argus/`) — **27 agents**, permanent QA team, **Greek names**. Entry point: **Odysseus** (QA Lead). Available in both Claude Code and Codex formats.
+- **Argus** (`argus/`) — **27 agents**, permanent QA team, **Greek names**. Claude entry point: **`/argus:run`** (Odysseus policy); Codex entry point: **Odysseus**. Available in both formats.
 
 > **This repo is a Claude Code plugin marketplace** (`holak-teams`). Install the teams as plugins:
 > ```
@@ -57,7 +57,10 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   ├── claude/                  # == PLUGIN ROOT (Claude only)
 │   │   ├── .claude-plugin/plugin.json
 │   │   ├── agents/              # 27 flat agent defs (odysseus, orion, …)
-│   │   └── skills/run/SKILL.md  # /argus:run main-thread orchestrator
+│   │   ├── skills/run/SKILL.md  # /argus:run main-thread orchestrator
+│   │   ├── bin/argus-assets     # verify/copy packaged assets
+│   │   ├── references/ + schemas/
+│   │   └── templates/           # installed TS / Java / Python framework copies
 │   ├── codex/                   # 27 Codex-format agents (*.toml + *.md) — separate
 │   ├── framework-template/      # prepped Playwright+TS framework (shared reference)
 │   ├── framework-template-java/   # RestAssured + JUnit5 + Playwright-Java (shared reference)

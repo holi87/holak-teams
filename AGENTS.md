@@ -55,10 +55,10 @@ plugins enabled automatically:
 ### Manual / Codex install
 
 The plugins package their **Claude Code** components under `<team>/claude/`: flat agent
-definitions for both teams and the `/argus:run` skill for Argus. The repo also carries
-**Codex** variants (`<team>/codex/`, paired `*.toml` + `*.md`) and Playwright framework
-templates outside the plugin roots. For symlink/copy installs and the Codex setup, see
-**INSTALL.md**.
+definitions for both teams; Argus also ships `/argus:run`, runtime references, schemas,
+driver tooling, and framework templates. The repo also carries **Codex** variants
+(`<team>/codex/`, paired `*.toml` + `*.md`). For symlink/copy installs and the Codex
+setup, see **INSTALL.md**.
 
 ---
 
@@ -89,7 +89,11 @@ holak-teams/                         # this repo == the marketplace
     ├── claude/                      # == PLUGIN ROOT (Claude only)
     │   ├── .claude-plugin/plugin.json
     │   ├── agents/                  # 27 flat specialist defs (loaded by Claude Code)
-    │   └── skills/run/SKILL.md      # /argus:run main-thread orchestrator
+    │   ├── skills/run/SKILL.md      # /argus:run main-thread orchestrator
+    │   ├── bin/argus-assets         # list/verify/copy packaged runtime assets
+    │   ├── references/ + schemas/   # generated, installed runtime references/contracts
+    │   ├── templates/               # generated TS / Java / Python framework copies
+    │   └── runtime-*.json           # generated asset manifest + prompt inventory
     ├── codex/                       # Codex variants (*.toml + *.md) — separate, not in the plugin
     ├── framework-template/          # prepped Playwright + TS framework (shared reference)
     ├── framework-template-java/     # RestAssured + JUnit5 + Playwright-Java (shared reference)
@@ -103,9 +107,24 @@ holak-teams/                         # this repo == the marketplace
 
 **Plugin component rule (Claude Code):** inside a plugin root (`<team>/claude/`), agent
 files must be **flat** inside `agents/` — no subdirectories. The agent slug is the file
-name without `.md` (`marcus`, `odysseus`, …). The `codex/` variants and the argus shared
-reference docs live **outside** the plugin root, so they are kept in the repo but never
-loaded or shipped as Claude plugin components.
+name without `.md` (`marcus`, `odysseus`, …). The `codex/` variants stay outside the
+plugin roots. Argus's maintainer-facing sources also stay under `argus/`; generated,
+hash-checked copies of the runtime subset are committed under `argus/claude/` so a
+marketplace cache never needs to traverse outside its installed plugin directory.
+
+### Argus runtime assets
+
+Canonical sources are declared in `argus/runtime-assets.source.json`. Run
+`scripts/sync-argus-runtime-assets.mjs --write` after changing a declared source, then
+`--check` before commit. The generated `argus/claude/runtime-assets.json` records file
+counts, bytes and SHA-256 values; `runtime-reference-inventory.json` inventories plugin
+paths, target-repo paths and host commands referenced by all 27 prompts.
+
+Installed users can run `argus-assets list`, `argus-assets verify`,
+`argus-assets copy-template <typescript|java|python> <empty-destination>`, or
+`argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 350 KB
+and the complete installed Argus plugin at 1.5 MB. `COLOR-SCHEME.md` and team graphs are
+explicitly maintainer-only; their runtime values already live in agent frontmatter.
 
 ---
 
@@ -132,12 +151,14 @@ stay equal:
 **To bump a plugin** (e.g. after editing its agents):
 
 1. Edit the agent files under `<team>/claude/agents/` (and the matching `<team>/codex/` variant).
-2. Raise `"version"` in **both** files above — same number — following semver:
+2. For Argus runtime sources, regenerate and check `argus/claude/` with
+   `scripts/sync-argus-runtime-assets.mjs --write` and `--check`.
+3. Raise `"version"` in **both** files above — same number — following semver:
    - **patch** (`1.0.0 → 1.0.1`): wording / prompt tweaks, no behavioural change.
    - **minor** (`1.0.0 → 1.1.0`): new agent, new capability, backward-compatible.
    - **major** (`1.0.0 → 2.0.0`): removed/renamed agent or breaking change to entry-point contract.
-3. If you bump a plugin, also bump the marketplace's own top-level `"version"` in `marketplace.json`.
-4. Commit and push. Installed users pick it up via `/plugin marketplace update holak-teams`
+4. If you bump a plugin, also bump the marketplace's own top-level `"version"` in `marketplace.json`.
+5. Commit and push. Installed users pick it up via `/plugin marketplace update holak-teams`
    (or automatically when `autoUpdate` is on).
 
 ---

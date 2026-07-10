@@ -35,6 +35,21 @@ specialist dispatch when `Agent` is available. Direct `@argus:odysseus` invocati
 runtime-dependent; current Claude Code versions can permit nested delegation, while a
 restricted context receives the same explicit preflight error.
 
+## Packaged runtime assets
+
+Marketplace installs are self-contained. The plugin ships:
+
+- `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation and shared doctrine;
+- `${CLAUDE_PLUGIN_ROOT}/schemas/` — runtime asset, bug-ledger, and browser-driver config schemas;
+- `${CLAUDE_PLUGIN_ROOT}/templates/` — TypeScript/Playwright, Java, and Python framework templates;
+- `argus-assets` — a PATH executable that verifies hashes and budgets or safely copies a template/driver.
+
+Maintainers edit the canonical sources under `argus/` and run
+`scripts/sync-argus-runtime-assets.mjs --write`. Generated plugin copies are checked
+byte-for-byte by `--check`; the generated prompt inventory covers all 27 agents. The
+budget is 350 KB for generated runtime assets and 1.5 MB for the complete installed
+plugin. `COLOR-SCHEME.md` and team graphs are intentionally maintainer-only.
+
 ## Roster (`claude/` + `codex/`)
 
 The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 27 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. Codex model mapping: source roles `sonnet` use `terra` + `medium`, and source roles `opus` use `sol` + `xhigh`.

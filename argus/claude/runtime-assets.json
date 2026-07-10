@@ -1,0 +1,86 @@
+{
+  "$schema": "./schemas/runtime-assets.schema.json",
+  "schemaVersion": 1,
+  "budgets": {
+    "generatedAssetsBytes": 350000,
+    "installedPluginBytes": 1500000
+  },
+  "assets": [
+    {
+      "id": "browser-isolation",
+      "kind": "reference",
+      "source": "argus/BROWSER-ISOLATION.md",
+      "destination": "references/BROWSER-ISOLATION.md",
+      "files": 1,
+      "bytes": 5854,
+      "sha256": "c5098606e839d0281fb30d0b50065a2e07027a22fa2e9cc824ef6078e5b43240"
+    },
+    {
+      "id": "shared-doctrine",
+      "kind": "reference",
+      "source": "argus/SHARED-DOCTRINE.md",
+      "destination": "references/SHARED-DOCTRINE.md",
+      "files": 1,
+      "bytes": 7458,
+      "sha256": "e765e39fadabc400ba6a24c57633d9f6e49ba23e53c19f1e622e89de3d0a9a0d"
+    },
+    {
+      "id": "runtime-schemas",
+      "kind": "schemas",
+      "source": "argus/schemas",
+      "destination": "schemas",
+      "files": 3,
+      "bytes": 5005,
+      "sha256": "23a39ba991f22772ab2d6b155adc200fc74a0eb6afef99901bb19ffcc7c40e36"
+    },
+    {
+      "id": "typescript-template",
+      "kind": "template",
+      "source": "argus/framework-template",
+      "destination": "templates/typescript",
+      "files": 46,
+      "bytes": 126810,
+      "sha256": "a954944ca25ea4b5a1481a774c02c658ce1c2b8f20a9e6735dafb83ba077e4fb"
+    },
+    {
+      "id": "java-template",
+      "kind": "template",
+      "source": "argus/framework-template-java",
+      "destination": "templates/java",
+      "files": 21,
+      "bytes": 64349,
+      "sha256": "66937f9d97b448d609be26b549231b20ef6e5566e9d4ff738f914974ae6a5237"
+    },
+    {
+      "id": "python-template",
+      "kind": "template",
+      "source": "argus/framework-template-python",
+      "destination": "templates/python",
+      "files": 26,
+      "bytes": 46354,
+      "sha256": "b4b8501f7d669ad0e467820e9da896b3a070c644b01fe8670b538ae22416abf0"
+    }
+  ],
+  "maintainerOnly": [
+    {
+      "source": "argus/COLOR-SCHEME.md",
+      "reason": "The runtime color values are embedded in agent frontmatter."
+    },
+    {
+      "source": "argus/team-graph.html",
+      "reason": "Visual roster documentation is not required by an engagement."
+    },
+    {
+      "source": "argus/team-graph.png",
+      "reason": "Visual roster documentation is not required by an engagement."
+    }
+  ],
+  "forbiddenPromptReferences": [
+    "argus/BROWSER-ISOLATION.md",
+    "argus/framework-template",
+    "repo doc — not shipped with the installed plugin",
+    "not shipped with the installed plugin"
+  ],
+  "generated": true,
+  "generatedFrom": "argus/runtime-assets.source.json"
+}

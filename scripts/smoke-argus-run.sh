@@ -23,7 +23,7 @@ require_text() {
 [ -f "$SKILL" ] || fail "missing argus/claude/skills/run/SKILL.md"
 require_text "name: run" "$SKILL" "run skill has no stable name"
 require_text 'disable-model-invocation: true' "$SKILL" "run skill must be user-invoked"
-require_text 'allowed-tools: Read, Agent' "$SKILL" "run skill does not pre-approve Read and Agent"
+require_text 'allowed-tools: Read, Agent, Bash(argus-assets *)' "$SKILL" "run skill does not pre-approve its runtime asset verifier"
 # shellcheck disable=SC2016 # The skill must retain Claude Code's literal runtime variable.
 require_text '${CLAUDE_PLUGIN_ROOT}/agents/odysseus.md' "$SKILL" "run skill does not load the packaged Odysseus policy"
 require_text 'ARGUS_PREFLIGHT_ERROR: TARGET_REQUIRED' "$SKILL" "missing target preflight error"
