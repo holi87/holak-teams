@@ -90,6 +90,7 @@ holak-teams/                         # this repo == the marketplace
     ├── framework-template-python/   # pytest + Playwright + httpx (shared reference)
     ├── COLOR-SCHEME.md              # colors by role type (shared reference)
     ├── SHARED-DOCTRINE.md           # cross-agent QA doctrine (shared reference)
+    ├── BROWSER-ISOLATION.md         # browser-lane isolation spec + hunt-driver verb map (shared reference)
     ├── team-graph.html + .png       # visual team graph (embedded in README)
     └── README.md                    # roster + how-to-start
 ```
