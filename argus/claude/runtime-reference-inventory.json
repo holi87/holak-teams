@@ -730,6 +730,12 @@
       ]
     },
     {
+      "value": "solution/automation-status.json",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
       "value": "solution/bug-ledger.json",
       "consumers": [
         "aegis",
@@ -789,8 +795,21 @@
       ]
     },
     {
+      "value": "solution/evidence-reference.json",
+      "consumers": [
+        "kleio"
+      ]
+    },
+    {
+      "value": "solution/final-summary.json",
+      "consumers": [
+        "kleio"
+      ]
+    },
+    {
       "value": "solution/FINDINGS.md",
       "consumers": [
+        "kleio",
         "odysseus"
       ]
     },
@@ -828,6 +847,12 @@
       "consumers": [
         "kleio",
         "metis",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "solution/lane-plan.json",
+      "consumers": [
         "odysseus"
       ]
     },
@@ -988,6 +1013,7 @@
     {
       "value": "solution/WHITEBOX-LEADS.md",
       "consumers": [
+        "minos",
         "odysseus",
         "tiresias"
       ]

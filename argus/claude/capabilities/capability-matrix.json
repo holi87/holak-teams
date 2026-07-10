@@ -29,6 +29,8 @@
       "authorization-policy",
     "capability-matrix",
     "canonical-contracts",
+    "raci-contract",
+    "raci-matrix",
     "engagement-policy",
     "runtime-library",
     "runner-contract",

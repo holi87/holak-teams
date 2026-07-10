@@ -57,6 +57,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
 const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
 const CAPABILITY_MATRIX_PATH = join(ROOT, 'capabilities', 'capability-matrix.json');
+const RACI_PATH = join(ROOT, 'references', 'raci.json');
 const AUTHORIZATION_TEMPLATE_PATH = join(ROOT, 'policies', 'authorization.template.json');
 const ENGAGEMENT_TEMPLATE_PATH = join(ROOT, 'policies', 'engagement.template.json');
 const REDACTION_PATTERNS_PATH = join(ROOT, 'policies', 'redaction-patterns.json');
@@ -100,6 +101,9 @@ switch (command) {
   case 'coverage':
     process.exitCode = coverageCommand(args);
     break;
+  case 'raci':
+    process.exitCode = raciCommand(args);
+    break;
   case 'guard':
     process.exitCode = guardCommand(args);
     break;
@@ -130,6 +134,7 @@ Usage:
   argus-assets engagement <init|validate|allocate|status|claim|release|fragment|merge|id|checkpoint|barrier|cleanup> [options]
   argus-assets schema <list|validate> [options]
   argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]
+  argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
   argus-assets copy-template <typescript|java|python> <empty-destination>
@@ -172,6 +177,44 @@ Engagement coordination:
 
 Templates are copied only to a new or empty directory. In ADAPT mode, copy to a
 temporary directory, diff against the target's existing harness, and merge explicitly.`);
+}
+
+function raciCommand(args) {
+  const [operation, ...rest] = args;
+  const raci = readJson(RACI_PATH);
+  if (operation === 'list') {
+    for (const route of raci.surfaceRoutes) console.log(`${route.surface}\tdiscover=${route.discover}\tbaseline=${route.baseline}\tautomate=${route.automate}\tvalidate=${route.validate}\treport=${route.report}${route.gate ? `\tgate=${route.gate}` : ''}`);
+    return 0;
+  }
+  if (operation !== 'route') fail('usage: argus-assets raci <list|route> [options]');
+  const options = parseNamedOptions(rest, new Set(['--surface', '--activity', '--artifact', '--transition']));
+  const selectors = ['artifact', 'transition', 'surface'].filter((key) => options[key]);
+  if (options.activity && !options.surface) selectors.push('activity');
+  if (selectors.length !== 1) fail('raci route requires exactly one of --surface, --artifact, or --transition');
+  let result;
+  if (options.artifact) {
+    const artifact = raci.artifacts.find((item) => item.path === options.artifact);
+    if (!artifact) fail(`raci route: unknown canonical artifact ${options.artifact}`);
+    result = { selector: 'artifact', artifact: artifact.path, accountable: artifact.accountable };
+  } else if (options.transition) {
+    const [stateMachine, from, to, ...extra] = options.transition.split(':');
+    if (!stateMachine || !from || !to || extra.length) fail('raci route --transition must be machine:from:to');
+    const transition = raci.stateTransitions.find((item) => item.stateMachine === stateMachine && item.from === from && item.to === to);
+    if (!transition) fail(`raci route: unknown state transition ${options.transition}`);
+    result = { selector: 'transition', stateMachine, from, to, accountable: transition.accountable };
+  } else if (options.surface) {
+    requireOptions(options, ['surface', 'activity'], 'raci route');
+    const route = raci.surfaceRoutes.find((item) => item.surface === options.surface);
+    if (!route) fail(`raci route: unknown surface ${options.surface}`);
+    if (!['discover', 'baseline', 'automate', 'validate', 'report'].includes(options.activity)) fail('raci route --activity must be discover, baseline, automate, validate, or report for a surface');
+    result = { selector: 'surface', surface: route.surface, activity: options.activity, accountable: route[options.activity], gate: route.gate ?? null };
+  } else {
+    const activity = raci.defectLifecycle.find((item) => item.activity === options.activity);
+    if (!activity) fail(`raci route: unknown defect activity ${options.activity}`);
+    result = { selector: 'defect-activity', activity: activity.activity, accountable: activity.accountable, responsible: activity.responsible, consulted: activity.consulted ?? [] };
+  }
+  console.log(JSON.stringify(result));
+  return 0;
 }
 
 function coverageCommand(args) {

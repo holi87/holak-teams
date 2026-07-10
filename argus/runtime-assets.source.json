@@ -49,6 +49,18 @@
       "destination": "references/COVERAGE-CONTRACT.md"
     },
     {
+      "id": "raci-contract",
+      "kind": "reference",
+      "source": "argus/RACI-CONTRACT.md",
+      "destination": "references/RACI-CONTRACT.md"
+    },
+    {
+      "id": "raci-matrix",
+      "kind": "capabilities",
+      "source": "argus/raci.json",
+      "destination": "references/raci.json"
+    },
+    {
       "id": "runtime-schemas",
       "kind": "schemas",
       "source": "argus/schemas",

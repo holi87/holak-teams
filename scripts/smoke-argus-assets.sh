@@ -19,6 +19,8 @@ test -f "$PLUGIN/hooks/hooks.json" || fail "plugin does not package hooks/hooks.
 jq -e '.assets[] | select(.id == "runtime-schemas")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits canonical schemas"
 jq -e '.assets[] | select(.id == "runner-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits runner contract"
 jq -e '.assets[] | select(.id == "coverage-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits coverage contract"
+jq -e '.assets[] | select(.id == "raci-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits RACI contract"
+jq -e '.assets[] | select(.id == "raci-matrix")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits RACI matrix"
 jq -e '.hooks.PreToolUse[] | select(.matcher == "Write|Edit|MultiEdit|Bash")' "$PLUGIN/hooks/hooks.json" >/dev/null || fail "plugin hook does not cover direct and shell writes"
 
 if command -v claude >/dev/null 2>&1; then
@@ -93,6 +95,8 @@ cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-t
     --inventory "$ROOT/scripts/fixtures/argus-coverage/surface-inventory.json" \
     --observations "$ROOT/scripts/fixtures/argus-coverage/coverage-observations.json" \
     >/dev/null
+  test "$("$INSTALLED_PLUGIN/bin/argus-assets" raci route --surface api-rest --activity discover | jq -r .accountable)" = atalanta
+  test "$("$INSTALLED_PLUGIN/bin/argus-assets" raci route --activity persist | jq -r .accountable)" = minos
   allocation="$("$INSTALLED_PLUGIN/bin/argus-assets" engagement allocate \
     --manifest "$WORK_DIR/preflight-target/ai_agents_internal/engagement.json" --lane kleio)"
   lease="$(jq -r .token <<<"$allocation")"

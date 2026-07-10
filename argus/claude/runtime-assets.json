@@ -48,8 +48,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 5373,
-      "sha256": "c82e85fe3590d45be933bc8b8b925a9635965c9ce0561debdf2340e415b5b168"
+      "bytes": 5667,
+      "sha256": "a366c8d5d94d47a8e4b989fecc73382272b0a4463246faf83b2961bafe1c93f7"
     },
     {
       "id": "runner-contract",
@@ -70,13 +70,31 @@
       "sha256": "6ac8096a4d6bb45aaa51e5d7c153835c3273a80b91d4f91b10712ddf6d6fa1bf"
     },
     {
+      "id": "raci-contract",
+      "kind": "reference",
+      "source": "argus/RACI-CONTRACT.md",
+      "destination": "references/RACI-CONTRACT.md",
+      "files": 1,
+      "bytes": 8060,
+      "sha256": "3932ffbe1469b12f6c9ac569329f4dc7ed1e8298db2e31273ed4a5417bd3aa94"
+    },
+    {
+      "id": "raci-matrix",
+      "kind": "capabilities",
+      "source": "argus/raci.json",
+      "destination": "references/raci.json",
+      "files": 1,
+      "bytes": 20398,
+      "sha256": "22b70a2c8170d38c244f4023a16be274419f21ec92129c0266b3e2acd49abc9b"
+    },
+    {
       "id": "runtime-schemas",
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 20,
-      "bytes": 47377,
-      "sha256": "36ffe1e164be3f7c0118c721affc1182df49b7e37d70f37fe6b08442e4877bd6"
+      "files": 21,
+      "bytes": 50896,
+      "sha256": "123603fe8f1d582f0f122f887a82bfe18afe9c9a8e8470bca91448699dfcc96f"
     },
     {
       "id": "capability-matrix",
@@ -84,8 +102,8 @@
       "source": "argus/capabilities",
       "destination": "capabilities",
       "files": 1,
-      "bytes": 11830,
-      "sha256": "9eb6f1c5e4c68d2a38d0d4811628899d30d1c9fafe26808efb3958adc35ac12b"
+      "bytes": 11870,
+      "sha256": "3fed16b4d614a838465100d3932f0b61b31e1a995fbcbbf07b98a57b66d6b5fc"
     },
     {
       "id": "authorization-policies",

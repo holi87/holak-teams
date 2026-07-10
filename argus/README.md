@@ -45,7 +45,7 @@ contract is available through `argus-assets path coverage-contract`.
 
 Marketplace installs are self-contained. The plugin ships:
 
-- `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, canonical-contract ownership, and shared doctrine;
+- `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, RACI/canonical ownership, and shared doctrine;
 - `${CLAUDE_PLUGIN_ROOT}/capabilities/` — the mode-aware capability matrix for all 27 roles;
 - `${CLAUDE_PLUGIN_ROOT}/policies/` + `lib/` — authorization/engagement templates, redaction patterns, guards, and atomic controllers;
 - `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` — active `PreToolUse` target-immutability guard;
@@ -137,43 +137,47 @@ deduplication. Merging `solution/final-summary.json` renders `solution/FINAL-SUM
 with its source schema version. Compatibility is explicit: v1 reads v1 only until a later
 release ships a deterministic migration.
 
+The ownership source of truth is `raci.json`, rendered as `RACI-CONTRACT.md`. Use
+`argus-assets raci route` for defect activities, surfaces, artifacts, and state
+transitions. The RACI sync gate validates all 27 prompt descriptions and generated
+contract blocks against the same source used for the roster below.
+
 ## Roster (`claude/` + `codex/`)
 
 The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 27 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. Codex model mapping: source roles `sonnet` use `terra` + `medium`, and source roles `opus` use `sol` + `xhigh`.
 
-| Agent | Role |
-|---|---|
-| **odysseus** | orchestration policy / alternate main-session agent — picks the mode, dispatches the crew when `Agent` is available |
-| kalchas | recon — maps the unknown stack, endpoints, roles, data |
-| minos | bug triage / QA lead — severity, dedup, reconciliation |
-| metis | test strategist — TEST-STRATEGY.md, coverage grid |
-| kleio | QA reporter — README, IMPLEMENTATION-REPORT, acceptance |
-| theseus | API test-path analyst — canonical baseline |
-| pistis | consumer-driven contract analyst — Pact baseline (PIS-) |
-| penelope | UI test-path analyst — user journeys baseline |
-| atlas | automation architect — shared harness, run-tests.sh |
-| **Hunters** | |
-| atalanta | API / data-integrity (ATA-) |
-| proteus | multi-protocol API — GraphQL / gRPC / WebSocket / async (PRO-) |
-| orion | functional UI (ORI-) |
-| lynceus | UI presentation / i18n / layout (LYN-) |
-| ariadne | deep journeys + business-rule lifecycle (ARI-) |
-| hermes | performance — structural oracles (HER-) |
-| tyche | resilience / chaos — fault-injection oracles (TYC-) |
-| perseus | security — STRIDE/OWASP (PER-) |
-| antigone | accessibility — WCAG 2.1 AA (ANG-) |
-| charon | database (gated, CHA-) |
-| tiresias | white-box source analyst (gated, TIR-) |
-| **Automation** | |
-| talos | API regression (tests/api/) |
-| daidalos | UI E2E + a11y auto (tests/ui/) |
-| aegis | security regression (tests/security/) |
-| nike | perf regression (tests/perf/) |
-| mnemosyne | DB invariants (gated, tests/db/) |
-| **Cross-cutting** | |
-| aristarchus | code reviewer — runs LAST, BLOCKER/WARNING |
-| asklepios | test-suite sanitation / deflaking — brownfield Mode D (ASK-) |
+<!-- RACI_ROSTER_START -->
+| Agent | Role | Lane | Persistence |
+|---|---|---|---|
+| **aegis** | Security automation engineer | `security-automation` | `tests-only` |
+| **antigone** | Accessibility hunter | `accessibility-hunt` | `candidate-file` |
+| **ariadne** | Journey and lifecycle hunter | `journey-hunt` | `candidate-file` |
+| **aristarchus** | Automation quality judge | `automation-review` | `result-envelope` |
+| **asklepios** | Test-suite sanitation specialist | `suite-sanitation` | `candidate-file` |
+| **atalanta** | REST API and public-data hunter | `api-hunt` | `candidate-file` |
+| **atlas** | Automation architect | `automation-architecture` | `owned-artifact` |
+| **charon** | Direct-database hunter | `database-hunt` | `candidate-file` |
+| **daidalos** | UI and accessibility automation engineer | `ui-automation` | `tests-only` |
+| **hermes** | Performance hunter | `performance-hunt` | `candidate-file` |
+| **kalchas** | System reconnaissance analyst | `recon` | `owned-artifact` |
+| **kleio** | Final reporter | `reporting` | `owned-artifact` |
+| **lynceus** | UI presentation hunter | `presentation-hunt` | `candidate-file` |
+| **metis** | Test strategist | `strategy` | `owned-artifact` |
+| **minos** | Defect authority and triage lead | `triage` | `owned-artifact` |
+| **mnemosyne** | Database automation engineer | `database-automation` | `tests-only` |
+| **nike** | Performance and resilience automation engineer | `performance-resilience-automation` | `tests-only` |
+| **odysseus** | Main-thread orchestration policy | `orchestration` | `owned-artifact` |
+| **orion** | Functional UI hunter | `ui-hunt` | `candidate-file` |
+| **penelope** | UI baseline path analyst | `ui-path-analysis` | `owned-path-spec` |
+| **perseus** | Security hunter | `security-hunt` | `candidate-file` |
+| **pistis** | Consumer contract baseline analyst | `contract-analysis` | `owned-path-spec` |
+| **proteus** | Event and non-REST protocol hunter | `multi-protocol-hunt` | `candidate-file` |
+| **talos** | API and event automation engineer | `api-automation` | `tests-only` |
+| **theseus** | REST API baseline path analyst | `api-path-analysis` | `owned-path-spec` |
+| **tiresias** | White-box source analyst | `source-analysis` | `fragment-only` |
+| **tyche** | Resilience hunter | `resilience-hunt` | `candidate-file` |
+<!-- RACI_ROSTER_END -->
 
-(In `odysseus.md`'s lane roster, `atlas`, `ariadne`, `aristarchus`, `tiresias` and `asklepios` form the **Cross** lane; the table above is a flattened by-function view.)
+The generated roster and every prompt description come from `argus/raci.json`; detailed ownership is in [`RACI-CONTRACT.md`](RACI-CONTRACT.md).
 
 `codex/` — Codex variant of the roster (27 `*.toml` + `*.md` pairs). `framework-template/` (Playwright + TS), `framework-template-java/` (RestAssured + JUnit5 + Playwright-Java), `framework-template-python/` (pytest + Playwright + httpx) — project skeletons, all no-Selenium. `COLOR-SCHEME.md`, `SHARED-DOCTRINE.md`, `BROWSER-ISOLATION.md` — docs.

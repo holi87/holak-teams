@@ -37,6 +37,8 @@ require_text 'argus-assets authorization check' "$SKILL" "run skill does not enf
 require_text 'argus-assets redact' "$SKILL" "run skill does not enforce output redaction"
 require_text 'argus-assets engagement allocate' "$SKILL" "run skill does not allocate isolated worker leases"
 require_text 'engagement cleanup --outcome success|failure' "$SKILL" "run skill does not guarantee cleanup on both outcomes"
+require_text 'argus-assets raci route' "$SKILL" "run skill does not route from the packaged RACI contract"
+require_text 'RACI-CONTRACT.md' "$SKILL" "run skill does not load the packaged RACI contract"
 require_text 'dispatchAllowed=true' "$SKILL" "run skill does not gate dispatch from the preflight report"
 require_text 'ARGUS_SMOKE_OK: argus:kleio,argus:theseus' "$SKILL" "missing deterministic smoke result"
 require_text 'tools: Read, Grep, Glob, Bash, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, Agent' "$ODYSSEUS" "Odysseus does not expose current orchestration tools"
@@ -44,6 +46,8 @@ require_text 'argus-assets preflight' "$ODYSSEUS" "Odysseus does not run the pac
 require_text 'AUTHORIZATION-POLICY.md' "$ODYSSEUS" "Odysseus does not load the packaged authorization policy"
 require_text 'ENGAGEMENT-POLICY.md' "$ODYSSEUS" "Odysseus does not load the packaged engagement policy"
 require_text 'packaged `PreToolUse` guard' "$ODYSSEUS" "Odysseus does not enforce the installed immutability hook"
+require_text 'routes work from the RACI contract' "$ODYSSEUS" "Odysseus frontmatter does not match RACI-driven execution"
+require_text 'execute it unless the user explicitly requested planning only' "$ODYSSEUS" "Odysseus plan-versus-execute contract is ambiguous"
 
 if grep -Fq 'a subagent cannot spawn other subagents' "$ODYSSEUS"; then
   fail "Odysseus still contains the obsolete no-nested-agent claim"

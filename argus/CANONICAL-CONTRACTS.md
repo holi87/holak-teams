@@ -5,6 +5,11 @@ engagement runtime. A role may propose data in an immutable fragment, but only t
 canonical owner can merge the document. The controller validates the schema and matching
 `engagementId` before accepting a fragment.
 
+The complete machine-readable RACI, including non-schema artifacts and every state
+transition, is `raci.json`; its generated human view is `RACI-CONTRACT.md`. Where this
+document summarizes ownership, `scripts/sync-argus-raci.mjs --check` requires an exact
+match with the engagement manifest.
+
 ## Contract registry
 
 | Contract | Canonical path | Canonical owner | Required purpose |
