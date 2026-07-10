@@ -13,6 +13,7 @@ canonical owner can merge the document. The controller validates the schema and 
 | `argus/bug-ledger@1` | `solution/bug-ledger.json` | Minos | Confirmed/suspected defects, stable bug IDs, severity, oracle, wiring, evidence links. |
 | `argus/evidence-reference@1` | `solution/evidence-reference.json` | Kleio | Redacted evidence identity, source, integrity digest, collection metadata, defect links. |
 | `argus/automation-status@1` | `solution/automation-status.json` | Atlas | Stable test ID, owner, runner result, covered bugs, evidence links. |
+| `argus/runner-result@1` | `reports/argus-runner-result.json` | Atlas | Runner mode, strict gate status, standardized exit code, and separate outcome categories. |
 | `argus/final-summary@1` | `solution/final-summary.json` | Kleio | Engagement outcome, counts, source contracts, final narrative. |
 
 Every document has `schemaVersion: 1`, an exact `$schema` ID, and the active
@@ -27,7 +28,8 @@ only from `final-summary.json` and starts with its source schema ID.
 | Bug ledger | `id`, `origin`, `title`, `severity`, `priority`, `lane`, `oracleId`, `status`, `wired`, `testId`, `evidenceIds` | `needs-oracle → suspected → confirmed`; `wired: false → true` | Stable `BUG-NNNN` from Minos's identity allocation; oracle/test/evidence references. |
 | Evidence reference | `id`, `kind`, `source`, `collectedBy`, `capturedAt`, `redaction`, `sha256`, `relatedBugIds` | Immutable after merge | Stable `EVD-NNNN`, redaction class, and SHA-256 of retained safe evidence. |
 | Automation status | `testId`, `owner`, `runner`, `status`, `coversBugIds`, `evidenceIds`, `updatedAt` | `planned → implemented → passed/failed/skipped` | Stable `TST/REG-NNNN`, runner output reference, linked bugs/evidence. |
-| Final summary | `status`, `counts`, `sourceSchemas`, `summary`, `generatedAt` | Terminal `completed`, `degraded`, or `blocked` | All linked source schemas plus final barrier/merge evidence. |
+| Runner result | `mode`, `status`, `exitCode`, `categories`, `events` | Terminal `pass` or `fail` for one named mode | Raw adapter events classified by the portable evaluator. |
+| Final summary | `status`, `counts`, `runner`, `sourceSchemas`, `summary`, `generatedAt` | Terminal `completed`, `degraded`, or `blocked` | All linked source schemas, runner categories, and final barrier/merge evidence. |
 
 Only the controller changes coordination state: worker allocation, barriers, exclusive
 locks, checkpoint sequences, ID identity mappings, fragment records, and merge records.

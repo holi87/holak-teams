@@ -109,6 +109,17 @@ checkpoints, and idempotent success/failure cleanup. Full contract:
 `ENGAGEMENT-POLICY.md`; installed path:
 `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 
+## Runner modes and outcomes
+
+Every packaged TypeScript, Java, and Python template implements the same four runner
+modes: `baseline`, `defect-evidence`, `candidate-regression`, and `full-suite`. They emit
+`reports/argus-runner-result.json` with separate product, automation, infrastructure,
+skip, and policy categories and standardized exit codes 0/10-15. Known RED is successful
+only as explicit defect evidence; it cannot make candidate/full green gates pass. The
+complete inputs, outputs, lifecycle, adapter format, and exit behavior are in
+`RUNNER-CONTRACT.md`; installed path:
+`${CLAUDE_PLUGIN_ROOT}/references/RUNNER-CONTRACT.md`.
+
 ## Canonical QA contracts
 
 The machine source of truth is versioned JSON, not loose Markdown: lane plans, confirmed

@@ -7,12 +7,21 @@ One tool covers **API** (`request` context) and **UI** (browser) → one runner,
 
 ## Run
 ```bash
-./run-tests.sh                 # all projects (setup + api + regression + ui)
-./run-tests.sh --project=api   # API only
+./run-tests.sh --mode baseline             # strict green, excludes @bug:BUG-NNNN
+./run-tests.sh --mode defect-evidence      # known RED only; requires adapter events
+./run-tests.sh --mode candidate-regression # strict green over bug-linked tests
+./run-tests.sh --mode full-suite           # strict green over all selected tests
+./run-tests.sh --mode baseline -- --project=api
 npm run report                 # open the HTML report
 npm run perf                   # optional light perf probe (PERF_TARGETS="/api/a,/api/b") — separate from run-tests.sh on purpose
 ```
-Reports: `reports/html/` (humans) + `reports/results.json` (tooling). Both Playwright-native.
+Reports: `reports/html/` + `reports/results.json` (Playwright) and
+`reports/argus-runner-result.json` (`argus/runner-result@1`). Exit codes are 0 or 10-15
+per `RUNNER-CONTRACT.md`. Framework adapters append seven-field outcome events to
+`reports/outcomes.raw.tsv`; `defect-evidence` fails closed when those events are absent.
+Known RED is accepted only in evidence mode and always fails candidate/full green gates.
+Tests/reporters record outcomes with `scripts/outcome-event.sh <case> <category> <status>
+<expected> <lifecycle> <BUG-NNNN|-> <reason-token>`; parallel appends are lock-safe.
 
 **Before the engagement:** walk `ai_agents_internal/PRE-EVENT-CHECKLIST.md` top to bottom (free ports, docker, browsers pre-downloaded, agents + skill installed).
 

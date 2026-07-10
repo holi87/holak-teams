@@ -17,6 +17,7 @@ fail() {
 node "$PLUGIN/templates/typescript/scripts/hunt-driver.mjs" --help >/dev/null
 test -f "$PLUGIN/hooks/hooks.json" || fail "plugin does not package hooks/hooks.json"
 jq -e '.assets[] | select(.id == "runtime-schemas")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits canonical schemas"
+jq -e '.assets[] | select(.id == "runner-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits runner contract"
 jq -e '.hooks.PreToolUse[] | select(.matcher == "Write|Edit|MultiEdit|Bash")' "$PLUGIN/hooks/hooks.json" >/dev/null || fail "plugin hook does not cover direct and shell writes"
 
 if command -v claude >/dev/null 2>&1; then
@@ -107,6 +108,13 @@ cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-t
   SMOKE=1 node typescript/scripts/bug-coverage.mjs >/dev/null 2>&1
   SMOKE=1 node typescript/scripts/baseline-coverage.mjs >/dev/null 2>&1
   bash -n typescript/run-tests.sh java/run-tests.sh python/run-tests.sh
+  for template in typescript java python; do
+    test -x "$template/scripts/runner-contract.sh" || fail "$template template omitted runner contract evaluator"
+    "$template/scripts/runner-contract.sh" --mode baseline \
+      --events "$ROOT/scripts/fixtures/argus-runner/baseline.tsv" \
+      --output "$WORK_DIR/$template-runner-result.json" --runner-exit 0
+    jq -e '."$schema" == "argus/runner-result@1" and .exitCode == 0' "$WORK_DIR/$template-runner-result.json" >/dev/null
+  done
   test -f driver-target/scripts/driver-config.schema.json
   test -f typescript/solution/bug-ledger.example.json
   node - <<'NODE'

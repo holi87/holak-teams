@@ -116,6 +116,8 @@ assert(existsSync(join(ROOT, 'argus', 'schemas', 'engagement-state.schema.json')
 for (const schema of ['bug-ledger', 'lane-plan', 'evidence-reference', 'automation-status', 'final-summary', 'schema-compatibility']) {
   assert(existsSync(join(ROOT, 'argus', 'schemas', `${schema}.schema.json`)), `canonical ${schema} schema is missing`);
 }
+assert(existsSync(join(ROOT, 'argus', 'schemas', 'runner-result.schema.json')), 'runner result schema is missing');
+assert(existsSync(join(ROOT, 'argus', 'RUNNER-CONTRACT.md')), 'runner contract is missing');
 assert(existsSync(join(ROOT, 'argus', 'CANONICAL-CONTRACTS.md')), 'canonical contract registry is missing');
 assert(existsSync(join(ROOT, 'argus', 'claude', 'hooks', 'hooks.json')), 'packaged PreToolUse hook is missing');
 console.log(`PASS  Argus capability contract: ${agentFiles.length} frontmatters, ${capabilities.size} capabilities, supported tool vocabulary only`);

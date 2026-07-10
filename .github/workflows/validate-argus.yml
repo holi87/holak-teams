@@ -33,6 +33,9 @@ jobs:
       - name: Verify versioned canonical QA contracts and fixtures
         run: scripts/smoke-argus-schemas.sh
 
+      - name: Verify runner modes, lifecycle, categories, and exit codes
+        run: scripts/smoke-argus-runner-contract.sh
+
   agent-contracts:
     name: Agent and packaged-runtime contracts
     runs-on: ubuntu-latest

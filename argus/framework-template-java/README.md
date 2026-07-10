@@ -23,8 +23,11 @@ hidden behind a retry.
 ## Run
 
 ```bash
-./run-tests.sh                          # ALL lanes (gated lanes self-skip unless enabled)
-./run-tests.sh -Dgroups=api             # one lane by @Tag (api|ui|perf|security|db|regression)
+./run-tests.sh --mode baseline          # strict green, excludes @Tag("regression")
+./run-tests.sh --mode defect-evidence   # known RED only; requires adapter events
+./run-tests.sh --mode candidate-regression # strict green over regression tag
+./run-tests.sh --mode full-suite        # strict green over all selected tests
+./run-tests.sh --mode baseline -- -Dgroups=api
 ./run-tests.sh -Papi                    # same, via a Maven profile
 ./run-tests.sh -Dtest=ExampleApiTest    # one class
 PERF_BUDGET_MS=800 ./run-tests.sh       # enable the perf gate for this run
@@ -34,7 +37,13 @@ open reports/summary.html               # the human report
 Reports: `target/surefire-reports/*.xml` (per class, CI-native) + `reports/summary.json`
 (tooling) + `reports/summary.html` (humans). The aggregated summary is written in-process by
 `qa.support.SummaryListener` (registered via the JUnit Platform ServiceLoader), so it always
-matches the run Surefire just executed. **Exit code reflects pass/fail.**
+matches the run Surefire just executed. The wrapper also writes
+`reports/argus-runner-result.json`; outcome adapters append the shared seven-field TSV
+events to `reports/outcomes.raw.tsv`. Exit codes are 0 or 10-15 per
+`RUNNER-CONTRACT.md`, and known RED is successful only in `defect-evidence` mode.
+JUnit extensions/listeners record outcomes through `scripts/outcome-event.sh <case>
+<category> <status> <expected> <lifecycle> <BUG-NNNN|-> <reason-token>`; parallel appends
+are lock-safe.
 
 **Before the engagement:** walk `ai_agents_internal/README.md` (the pre-engagement checklist
 analog) top to bottom — JDK/Maven present, first run online so deps + the Playwright browser
