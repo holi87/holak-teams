@@ -40,7 +40,7 @@ Dependency direction: specs → fixtures/pages/data → api → config. Specs ne
 - Locators: `getByRole`/`getByLabel`, never style-coupled CSS. Assertions live in specs, not page objects.
 - Determinism: `retries: 0`, no sleeps, unique data per test (factory), state reset between runs.
 - Reporting: Playwright-native — `list` + `html` (`reports/html/`) + `json` (`reports/results.json`).
-- **Browser isolation (exploratory hunting):** hunters drive their OWN isolated browser via `scripts/hunt-driver.mjs` (`launchPersistentContext` per agent), NEVER the shared Playwright MCP browser — which clobbers `localStorage` sessions across concurrent agents and times out screenshots. The shared MCP `browser_*` is throwaway public-recon only. Doctrine + CLI: `agents/argus/BROWSER-ISOLATION.md`. (Origin: Run-E recall collapse, ui 12% / i18n 0%.)
+- **Browser isolation (exploratory hunting):** hunters drive their OWN isolated browser via `scripts/hunt-driver.mjs` (`launchPersistentContext` per agent), NEVER the shared Playwright MCP browser — which clobbers `localStorage` sessions across concurrent agents and times out screenshots. The shared MCP `browser_*` is throwaway public-recon only. Doctrine + CLI: `argus/BROWSER-ISOLATION.md` (holak-teams repo doc). (Origin: Run-E recall collapse, ui 12% / i18n 0%.)
 
 ## 6. How to run
 `./run-tests.sh` (everything) · `./run-tests.sh --project=api` · `npm run report`.
