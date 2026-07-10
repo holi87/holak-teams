@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/schema-compatibility.schema.json",
+  "title": "Argus schema compatibility policy",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "current", "readCompatible", "migration"],
+  "properties": { "schemaVersion": { "const": 1 }, "current": { "const": 1 }, "readCompatible": { "const": [1] }, "migration": { "type": "string", "minLength": 1 } }
+}

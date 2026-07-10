@@ -30,6 +30,9 @@ jobs:
       - name: Verify target immutability and parallel engagement coordination
         run: scripts/smoke-argus-engagement.sh
 
+      - name: Verify versioned canonical QA contracts and fixtures
+        run: scripts/smoke-argus-schemas.sh
+
   agent-contracts:
     name: Agent and packaged-runtime contracts
     runs-on: ubuntu-latest

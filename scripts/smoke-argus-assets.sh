@@ -16,6 +16,7 @@ fail() {
 "$PLUGIN/bin/argus-assets" verify
 node "$PLUGIN/templates/typescript/scripts/hunt-driver.mjs" --help >/dev/null
 test -f "$PLUGIN/hooks/hooks.json" || fail "plugin does not package hooks/hooks.json"
+jq -e '.assets[] | select(.id == "runtime-schemas")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits canonical schemas"
 jq -e '.hooks.PreToolUse[] | select(.matcher == "Write|Edit|MultiEdit|Bash")' "$PLUGIN/hooks/hooks.json" >/dev/null || fail "plugin hook does not cover direct and shell writes"
 
 if command -v claude >/dev/null 2>&1; then
@@ -82,6 +83,9 @@ cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-t
     >/dev/null
   "$INSTALLED_PLUGIN/bin/argus-assets" engagement validate \
     --manifest "$WORK_DIR/preflight-target/ai_agents_internal/engagement.json" \
+    >/dev/null
+  "$INSTALLED_PLUGIN/bin/argus-assets" schema validate \
+    --kind final-summary --input "$ROOT/scripts/fixtures/argus-schemas/valid/final-summary.json" \
     >/dev/null
   allocation="$("$INSTALLED_PLUGIN/bin/argus-assets" engagement allocate \
     --manifest "$WORK_DIR/preflight-target/ai_agents_internal/engagement.json" --lane kleio)"

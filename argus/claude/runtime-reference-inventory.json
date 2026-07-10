@@ -55,6 +55,12 @@
       ]
     },
     {
+      "value": "references/CANONICAL-CONTRACTS.md",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
       "value": "references/ENGAGEMENT-POLICY.md",
       "consumers": [
         "aegis",

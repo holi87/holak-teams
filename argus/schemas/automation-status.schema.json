@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/automation-status.schema.json",
+  "title": "Argus automation status v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "engagementId", "testId", "owner", "status", "runner", "updatedAt", "coversBugIds", "evidenceIds"],
+  "properties": {
+    "$schema": { "const": "argus/automation-status@1" }, "schemaVersion": { "const": 1 }, "engagementId": { "type": "string", "minLength": 1 },
+    "testId": { "type": "string", "pattern": "^(?:TST|REG)-[0-9]{4}$" }, "owner": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }, "status": { "enum": ["planned", "implemented", "passed", "failed", "skipped"] },
+    "runner": { "type": "string", "minLength": 1 }, "updatedAt": { "type": "string", "format": "date-time" },
+    "coversBugIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^BUG-[0-9]{4}$" } }, "evidenceIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^EVD-[0-9]{4}$" } }
+  }
+}

@@ -16,6 +16,7 @@
 #   h) every Argus frontmatter and runtime lane has a validated capability contract
 #   i) risky lanes share one deny-by-default authorization, audit, and redaction policy
 #   j) every lane shares the packaged immutability, ownership, barrier, and cleanup runtime
+#   k) canonical QA contracts reject malformed fixtures and render a source-versioned summary
 #
 # Exit code: 0 when every check passes, 1 otherwise.
 
@@ -200,6 +201,12 @@ if "$ROOT/scripts/smoke-argus-engagement.sh"; then
   pass "[argus] (j) target immutability, single-writer ownership, deterministic parallel state, and cleanup"
 else
   fail "[argus] (j) engagement immutability and concurrency contract"
+fi
+
+if "$ROOT/scripts/smoke-argus-schemas.sh"; then
+  pass "[argus] (k) canonical schemas, fixtures, fragment compatibility, and source-versioned summary"
+else
+  fail "[argus] (k) canonical QA contract"
 fi
 
 echo ""

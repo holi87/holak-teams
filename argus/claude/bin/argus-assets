@@ -50,6 +50,7 @@ import {
   writeCheckpoint,
   writeFragment,
 } from '../lib/engagement.mjs';
+import { CONTRACT_KINDS, schemaId, validateCanonicalDocument } from '../lib/contracts.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
@@ -92,6 +93,9 @@ switch (command) {
   case 'engagement':
     process.exitCode = engagementCommand(args);
     break;
+  case 'schema':
+    process.exitCode = schemaCommand(args);
+    break;
   case 'guard':
     process.exitCode = guardCommand(args);
     break;
@@ -120,6 +124,7 @@ Usage:
   argus-assets authorization init --target <url-or-path> [options]
   argus-assets authorization check --manifest <path> --lane <slug> --action <action> --target <target> [options]
   argus-assets engagement <init|validate|allocate|status|claim|release|fragment|merge|id|checkpoint|barrier|cleanup> [options]
+  argus-assets schema <list|validate> [options]
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
   argus-assets copy-template <typescript|java|python> <empty-destination>
@@ -155,13 +160,34 @@ Engagement coordination:
   fragment --manifest <path> --lane <slug> --token <lease> --canonical <path> --id <id> --input <file|->
   merge --manifest <path> --owner <slug> --token <lease> --canonical <path>
   claim|release --manifest <path> --lane <slug> --token <lease> --resource <reset|fault>
-  id --manifest <path> --lane <slug> --token <lease> --kind <kind>
+  id --manifest <path> --lane <slug> --token <lease> --kind <kind> --identity <stable-key>
   checkpoint --manifest <path> --lane <slug> --token <lease> --phase <phase> --sequence <n> --input <json-file|->
   barrier arrive|status|advance --manifest <path> [lease options]
   cleanup --manifest <path> --lane <slug> --token <lease> --outcome <success|failure>
 
 Templates are copied only to a new or empty directory. In ADAPT mode, copy to a
 temporary directory, diff against the target's existing harness, and merge explicitly.`);
+}
+
+function schemaCommand(args) {
+  const [operation, ...rest] = args;
+  if (operation === 'list') {
+    for (const kind of CONTRACT_KINDS) console.log(`${kind}\t${schemaId(kind)}`);
+    return 0;
+  }
+  if (operation === 'validate') {
+    const options = parseNamedOptions(rest, new Set(['--kind', '--input']));
+    requireOptions(options, ['kind', 'input'], 'schema validate');
+    if (!CONTRACT_KINDS.includes(options.kind)) fail(`schema validate --kind must be one of: ${CONTRACT_KINDS.join(', ')}`);
+    let document;
+    try { document = JSON.parse(readTextInput(options.input)); }
+    catch (error) { fail(`schema validate: input is not valid JSON: ${error.message}`); }
+    const errors = validateCanonicalDocument(options.kind, document);
+    if (errors.length) fail(`schema validate ${options.kind}: ${errors.join('; ')}`);
+    console.log(`PASS  schema ${schemaId(options.kind)} input=${options.input}`);
+    return 0;
+  }
+  fail('usage: argus-assets schema <list|validate> [options]');
 }
 
 function authorizationCommand(args) {
@@ -278,10 +304,10 @@ function engagementMerge(args) {
 }
 
 function engagementId(args) {
-  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--kind']));
-  requireOptions(options, ['manifest', 'lane', 'kind'], 'engagement id');
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--kind', '--identity']));
+  requireOptions(options, ['manifest', 'lane', 'kind', 'identity'], 'engagement id');
   const { manifest: engagement } = loadEngagement(options);
-  console.log(allocateId(engagement, options.lane, leaseToken(options), options.kind));
+  console.log(allocateId(engagement, options.lane, leaseToken(options), options.kind, options.identity));
   return 0;
 }
 
