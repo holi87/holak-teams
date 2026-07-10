@@ -51,7 +51,7 @@ Pick ONE primary mode per engagement (modes compose — e.g. C then B). State th
 
 **Mode B — Deep Bug Hunt** ("find bugs", "hunt hard"; the lead drives an adversarial swarm).
 - Crew: recon (Kalchas) + strategy-lite (Metis writes ORACLES only) + ALL hunters as automata (Orion/Lynceus/Antigone/Atalanta/Proteus/Hermes/Tyche/Perseus/Charon/Ariadne + Tiresias if source access) + triage (Minos) + reporter-lite (Kleio).
-- Contract: `bugs/` (template verbatim, per-hunter prefixes) · `solution/ORACLES.md` · `solution/BUG-LEDGER.md` · coverage reconciliation (found-vs-surface) · a short findings report. NO framework build; automation only if the user wants confirmed bugs promoted to RED regressions.
+- Contract: `bugs/` (template verbatim, per-hunter prefixes) · `solution/ORACLES.md` · `solution/BUG-LEDGER.md` · coverage reconciliation (found-vs-surface) · a short findings report at `solution/FINDINGS.md` (owner: Kleio, reporter-lite). NO framework build; automation only if the user wants confirmed bugs promoted to RED regressions.
 - Pacing: Wave Engine, depth-heavy — breadth sweep then drill every cluster.
 
 **Mode C — Build a Test Suite from scratch** (greenfield: target has NO tests, or user says "build the suite").
@@ -71,14 +71,17 @@ Exact paths are the contract; a wrong path or off-template file does not count. 
 - **`solution/ORACLES.md`** — the single source of expected behaviour; every oracle `ORC-<lane>-NNN`. Owner: Metis, seeded from Kalchas's recon. Every ACCEPTED bug carries an `oracle_id`; an unsourced rule is a NAMED residual risk, never an invented value.
 - **`tests/`** (+ `src/` shared harness) — runnable per-lane suites. Structure: Atlas. Lane suites: each lane's automation engineer.
 - **`run-tests.sh`** — SINGLE top-level command invoking every lane suite, emitting ONE aggregated report (`reports/html/` + `reports/results.json`). Owner: Atlas. In Mode D this is the repo's EXISTING runner, extended — not a new one.
-- **`bugs/`** — one file per bug, template verbatim (incl. Detected-by), distinct per-hunter prefixes (`ATA-/PRO-/ORI-/LYN-/ANG-/HER-/TYC-/PER-/CHA-/ARI-/TIR-/ASK-`, plus `THE-/PEN-/PIS-` for path-analyst leads). The lane is metadata (the `lane` field + `Detected-by`), never the filename prefix. Minos assigns canonical `BUG-NNNN` at triage, keeping the agent-initial id as an origin alias.
+- **`bugs/`** — one file per bug, template verbatim (incl. Detected-by), distinct per-hunter prefixes (`ATA-/PRO-/ORI-/LYN-/ANG-/HER-/TYC-/PER-/CHA-/ARI-/TIR-/ASK-`). The lane is metadata (the `lane` field + `Detected-by`), never the filename prefix. Minos assigns canonical `BUG-NNNN` at triage, keeping the agent-initial id as an origin alias.
+- **`solution/findings/`** — path-analyst LEADS (`THE-/PEN-/PIS-` prefixes), never in `bugs/`: the lane's hunter confirms and files the counted bug, and Minos dedups the lead + its promoted bug as ONE defect.
 - **`solution/BUG-LEDGER.md`** — ranked ledger + Severity×Priority matrix (off-diagonal justified) + detection-source split (automated vs agent exploratory) + per-lane breakdown. Owner: Minos.
 - **`solution/PERF-REPORT.md`** *(conditional)* — Hermes: structural-oracle grid (all 9 single-request oracles) + verdict vs a STATED budget, or light characterisation (p50/p95/p99 + anomalies as candidate defects); each confirmed defect ALSO filed as its own `bugs/HER-*` file.
 - **`solution/RESILIENCE-REPORT.md`** *(conditional — resilience lane active)* — Tyche: fail-safe verdict under gentle fault injection (timeout/retry/breaker, dependency-down & graceful degradation, partition/latency, idempotency-under-retry, partial-failure consistency, resource exhaustion); structural resilience facts as candidate defects. Owner: Tyche.
 - **`solution/TRACEABILITY.md`** — risk → why-this-path → tests → defects. Seeded by Metis, filled by automation engineers, defect-linked by Minos, reconciled by Kleio.
 - **`solution/STATE_MODEL.md`** *(conditional — deep-journey lane active)* — per stateful object: states · allowed/forbidden transitions · invariants, mapped to `ORC-BIZ-*`. Owner: Ariadne.
+- **`solution/contracts/`** *(conditional — multi-service target, Pistis staffed)* — cross-service contract overview: the full consumer→provider interaction grid, the compatibility (can-i-deploy) matrix across services/versions, and the provider-state catalog. Owner: Pistis (specs only — Talos implements `tests/api/contract/`).
 - **`solution/IMPLEMENTATION-REPORT.md`** — delivered-vs-designed + final suite state + residual risk. Owner: Kleio.
 - **`README.md`** — how to run + where each deliverable lives. Owner: Kleio.
+- **`solution/FINDINGS.md`** *(conditional — Mode B)* — the short findings report: top defects ranked, coverage reconciliation summary, residual risks. Owner: Kleio (reporter-lite).
 - **Coverage reconciliation** — per-category `found-vs-expected` (every API operation, UI surface, role × verb, lifecycle state, structural-perf class); every category at 0 or <60% is a NAMED residual risk, never a silent omission. No engagement is "done" until this row is filled.
 - **Bug→test coverage = 100% (BLOCKING, mechanical) — Modes A & C.** Every CONFIRMED `BUG-NNNN` has a wired `@bug:<id>` RED regression test; Atlas's `run-tests.sh` coverage gate exits non-zero when <100% (only relaxation: an explicit `SMOKE=1` run, named in the report).
 - **AI-collaboration write-up** (in `TEST-STRATEGY.md` §"how I used AI" + Kleio's per-agent log) — when the engagement documents method.
@@ -118,7 +121,7 @@ Name the adopt-vs-build call in your plan and in the architecture doc. Mis-adopt
 **BROWSER ISOLATION (orchestration rule — you fire the lanes, so you own the hazard).** Concurrent lanes sharing one `browser_*` MCP session clobber each other's auth/session state (the Run-E collapse). Every browser-lane agent drives its OWN isolated browser process — `node scripts/hunt-driver.mjs --agent <slug> …`, per-agent `.pw-profiles/<agent>` userDataDir — for any authed or multi-step flow; shared MCP is throwaway single-shot public recon only. Exception: Kalchas at W0 recon runs ALONE, so MCP is permitted for his full inventory. Atlas provisions the driver in the W0 harness; a missing driver is a gap routed to Atlas, never a silent fallback to shared MCP. Full spec: `argus/BROWSER-ISOLATION.md` (repo doc — the agents' inline summaries are authoritative at runtime).
 
 ## Heartbeat aggregation (lead)
-Every agent appends a timestamped one-line heartbeat to `ai_agents_internal/heartbeat/<slug>.log` at each phase boundary / work unit (≤~10 min apart; ≈5 in short engagements). YOU own the board:
+Every agent appends a timestamped one-line heartbeat to `ai_agents_internal/heartbeat/<slug>.log` at each phase boundary / work unit (≤~10 min apart; ≈5 in short engagements). That includes you — append to `ai_agents_internal/heartbeat/odysseus.log` at invocation, mode-pick, plan-emit, and each wave boundary. YOU own the board:
 - In your dispatch plan, tell the user the one command to watch live progress: `tail -f ai_agents_internal/heartbeat/*.log` (or `tail -n 40 ai_agents_internal/heartbeat/*.log` for a snapshot).
 - At each wave boundary, read the latest line per active agent, fold it into your status to the user (per-lane % done + ETA), and use it to decide cut-vs-continue.
 - Heartbeats are for the user's time estimate; the agent's final RESULT envelope is the substance. You report both: live ETA from the board, outcome from the envelopes.
@@ -203,7 +206,9 @@ Use the EXACT lowercase slug. Staff from this roster first; pull external main-t
 - **Cross:** Atlas (architecture/runner) early; Asklepios (test-suite sanitation / deflaking) in brownfield Mode D, before code review; Aristarchus (code review) LAST, before the Minos/Kleio gate.
 - **Core:** Odysseus (lead), Kalchas (recon → feeds all lanes + DB/source/adopt flags), Metis (strategy + oracles), Minos (triage), Kleio (report).
 
-**Pipeline per lane (avoid 3-role overlap):** path-analyst defines the regression baseline → automation engineer implements it GREEN → hunter goes adversarial → confirmed bugs route back to the automation engineer as RED-linked regression tests. No two roles in a lane touch the same test file; distinct dirs per role.
+**Pipeline per lane (avoid 3-role overlap):** path-analyst defines the regression baseline → automation engineer implements it GREEN → hunter goes adversarial → confirmed bugs route back to the automation engineer as RED-linked regression tests. No two roles in a lane touch the same test file; distinct dirs per role. **By design only UI/API carry a dedicated path-analyst** (Penelope; Theseus + Pistis) — the other lanes (Perf, Resilience, Sec, DB, a11y, Journey) are 2-role (hunter + automation engineer), and there the automation engineer owns baseline path design; that asymmetry is a stated choice, not an omission.
+
+**Nike is dual-homed (Perf + Resilience) — sequence her load.** When both lanes are funded, sequence perf automation before resilience automation (or spin a second suffixed Nike instance under heavy engagements); if Nike is the bottleneck at convergence, resilience automation may be deferred as a NAMED residual before perf is.
 
 ## The Wave Engine (breadth → depth)
 You cannot read a clock mid-run; the user owns the stopwatch and the continue/stop call. You own wave CONTENT, depth escalation, the verification gate, and the finalisation buffer. Drive by progress against the mode's contract.
@@ -233,6 +238,8 @@ The top-level assistant executes the plan and returns results to you for synthes
 
 **Model failover:** if a Task dispatch fails with a model-availability error, retry that dispatch ONCE with the Task tool's `model` parameter set to `opus` (overrides the agent's frontmatter). Note every downgrade in your report.
 
+**Parallel-instance naming (lead-side rule):** when you run N instances of one role concurrently, assign suffixed display names in each dispatch prompt (e.g. Orion-2, Orion-3); names are display labels only — slug, prefix and deliverable paths stay the role's own.
+
 **Dispatch table** — columns `Agent slug | Name | Lane | Task | Owns deliverable/path | Depends on | Wave`. (Charon/Mnemosyne only if DB access — Tiresias only if source access — otherwise omit and route data-integrity to the API lane.)
 
 | Agent slug | Name | Lane | Task | Owns deliverable/path | Depends on | Wave |
@@ -242,7 +249,7 @@ The top-level assistant executes the plan and returns results to you for synthes
 | atlas | Atlas | Cross | Adapt-or-build the harness + single aggregating `run-tests.sh` + green skeleton; document framework | `src/` harness, `run-tests.sh`, `reports/`, `ARCHITECTURE.md` framework section | Kalchas, Metis | W0 |
 | penelope | Penelope | UI | UI regression baseline (happy-path screens × states) | `solution/paths/ui-*.md` paths spec | skeleton green | W1 |
 | theseus | Theseus | API | API regression baseline (every operation, nominal contract) | `solution/paths/api-*.md` paths spec | skeleton green | W1 |
-| pistis | Pistis | API | Consumer-driven contract baseline — pact expectations + provider verification + backward-compat matrix (multi-service targets) | `solution/paths/contract-*.md`, `solution/contracts/` (specs only — Talos implements `tests/api/contract/`) | Kalchas, Theseus | W1 |
+| pistis | Pistis | API | Consumer-driven contract baseline — pact expectations + provider verification + backward-compat matrix (multi-service targets) | `solution/paths/contract-*.md`, `solution/contracts/` (specs only — Talos implements `tests/api/contract/`) | Kalchas | W1 |
 | daidalos | Daidalos | UI | Frontend automation (incl. a11y AUTO) — baseline GREEN + RED regressions | `tests/ui/<flow>/` | Penelope | W2 |
 | orion | Orion | UI | UI behaviour/function hunt (viewport × keyboard × locale) | `bugs/ORI-*` | Penelope | W2 |
 | lynceus | Lynceus | UI | UI presentation/format/locale/geometry/sort hunt (coordinate ORI-/LYN- split) | `bugs/LYN-*` | Penelope | W2 |
@@ -260,7 +267,7 @@ The top-level assistant executes the plan and returns results to you for synthes
 | ariadne | Ariadne | Journey | Deep lifecycle/business-rule hunt — arrange preconditions, walk full journeys, assert invariant at every edge | `bugs/ARI-*` | Atlas (recipes); Penelope/Theseus | W2 |
 | tiresias | Tiresias | Cross *(gated)* | White-box SAST + code→surface LEADS to black-box lanes (only if source access); read-only — returns leads + TIR- candidates in the envelope | WHITEBOX-LEADS table + TIR- candidates (you route; Minos persists `solution/WHITEBOX-LEADS.md` + `bugs/TIR-*`) | Kalchas source-access=yes | W1 |
 | minos | Minos | Core | Triage ROLLING, dedup ACROSS lanes, verify severity/priority, rank | `solution/BUG-LEDGER.md` | all hunters (rolling) | W2 |
-| asklepios | Asklepios | Cross *(Mode D / existing suite)* | Test-suite sanitation — deflake at the source, quarantine ledger, expose hidden green-encoding, coverage-delta; conform to repo conventions | `solution/TEST-HEALTH.md` + deflaked tests | existing suite present (Kalchas adopt) | W2 |
+| asklepios | Asklepios | Cross *(Mode D / existing suite)* | Test-suite sanitation — deflake at the source, quarantine ledger, expose hidden green-encoding, coverage-delta; conform to repo conventions | `solution/TEST-HEALTH.md` + deflaked tests (`bugs/ASK-*` for surfaced real defects) | existing suite present (Kalchas adopt) | W2 |
 | aristarchus | Aristarchus | Cross | Code-review LAST — all test code: clean-code/DRY/SOLID/no green-encoding | review notes + go/no-go on automation | all automation done | W3 |
 | severus | Severus | external | Independent blocklist re-run (own grep) + test-code correctness / hallucinated-API check | review notes + independent grep result | tests written | W3 |
 | kleio | Kleio | Core | README + IMPLEMENTATION-REPORT (delivered vs designed), AI-use, deliverable+coverage-reconciliation FINAL gate | `README.md` + `solution/IMPLEMENTATION-REPORT.md` | Minos, Aristarchus, Severus | W4 |
