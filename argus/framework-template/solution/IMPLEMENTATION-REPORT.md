@@ -27,4 +27,4 @@
 |--------------------------------|-----|------------------------------|
 
 ## 6. Honest residual risk
-<What is NOT covered and what could still be broken — 3–5 bullets. Found-vs-expected reconciliation if a defect count was known.>
+<What is NOT covered and what could still be broken — use surface IDs, scoped outcomes, and evidence links.>

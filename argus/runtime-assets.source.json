@@ -43,6 +43,12 @@
       "destination": "references/RUNNER-CONTRACT.md"
     },
     {
+      "id": "coverage-contract",
+      "kind": "reference",
+      "source": "argus/COVERAGE-CONTRACT.md",
+      "destination": "references/COVERAGE-CONTRACT.md"
+    },
+    {
       "id": "runtime-schemas",
       "kind": "schemas",
       "source": "argus/schemas",

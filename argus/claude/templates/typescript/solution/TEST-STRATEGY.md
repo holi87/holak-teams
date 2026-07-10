@@ -41,4 +41,4 @@ Every exclusion gets a one-line reason. **No oracle → out of scope, never an i
 
 ## 7. Exit criteria (testing is "done" when…)
 - <e.g. P1 risk packages executed; every confirmed bug has a linked regression test; suite runs clean via ./run-tests.sh>
-- Found-vs-expected reconciliation done if a defect count is known or implied.
+- Surface-derived coverage dimensions and explicit scoped outcomes are reconciled; defect counts remain descriptive only.

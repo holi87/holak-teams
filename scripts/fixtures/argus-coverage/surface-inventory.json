@@ -1,0 +1,10 @@
+{
+  "$schema": "argus/surface-inventory@1", "schemaVersion": 1, "engagementId": "coverage-fixture", "owner": "kalchas",
+  "discovery": { "candidates": 5, "characterized": 4 },
+  "items": [
+    { "id": "SRF-UI-CHECKOUT", "surfaceType": "ui", "lane": "ui", "risk": "critical", "riskWeight": 5, "riskBasis": "Revenue journey", "accessibility": "testable", "denominators": ["route", "role", "state", "device", "browser", "risk-category"], "discoveryEvidenceIds": ["EVD-0001"] },
+    { "id": "SRF-API-ORDERS-POST", "surfaceType": "api", "lane": "api", "risk": "critical", "riskWeight": 5, "riskBasis": "Creates a charged order", "accessibility": "testable", "denominators": ["operation", "schema", "role", "state", "risk-category"], "discoveryEvidenceIds": ["EVD-0002"] },
+    { "id": "SRF-EVENT-ORDER-CREATED", "surfaceType": "event", "lane": "events", "risk": "high", "riskWeight": 4, "riskBasis": "Starts fulfilment", "accessibility": "testable", "denominators": ["operation", "schema", "state", "risk-category"], "discoveryEvidenceIds": ["EVD-0003"] },
+    { "id": "SRF-DATA-AUDIT", "surfaceType": "data", "lane": "data", "risk": "medium", "riskWeight": 3, "riskBasis": "Regulatory audit record", "accessibility": "inaccessible", "scopeReason": "Read-only account has no audit-store access", "denominators": ["schema", "role", "state", "risk-category"], "discoveryEvidenceIds": ["EVD-0004"] }
+  ]
+}

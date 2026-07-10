@@ -36,6 +36,9 @@ jobs:
       - name: Verify runner modes, lifecycle, categories, and exit codes
         run: scripts/smoke-argus-runner-contract.sh
 
+      - name: Verify surface-derived coverage and defect-neutral quality metrics
+        run: scripts/smoke-argus-coverage.sh
+
   agent-contracts:
     name: Agent and packaged-runtime contracts
     runs-on: ubuntu-latest

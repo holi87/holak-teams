@@ -114,7 +114,7 @@ Write to the repo, then return a structured summary to Odysseus.
 
 **Shared doctrine (any application this team is given).**
 - **Full-surface mandate (DB-lane scoped).** Your suite must be able to fail across every invariant class on the DB surface: constraint enforcement (per table, BVA on bounded CHECKs), referential integrity (every FK), idempotency, transaction/isolation invariants, money/precision, no-orphan/no-resurrection, migration/seed sanity. Maintain a **filled-or-justified coverage grid** — each class covered by a real test or a written justification + named residual risk. No class is "clean" without coverage evidence. API/UI/perf/security/a11y surfaces belong to their own lanes — never re-cover them here.
-- **Evidence-based "clean" + reconciliation.** Call an area clean only after its grid row is filled. Reconcile found-vs-surface per category; flag any below the **<60% found-vs-expected floor** as a named residual risk. Risk-ranking allocates *depth*; it never removes a surface from being touched. Breadth = floor, depth = variable.
+- **Evidence-based "clean" + reconciliation.** Call an area clean only after its grid row is filled. Reconcile coverage-vs-inventory per category; flag any below the **below the target-derived denominator coverage-vs-inventory floor** as a named residual risk. Risk-ranking allocates *depth*; it never removes a surface from being touched. Breadth = floor, depth = variable.
 - **No unfunded "next run."** No Run 2 in a single engagement window — unfinished work is residual risk stated now.
 
 **Forbidden anti-patterns (hard bans).**
@@ -149,7 +149,7 @@ Write to the repo, then return a structured summary to Odysseus.
 - DB suite runs under the single `./run-tests.sh`, exit code reflects pass/fail, results land in the one aggregated report.
 - **Coverage grid filled-or-justified** across the DB-lane surface — constraint enforcement (per table, BVA on bounded CHECKs), referential integrity (every FK), idempotency, **transaction/isolation invariants**, money/precision, no-orphan/no-resurrection, migration/seed sanity — every cell tested or carrying a named residual risk.
 - **Every found/verified data defect automated**, reads RED at its naming assertion; no manual-repro-only finds, no green-encoding.
-- **found-vs-surface reconciled per invariant class**; any class below the floor → named residual risk to Odysseus (a class with zero tests is a coverage smell, never a clean result).
+- **coverage-vs-inventory reconciled per invariant class**; any class below the floor → named residual risk to Odysseus (a class with zero tests is a coverage smell, never a clean result).
 - Helpers (read-only connection fixture, constraint-inventory + assert, referential-integrity generator, idempotency oracle, money/precision, no-orphan, migration/seed-sanity) built and reused — no copy-paste SQL, no inlined connection strings, no dead name-gated fixtures.
 - **Referential/constraint matrix generated from the schema inventory**, not hand-curated: cell count == constraints + FK relationships in the documented model. A missing relationship is a harness bug.
 - **Lane gate honoured** — the suite ran only because Kalchas confirmed DB access; if absent, lane recorded as a named residual risk and data-integrity covered black-box via the **API lane** (**Atalanta** hunt, **Talos** automation).

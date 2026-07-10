@@ -1,0 +1,1 @@
+{"$schema":"argus/coverage-observations@1","schemaVersion":1,"engagementId":"fixture-engagement","observations":[{"surfaceId":"SRF-API-HEALTH","executed":true,"assertions":[{"id":"AST-1","oracleId":"ORC-1","meaningful":true}],"evidenceIds":["EVD-0002"],"defects":[]}]}

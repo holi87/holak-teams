@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/coverage-observations.schema.json",
+  "title": "Argus coverage observations v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "engagementId", "observations"],
+  "properties": {
+    "$schema": { "const": "argus/coverage-observations@1" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["surfaceId", "executed", "assertions", "evidenceIds", "defects"],
+        "properties": {
+          "surfaceId": { "type": "string", "pattern": "^SRF-[A-Z0-9][A-Z0-9-]*$" },
+          "executed": { "type": "boolean" },
+          "assertions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "oracleId", "meaningful"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "oracleId": { "type": "string", "minLength": 1 },
+                "meaningful": { "type": "boolean" }
+              }
+            }
+          },
+          "evidenceIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^EVD-[0-9]{4}$" }
+          },
+          "defects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "status"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "status": { "enum": ["confirmed", "duplicate", "unsupported"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

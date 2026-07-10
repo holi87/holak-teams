@@ -1,0 +1,8 @@
+{
+  "$schema": "argus/coverage-observations@1", "schemaVersion": 1, "engagementId": "coverage-fixture",
+  "observations": [
+    { "surfaceId": "SRF-UI-CHECKOUT", "executed": true, "assertions": [{ "id": "AST-UI-1", "oracleId": "ORC-UI-1", "meaningful": true }], "evidenceIds": ["EVD-0101"], "defects": [{ "id": "BUG-0001", "status": "confirmed" }, { "id": "BUG-0001", "status": "duplicate" }] },
+    { "surfaceId": "SRF-API-ORDERS-POST", "executed": true, "assertions": [{ "id": "AST-API-1", "oracleId": "ORC-API-1", "meaningful": true }], "evidenceIds": ["EVD-0102"], "defects": [] },
+    { "surfaceId": "SRF-EVENT-ORDER-CREATED", "executed": false, "assertions": [], "evidenceIds": [], "defects": [{ "id": "RAW-LOW-QUALITY", "status": "unsupported" }] }
+  ]
+}

@@ -53,9 +53,6 @@ if (!existsSync(ledgerPath)) {
       }
     }
 
-    if (confirmed.length === 0) {
-      fail(`${rel(ledgerPath)} has zero confirmed defects; add confirmed entries or run an explicit SMOKE=1 smoke check`);
-    }
     if (result.uncovered.length) {
       fail(`uncovered confirmed bugs: ${result.uncovered.join(', ')}`);
     }

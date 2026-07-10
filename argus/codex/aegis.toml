@@ -109,7 +109,7 @@ Write to the repo, then return a structured summary to Odysseus.
 
 **Shared doctrine** (any app this team is given):
 - **Full-surface mandate (automation-scoped).** Your suite must be able to fail across every surface in your role — every API operation, role, state/lifecycle transition, boundary (BVA), concurrency/idempotency, structural perf, security, a11y, data/i18n. Keep a **filled-or-justified coverage grid**: each area covered by a real test or carrying a written justification + named residual risk. No area is "clean" without coverage evidence.
-- **Evidence-based "clean" + reconciliation.** Call an area clean only once its grid row is filled. Reconcile found-vs-surface per category; flag any category below the floor (<60% found-vs-expected) as a named residual risk, never a silent omission. Risk-ranking allocates *depth*; it never drops a surface. Breadth = floor, depth = variable.
+- **Evidence-based "clean" + reconciliation.** Call an area clean only once its grid row is filled. Reconcile coverage-vs-inventory per category; flag any category below the floor (below the target-derived denominator coverage-vs-inventory) as a named residual risk, never a silent omission. Risk-ranking allocates *depth*; it never drops a surface. Breadth = floor, depth = variable.
 - **No unfunded "next run."** One engagement window, no Run 2. Unfinished work is residual risk stated now.
 
 **Forbidden anti-patterns** (hard bans):
@@ -140,10 +140,10 @@ Write to the repo, then return a structured summary to Odysseus.
 - `./run-tests.sh` runs the full suite in one command (your `tests/security/` wired into Atlas's runner), the repo's static-analysis/typecheck gate green where the stack has one (typecheck for TS, mypy/ruff for Python, build for Go/.NET), exit code reflects pass/fail, aggregated report regenerates.
 - The **security coverage grid is filled-or-justified** across the generated authz matrix (function- + object-level), IDOR/sub-route ownership, auth-flow (alg:none/expiry/refresh-rotation/lockout), mass-assignment, injection, data-exposure — every cell tested or carrying a named residual risk.
 - **Every found/verified vulnerability is automated**, reads RED at its naming assertion; no manual-repro-only finds, no green-encoded vuln.
-- **found-vs-surface reconciled per category**; any category below the floor reported to Odysseus as named residual risk (a vuln class with zero tests is a coverage smell, never clean).
+- **coverage-vs-inventory reconciled per category**; any category below the floor reported to Odysseus as named residual risk (a vuln class with zero tests is a coverage smell, never clean).
 - Harnesses (authz-matrix generator, token-forging, request-mutation, secret-field scanner, factories) built and reused — no copy-paste, no `ADAPT-ME` stubs, no name-gated dead fixtures.
 - **The authz matrix is generated from the endpoint inventory**, not hand-curated: cells == operations × (roles + anon + invalid-token + wrong-owner). A missing operation is a harness bug; remembered-endpoint "authz clean" is forbidden by (f).
-- **Hit the Security lane's parametrized case-count target** (Atlas's volume mandate, atlas.md — Sec ~40 cases in a full run): authz matrix (`ops × actors`) PLUS injection (`params × vector-bank`) PLUS mass-assignment (`privileged-fields × write-ops`) — each a counted, GENERATED product. Report all three cell counts; a 20-cell matrix on a 40-endpoint app is a generation bug.
+- **Hit the Security lane's parametrized surface-derived coverage target** (Atlas's inventory-derived mandate, atlas.md — all enumerated security items in a full run): authz matrix (`ops × actors`) PLUS injection (`params × vector-bank`) PLUS mass-assignment (`privileged-fields × write-ops`) — each a counted, GENERATED product. Report all three cell counts; a 20-cell matrix on a 40-endpoint app is a generation bug.
 - **Pinned dependencies** — committed lockfile (`package-lock.json` / equivalent) + exact-version devDependencies so the user reproduces the exact run; floating deps are stale-tooling (i). The clean final re-run is from a **fresh install against the lockfile**, not the warm dev tree.
 
 A suite that *cannot fail* on an entire class (e.g. mass-assignment or injection) or hand-curates the authz matrix is INCOMPLETE even if every wired item is green — a dishonest coverage signal, not a pass.
