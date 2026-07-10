@@ -1,0 +1,65 @@
+{
+  "$schema": "../../../argus/schemas/authorization-manifest.schema.json",
+  "schemaVersion": 1,
+  "engagementId": "argus-full-fixture",
+  "target": {
+    "identifiers": ["*"],
+    "environment": "test",
+    "productionLike": false
+  },
+  "accounts": {
+    "allowedAliases": ["argus-*"],
+    "syntheticOnly": true
+  },
+  "dataBoundaries": {
+    "allowedNamespaces": ["argus-*"],
+    "prohibitedClassifications": ["credentials", "payment-data", "private-keys", "production-pii", "secrets"],
+    "syntheticOnly": true
+  },
+  "allowedMutations": ["browser:*", "test-data:*"],
+  "prohibitedActions": ["credential-exfiltration", "disable-security-controls", "erase-audit-log", "production-data-copy", "unbounded-load"],
+  "rateLimits": {
+    "requestsPerSecond": 2,
+    "maxConcurrent": 2,
+    "maxTotalRequests": 100,
+    "maxDurationSeconds": 300
+  },
+  "timeWindows": [
+    {
+      "startsAt": "2026-07-10T00:00:00.000Z",
+      "endsAt": "2026-07-11T00:00:00.000Z"
+    }
+  ],
+  "actionGrants": {
+    "binary-evidence": { "enabled": true, "productionOverride": false, "approvedBy": "fixture-owner", "approvedAt": "2026-07-10T00:00:00.000Z", "expiresAt": "2026-07-11T00:00:00.000Z", "reason": "CI fixture" },
+    "browser-state-change": { "enabled": true, "productionOverride": false, "approvedBy": "fixture-owner", "approvedAt": "2026-07-10T00:00:00.000Z", "expiresAt": "2026-07-11T00:00:00.000Z", "reason": "CI fixture" },
+    "chaos": { "enabled": true, "productionOverride": false, "approvedBy": "fixture-owner", "approvedAt": "2026-07-10T00:00:00.000Z", "expiresAt": "2026-07-11T00:00:00.000Z", "reason": "CI fixture" },
+    "database-write": { "enabled": true, "productionOverride": false, "approvedBy": "fixture-owner", "approvedAt": "2026-07-10T00:00:00.000Z", "expiresAt": "2026-07-11T00:00:00.000Z", "reason": "CI fixture" },
+    "destructive": { "enabled": true, "productionOverride": false, "approvedBy": "fixture-owner", "approvedAt": "2026-07-10T00:00:00.000Z", "expiresAt": "2026-07-11T00:00:00.000Z", "reason": "CI fixture" },
+    "load": { "enabled": true, "productionOverride": false, "approvedBy": "fixture-owner", "approvedAt": "2026-07-10T00:00:00.000Z", "expiresAt": "2026-07-11T00:00:00.000Z", "reason": "CI fixture" },
+    "persistent-mutation": { "enabled": true, "productionOverride": false, "approvedBy": "fixture-owner", "approvedAt": "2026-07-10T00:00:00.000Z", "expiresAt": "2026-07-11T00:00:00.000Z", "reason": "CI fixture" },
+    "security-active": { "enabled": true, "productionOverride": false, "approvedBy": "fixture-owner", "approvedAt": "2026-07-10T00:00:00.000Z", "expiresAt": "2026-07-11T00:00:00.000Z", "reason": "CI fixture" }
+  },
+  "redaction": {
+    "requiredFor": ["bug-reports", "console", "logs", "screenshots", "traces"],
+    "binaryEvidencePolicy": "deny-unless-reviewed",
+    "replacement": "[REDACTED]"
+  },
+  "untrustedContent": {
+    "sources": ["agent-output", "fetched-documents", "issue-text", "repository-content", "target-content", "tool-output"],
+    "mayAuthorizeActions": false,
+    "mayModifyManifest": false
+  },
+  "rollback": {
+    "requiredFor": ["browser-state-change", "chaos", "database-write", "destructive", "persistent-mutation"],
+    "procedure": "Delete only fixture-owned synthetic state and restore the recorded baseline.",
+    "verification": "Re-read the fixture-owned namespace and compare it with the recorded baseline."
+  },
+  "escalation": {
+    "abortOn": ["authorization-drift", "cross-tenant-impact", "production-signal", "rate-limit-breach", "rollback-failure", "secret-exposure", "target-mismatch"],
+    "contact": "fixture-owner"
+  },
+  "audit": {
+    "path": "authorization-audit.jsonl"
+  }
+}

@@ -62,6 +62,18 @@
             "items": { "enum": ["A", "B", "C", "D"] }
           },
           "requiredTools": { "$ref": "#/$defs/stringList" },
+          "riskActions": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "binary-evidence", "browser-read", "browser-state-change", "chaos", "database-read",
+                "database-write", "destructive", "load", "persistent-mutation",
+                "read", "security-active", "security-passive"
+              ]
+            }
+          },
           "requiredCapabilities": { "$ref": "#/$defs/stringList" },
           "optionalCapabilities": { "$ref": "#/$defs/stringList" },
           "artifactPaths": { "$ref": "#/$defs/stringList" }

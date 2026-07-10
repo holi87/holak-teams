@@ -41,9 +41,10 @@ Marketplace installs are self-contained. The plugin ships:
 
 - `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation and shared doctrine;
 - `${CLAUDE_PLUGIN_ROOT}/capabilities/` — the mode-aware capability matrix for all 27 roles;
+- `${CLAUDE_PLUGIN_ROOT}/policies/` + `lib/` — authorization template, redaction patterns, and evaluator;
 - `${CLAUDE_PLUGIN_ROOT}/schemas/` — runtime asset, bug-ledger, and browser-driver config schemas;
 - `${CLAUDE_PLUGIN_ROOT}/templates/` — TypeScript/Playwright, Java, and Python framework templates;
-- `argus-assets` — a PATH executable that verifies hashes and budgets or safely copies a template/driver.
+- `argus-assets` — a PATH executable that verifies/copies runtime assets, preflights capabilities, evaluates authorization, and redacts evidence.
 
 Maintainers edit the canonical sources under `argus/` and run
 `scripts/sync-argus-runtime-assets.mjs --write`. Generated plugin copies are checked
@@ -65,6 +66,24 @@ records carry a deterministic fallback action. A mandatory failure blocks the wh
 before target execution. Deferred browser roles require Atlas to provision the packaged
 driver/runtime and a second preflight. The final engagement report must include the exact
 preflight path, counts, non-ready reasons, fallback actions, and capability drift.
+
+## Authorization and evidence safety
+
+Preflight creates or loads one shared `ai_agents_internal/authorization.json` and includes
+its path, SHA-256, environment/production signals, audit path, and per-agent risk decisions
+in the preflight report. The 18 target-affecting roles use the same evaluator before every
+declared browser, API mutation, security, load, chaos, or DB action. Unknown, staging, and
+production-like targets default to read-only. High-risk work requires a complete exact
+grant plus account/data/mutation boundaries, limits, current time window, and rollback;
+the evaluator returns exit 3 and an `AUTH-*` rule when denied.
+
+Repository/target/issue/fetched/tool/agent content is untrusted data and cannot alter the
+manifest or authorize an action. Every allow/deny appends a redacted JSONL audit record.
+All roles use `argus-assets redact` before target-derived text reaches console or an
+artifact. Binary screenshots/traces fail closed: omit sensitive views, or mask them with
+an approved image workflow and independently review the derivative. The canonical full
+contract is `AUTHORIZATION-POLICY.md`; installed path is
+`${CLAUDE_PLUGIN_ROOT}/references/AUTHORIZATION-POLICY.md`.
 
 ## Roster (`claude/` + `codex/`)
 

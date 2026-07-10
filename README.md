@@ -60,12 +60,15 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   │   ├── skills/run/SKILL.md  # /argus:run main-thread orchestrator
 │   │   ├── bin/argus-assets     # verify/copy packaged assets
 │   │   ├── capabilities/        # 27-role runtime capability + fallback matrix
+│   │   ├── policies/ + lib/     # deny-by-default authorization + redaction runtime
 │   │   ├── references/ + schemas/
 │   │   └── templates/           # installed TS / Java / Python framework copies
 │   ├── codex/                   # 27 Codex-format agents (*.toml + *.md) — separate
 │   ├── framework-template/      # prepped Playwright+TS framework (shared reference)
 │   ├── framework-template-java/   # RestAssured + JUnit5 + Playwright-Java (shared reference)
 │   ├── framework-template-python/ # pytest + Playwright + httpx (shared reference)
+│   ├── AUTHORIZATION-POLICY.md   # canonical authorization and redaction contract
+│   ├── policies/ + runtime/      # canonical policy data + evaluator sources
 │   ├── COLOR-SCHEME.md          # colors by role type
 │   ├── SHARED-DOCTRINE.md       # cross-agent QA doctrine
 │   ├── team-graph.html + .png   # visual team graph (embedded in README)

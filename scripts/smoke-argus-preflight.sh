@@ -7,6 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLI="$ROOT/argus/claude/bin/argus-assets"
 FIXTURES="$ROOT/scripts/fixtures/argus-preflight"
+AUTH_FIXTURES="$ROOT/scripts/fixtures/argus-authorization"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -27,12 +28,14 @@ assert(report.status === expectedStatus, `${scenario}: expected ${expectedStatus
 assert(Array.isArray(report.agents) && report.agents.length === 27, `${scenario}: 27 agent records required`);
 assert(report.target.reachable === (scenario !== 'insufficient'), `${scenario}: target reachability mismatch`);
 assert(report.artifactRoot.writable && report.artifactRoot.safePaths, `${scenario}: artifact root contract`);
+assert(report.authorization?.sha256, `${scenario}: authorization manifest digest required`);
 assert(report.summary.selected === 27, `${scenario}: Mode A must evaluate all 27 agents`);
 assert(report.checks.some((check) => check.id === 'packaged-assets' && check.status === 'pass'), `${scenario}: assets check`);
 
 const bySlug = new Map(report.agents.map((agent) => [agent.slug, agent]));
 if (scenario === 'full') {
   assert(report.summary.ready === 27 && report.summary.dispatchable === 27, 'full: every agent must be ready');
+  assert(report.authorization.defaultReadOnly === false, 'full: explicit authorization fixture required');
 }
 if (scenario === 'partial') {
   assert(report.summary.blocked === 0, 'partial: optional gaps must not block the engagement');
@@ -40,6 +43,8 @@ if (scenario === 'partial') {
   assert(bySlug.get('charon').status === 'skipped' && !bySlug.get('charon').dispatchAllowed, 'partial: DB lane must be skipped');
   assert(bySlug.get('aegis').status === 'degraded' && bySlug.get('aegis').dispatchAllowed, 'partial: Context7 fallback must degrade, not block');
   assert(bySlug.get('aegis').actions.some((action) => action.includes('official documentation')), 'partial: fallback action must be explicit');
+  assert(report.authorization.defaultReadOnly === true, 'partial: generated manifest must default to read-only');
+  assert(bySlug.get('hermes').authorization.find((item) => item.action === 'load')?.ruleId === 'AUTH-PRODUCTION-READ-ONLY', 'partial: load must be denied by default policy');
 }
 if (scenario === 'insufficient') {
   assert(report.summary.blocked === 27 && report.summary.dispatchable === 0, 'insufficient: no specialist may dispatch');
@@ -66,11 +71,18 @@ NODE
 for scenario in full partial; do
   target="$WORK/$scenario-target"
   mkdir -p "$target"
+  authorization_args=(--environment unknown)
+  if [ "$scenario" = full ]; then
+    mkdir -p "$target/ai_agents_internal"
+    cp "$AUTH_FIXTURES/full.json" "$target/ai_agents_internal/authorization.json"
+    authorization_args=(--authorization "$target/ai_agents_internal/authorization.json")
+  fi
   "$CLI" preflight \
     --target "$target" \
     --artifact-root "$target" \
     --mode A \
     --profile "$FIXTURES/$scenario.json" \
+    "${authorization_args[@]}" \
     >/dev/null
   report="$target/ai_agents_internal/preflight.json"
   test -f "$report" || fail "$scenario report was not persisted"

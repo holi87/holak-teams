@@ -4,7 +4,7 @@
   "title": "Argus runtime preflight report",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generatedAt", "mode", "status", "target", "artifactRoot", "checks", "capabilities", "agents", "summary"],
+  "required": ["schemaVersion", "generatedAt", "mode", "status", "target", "artifactRoot", "authorization", "checks", "capabilities", "agents", "summary"],
   "properties": {
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
@@ -32,6 +32,21 @@
         "safePaths": { "type": "boolean" }
       }
     },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifestPath", "auditPath", "sha256", "created", "environment", "productionLike", "productionSignals", "defaultReadOnly"],
+      "properties": {
+        "manifestPath": { "type": "string", "minLength": 1 },
+        "auditPath": { "type": "string", "minLength": 1 },
+        "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "created": { "type": "boolean" },
+        "environment": { "enum": ["unknown", "development", "test", "staging", "production"] },
+        "productionLike": { "type": "boolean" },
+        "productionSignals": { "$ref": "#/$defs/stringList" },
+        "defaultReadOnly": { "type": "boolean" }
+      }
+    },
     "checks": {
       "type": "array",
       "items": { "$ref": "#/$defs/check" }
@@ -56,7 +71,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slug", "lane", "selected", "status", "dispatchAllowed", "missingTools", "missingCapabilities", "actions", "artifactPaths"],
+        "required": ["slug", "lane", "selected", "status", "dispatchAllowed", "missingTools", "missingCapabilities", "actions", "artifactPaths", "authorization"],
         "properties": {
           "slug": { "type": "string", "minLength": 1 },
           "lane": { "type": "string", "minLength": 1 },
@@ -66,7 +81,21 @@
           "missingTools": { "$ref": "#/$defs/stringList" },
           "missingCapabilities": { "$ref": "#/$defs/stringList" },
           "actions": { "$ref": "#/$defs/stringList" },
-          "artifactPaths": { "$ref": "#/$defs/stringList" }
+          "artifactPaths": { "$ref": "#/$defs/stringList" },
+          "authorization": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["action", "decision", "ruleId", "reason"],
+              "properties": {
+                "action": { "type": "string", "minLength": 1 },
+                "decision": { "enum": ["allow", "deny"] },
+                "ruleId": { "type": "string", "pattern": "^AUTH-[A-Z0-9-]+$" },
+                "reason": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
         }
       }
     },

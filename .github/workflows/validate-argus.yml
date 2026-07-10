@@ -24,6 +24,9 @@ jobs:
       - name: Verify full, partial, insufficient, and unsafe-path environments
         run: scripts/smoke-argus-preflight.sh
 
+      - name: Verify authorization, production safety, untrusted content, and redaction
+        run: scripts/smoke-argus-authorization.sh
+
   agent-contracts:
     name: Agent and packaged-runtime contracts
     runs-on: ubuntu-latest

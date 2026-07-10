@@ -4,6 +4,38 @@
   "agentsScanned": 27,
   "pluginAssetReferences": [
     {
+      "value": "references/AUTHORIZATION-POLICY.md",
+      "consumers": [
+        "aegis",
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "kleio",
+        "lynceus",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
+      ]
+    },
+    {
       "value": "references/BROWSER-ISOLATION.md",
       "consumers": [
         "antigone",

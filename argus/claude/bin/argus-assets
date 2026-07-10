@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   accessSync,
+  appendFileSync,
   chmodSync,
   copyFileSync,
   cpSync,
@@ -17,11 +18,25 @@ import {
 } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  buildAuditEvent,
+  createDefaultAuthorization,
+  detectProductionLike,
+  evaluateAuthorization,
+  isBinaryBuffer,
+  manifestSha256,
+  redactText,
+  redactValue,
+  validateAuthorizationManifest,
+  validateRedactionPatterns,
+} from '../lib/authorization.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
 const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
 const CAPABILITY_MATRIX_PATH = join(ROOT, 'capabilities', 'capability-matrix.json');
+const AUTHORIZATION_TEMPLATE_PATH = join(ROOT, 'policies', 'authorization.template.json');
+const REDACTION_PATTERNS_PATH = join(ROOT, 'policies', 'redaction-patterns.json');
 const manifest = readJson(MANIFEST_PATH);
 const [command = 'help', ...args] = process.argv.slice(2);
 
@@ -48,6 +63,12 @@ switch (command) {
   case 'preflight':
     process.exitCode = await preflight(args);
     break;
+  case 'authorization':
+    process.exitCode = authorizationCommand(args);
+    break;
+  case 'redact':
+    process.exitCode = redactCommand(args);
+    break;
   case 'copy-template':
     copyTemplate(args[0], args[1]);
     break;
@@ -67,18 +88,151 @@ Usage:
   argus-assets inventory
   argus-assets verify
   argus-assets preflight --target <url-or-path> --mode <A|B|C|D> [options]
+  argus-assets authorization init --target <url-or-path> [options]
+  argus-assets authorization check --manifest <path> --lane <slug> --action <action> --target <target> [options]
+  argus-assets redact --input <text-file|-> --output <safe-file|->
   argus-assets copy-template <typescript|java|python> <empty-destination>
   argus-assets copy-browser-driver <target-repo>
 
 Preflight options:
   --artifact-root <path>       Root for QA artifacts (defaults to a path target or cwd)
   --output <relative-path>     Report path under artifact root
+  --authorization <path>      Existing manifest under artifact root (default is generated)
+  --environment <name>        unknown|development|test|staging|production
+  --engagement-id <id>        Stable authorization/audit correlation identifier
   --feature <capability>       Confirm a target capability; repeat as needed
   --profile <json>             Deterministic capability override for CI
   --json                       Print the complete report to stdout
 
+Authorization init options:
+  --environment <name>         unknown|development|test|staging|production
+  --output <path>              Defaults to ai_agents_internal/authorization.json
+  --engagement-id <id>         Stable audit correlation identifier
+
+Authorization check boundaries:
+  --source-trust <class>       manifest|user|untrusted (required)
+  --account/--namespace/--mutation/--classification <value>
+  --binary-reviewed <true|false> Confirm synthetic/masked + independently reviewed evidence
+  --rate/--concurrency/--total-requests/--duration <positive-number>
+  --resource <safe-label>      Optional label; audit output is always redacted
+  --at <ISO-timestamp>         Deterministic evaluation time (tests only)
+
 Templates are copied only to a new or empty directory. In ADAPT mode, copy to a
 temporary directory, diff against the target's existing harness, and merge explicitly.`);
+}
+
+function authorizationCommand(args) {
+  const [operation, ...rest] = args;
+  if (operation === 'init') return initializeAuthorization(rest);
+  if (operation === 'check') return checkAuthorization(rest);
+  fail('usage: argus-assets authorization <init|check> [options]');
+}
+
+function initializeAuthorization(args) {
+  const options = parseNamedOptions(args, new Set(['--target', '--environment', '--output', '--engagement-id']));
+  if (!options.target) fail('authorization init requires --target');
+  const environment = options.environment ?? 'unknown';
+  if (!['unknown', 'development', 'test', 'staging', 'production'].includes(environment)) {
+    fail('authorization init --environment must be unknown, development, test, staging, or production');
+  }
+  const output = resolve(options.output ?? 'ai_agents_internal/authorization.json');
+  if (existsSync(output)) fail(`refusing to overwrite existing authorization manifest: ${output}`);
+  const template = readJson(AUTHORIZATION_TEMPLATE_PATH);
+  const authorization = createDefaultAuthorization({
+    template,
+    target: options.target,
+    environment,
+    engagementId: options.engagementId,
+  });
+  const errors = validateAuthorizationManifest(authorization);
+  if (errors.length > 0) fail(`generated authorization manifest is invalid: ${errors.join('; ')}`);
+  mkdirSync(dirname(output), { recursive: true });
+  writeFileSync(output, `${JSON.stringify(authorization, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(output, 0o600);
+  console.log(`AUTHORIZATION  initialized default-deny manifest=${output} sha256=${manifestSha256(authorization)}`);
+  return 0;
+}
+
+function checkAuthorization(args) {
+  const options = parseNamedOptions(args, new Set([
+    '--manifest', '--lane', '--action', '--target', '--source-trust', '--account',
+    '--namespace', '--mutation', '--classification', '--rate', '--concurrency',
+    '--total-requests', '--duration', '--resource', '--at', '--binary-reviewed',
+  ]));
+  for (const required of ['manifest', 'lane', 'action', 'target', 'sourceTrust']) {
+    if (!options[required]) fail(`authorization check requires --${camelToKebab(required)}`);
+  }
+  const manifestPath = resolve(options.manifest);
+  const authorization = readJson(manifestPath);
+  const patterns = readJson(REDACTION_PATTERNS_PATH);
+  const patternErrors = validateRedactionPatterns(patterns);
+  if (patternErrors.length > 0) fail(`packaged redaction patterns are invalid: ${patternErrors.join('; ')}`);
+  const request = {
+    lane: options.lane,
+    action: options.action,
+    target: options.target,
+    sourceTrust: options.sourceTrust,
+    account: options.account,
+    namespace: options.namespace,
+    mutation: options.mutation,
+    classification: options.classification,
+    binaryReviewed: parseBooleanOption(options.binaryReviewed, '--binary-reviewed'),
+    rate: parsePositiveOption(options.rate, '--rate'),
+    concurrency: parsePositiveOption(options.concurrency, '--concurrency'),
+    totalRequests: parsePositiveOption(options.totalRequests, '--total-requests'),
+    duration: parsePositiveOption(options.duration, '--duration'),
+    resource: options.resource,
+  };
+  const timestamp = options.at ?? new Date().toISOString();
+  const decision = evaluateAuthorization({ manifest: authorization, request, now: timestamp });
+  const auditName = nonEmptyString(authorization.audit?.path) && !authorization.audit.path.includes('/')
+    ? authorization.audit.path
+    : 'authorization-audit.jsonl';
+  const auditPath = resolve(dirname(manifestPath), auditName);
+  const auditManifest = { ...authorization, engagementId: authorization.engagementId ?? 'INVALID-MANIFEST' };
+  const event = buildAuditEvent({ manifest: auditManifest, request, decision, timestamp, patterns });
+  appendFileSync(auditPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
+  chmodSync(auditPath, 0o600);
+  const safeReason = redactText(decision.reason, patterns).text.replace(/[\r\n]+/g, ' ');
+  console.log(`AUTHORIZATION  ${decision.decision.toUpperCase()} rule=${decision.ruleId} reason=${safeReason} audit=${auditPath}`);
+  return decision.decision === 'allow' ? 0 : 3;
+}
+
+function redactCommand(args) {
+  const options = parseNamedOptions(args, new Set(['--input', '--output']));
+  const input = options.input ?? '-';
+  const output = options.output ?? '-';
+  const buffer = input === '-' ? readFileSync(0) : readFileSync(resolve(input));
+  if (isBinaryBuffer(buffer)) {
+    console.error('REDACTION  DENY rule=AUTH-REDACTION-REQUIRED reason=binary evidence requires approved masking and independent review');
+    return 4;
+  }
+  const patterns = readJson(REDACTION_PATTERNS_PATH);
+  const errors = validateRedactionPatterns(patterns);
+  if (errors.length > 0) fail(`packaged redaction patterns are invalid: ${errors.join('; ')}`);
+  const source = buffer.toString('utf8');
+  let redacted;
+  let findings;
+  try {
+    const parsed = JSON.parse(source);
+    const result = redactValue(parsed, patterns);
+    redacted = `${JSON.stringify(result.value, null, 2)}\n`;
+    findings = result.findings;
+  } catch {
+    const result = redactText(source, patterns);
+    redacted = result.text;
+    findings = result.findings;
+  }
+  if (output === '-') {
+    process.stdout.write(redacted);
+  } else {
+    const outputPath = resolve(output);
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, redacted, { mode: 0o600 });
+    chmodSync(outputPath, 0o600);
+    console.log(`REDACTION  wrote=${outputPath} findings=${findings.length}`);
+  }
+  return 0;
 }
 
 function printPath(id) {
@@ -151,6 +305,59 @@ async function preflight(argv) {
     ? profile.artifactWritable
     : isWritableDirectory(artifactRootPath);
 
+  const authorizationEnvironment = options.environment ?? profile.environment ?? 'unknown';
+  if (!['unknown', 'development', 'test', 'staging', 'production'].includes(authorizationEnvironment)) {
+    fail('preflight --environment must be unknown, development, test, staging, or production');
+  }
+  const requestedAuthorizationPath = resolve(artifactRootPath, options.authorization ?? 'ai_agents_internal/authorization.json');
+  const authorizationPathSafe = isWithin(artifactRootPath, requestedAuthorizationPath);
+  let authorization = null;
+  let authorizationCreated = false;
+  const authorizationErrors = [];
+  if (!authorizationPathSafe) {
+    authorizationErrors.push('authorization manifest path escapes the artifact root');
+  } else if (existsSync(requestedAuthorizationPath)) {
+    try {
+      authorization = JSON.parse(readFileSync(requestedAuthorizationPath, 'utf8'));
+    } catch (error) {
+      authorizationErrors.push(`authorization manifest is not valid JSON: ${error.message}`);
+    }
+  } else if (options.authorization) {
+    authorizationErrors.push(`supplied authorization manifest is missing: ${requestedAuthorizationPath}`);
+  } else if (!artifactWritable) {
+    authorizationErrors.push('artifact root is not writable; cannot create default authorization manifest');
+  } else {
+    authorization = createDefaultAuthorization({
+      template: readJson(AUTHORIZATION_TEMPLATE_PATH),
+      target: options.target,
+      environment: authorizationEnvironment,
+      engagementId: options.engagementId,
+    });
+    mkdirSync(dirname(requestedAuthorizationPath), { recursive: true });
+    writeFileSync(requestedAuthorizationPath, `${JSON.stringify(authorization, null, 2)}\n`, { mode: 0o600 });
+    chmodSync(requestedAuthorizationPath, 0o600);
+    authorizationCreated = true;
+  }
+  if (authorization) authorizationErrors.push(...validateAuthorizationManifest(authorization));
+  const authorizationAuditPath = authorization && nonEmptyString(authorization.audit?.path)
+    ? resolve(dirname(requestedAuthorizationPath), authorization.audit.path)
+    : resolve(dirname(requestedAuthorizationPath), 'authorization-audit.jsonl');
+  const authorizationAuditPathSafe = isWithin(artifactRootPath, authorizationAuditPath);
+  if (!authorizationAuditPathSafe) authorizationErrors.push('authorization audit path escapes the artifact root');
+  const production = authorization
+    ? detectProductionLike(authorization.target, options.target)
+    : { productionLike: true, signals: ['invalid-authorization-manifest'] };
+  const authorizationSummary = {
+    manifestPath: requestedAuthorizationPath,
+    auditPath: authorizationAuditPath,
+    sha256: authorization ? manifestSha256(authorization) : null,
+    created: authorizationCreated,
+    environment: authorization?.target?.environment ?? authorizationEnvironment,
+    productionLike: production.productionLike,
+    productionSignals: production.signals,
+    defaultReadOnly: !authorization || Object.values(authorization.actionGrants ?? {}).every((grant) => !grant.enabled),
+  };
+
   const availableTools = new Set(profile.availableTools ?? matrix.supportedBuiltinTools);
   const commandAvailability = detectCommands(inventory, profile);
   const mcpServers = profile.mcpServers ?? detectMcpServers();
@@ -181,6 +388,25 @@ async function preflight(argv) {
   addCheck(checks, 'target-reachable', true, target.reachable, target.evidence);
   addCheck(checks, 'artifact-root-writable', true, artifactWritable, artifactWritable ? `writable: ${artifactRootPath}` : `not writable: ${artifactRootPath}`);
   addCheck(checks, 'artifact-paths-safe', true, safePaths, safePaths ? 'all contracted paths remain under the artifact root' : 'a contracted or output path escapes the artifact root');
+  addCheck(
+    checks,
+    'authorization-manifest',
+    true,
+    authorizationErrors.length === 0,
+    authorizationErrors.length === 0
+      ? `${authorizationCreated ? 'created default-deny' : 'loaded'} manifest sha256=${authorizationSummary.sha256}`
+      : authorizationErrors.join('; '),
+  );
+  if (authorization && authorizationErrors.length === 0) {
+    const boundaryDecision = evaluateAuthorization({
+      manifest: authorization,
+      request: { lane: 'odysseus', action: 'read', target: options.target, sourceTrust: 'manifest' },
+      now: profile.generatedAt ?? new Date().toISOString(),
+    });
+    addCheck(checks, 'authorization-target-boundary', true, boundaryDecision.decision === 'allow', `${boundaryDecision.ruleId}: ${boundaryDecision.reason}`);
+  } else {
+    addCheck(checks, 'authorization-target-boundary', true, false, 'authorization manifest unavailable or invalid');
+  }
   try {
     const assetStats = verifyRuntimeAssets();
     addCheck(checks, 'packaged-assets', true, true, `${assetStats.assets} assets and hashes verified`);
@@ -203,6 +429,10 @@ async function preflight(argv) {
 
   const commandConsumers = new Map(inventory.commandReferences.map((item) => [item.value, new Set(item.consumers)]));
   const mandatoryFailure = checks.some((check) => check.mandatory && check.status === 'fail');
+  const authorizationByAgent = new Map(matrix.agents.map((contract) => [
+    contract.slug,
+    evaluateRiskAuthorizations(contract, authorization, options.target, profile.generatedAt ?? new Date().toISOString()),
+  ]));
   const agents = matrix.agents.map((contract) => evaluateAgent({
     contract,
     mode,
@@ -212,6 +442,7 @@ async function preflight(argv) {
     commandConsumers,
     matrix,
     mandatoryFailure,
+    authorizationDecisions: authorizationByAgent.get(contract.slug),
   }));
   const selectedAgents = agents.filter((agent) => agent.selected);
   const summary = {
@@ -237,6 +468,7 @@ async function preflight(argv) {
     status,
     target,
     artifactRoot: { path: artifactRootPath, writable: artifactWritable, safePaths },
+    authorization: authorizationSummary,
     checks,
     capabilities: Object.entries(capabilityState).map(([id, state]) => ({ id, ...state })),
     agents,
@@ -258,11 +490,11 @@ async function preflight(argv) {
   return status === 'blocked' ? 2 : 0;
 }
 
-function evaluateAgent({ contract, mode, availableTools, capabilityState, commandAvailability, commandConsumers, matrix, mandatoryFailure }) {
+function evaluateAgent({ contract, mode, availableTools, capabilityState, commandAvailability, commandConsumers, matrix, mandatoryFailure, authorizationDecisions }) {
   const selected = contract.modes.includes(mode);
-  if (!selected) return agentResult(contract, false, 'not-selected', false, [], [], [], contract.artifactPaths);
+  if (!selected) return agentResult(contract, false, 'not-selected', false, [], [], [], contract.artifactPaths, authorizationDecisions);
   if (mandatoryFailure) {
-    return agentResult(contract, true, 'blocked', false, [], [], ['Orchestration preflight failed; no specialist may be dispatched.'], contract.artifactPaths);
+    return agentResult(contract, true, 'blocked', false, [], [], ['Orchestration preflight failed; no specialist may be dispatched.'], contract.artifactPaths, authorizationDecisions);
   }
 
   const missingTools = contract.requiredTools.filter((tool) => !availableTools.has(tool));
@@ -275,7 +507,7 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
 
   if (missingTools.length > 0) {
     actions.push(`Mandatory tools unavailable: ${missingTools.join(', ')}. Stop before dispatch.`);
-    return agentResult(contract, true, 'blocked', false, missingTools, [...missingRequired, ...missingOptional, ...missingCommands], actions, contract.artifactPaths);
+    return agentResult(contract, true, 'blocked', false, missingTools, [...missingRequired, ...missingOptional, ...missingCommands], actions, contract.artifactPaths, authorizationDecisions);
   }
 
   let status = 'ready';
@@ -293,6 +525,13 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
     actions.push(`Optional host commands unavailable: ${missingCommands.map((item) => item.slice(8)).join(', ')}; use an available equivalent or record the probe as skipped.`);
     if (status === 'ready') status = 'degraded';
   }
+  const deniedAuthorizations = authorizationDecisions.filter((decision) => decision.decision === 'deny');
+  if (deniedAuthorizations.length > 0) {
+    actions.push(...deniedAuthorizations.map((decision) => (
+      `Authorization denied ${decision.action}: ${decision.ruleId} — ${decision.reason}. Restrict the lane to its allowed read-only actions.`
+    )));
+    if (status === 'ready') status = 'degraded';
+  }
   return agentResult(
     contract,
     true,
@@ -302,11 +541,47 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
     [...missingRequired, ...missingOptional, ...missingCommands],
     actions,
     contract.artifactPaths,
+    authorizationDecisions,
   );
 }
 
-function agentResult(contract, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths) {
-  return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths };
+function agentResult(contract, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths, authorization) {
+  return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths, authorization };
+}
+
+function evaluateRiskAuthorizations(contract, authorization, target, now) {
+  if (!authorization) {
+    return (contract.riskActions ?? []).map((action) => ({
+      action,
+      decision: 'deny',
+      ruleId: 'AUTH-MANIFEST-INVALID',
+      reason: 'authorization manifest is unavailable',
+    }));
+  }
+  const account = authorization.accounts?.allowedAliases?.[0];
+  const namespace = authorization.dataBoundaries?.allowedNamespaces?.[0];
+  const mutation = authorization.allowedMutations?.[0];
+  return (contract.riskActions ?? []).map((action) => {
+    const decision = evaluateAuthorization({
+      manifest: authorization,
+      request: {
+        lane: contract.slug,
+        action,
+        target,
+        sourceTrust: 'manifest',
+        account,
+        namespace,
+        mutation,
+        rate: authorization.rateLimits?.requestsPerSecond,
+        concurrency: authorization.rateLimits?.maxConcurrent,
+        totalRequests: authorization.rateLimits?.maxTotalRequests,
+        duration: authorization.rateLimits?.maxDurationSeconds,
+        binaryReviewed: action === 'binary-evidence' ? true : undefined,
+      },
+      now,
+    });
+    return { action, decision: decision.decision, ruleId: decision.ruleId, reason: decision.reason };
+  });
 }
 
 function parsePreflightOptions(args) {
@@ -324,6 +599,9 @@ function parsePreflightOptions(args) {
     else if (name === '--mode') options.mode = value.toUpperCase();
     else if (name === '--artifact-root') options.artifactRoot = value;
     else if (name === '--output') options.output = value;
+    else if (name === '--authorization') options.authorization = value;
+    else if (name === '--environment') options.environment = value;
+    else if (name === '--engagement-id') options.engagementId = value;
     else if (name === '--profile') options.profile = value;
     else if (name === '--feature') options.features.push(value);
     else fail(`unknown preflight option: ${name}`);
@@ -436,6 +714,45 @@ function isWithin(root, path) {
 
 function addCheck(checks, id, mandatory, passed, evidence) {
   checks.push({ id, mandatory, status: passed ? 'pass' : mandatory ? 'fail' : 'degraded', evidence });
+}
+
+function parseNamedOptions(args, allowed) {
+  const options = {};
+  for (let index = 0; index < args.length; index += 1) {
+    const name = args[index];
+    if (!allowed.has(name)) fail(`unknown option: ${name}`);
+    const value = args[index + 1];
+    if (value == null || value.startsWith('--')) fail(`${name} requires a value`);
+    index += 1;
+    options[kebabToCamel(name.slice(2))] = value;
+  }
+  return options;
+}
+
+function parsePositiveOption(value, label) {
+  if (value == null) return undefined;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) fail(`${label} must be a positive number`);
+  return number;
+}
+
+function parseBooleanOption(value, label) {
+  if (value == null) return undefined;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  fail(`${label} must be true or false`);
+}
+
+function kebabToCamel(value) {
+  return value.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+function camelToKebab(value) {
+  return value.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+function nonEmptyString(value) {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function copyTemplate(runtime, destination) {

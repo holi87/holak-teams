@@ -19,6 +19,12 @@
       "destination": "references/SHARED-DOCTRINE.md"
     },
     {
+      "id": "authorization-policy",
+      "kind": "reference",
+      "source": "argus/AUTHORIZATION-POLICY.md",
+      "destination": "references/AUTHORIZATION-POLICY.md"
+    },
+    {
       "id": "runtime-schemas",
       "kind": "schemas",
       "source": "argus/schemas",
@@ -29,6 +35,18 @@
       "kind": "capabilities",
       "source": "argus/capabilities",
       "destination": "capabilities"
+    },
+    {
+      "id": "authorization-policies",
+      "kind": "policies",
+      "source": "argus/policies",
+      "destination": "policies"
+    },
+    {
+      "id": "runtime-library",
+      "kind": "runtime",
+      "source": "argus/runtime",
+      "destination": "lib"
     },
     {
       "id": "typescript-template",

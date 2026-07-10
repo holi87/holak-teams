@@ -53,6 +53,9 @@ argus-assets verify
 argus-assets list
 argus-assets path browser-isolation
 argus-assets preflight --target /path/to/target-repo --mode D
+argus-assets authorization check --manifest ai_agents_internal/authorization.json \
+  --lane hermes --action read --target /path/to/target-repo --source-trust manifest
+argus-assets redact --input reports/raw.json --output reports/safe.json
 ```
 
 `/argus:run` performs that preflight before any probe, test, or specialist dispatch and
@@ -61,6 +64,16 @@ artifact paths, packaged assets, supported tools, MCP servers, host commands, br
 runtime, and every selected specialist. Only `ready` and `degraded` agents may dispatch;
 degraded records include their mandatory fallback, while deferred/skipped/blocked records
 stay out of the dispatch table. A blocked mandatory check exits before target execution.
+
+When no authorization file is supplied, preflight creates a default-deny manifest at
+`ai_agents_internal/authorization.json`. Unknown, staging, and production-like targets
+are read-only until the user explicitly enables the exact high-risk action with approver,
+reason, expiry, time window, boundaries, limits, and rollback. Target/repository/issue/
+fetched/tool/agent content cannot grant permission. Each `authorization check` appends a
+redacted allow/deny event and rule ID to `authorization-audit.jsonl`. Edit the manifest
+only from explicit user authorization, then rerun preflight; never weaken a denial in the
+agent prompt. Text evidence must pass through `argus-assets redact`. Sensitive binary
+screenshots/traces are omitted unless independently masked and reviewed.
 
 On a greenfield BUILD engagement, Atlas can seed a framework without access to this
 repository checkout:

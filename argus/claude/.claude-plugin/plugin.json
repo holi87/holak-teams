@@ -2,8 +2,8 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "argus",
   "displayName": "Argus — QA Team",
-  "version": "1.6.0",
-  "description": "Self-contained Greek-named QA team. Run /argus:run to preflight capabilities, gate 27 specialists, and use packaged guidance, schemas, driver tooling, and TypeScript, Java, and Python templates.",
+  "version": "1.7.0",
+  "description": "Self-contained Greek-named QA team. Run /argus:run with capability preflight, deny-by-default authorization, redacted audit, and packaged multi-runtime QA tooling.",
   "author": {
     "name": "Grzegorz Holak",
     "email": "holi87@gmail.com"

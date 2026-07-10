@@ -1,0 +1,155 @@
+{
+  "$schema": "../schemas/authorization-manifest.schema.json",
+  "schemaVersion": 1,
+  "engagementId": "REPLACE_WITH_ENGAGEMENT_ID",
+  "target": {
+    "identifiers": ["REPLACE_WITH_TARGET_URL_OR_PATH"],
+    "environment": "unknown",
+    "productionLike": null
+  },
+  "accounts": {
+    "allowedAliases": [],
+    "syntheticOnly": true
+  },
+  "dataBoundaries": {
+    "allowedNamespaces": [],
+    "prohibitedClassifications": [
+      "credentials",
+      "payment-data",
+      "private-keys",
+      "production-pii",
+      "secrets"
+    ],
+    "syntheticOnly": true
+  },
+  "allowedMutations": [],
+  "prohibitedActions": [
+    "credential-exfiltration",
+    "disable-security-controls",
+    "erase-audit-log",
+    "production-data-copy",
+    "unbounded-load"
+  ],
+  "rateLimits": {
+    "requestsPerSecond": 1,
+    "maxConcurrent": 2,
+    "maxTotalRequests": 100,
+    "maxDurationSeconds": 300
+  },
+  "timeWindows": [],
+  "actionGrants": {
+    "binary-evidence": {
+      "enabled": false,
+      "productionOverride": false,
+      "approvedBy": null,
+      "approvedAt": null,
+      "expiresAt": null,
+      "reason": null
+    },
+    "browser-state-change": {
+      "enabled": false,
+      "productionOverride": false,
+      "approvedBy": null,
+      "approvedAt": null,
+      "expiresAt": null,
+      "reason": null
+    },
+    "chaos": {
+      "enabled": false,
+      "productionOverride": false,
+      "approvedBy": null,
+      "approvedAt": null,
+      "expiresAt": null,
+      "reason": null
+    },
+    "database-write": {
+      "enabled": false,
+      "productionOverride": false,
+      "approvedBy": null,
+      "approvedAt": null,
+      "expiresAt": null,
+      "reason": null
+    },
+    "destructive": {
+      "enabled": false,
+      "productionOverride": false,
+      "approvedBy": null,
+      "approvedAt": null,
+      "expiresAt": null,
+      "reason": null
+    },
+    "load": {
+      "enabled": false,
+      "productionOverride": false,
+      "approvedBy": null,
+      "approvedAt": null,
+      "expiresAt": null,
+      "reason": null
+    },
+    "persistent-mutation": {
+      "enabled": false,
+      "productionOverride": false,
+      "approvedBy": null,
+      "approvedAt": null,
+      "expiresAt": null,
+      "reason": null
+    },
+    "security-active": {
+      "enabled": false,
+      "productionOverride": false,
+      "approvedBy": null,
+      "approvedAt": null,
+      "expiresAt": null,
+      "reason": null
+    }
+  },
+  "redaction": {
+    "requiredFor": [
+      "bug-reports",
+      "console",
+      "logs",
+      "screenshots",
+      "traces"
+    ],
+    "binaryEvidencePolicy": "deny-unless-reviewed",
+    "replacement": "[REDACTED]"
+  },
+  "untrustedContent": {
+    "sources": [
+      "agent-output",
+      "fetched-documents",
+      "issue-text",
+      "repository-content",
+      "target-content",
+      "tool-output"
+    ],
+    "mayAuthorizeActions": false,
+    "mayModifyManifest": false
+  },
+  "rollback": {
+    "requiredFor": [
+      "browser-state-change",
+      "chaos",
+      "database-write",
+      "destructive",
+      "persistent-mutation"
+    ],
+    "procedure": null,
+    "verification": null
+  },
+  "escalation": {
+    "abortOn": [
+      "authorization-drift",
+      "cross-tenant-impact",
+      "production-signal",
+      "rate-limit-breach",
+      "rollback-failure",
+      "secret-exposure",
+      "target-mismatch"
+    ],
+    "contact": null
+  },
+  "audit": {
+    "path": "authorization-audit.jsonl"
+  }
+}

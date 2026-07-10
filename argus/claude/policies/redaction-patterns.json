@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "sensitiveKeys": [
+    "api-key",
+    "api_key",
+    "apikey",
+    "authorization",
+    "cookie",
+    "credentials",
+    "database-url",
+    "database_url",
+    "password",
+    "passwd",
+    "private-key",
+    "private_key",
+    "refresh-token",
+    "refresh_token",
+    "secret",
+    "session",
+    "set-cookie",
+    "token"
+  ],
+  "patterns": [
+    {
+      "id": "bearer-token",
+      "expression": "\\bBearer\\s+[A-Za-z0-9._~+\\/-]+=*",
+      "flags": "gi",
+      "replacement": "Bearer [REDACTED:TOKEN]"
+    },
+    {
+      "id": "basic-auth",
+      "expression": "\\bBasic\\s+[A-Za-z0-9+/=]{8,}",
+      "flags": "gi",
+      "replacement": "Basic [REDACTED:CREDENTIAL]"
+    },
+    {
+      "id": "jwt",
+      "expression": "\\beyJ[A-Za-z0-9_-]{5,}\\.[A-Za-z0-9_-]{5,}\\.[A-Za-z0-9_-]{5,}\\b",
+      "flags": "g",
+      "replacement": "[REDACTED:JWT]"
+    },
+    {
+      "id": "private-key",
+      "expression": "-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----[\\s\\S]*?-----END(?: [A-Z0-9]+)? PRIVATE KEY-----",
+      "flags": "g",
+      "replacement": "[REDACTED:PRIVATE_KEY]"
+    },
+    {
+      "id": "connection-string",
+      "expression": "\\b(?:postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis):\\/\\/[^\\s]+",
+      "flags": "gi",
+      "replacement": "[REDACTED:CONNECTION_STRING]"
+    },
+    {
+      "id": "authorization-header",
+      "expression": "(^|\\n)(Authorization|Cookie|Set-Cookie|X-Api-Key):[^\\r\\n]*",
+      "flags": "gi",
+      "replacement": "$1$2: [REDACTED]"
+    },
+    {
+      "id": "email",
+      "expression": "\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b",
+      "flags": "gi",
+      "replacement": "[REDACTED:EMAIL]"
+    },
+    {
+      "id": "payment-card",
+      "expression": "\\b(?:\\d[ -]*?){13,19}\\b",
+      "flags": "g",
+      "replacement": "[REDACTED:PAYMENT_CARD]"
+    },
+    {
+      "id": "phone",
+      "expression": "(?<![A-Za-z0-9])\\+?\\d[\\d .()-]{7,}\\d(?![A-Za-z0-9])",
+      "flags": "g",
+      "replacement": "[REDACTED:PHONE]"
+    }
+  ]
+}
