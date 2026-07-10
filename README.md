@@ -11,9 +11,11 @@
 > /plugin install hephaestus@holak-teams
 > /plugin install argus@holak-teams
 > ```
+> Start Argus from the current main thread with
+> `/argus:run <target and QA scope>`.
 > Canonical repo + marketplace doc: **[AGENTS.md](AGENTS.md)** (mirrored as `CLAUDE.md`). Manual / Codex install: **[INSTALL.md](INSTALL.md)**.
 
-You tell **Marcus** what you want — he picks people from the roster, names them, splits up the work, merges results. On any QA / testing / bug-hunt signal he hands off to **Odysseus**, who runs the Argus lanes. Claude Code agent defs live under each team's `claude/agents/` (the plugin root is `claude/`); Codex-compatible variants live under each team's `codex/` with the same names and slugs.
+You tell **Marcus** what you want — he picks people from the roster, names them, splits up the work, merges results. For a direct QA / testing / bug-hunt engagement, `/argus:run` keeps orchestration in the current main Claude Code conversation, applies **Odysseus** as the policy, dispatches the Argus lanes, and collects their results. Claude Code agent defs live under each team's `claude/agents/` (the plugin root is `claude/`); Codex-compatible variants live under each team's `codex/` with the same names and slugs.
 
 ## Team graphs
 
@@ -54,7 +56,8 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 ├── argus/                       # Argus QA team (Greek names)
 │   ├── claude/                  # == PLUGIN ROOT (Claude only)
 │   │   ├── .claude-plugin/plugin.json
-│   │   └── agents/              # 27 flat agent defs (odysseus, orion, …)
+│   │   ├── agents/              # 27 flat agent defs (odysseus, orion, …)
+│   │   └── skills/run/SKILL.md  # /argus:run main-thread orchestrator
 │   ├── codex/                   # 27 Codex-format agents (*.toml + *.md) — separate
 │   ├── framework-template/      # prepped Playwright+TS framework (shared reference)
 │   ├── framework-template-java/   # RestAssured + JUnit5 + Playwright-Java (shared reference)
@@ -223,7 +226,7 @@ Three assignments are judgment calls — if they don't suit you, changing them =
 
 ## Argus QA team
 
-A second, **separate**, **permanent** QA team (**27 agents**) you point at any target — a live site, an API, a docker stack, a repo with or without tests. Files in `argus/claude/agents/`, slugs = bare first names (`odysseus`, `orion`, `lynceus`, `ariadne`, …). Marcus switches into Argus QA mode on any QA / testing / bug-hunt signal (case-insensitive) and delegates everything to **Odysseus**, who picks the **engagement mode**: **A** full QA audit · **B** deep bug-hunt · **C** build a test suite from scratch · **D** add/extend tests in an existing repo (adopt-or-build). The crew is reused across engagements.
+A second, **separate**, **permanent** QA team (**27 agents**) you point at any target — a live site, an API, a docker stack, a repo with or without tests. Run `/argus:run <target and QA scope>` so the current main thread applies **Odysseus's** orchestration policy, picks the **engagement mode**, dispatches the specialists, and collects their results: **A** full QA audit · **B** deep bug-hunt · **C** build a test suite from scratch · **D** add/extend tests in an existing repo (adopt-or-build). To start a dedicated main session instead, use `claude --agent argus:odysseus`. Files in `argus/claude/agents/`, slugs = bare first names (`odysseus`, `orion`, `lynceus`, `ariadne`, …). The crew is reused across engagements.
 
 **v2 architecture = parallel `surface × mode` lanes.** Odysseus fires the lanes IN PARALLEL (UI / API / Performance / Database / CyberSecurity / Accessibility / deep journeys); each lane = a hunter (manual/exploratory) + an automation engineer + (UI/API) a path-analyst (baseline) where applicable. The 8→27 restructuring driver: a single generalist caught ~60% of API bugs but only ~14% of UI ones — dedicated lanes fix that. **Doctrine: `argus/BROWSER-ISOLATION.md` for isolated UI driving and the per-agent hardening blocks embedded in the Argus QA defs.** Colors by role type: `argus/COLOR-SCHEME.md`.
 

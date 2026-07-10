@@ -5,7 +5,7 @@ This repo is a **Claude Code plugin marketplace** (`holak-teams`) and also suppo
 The agents live in this repo (`~/Desktop/GenAI/my_agents/`), split into two teams. Each team's **Claude Code** agent defs live under `<team>/claude/agents/` (the plugin root is `<team>/claude/`); its **Codex** custom-agent variant lives under `<team>/codex/`:
 
 - **Hephaestus** (delivery) — `hephaestus/claude/agents/` — 22 agents, entry point `marcus`
-- **Argus** (QA) — `argus/claude/agents/` — 27 agents, entry point `odysseus`
+- **Argus** (QA) — `argus/claude/` — `/argus:run` main-thread skill + 27 agents, orchestration policy `odysseus`
 - **Hephaestus for Codex** — `hephaestus/codex/` — the same 22 agents as paired `*.toml` + `*.md` files, entry point `marcus`
 - **Argus for Codex** — `argus/codex/` — the same 27 agents as paired `*.toml` + `*.md` files, entry point `odysseus`
 
@@ -24,6 +24,23 @@ Install the teams as plugins straight from this marketplace repo:
 ```
 
 Update later with `/plugin marketplace update holak-teams`. Installed agents are namespaced (`hephaestus:marcus`, `argus:odysseus`). Opening this repo and trusting the folder auto-enables both plugins via `.claude/settings.json`.
+
+Start Argus from an existing Claude Code conversation:
+
+```
+/argus:run <target URL, running stack, or repo path — and QA scope>
+```
+
+This is the recommended path: orchestration remains in the main thread, which dispatches
+the installed `argus:<slug>` specialists and collects their results. A missing target,
+denied `Agent` tool, or unavailable Argus specialist returns an `ARGUS_PREFLIGHT_ERROR`
+instead of a plan that pretends execution happened.
+
+To start a separate session with Odysseus itself as the main agent:
+
+```bash
+claude --agent argus:odysseus
+```
 
 ## Claude Code — manual symlink / copy (alternative)
 
@@ -111,7 +128,7 @@ ls ~/.codex/agents/*.toml | wc -l   # → 49 (22 Hephaestus + 27 Argus)
 ls ~/.codex/agents/marcus.toml ~/.codex/agents/odysseus.toml
 ```
 
-Then in Codex, use `marcus` as the delivery entry point and `odysseus` as the Argus QA / testing / bug-hunt entry point.
+Then in Codex, use `marcus` as the delivery entry point and `odysseus` as the Argus QA / testing / bug-hunt entry point. `/argus:run` is a Claude Code plugin skill and is not installed into Codex.
 
 ## Per-project instead of global
 

@@ -11,6 +11,7 @@
 #   e) the "## Artifact Language" section exists in every agent and contains
 #      the "100% English" rule; wording drift against the team's first agent
 #      is reported as a non-fatal WARN (role-specific variants are allowed)
+#   f) the Argus plugin exposes a valid /argus:run main-thread entry point
 #
 # Exit code: 0 when every check passes, 1 otherwise.
 
@@ -164,6 +165,14 @@ check_team() {
 
 check_team "hephaestus" 22
 check_team "argus" 27
+
+echo ""
+echo "=== Argus main-thread orchestration ==="
+if "$ROOT/scripts/smoke-argus-run.sh" --static; then
+  pass "[argus] (f) /argus:run skill, preflight, and Odysseus runtime contract"
+else
+  fail "[argus] (f) /argus:run main-thread orchestration contract"
+fi
 
 echo ""
 if [ "$FAILURES" -eq 0 ]; then
