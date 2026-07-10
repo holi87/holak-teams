@@ -1,0 +1,7 @@
+{
+  "$schema": "../schemas/schema-compatibility.schema.json",
+  "schemaVersion": 1,
+  "current": 1,
+  "readCompatible": [1],
+  "migration": "No automatic migration exists before a later schemaVersion is explicitly declared. A newer major contract must ship an explicit, deterministic migration command and preserve the prior schema until consumers have moved."
+}

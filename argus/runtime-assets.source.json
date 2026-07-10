@@ -31,6 +31,12 @@
       "destination": "references/ENGAGEMENT-POLICY.md"
     },
     {
+      "id": "canonical-contracts",
+      "kind": "reference",
+      "source": "argus/CANONICAL-CONTRACTS.md",
+      "destination": "references/CANONICAL-CONTRACTS.md"
+    },
+    {
       "id": "runtime-schemas",
       "kind": "schemas",
       "source": "argus/schemas",

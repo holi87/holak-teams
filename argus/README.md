@@ -39,11 +39,11 @@ restricted context receives the same explicit preflight error.
 
 Marketplace installs are self-contained. The plugin ships:
 
-- `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, and shared doctrine;
+- `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, canonical-contract ownership, and shared doctrine;
 - `${CLAUDE_PLUGIN_ROOT}/capabilities/` — the mode-aware capability matrix for all 27 roles;
 - `${CLAUDE_PLUGIN_ROOT}/policies/` + `lib/` — authorization/engagement templates, redaction patterns, guards, and atomic controllers;
 - `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` — active `PreToolUse` target-immutability guard;
-- `${CLAUDE_PLUGIN_ROOT}/schemas/` — runtime asset, bug-ledger, and browser-driver config schemas;
+- `${CLAUDE_PLUGIN_ROOT}/schemas/` — runtime, engagement, canonical QA-contract, and browser-driver schemas;
 - `${CLAUDE_PLUGIN_ROOT}/templates/` — TypeScript/Playwright, Java, and Python framework templates;
 - `argus-assets` — a PATH executable that verifies/copies assets, preflights, authorizes, guards writes, coordinates parallel state, and redacts evidence.
 
@@ -104,9 +104,21 @@ Each selected worker receives a unique lease with deterministic browser profile,
 namespace, port, temp, and output coordinates. Workers write immutable fragments;
 canonical owners merge them in stable order under an atomic lock. The controller also
 enforces discovery/hunting/automation/verification/reporting barriers, exclusive
-reset/fault windows, atomic `BUG-NNNN` allocation, monotonic resumable checkpoints, and
-idempotent success/failure cleanup. Full contract: `ENGAGEMENT-POLICY.md`; installed path:
+reset/fault windows, identity-deduplicated `BUG-NNNN` allocation, monotonic resumable
+checkpoints, and idempotent success/failure cleanup. Full contract:
+`ENGAGEMENT-POLICY.md`; installed path:
 `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
+
+## Canonical QA contracts
+
+The machine source of truth is versioned JSON, not loose Markdown: lane plans, confirmed
+bug ledgers, redacted evidence references, automation status, and the final summary each
+declare an `argus/<contract>@1` schema. `argus-assets schema validate` validates a file;
+the engagement controller rejects malformed or cross-engagement JSON fragments before
+merge. Stable IDs are allocated with an identity key and survive rerun/resume
+deduplication. Merging `solution/final-summary.json` renders `solution/FINAL-SUMMARY.md`
+with its source schema version. Compatibility is explicit: v1 reads v1 only until a later
+release ships a deterministic migration.
 
 ## Roster (`claude/` + `codex/`)
 

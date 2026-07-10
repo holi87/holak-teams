@@ -19,6 +19,10 @@ target-source mutation and direct canonical-file writes. Workers submit immutabl
 barriers. Require exclusive `reset`/`fault` claims, monotonic checkpoints, and cleanup on
 both success and failure. Full contract:
 `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
+For machine-readable delivery, load `${CLAUDE_PLUGIN_ROOT}/references/CANONICAL-CONTRACTS.md`.
+The controller accepts only v1, matching-engagement JSON fragments for lane plans, bug
+ledgers, evidence references, automation status, and final summaries. Require a stable
+identity key whenever Minos allocates an ID; do not infer or silently migrate legacy data.
 
 # Odysseus — Argus QA Team Lead & Orchestrator
 

@@ -11,6 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { renderFinalSummary, stableIdentity, validateCanonicalFragment } from './contracts.mjs';
 
 const PHASES = ['preflight', 'discovery', 'hunting', 'automation', 'verification', 'reporting', 'complete'];
 const HUNTERS = new Set(['antigone', 'ariadne', 'atalanta', 'charon', 'hermes', 'lynceus', 'orion', 'perseus', 'proteus', 'tiresias', 'tyche']);
@@ -66,7 +67,7 @@ export function validateEngagementManifest(manifest) {
   } else {
     const paths = new Set();
     for (const item of policy.canonicalArtifacts) {
-      if (!safeRelative(item?.path) || !validSlug(item?.owner) || !['markdown', 'text', 'json', 'json-document'].includes(item?.format)) {
+      if (!safeRelative(item?.path) || !validSlug(item?.owner) || !['markdown', 'text', 'json', 'json-document'].includes(item?.format) || (item.schema !== undefined && ![null, 'bug-ledger', 'lane-plan', 'evidence-reference', 'automation-status', 'final-summary'].includes(item.schema)) || (item.schema && item.format !== 'json-document')) {
         errors.push('canonical artifact path, owner, or format is invalid');
       } else if (paths.has(item.path)) errors.push(`duplicate canonical artifact: ${item.path}`);
       else paths.add(item.path);
@@ -105,6 +106,7 @@ export function createInitialEngagementState(manifest) {
     barriers: Object.fromEntries(PHASES.map((phase) => [phase, []])),
     exclusiveLocks: {},
     nextIds: Object.fromEntries(Object.keys(manifest.idAllocators).map((kind) => [kind, 1])),
+    idKeys: Object.fromEntries(Object.keys(manifest.idAllocators).map((kind) => [kind, {}])),
     checkpoints: {},
     fragments: {},
     merges: {},
@@ -190,6 +192,11 @@ export function releaseExclusive(manifest, lane, token, resource) {
 export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, content) {
   const canonical = requireCanonical(manifest, canonicalPath);
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(fragmentId)) throw new Error('fragment id must be a stable filename-safe identifier');
+  if (canonical.schema) {
+    const { errors, document } = validateCanonicalFragment(canonical.schema, content);
+    if (errors.length) throw new Error(`fragment does not satisfy ${canonical.schema}@1: ${errors.join('; ')}`);
+    if (document.engagementId !== manifest.engagementId) throw new Error(`fragment engagementId does not match ${manifest.engagementId}`);
+  }
   const digest = sha256(content);
   return mutateState(manifest, (state) => {
     requireLeaseState(manifest, state, lane, token);
@@ -227,26 +234,41 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     let output;
     if (canonical.format === 'json-document') {
       if (contents.length !== 1) throw new Error(`${canonical.path} requires exactly one complete JSON document fragment`);
-      output = `${JSON.stringify(JSON.parse(contents[0]), null, 2)}\n`;
+      const document = JSON.parse(contents[0]);
+      if (canonical.schema) {
+        const { errors } = validateCanonicalFragment(canonical.schema, contents[0]);
+        if (errors.length) throw new Error(`merged document does not satisfy ${canonical.schema}@1: ${errors.join('; ')}`);
+      }
+      output = `${JSON.stringify(document, null, 2)}\n`;
     } else if (canonical.format === 'json') output = `${JSON.stringify(contents.map((content) => JSON.parse(content)), null, 2)}\n`;
     else output = `${contents.join('\n\n')}\n`;
     const destination = engagementPath(manifest, canonical.path);
     atomicWrite(destination, output);
+    if (canonical.schema === 'final-summary') {
+      atomicWrite(engagementPath(manifest, 'solution/FINAL-SUMMARY.md'), renderFinalSummary(JSON.parse(output)));
+    }
     const result = { owner, fragments: records.length, sha256: sha256(output), mergedAt: new Date().toISOString() };
     state.merges[canonical.path] = result;
     return { result: { ...result, path: destination }, changed: true };
   });
 }
 
-export function allocateId(manifest, lane, token, kind) {
+export function allocateId(manifest, lane, token, kind, identity) {
   const allocator = manifest.idAllocators[kind];
   if (!allocator) throw new Error(`unknown ID allocator: ${kind}`);
   if (allocator.owner !== lane) throw new Error(`${kind} IDs are owned by ${allocator.owner}, not ${lane}`);
+  const identityHash = stableIdentity(identity);
   return mutateState(manifest, (state) => {
     requireLeaseState(manifest, state, lane, token);
+    state.idKeys ??= {};
+    state.idKeys[kind] ??= {};
+    const existing = state.idKeys[kind][identityHash];
+    if (existing) return { result: existing, changed: false };
     const value = state.nextIds[kind] ?? 1;
     state.nextIds[kind] = value + 1;
-    return { result: `${allocator.prefix}-${String(value).padStart(allocator.width, '0')}`, changed: true };
+    const allocated = `${allocator.prefix}-${String(value).padStart(allocator.width, '0')}`;
+    state.idKeys[kind][identityHash] = allocated;
+    return { result: allocated, changed: true };
   });
 }
 
@@ -545,6 +567,10 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
   if (primary === 'authorization') {
     if (operation === 'check') return allow('packaged authorization audit owns the bounded mutation');
     return deny('authorization init cannot run inside an active engagement');
+  }
+  if (primary === 'schema') {
+    if (['list', 'validate'].includes(operation)) return allow('packaged schema command is read-only');
+    return deny('unknown schema operation');
   }
   if (primary === 'preflight') {
     const root = optionValue(tokens, '--artifact-root') ?? manifest.artifactRoot;

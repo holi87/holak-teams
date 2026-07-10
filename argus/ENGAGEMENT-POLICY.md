@@ -86,11 +86,34 @@ reporting, and complete. A participant records `engagement barrier arrive`; only
 Odysseus can advance after every declared participant has arrived. Dispatch for the next
 phase is forbidden before a successful advance.
 
-Canonical IDs come from `engagement id`; allocation is serialized and owner-restricted,
-so parallel callers never receive the same ID. `engagement checkpoint` accepts a
-monotonic sequence per worker. Replaying the same sequence and content is idempotent;
-different content at an existing sequence is rejected. `engagement status` exposes the
-last durable phase, arrivals, allocations, locks, checkpoints, and merges for resume.
+Canonical IDs come from `engagement id --identity <stable-key>`; allocation is serialized,
+owner-restricted, and identity-deduplicated. Replaying the same identity across a resume
+returns the original ID, while a distinct identity receives the next ID. `engagement
+checkpoint` accepts a monotonic sequence per worker. Replaying the same sequence and
+content is idempotent; different content at an existing sequence is rejected.
+`engagement status` exposes the last durable phase, arrivals, allocations, locks,
+checkpoints, ID identities, and merges for resume.
+
+## Canonical machine contracts
+
+The installed `schemas/` directory defines the versioned, machine-readable contracts:
+`argus/bug-ledger@1`, `argus/lane-plan@1`, `argus/evidence-reference@1`,
+`argus/automation-status@1`, and `argus/final-summary@1`. Their canonical JSON documents
+are single-owner `json-document` artifacts. The controller validates a fragment before it
+is persisted, verifies its `engagementId`, then validates it again before merge; malformed,
+incompatible, or cross-engagement content cannot reach a canonical file.
+
+`solution/final-summary.json` is the canonical final record. Its merge also renders
+`solution/FINAL-SUMMARY.md` with an explicit `Source schema:` line, so the human-facing
+summary is traceable to the machine contract. Lane plans contain auditable state
+transitions; evidence and automation records link stable IDs; the final summary lists its
+source schemas and counts.
+
+The version policy is `policies/schema-compatibility.json`: v1 readers accept only v1;
+there is no implicit migration from a legacy shape. A future version must retain the old
+schema until it ships an explicit deterministic migration and fixtures. Maintainers run
+`argus-assets schema list` and `argus-assets schema validate --kind <contract> --input
+<file>`; CI exercises both valid and invalid fixtures for every canonical contract.
 
 ## Cleanup
 

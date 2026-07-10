@@ -1,0 +1,1 @@
+{"$schema":"argus/evidence-reference@1","schemaVersion":1,"engagementId":"fixture-1","id":"EVD-bad","kind":"image","source":"raw-secret","collectedBy":"atalanta","capturedAt":"no","redaction":"raw","sha256":"bad","relatedBugIds":[]}

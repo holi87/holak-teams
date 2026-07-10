@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schemaVersion", "engagementId", "revision", "currentPhase", "completedPhases",
-    "allocations", "barriers", "exclusiveLocks", "nextIds", "checkpoints", "fragments", "merges"
+    "allocations", "barriers", "exclusiveLocks", "nextIds", "idKeys", "checkpoints", "fragments", "merges"
   ],
   "properties": {
     "$schema": { "type": "string" },
@@ -19,6 +19,7 @@
     "barriers": { "type": "object", "additionalProperties": { "type": "array", "uniqueItems": true, "items": { "type": "string" } } },
     "exclusiveLocks": { "type": "object", "additionalProperties": { "type": "object" } },
     "nextIds": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 } },
+    "idKeys": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^[A-Z][A-Z0-9-]*[0-9]{4}$" } } },
     "checkpoints": { "type": "object", "additionalProperties": { "type": "object" } },
     "fragments": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "object" } } },
     "merges": { "type": "object", "additionalProperties": { "type": "object" } }

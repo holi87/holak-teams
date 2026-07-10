@@ -113,6 +113,10 @@ for (const assetId of matrix.orchestration.requiredAssets) {
 assert(existsSync(join(ROOT, 'argus', 'schemas', 'preflight-report.schema.json')), 'preflight report schema is missing');
 assert(existsSync(join(ROOT, 'argus', 'schemas', 'engagement-manifest.schema.json')), 'engagement manifest schema is missing');
 assert(existsSync(join(ROOT, 'argus', 'schemas', 'engagement-state.schema.json')), 'engagement state schema is missing');
+for (const schema of ['bug-ledger', 'lane-plan', 'evidence-reference', 'automation-status', 'final-summary', 'schema-compatibility']) {
+  assert(existsSync(join(ROOT, 'argus', 'schemas', `${schema}.schema.json`)), `canonical ${schema} schema is missing`);
+}
+assert(existsSync(join(ROOT, 'argus', 'CANONICAL-CONTRACTS.md')), 'canonical contract registry is missing');
 assert(existsSync(join(ROOT, 'argus', 'claude', 'hooks', 'hooks.json')), 'packaged PreToolUse hook is missing');
 console.log(`PASS  Argus capability contract: ${agentFiles.length} frontmatters, ${capabilities.size} capabilities, supported tool vocabulary only`);
 

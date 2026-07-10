@@ -103,6 +103,7 @@ holak-teams/                         # this repo == the marketplace
     ├── framework-template-python/   # pytest + Playwright + httpx (shared reference)
     ├── AUTHORIZATION-POLICY.md       # canonical authorization, audit, and redaction contract
     ├── ENGAGEMENT-POLICY.md          # canonical ownership, barriers, leases, and cleanup
+    ├── CANONICAL-CONTRACTS.md        # schema registry, field owners, and transition ownership
     ├── policies/ + runtime/          # canonical manifests, patterns, and evaluator sources
     ├── COLOR-SCHEME.md              # colors by role type (shared reference)
     ├── SHARED-DOCTRINE.md           # cross-agent QA doctrine (shared reference)
@@ -157,8 +158,12 @@ plugin's `PreToolUse` hook resolves physical paths and blocks target-source muta
 canonical direct writes, shell redirection, patching, and recognized subprocess writes.
 The engagement controller provides immutable per-agent fragments, deterministic
 single-owner merges, ordered phase barriers, unique browser/account/namespace/port/output
-leases, exclusive reset/fault windows, atomic IDs, monotonic resumable checkpoints, and
-success/failure cleanup. Denials append redacted `GUARD-*` events without raw commands.
+leases, exclusive reset/fault windows, identity-deduplicated atomic IDs, monotonic
+resumable checkpoints, and success/failure cleanup. Canonical machine contracts cover
+lane plans, bug ledgers, evidence, automation status, and final summaries; malformed or
+cross-engagement JSON fragments are rejected before merge. Merging a final summary renders
+a human-facing report with its source schema version. Denials append redacted `GUARD-*`
+events without raw commands.
 
 ---
 

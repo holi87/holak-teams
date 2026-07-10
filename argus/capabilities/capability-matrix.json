@@ -27,8 +27,9 @@
     "requiredAssets": [
       "authorization-policies",
       "authorization-policy",
-      "capability-matrix",
-      "engagement-policy",
+    "capability-matrix",
+    "canonical-contracts",
+    "engagement-policy",
       "runtime-library",
       "runtime-schemas"
     ],

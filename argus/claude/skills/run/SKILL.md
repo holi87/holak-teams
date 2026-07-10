@@ -78,6 +78,9 @@ phase:
    output directory. Never persist lease tokens in reports or canonical artifacts. Full
    installed coordination contract:
    `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
+   Load `${CLAUDE_PLUGIN_ROOT}/references/CANONICAL-CONTRACTS.md` before structured
+   delivery work. Submit lane plans, ledgers, evidence, automation status, and final
+   summaries only as their versioned JSON documents; use stable identity keys for IDs.
 
 Do not replace a failed preflight with a delegation plan. Never claim that agents ran
 unless their `Agent` calls completed and their returned results were collected.
@@ -121,6 +124,8 @@ remains active, return exactly `ARGUS_SMOKE_OK: argus:kleio,argus:theseus`, and 
    or failure, run `engagement cleanup --outcome success|failure`; verify browser profile,
    auth/token, temporary state, lease, and held locks are gone while durable output,
    checkpoints, and fragments remain.
+   Reject a malformed, wrong-schema, or cross-engagement structured fragment; never
+   repair it by guessing fields or silently converting a legacy shape.
 8. Finish with Odysseus's integrated report: preflight status + exact report path,
    ready/degraded/deferred/skipped/blocked lane counts and reasons, mode outcome, named
    agent contributions, deliverable status, validation evidence, residual risks, and

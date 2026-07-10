@@ -71,7 +71,8 @@
             "properties": {
               "path": { "$ref": "#/$defs/relativePath" },
               "owner": { "$ref": "#/$defs/slug" },
-              "format": { "enum": ["markdown", "text", "json", "json-document"] }
+              "format": { "enum": ["markdown", "text", "json", "json-document"] },
+              "schema": { "type": ["string", "null"], "enum": [null, "bug-ledger", "lane-plan", "evidence-reference", "automation-status", "final-summary"] }
             }
           }
         },

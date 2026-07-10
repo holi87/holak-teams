@@ -27,10 +27,16 @@ if (!existsSync(ledgerPath)) {
     fail(`${rel(ledgerPath)} is not valid JSON: ${err.message}`);
   }
 
-  if (!Array.isArray(ledger)) {
-    fail(`${rel(ledgerPath)} must be a JSON array`);
+  const entries = Array.isArray(ledger) ? ledger : ledger?.bugs;
+  if (!Array.isArray(entries)) {
+    fail(`${rel(ledgerPath)} must be an argus/bug-ledger@1 document with a bugs array`);
   } else {
-    const confirmed = ledger.filter((entry) => String(entry.status ?? 'Confirmed').toLowerCase() !== 'suspected' && entry.confirmed !== false);
+    if (!Array.isArray(ledger)) {
+      if (ledger.$schema !== 'argus/bug-ledger@1' || ledger.schemaVersion !== 1) fail(`${rel(ledgerPath)} has an unsupported schema version`);
+    } else {
+      result.errors.push(`${rel(ledgerPath)} uses the legacy array shape; migrate it to argus/bug-ledger@1`);
+    }
+    const confirmed = entries.filter((entry) => String(entry.status ?? 'confirmed').toLowerCase() !== 'suspected' && entry.confirmed !== false);
     result.total_confirmed = confirmed.length;
 
     const tags = collectBugTags(join(ROOT, 'tests'));

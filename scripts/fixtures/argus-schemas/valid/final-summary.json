@@ -1,0 +1,1 @@
+{"$schema":"argus/final-summary@1","schemaVersion":1,"engagementId":"fixture-1","owner":"kleio","status":"completed","counts":{"bugs":1,"automated":1,"evidence":1},"sourceSchemas":["argus/bug-ledger@1","argus/evidence-reference@1","argus/automation-status@1"],"summary":"One confirmed defect was covered by regression automation.","generatedAt":"2026-07-10T00:00:00.000Z"}

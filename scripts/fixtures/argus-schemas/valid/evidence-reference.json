@@ -1,0 +1,1 @@
+{"$schema":"argus/evidence-reference@1","schemaVersion":1,"engagementId":"fixture-1","id":"EVD-0001","kind":"http","source":"reports/request-1.txt","collectedBy":"atalanta","capturedAt":"2026-07-10T00:00:00.000Z","redaction":"redacted","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","relatedBugIds":["BUG-0001"]}
