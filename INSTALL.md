@@ -67,6 +67,12 @@ runtime, and every selected specialist. Only `ready` and `degraded` agents may d
 degraded records include their mandatory fallback, while deferred/skipped/blocked records
 stay out of the dispatch table. A blocked mandatory check exits before target execution.
 
+Each installed Argus specialist preloads `${CLAUDE_PLUGIN_ROOT}/skills/qa-doctrine/SKILL.md`
+at startup through agent frontmatter. The full shared safety, coordination, browser,
+quality, progress, and artifact-language contract therefore does not depend on an ad-hoc
+file read. `${CLAUDE_PLUGIN_ROOT}/skills/competition-profile/SKILL.md` is packaged but
+disabled by default and requires explicit invocation for a competition or scored course.
+
 When no authorization file is supplied, preflight creates a default-deny manifest at
 `ai_agents_internal/authorization.json`. Unknown, staging, and production-like targets
 are read-only until the user explicitly enables the exact high-risk action with approver,

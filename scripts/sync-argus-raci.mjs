@@ -100,9 +100,12 @@ function insertBlock(content, agent) {
   const block = renderAgentBlock(agent);
   const pattern = /<!-- RACI_CONTRACT_START -->[\s\S]*?<!-- RACI_CONTRACT_END -->\n*/;
   if (pattern.test(content)) content = content.replace(pattern, `${block}\n`);
+  else if (/## RACI Contract[\s\S]*?<!-- RACI_CONTRACT_END -->\n*/.test(content)) {
+    content = content.replace(/## RACI Contract[\s\S]*?<!-- RACI_CONTRACT_END -->\n*/, `${block}\n`);
+  }
   else {
-    assert(content.includes('## Artifact Language'), `${agent.slug}: Artifact Language anchor missing`);
-    content = content.replace('## Artifact Language', `${block}\n## Artifact Language`);
+    assert(content.includes('<!-- Author:'), `${agent.slug}: author anchor missing`);
+    content = content.replace('<!-- Author:', `${block}\n<!-- Author:`);
   }
   return content;
 }

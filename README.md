@@ -58,6 +58,8 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   │   ├── .claude-plugin/plugin.json
 │   │   ├── agents/              # 27 flat agent defs (odysseus, orion, …)
 │   │   ├── skills/run/SKILL.md  # /argus:run main-thread orchestrator
+│   │   ├── skills/qa-doctrine/  # preloaded contract for every Argus specialist
+│   │   ├── skills/competition-profile/ # explicit opt-in profile
 │   │   ├── bin/argus-assets     # verify/copy packaged assets
 │   │   ├── hooks/hooks.json     # packaged target-immutability guard
 │   │   ├── capabilities/        # 27-role runtime capability + fallback matrix
@@ -72,7 +74,9 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   ├── ENGAGEMENT-POLICY.md      # canonical concurrency and ownership contract
 │   ├── policies/ + runtime/      # canonical policy data + evaluator sources
 │   ├── COLOR-SCHEME.md          # colors by role type
-│   ├── SHARED-DOCTRINE.md       # cross-agent QA doctrine
+│   ├── shared-skills/           # canonical doctrine + optional profile sources
+│   ├── prompt-*.json            # prompt budgets + engagement regression contract
+│   ├── SHARED-DOCTRINE.md       # compatibility pointer to the canonical skill
 │   ├── team-graph.html + .png   # visual team graph (embedded in README)
 │   └── README.md                # how to start (entry: odysseus)
 ├── agents-roster.html           # visual roster (both teams)
@@ -211,7 +215,7 @@ Every agent runs on an **Anthropic** model under Claude Code and on a **mapped O
 
 ## Artifact language
 
-All files produced by the agents (documents, reports, strategies, bug reports, checklists, code, comments, test names, commits) are **100% in English** — regardless of the conversation language. Polish only in chat with the user. The rule is baked into every prompt (the `Artifact Language` section).
+All files produced by the agents (documents, reports, strategies, bug reports, checklists, code, comments, test names, commits) are **100% in English** — regardless of the conversation language. Polish only in chat with the user. Argus receives the rule from its preloaded `qa-doctrine`; Hephaestus keeps it inline.
 
 ## Team memory and learning
 

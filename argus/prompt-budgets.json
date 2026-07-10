@@ -1,0 +1,20 @@
+{
+  "$schema": "./schemas/prompt-budgets.schema.json",
+  "schemaVersion": 1,
+  "baseline": {
+    "claudeAgentWords": 147474,
+    "capturedAt": "2026-07-11",
+    "sourceCommit": "8967fa4"
+  },
+  "budgets": {
+    "maxClaudeAgentWords": 95858,
+    "maxAgentWords": 7500,
+    "maxDescriptionWords": 30,
+    "duplicateParagraphMinWords": 40,
+    "maxDuplicatedDoctrineInstances": 0
+  },
+  "requiredPreloadedSkill": "qa-doctrine",
+  "optionalProfiles": [
+    "competition-profile"
+  ]
+}

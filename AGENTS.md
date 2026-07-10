@@ -90,6 +90,8 @@ holak-teams/                         # this repo == the marketplace
     │   ├── .claude-plugin/plugin.json
     │   ├── agents/                  # 27 flat specialist defs (loaded by Claude Code)
     │   ├── skills/run/SKILL.md      # /argus:run main-thread orchestrator
+    │   ├── skills/qa-doctrine/      # preloaded single-source contract for all 27 agents
+    │   ├── skills/competition-profile/ # explicit opt-in; never preloaded
     │   ├── bin/argus-assets         # list/verify/copy packaged runtime assets
     │   ├── hooks/hooks.json         # packaged PreToolUse target-immutability guard
     │   ├── capabilities/            # generated 27-role capability and fallback matrix
@@ -107,7 +109,9 @@ holak-teams/                         # this repo == the marketplace
     ├── RUNNER-CONTRACT.md            # four runner modes, outcome categories, and exit codes
     ├── policies/ + runtime/          # canonical manifests, patterns, and evaluator sources
     ├── COLOR-SCHEME.md              # colors by role type (shared reference)
-    ├── SHARED-DOCTRINE.md           # cross-agent QA doctrine (shared reference)
+    ├── shared-skills/               # canonical doctrine + optional profile sources
+    ├── prompt-*.json                # prompt budgets + engagement regression contract
+    ├── SHARED-DOCTRINE.md           # compatibility pointer to the canonical skill
     ├── BROWSER-ISOLATION.md         # browser-lane isolation spec + hunt-driver verb map (shared reference)
     ├── team-graph.html + .png       # visual team graph (embedded in README)
     └── README.md                    # roster + how-to-start
@@ -134,6 +138,14 @@ Installed users can run `argus-assets list`, `argus-assets verify`,
 `argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 550 KB
 and the complete installed Argus plugin at 1.75 MB. `COLOR-SCHEME.md` and team graphs are
 explicitly maintainer-only; their runtime values already live in agent frontmatter.
+
+Every Claude specialist preloads `qa-doctrine` through supported agent frontmatter, so
+safety, ownership, browser isolation, evidence, quality, event-driven progress, and
+artifact-language rules enter its startup context exactly once. The optional
+`competition-profile` is packaged but disabled and never preloaded; it requires explicit
+user opt-in. `node scripts/check-argus-prompts.mjs` enforces the 35% corpus-reduction
+floor, per-agent/description budgets, zero exact duplicated doctrine paragraphs, all 27
+preloads, default-profile isolation, and a representative engagement regression contract.
 
 The preflight writes only dedicated control artifacts under `ai_agents_internal/` before
 any target probe, test, or specialist dispatch: preflight, authorization, engagement, and
@@ -215,7 +227,8 @@ stay equal:
 
 - One agent = one flat `*.md` file in `<team>/claude/agents/`, **same kebab-case slug** as
   the Codex variant in `<team>/codex/`.
-- Frontmatter: `name`, `description`, `tools`, `model`, `color`. **Not supported in plugin
+- Frontmatter: `name`, `description`, `tools`, `model`, `color`, and optional preloaded
+  `skills`. **Not supported in plugin
   agent frontmatter:** `hooks`, `mcpServers`, `permissionMode` (Claude Code strips/ignores
   them). Plugin-wide hooks belong in `<team>/claude/hooks/hooks.json`.
 - Keep the team theme (Hephaestus = Roman, Argus = Greek) and a **unique slug** within a team.
@@ -225,7 +238,8 @@ stay equal:
 
 Every artifact the agents write to disk — docs, reports, plans, bug reports, checklists,
 code, comments, test names, commit messages — is **100% English**, regardless of the
-conversation language. The rule is baked into every agent prompt (`Artifact Language`
-section). This repository's documentation follows the same rule.
+conversation language. Argus receives the rule from its preloaded canonical
+`qa-doctrine`; Hephaestus keeps it inline. This repository's documentation follows the
+same rule.
 
 <!-- Author: Grzegorz Holak -->

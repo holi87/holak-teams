@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const AGENTS_DIR = join(ROOT, 'argus', 'claude', 'agents');
+const DOCTRINE = readFileSync(join(ROOT, 'argus', 'claude', 'skills', 'qa-doctrine', 'SKILL.md'), 'utf8');
 const MATRIX_PATH = join(ROOT, 'argus', 'capabilities', 'capability-matrix.json');
 const LEGACY_PROMPT_PATTERNS = [
   { pattern: /\bGlob\s*\/\s*LS\b/, label: 'Glob/LS' },
@@ -69,6 +70,7 @@ for (const name of agentFiles) {
   const slug = name.slice(0, -3);
   const path = join(AGENTS_DIR, name);
   const text = readFileSync(path, 'utf8');
+  const effectivePrompt = `${text}\n${DOCTRINE}`;
   const frontmatter = parseFrontmatter(text, name);
   const tools = parseTools(frontmatter.tools, name);
   const toolSet = new Set(tools);
@@ -89,15 +91,13 @@ for (const name of agentFiles) {
   const hasPlaywright = tools.some((tool) => tool.startsWith('mcp__plugin_playwright_playwright__'));
   assert(!hasContext7 || (contract.optionalCapabilities ?? []).includes('context7'), `${name} exposes Context7 without a context7 fallback contract`);
   assert(!hasPlaywright || (contract.optionalCapabilities ?? []).includes('playwright-mcp'), `${name} exposes Playwright MCP without a playwright-mcp fallback contract`);
-  assert(text.includes('argus-assets redact'), `${name} does not enforce the shared evidence redactor`);
-  assert(text.includes('${CLAUDE_PLUGIN_ROOT}/references/AUTHORIZATION-POLICY.md'), `${name} does not reference the packaged authorization policy`);
-  assert(text.includes('## Engagement Lease and Write Guard (mandatory)'), `${name} does not enforce engagement ownership and cleanup`);
-  assert(text.includes('argus-assets engagement allocate'), `${name} does not allocate/resume its engagement lease`);
-  assert(text.includes('${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md'), `${name} does not reference the packaged engagement policy`);
+  assert(effectivePrompt.includes('argus-assets redact'), `${name} does not enforce the shared evidence redactor`);
+  assert(effectivePrompt.includes('${CLAUDE_PLUGIN_ROOT}/references/AUTHORIZATION-POLICY.md'), `${name} does not reference the packaged authorization policy`);
+  assert(effectivePrompt.includes('argus-assets engagement allocate'), `${name} does not allocate/resume its engagement lease`);
+  assert(effectivePrompt.includes('${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md'), `${name} does not reference the packaged engagement policy`);
 
   if ((contract.riskActions ?? []).length > 0) {
-    assert(text.includes('## Authorization Gate (mandatory)'), `${name} has risk actions but no inline authorization gate`);
-    assert(text.includes('argus-assets authorization check'), `${name} does not use the shared authorization evaluator`);
+    assert(effectivePrompt.includes('argus-assets authorization check'), `${name} does not use the shared authorization evaluator`);
   }
 
   for (const legacy of LEGACY_PROMPT_PATTERNS) {

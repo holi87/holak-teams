@@ -61,6 +61,18 @@
       "destination": "references/raci.json"
     },
     {
+      "id": "qa-doctrine-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/qa-doctrine",
+      "destination": "skills/qa-doctrine"
+    },
+    {
+      "id": "competition-profile-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/competition-profile",
+      "destination": "skills/competition-profile"
+    },
+    {
       "id": "runtime-schemas",
       "kind": "schemas",
       "source": "argus/schemas",

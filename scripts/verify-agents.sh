@@ -8,9 +8,8 @@
 #      and every Codex file maps back to a Claude agent (no orphans)
 #   d) version in <team>/claude/.claude-plugin/plugin.json equals the plugin's
 #      entry version in .claude-plugin/marketplace.json
-#   e) the "## Artifact Language" section exists in every agent and contains
-#      the "100% English" rule; wording drift against the team's first agent
-#      is reported as a non-fatal WARN (role-specific variants are allowed)
+#   e) Hephaestus keeps its inline Artifact Language contract; every Argus agent
+#      preloads the single packaged qa-doctrine skill containing that contract
 #   f) the Argus plugin exposes a valid /argus:run main-thread entry point
 #   g) every Argus runtime asset is packaged, synced, inventoried, and in budget
 #   h) every Argus frontmatter and runtime lane has a validated capability contract
@@ -140,10 +139,34 @@ check_team() {
     fail "[$team] (d) version mismatch: plugin.json '$plugin_ver' != marketplace.json '$market_ver'"
   fi
 
-  # --- (e) Artifact Language: present + "100% English" rule; drift is WARN ----
+  # --- (e) Artifact Language: inline for Hephaestus, preloaded for Argus -------
   local e_ok=1 ref_file="" tmp_ref tmp_cur
   tmp_ref="$(mktemp)"
   tmp_cur="$(mktemp)"
+  if [ "$team" = "argus" ]; then
+    local doctrine="$ROOT/argus/claude/skills/qa-doctrine/SKILL.md"
+    if [ ! -f "$doctrine" ] || ! grep -q '100% English' "$doctrine"; then
+      fail "[argus] (e) packaged qa-doctrine is missing the '100% English' contract"
+      e_ok=0
+    fi
+    for file in "$agents_dir"/*.md; do
+      slug="$(basename "$file" .md)"
+      if ! awk '
+        /^---[[:space:]]*$/ { blocks++; next }
+        blocks == 1 && /^skills:[[:space:]]*$/ { skills = 1; next }
+        blocks == 1 && skills && /^[[:space:]]*-[[:space:]]*qa-doctrine[[:space:]]*$/ { found = 1 }
+        blocks == 1 && skills && !/^[[:space:]]*-/ && !/^[[:space:]]*$/ { skills = 0 }
+        blocks >= 2 { exit(found ? 0 : 1) }
+        END { if (blocks < 2) exit 1 }
+      ' "$file"; then
+        fail "[argus] (e) $slug.md does not preload qa-doctrine"
+        e_ok=0
+      fi
+    done
+    rm -f "$tmp_ref" "$tmp_cur"
+    [ "$e_ok" -eq 1 ] && pass "[argus] (e) all agents preload packaged qa-doctrine with the '100% English' contract"
+    return
+  fi
   for file in "$agents_dir"/*.md; do
     slug="$(basename "$file" .md)"
     artifact_language_section "$file" > "$tmp_cur"
@@ -228,6 +251,12 @@ if "$ROOT/scripts/smoke-argus-raci.sh"; then
   pass "[argus] (n) 27-agent RACI, single-owner artifacts/transitions, prompt descriptions, and runtime routing"
 else
   fail "[argus] (n) RACI ownership and routing contract"
+fi
+
+if node "$ROOT/scripts/check-argus-prompts.mjs"; then
+  pass "[argus] (o) preloaded doctrine, prompt budgets, duplicate detection, and engagement regression contract"
+else
+  fail "[argus] (o) compact prompt and shared-doctrine contract"
 fi
 
 echo ""

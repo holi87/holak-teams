@@ -72,8 +72,8 @@ function validateSourceManifest(manifest) {
     if (!asset.id || ids.has(asset.id)) fail(`duplicate or missing asset id: ${asset.id ?? '(missing)'}`);
     ids.add(asset.id);
     if (!asset.source?.startsWith('argus/')) fail(`asset ${asset.id} source must stay under argus/`);
-    if (!/^(capabilities|lib|policies|references|schemas|templates)(?:\/|$)/.test(asset.destination ?? '')) {
-      fail(`asset ${asset.id} destination must stay under capabilities/, lib/, policies/, references/, schemas/, or templates/`);
+    if (!/^(capabilities|lib|policies|references|schemas|skills|templates)(?:\/|$)/.test(asset.destination ?? '')) {
+      fail(`asset ${asset.id} destination must stay under capabilities/, lib/, policies/, references/, schemas/, skills/, or templates/`);
     }
     if (destinations.has(asset.destination)) fail(`duplicate asset destination: ${asset.destination}`);
     destinations.add(asset.destination);
@@ -166,7 +166,16 @@ function buildReferenceInventory() {
 
   for (const name of agentFiles) {
     const slug = name.slice(0, -3);
-    const text = readFileSync(join(AGENTS_DIR, name), 'utf8');
+    const agentText = readFileSync(join(AGENTS_DIR, name), 'utf8');
+    const skills = preloadedSkills(agentText);
+    let text = agentText;
+    for (const skill of skills) {
+      const skillPath = `skills/${skill}/SKILL.md`;
+      const absolute = safePluginPath(skillPath);
+      if (!existsSync(absolute)) fail(`${name} preloads missing plugin skill: ${skill}`);
+      addConsumer(pluginRefs, skillPath, slug);
+      text += `\n${readFileSync(absolute, 'utf8')}`;
+    }
     for (const match of text.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([A-Za-z0-9._/-]+)/g)) {
       addConsumer(pluginRefs, match[1], slug);
     }
@@ -179,7 +188,7 @@ function buildReferenceInventory() {
 
   return {
     schemaVersion: 1,
-    generatedFrom: 'argus/claude/agents/*.md',
+    generatedFrom: 'effective argus/claude/agents/*.md plus preloaded skills',
     agentsScanned: agentFiles.length,
     pluginAssetReferences: mapToInventory(pluginRefs),
     targetFileReferences: mapToInventory(targetRefs),
@@ -200,6 +209,12 @@ function validatePromptReferences(manifest, inventory) {
     if (!existsSync(path)) fail(`prompt plugin reference is missing: \${CLAUDE_PLUGIN_ROOT}/${reference.value}`);
   }
   if (inventory.agentsScanned !== 27) fail(`prompt inventory scanned ${inventory.agentsScanned} agents; expected 27`);
+}
+
+function preloadedSkills(text) {
+  const frontmatter = text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+  const block = frontmatter.match(/^skills:\s*\n((?:\s+-\s+[^\n]+\n?)*)/m)?.[1] ?? '';
+  return [...block.matchAll(/^\s+-\s+([^\s#]+)\s*$/gm)].map((match) => match[1]);
 }
 
 function validateBudgets(manifest, generatedManifest) {

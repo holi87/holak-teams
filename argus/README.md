@@ -45,6 +45,8 @@ contract is available through `argus-assets path coverage-contract`.
 
 Marketplace installs are self-contained. The plugin ships:
 
+- `${CLAUDE_PLUGIN_ROOT}/skills/qa-doctrine/` — the canonical contract preloaded into all 27 specialists exactly once;
+- `${CLAUDE_PLUGIN_ROOT}/skills/competition-profile/` — an explicit opt-in adapter that is disabled and never preloaded by default;
 - `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, RACI/canonical ownership, and shared doctrine;
 - `${CLAUDE_PLUGIN_ROOT}/capabilities/` — the mode-aware capability matrix for all 27 roles;
 - `${CLAUDE_PLUGIN_ROOT}/policies/` + `lib/` — authorization/engagement templates, redaction patterns, guards, and atomic controllers;
@@ -55,8 +57,11 @@ Marketplace installs are self-contained. The plugin ships:
 
 Maintainers edit the canonical sources under `argus/` and run
 `scripts/sync-argus-runtime-assets.mjs --write`. Generated plugin copies are checked
-byte-for-byte by `--check`; the generated prompt inventory covers all 27 agents. The
-budget is 550 KB for generated runtime assets and 1.75 MB for the complete installed
+byte-for-byte by `--check`; the generated prompt inventory covers all 27 agents.
+`node scripts/check-argus-prompts.mjs` enforces corpus, per-agent, description, and exact
+duplication budgets; verifies every doctrine preload and the default-off optional profile;
+and checks a representative Mode A output/quality contract. The budget is 550 KB for
+generated runtime assets and 1.75 MB for the complete installed
 plugin. `COLOR-SCHEME.md` and team graphs are intentionally maintainer-only.
 
 ## Runtime preflight
@@ -180,4 +185,4 @@ The Claude Code version lives in `claude/`. The Codex version lives in `codex/` 
 
 The generated roster and every prompt description come from `argus/raci.json`; detailed ownership is in [`RACI-CONTRACT.md`](RACI-CONTRACT.md).
 
-`codex/` — Codex variant of the roster (27 `*.toml` + `*.md` pairs). `framework-template/` (Playwright + TS), `framework-template-java/` (RestAssured + JUnit5 + Playwright-Java), `framework-template-python/` (pytest + Playwright + httpx) — project skeletons, all no-Selenium. `COLOR-SCHEME.md`, `SHARED-DOCTRINE.md`, `BROWSER-ISOLATION.md` — docs.
+`codex/` — Codex variant of the roster (27 `*.toml` + `*.md` pairs). `framework-template/` (Playwright + TS), `framework-template-java/` (RestAssured + JUnit5 + Playwright-Java), `framework-template-python/` (pytest + Playwright + httpx) — project skeletons, all no-Selenium. `shared-skills/qa-doctrine/SKILL.md` is the single canonical Claude doctrine; `competition-profile` is explicit opt-in. `COLOR-SCHEME.md`, `SHARED-DOCTRINE.md`, and `BROWSER-ISOLATION.md` are maintainer docs.
