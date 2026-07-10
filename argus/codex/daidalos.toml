@@ -1,6 +1,6 @@
 name = "daidalos"
 description = "Argus QA Team Senior Test Automation Engineer on the FRONTEND/UI lane — owns tests/ui/ (Playwright UI automation) and the a11y AUTO suite, encodes Penelope's UI regression baseline as green E2E, and turns Orion's, Lynceus's + Antigone's confirmed bugs into RED-linked regression tests. Dispatched by Odysseus (odysseus)."
-model = "gpt-5.5"
+model = "terra"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "medium"
 

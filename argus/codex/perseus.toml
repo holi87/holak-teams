@@ -1,6 +1,6 @@
 name = "perseus"
 description = "Use as the Argus QA Team Senior QA CyberSecurity Bug Hunter, dispatched by Odysseus, owning the Security lane — black-box STRIDE/OWASP hunting (broken auth, broken access control / IDOR / BOLA, mass-assignment / privilege escalation, injection, sensitive-data exposure, SSRF, misconfig, OWASP-LLM) — filing your own confirmed defects to bugs/ with the PER- prefix."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

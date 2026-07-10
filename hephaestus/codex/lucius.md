@@ -10,7 +10,7 @@ slug: lucius
 source: hephaestus/claude/dev/lucius.md
 source_model_hint: sonnet
 source_color: blue
-model: gpt-5.5
+model: terra
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
 purpose: Use for user-facing UI implementation — components, state management, accessibility, responsiveness and API integration matching the existing framework and design system. Typically dispatched via Marcus's delegation plan.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: terra
 - model_reasoning_effort: medium
 
 Codex operating rules:

@@ -10,7 +10,7 @@ slug: severus
 source: hephaestus/claude/dev/severus.md
 source_model_hint: opus
 source_color: blue
-model: gpt-5.5
+model: sol
 model_reasoning_effort: xhigh
 sandbox_mode: read-only
 purpose: Use as the final pre-merge quality gate on any non-trivial diff — adversarially reviews for correctness bugs, edge cases and convention breaks, returns a BLOCKER/WARNING classified approve-or-block verdict. Typically dispatched via Marcus's delegation plan as the last gate.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: sol
 - model_reasoning_effort: xhigh
 
 Codex operating rules:

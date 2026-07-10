@@ -1,6 +1,6 @@
 name = "minos"
 description = "Use as the Argus QA Team Bug Triage / QA Lead independently verifying bug severity and priority, deduping and ranking the defect ledger, and reconciling found-vs-surface coverage before any sign-off. Dispatched by Odysseus (odysseus), rolling as bugs land."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

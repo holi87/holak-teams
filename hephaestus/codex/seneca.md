@@ -10,7 +10,7 @@ slug: seneca
 source: hephaestus/claude/QA/seneca.md
 source_model_hint: opus
 source_color: orange
-model: gpt-5.5
+model: sol
 model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 purpose: Use PROACTIVELY when a task needs QA strategy, a test pyramid, risk-based prioritisation, coverage targets, entry/exit criteria, release-blocking quality gates, or a GO/NO-GO release verdict. Typically dispatched via Marcus's delegation plan.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash, Write
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: sol
 - model_reasoning_effort: xhigh
 
 Codex operating rules:

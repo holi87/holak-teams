@@ -103,10 +103,10 @@
 <body>
 <div class="wrap">
   <h1>Agent roster</h1>
-  <p class="sub">Base delivery team (Marcus) + standing QA team <strong>Argus QA</strong> (Odysseus). Model and tool mode per each agent's frontmatter / doctrine. Argus = Greek names, Marcus's team = Roman. Both teams are also available as Codex custom agents in <code>hephaestus/codex/</code> and <code>argus/codex/</code>. As of: 2026-06-25.</p>
+  <p class="sub">Base delivery team (Marcus) + standing QA team <strong>Argus QA</strong> (Odysseus). Model and tool mode per each agent's frontmatter / doctrine. Argus = Greek names, Marcus's team = Roman. Both teams are also available as Codex custom agents in <code>hephaestus/codex/</code> and <code>argus/codex/</code>. As of: 2026-07-10.</p>
 
   <h2>1. Base agents <span class="count">22 agents</span></h2>
-  <p class="note"><strong>Codex variant:</strong> the same 22 Hephaestus agents are available in <code>hephaestus/codex/</code> as paired <code>*.toml</code> + <code>*.md</code> files. Claude <code>opus</code> source roles map to <code>gpt-5.5</code> + <code>xhigh</code>; Claude <code>sonnet</code> source roles map to <code>gpt-5.5</code> + <code>medium</code>; Claude <code>haiku</code> source roles map to <code>gpt-5.4-mini</code> + <code>medium</code>.</p>
+  <p class="note"><strong>Codex variant:</strong> the same 22 Hephaestus agents are available in <code>hephaestus/codex/</code> as paired <code>*.toml</code> + <code>*.md</code> files. Claude <code>opus</code> source roles map to <code>sol</code> + <code>xhigh</code>; Claude <code>sonnet</code> source roles map to <code>terra</code> + <code>medium</code>; Claude <code>haiku</code> source roles map to <code>luna</code> + <code>medium</code>.</p>
   <table>
     <colgroup><col class="c-name"><col><col class="c-model"></colgroup>
     <thead><tr><th>Name</th><th>Role</th><th>Model</th></tr></thead>
@@ -137,7 +137,7 @@
   </table>
 
   <h2>2. Argus QA agents <span class="count">27 agents</span></h2>
-  <p class="note"><strong>Codex variant:</strong> the same 27 Argus agents are available in <code>argus/codex/</code> as paired <code>*.toml</code> + <code>*.md</code> files, preserving the same bare slugs (<code>odysseus</code>, <code>talos</code>, <code>orion</code>, ...). Claude <code>sonnet</code> source roles map to <code>gpt-5.5</code> + <code>medium</code>; Claude <code>opus</code> source roles map to <code>gpt-5.5</code> + <code>xhigh</code>.</p>
+  <p class="note"><strong>Codex variant:</strong> the same 27 Argus agents are available in <code>argus/codex/</code> as paired <code>*.toml</code> + <code>*.md</code> files, preserving the same bare slugs (<code>odysseus</code>, <code>talos</code>, <code>orion</code>, ...). Claude <code>sonnet</code> source roles map to <code>terra</code> + <code>medium</code>; Claude <code>opus</code> source roles map to <code>sol</code> + <code>xhigh</code>.</p>
   <p class="note"><strong>Engagement modes</strong> (lead Odysseus picks per goal): <strong>A</strong> full QA audit · <strong>B</strong> deep bug-hunt (hunters as automatons) · <strong>C</strong> build tests from scratch (greenfield) · <strong>D</strong> add to / extend tests in an existing repo (adopt-or-build). Every agent appends a <strong>heartbeat</strong> every ~10 min to <code>ai_agents_internal/heartbeat/&lt;slug&gt;.log</code> (watch with: <code>tail -f</code>) — to estimate progress.</p>
   <p class="note">The <strong>Mode (hunt)</strong> column = tool hybrid:
     <span class="mode t-cli">CLI-first</span> (scripted curl/fetch/node/psql — request/data-level, saves tokens + cache) ·
@@ -180,7 +180,7 @@
     Generated from agent frontmatter (<code>~/.claude/agents/marcus-team</code>).
     Models: <span class="model m-opus">opus</span> · <span class="model m-sonnet">sonnet</span> · <span class="model m-haiku">haiku</span>.
     Hunt mode: <span class="mode t-cli">CLI-first</span> · <span class="mode t-mcp">browser-MCP</span>.
-    Base: 7 opus / 12 sonnet / 3 haiku · Argus QA: 19 opus / 8 sonnet · Codex: gpt-5.5 medium/xhigh, gpt-5.4-mini medium.
+    Base: 7 opus / 12 sonnet / 3 haiku · Argus QA: 19 opus / 8 sonnet · Codex: sol xhigh, terra medium, luna medium.
   </footer>
 </div>
 </body>

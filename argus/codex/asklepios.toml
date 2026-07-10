@@ -1,6 +1,6 @@
 name = "asklepios"
 description = "Use as the Argus QA Team Test-Suite Sanitation specialist (the healer), dispatched by Odysseus — in a brownfield/Mode-D suite deflakes at the SOURCE, un-masks hidden green-encoding, de-brittles selectors, prunes dead/duplicate tests, maps the coverage-delta, conforming to the repo's conventions; files real defects under bugs/ with the ASK- prefix; writes the debt inventory to solution/TEST-HEALTH.md."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

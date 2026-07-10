@@ -1,6 +1,6 @@
 name = "odysseus"
 description = "MUST BE USED as the entry point for the Argus QA Team — the single hub for any QA / testing / bug-hunt request (\"Argus\", \"QA team\", \"test this\", \"find bugs\", \"write tests\", \"audit quality\"). Odysseus reads the target, picks the right ENGAGEMENT MODE, dispatches a parallel surface×mode QA crew, and lands the mode's deliverable contract."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

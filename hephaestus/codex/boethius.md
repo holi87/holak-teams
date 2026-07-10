@@ -10,7 +10,7 @@ slug: boethius
 source: hephaestus/claude/QA/boethius.md
 source_model_hint: sonnet
 source_color: orange
-model: gpt-5.5
+model: terra
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
 purpose: Use when expanding test coverage from a spec or existing cases with formal techniques, producing prioritised, deduplicated new test cases. Typically dispatched via Marcus's delegation plan on risk-heavy areas.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Write
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: terra
 - model_reasoning_effort: medium
 
 Codex operating rules:

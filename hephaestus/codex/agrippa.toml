@@ -1,6 +1,6 @@
 name = "agrippa"
 description = "Use to turn architecture into a sequenced, acceptance-criteria-driven task plan, set the definition of done and coding standards, review implementation approach before code, and unblock developers. Typically dispatched via Marcus's delegation plan."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 
@@ -14,7 +14,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash, Write, Edit
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: sol
 - model_reasoning_effort: xhigh
 
 Codex operating rules:

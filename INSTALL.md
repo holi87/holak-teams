@@ -9,7 +9,7 @@ The agents live in this repo (`~/Desktop/GenAI/my_agents/`), split into two team
 - **Hephaestus for Codex** — `hephaestus/codex/` — the same 22 agents as paired `*.toml` + `*.md` files, entry point `marcus`
 - **Argus for Codex** — `argus/codex/` — the same 27 agents as paired `*.toml` + `*.md` files, entry point `odysseus`
 
-Codex model mapping for both teams: Claude `opus` source roles use `model = "gpt-5.5"` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles use `model = "gpt-5.5"` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles use `model = "gpt-5.4-mini"` with `model_reasoning_effort = "medium"`.
+Codex model mapping for both teams: Claude `opus` source roles use `model = "sol"` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles use `model = "terra"` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles use `model = "luna"` with `model_reasoning_effort = "medium"`.
 
 `codex/` (Codex-format variant), the Argus framework templates (`argus/framework-template/` Playwright+TS, `argus/framework-template-java/` RestAssured+JUnit5+Playwright-Java, `argus/framework-template-python/` pytest+Playwright+httpx), and the Argus reference docs (`argus/COLOR-SCHEME.md`, `argus/SHARED-DOCTRINE.md`) are **not** Claude agents.
 

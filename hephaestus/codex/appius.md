@@ -10,7 +10,7 @@ slug: appius
 source: hephaestus/claude/management/appius.md
 source_model_hint: sonnet
 source_color: purple
-model: gpt-5.5
+model: terra
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
 purpose: Use for CI/CD pipelines, infrastructure-as-code, containers, secrets, deployments, rollbacks and observability work — owns repeatable safe delivery and commit/PR mechanics for the team. Typically dispatched via Marcus's delegation plan.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: terra
 - model_reasoning_effort: medium
 
 Codex operating rules:

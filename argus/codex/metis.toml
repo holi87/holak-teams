@@ -1,6 +1,6 @@
 name = "metis"
 description = "Use as the Argus QA Team Test Strategist authoring the risk-based solution/TEST-STRATEGY.md (test planning — what/why/in what order) from Kalchas's recon map, as an ENUMERATED coverage grid with funded UI/perf/security/a11y lanes and a found-vs-surface reconciliation gate. Dispatched by Odysseus (odysseus) early in the engagement."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

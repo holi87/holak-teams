@@ -10,7 +10,7 @@ slug: agrippa
 source: hephaestus/claude/dev/agrippa.md
 source_model_hint: opus
 source_color: blue
-model: gpt-5.5
+model: sol
 model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 purpose: Use to turn architecture into a sequenced, acceptance-criteria-driven task plan, set the definition of done and coding standards, review implementation approach before code, and unblock developers. Typically dispatched via Marcus's delegation plan.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash, Write, Edit
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: sol
 - model_reasoning_effort: xhigh
 
 Codex operating rules:

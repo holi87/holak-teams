@@ -1,6 +1,6 @@
 name = "lynceus"
 description = "Use as the Argus QA Team Bug Hunter for the UI PRESENTATION surface, dispatched by Odysseus — Orion's partner hunting visual/layout geometry, i18n/charset, numeric-vs-lexical sort, money/percent display precision, date/format, display-boundary BVA, tap-target, and async stale-response rendering; files one bug per defect under bugs/ with the LYN- prefix."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

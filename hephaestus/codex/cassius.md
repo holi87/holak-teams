@@ -10,7 +10,7 @@ slug: cassius
 source: hephaestus/claude/QA/cassius.md
 source_model_hint: opus
 source_color: orange
-model: gpt-5.5
+model: sol
 model_reasoning_effort: xhigh
 sandbox_mode: read-only
 purpose: Use to threat-model and security-review code or design before merge — STRIDE, OWASP, authn/authz, secrets, injection, SSRF, deserialisation, supply-chain risk; read-only findings only. Typically dispatched via Marcus's delegation plan whenever a change touches auth, secrets, user input, data access, network, crypto, or dependencies.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Bash
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: sol
 - model_reasoning_effort: xhigh
 
 Codex operating rules:

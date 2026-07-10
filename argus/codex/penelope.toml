@@ -1,6 +1,6 @@
 name = "penelope"
 description = "Argus QA Team Test-path Analyst owning the UI lane regression baseline — derive THIS app's primary user journeys from Kalchas's recon (e.g. on a course-LMS+shop app register→login→browse→enroll→learn→quiz→cart→checkout→cert→profile) and enumerate them as deterministic ISTQB-derived path specs with steps + oracle, written to solution/paths/ui-*.md for Daidalos to automate as the GREEN baseline. Defects tripped over while walking are recorded as PEN- leads in solution/findings/ — never in bugs/ (Orion confirms and files the counted bug). Dispatched by Odysseus (odysseus), runs early in the UI lane before automation."
-model = "gpt-5.5"
+model = "terra"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "medium"
 

@@ -1,6 +1,6 @@
 name = "atalanta"
 description = "Argus QA Team Senior QA Bug Hunter — API. Finds and documents reproducible high-value defects on the API / contract / data-integrity surface adversarially (data-integrity is hers when no DB access) in bugs/ (one file per bug). Runs in the API lane alongside Talos (API automation), Theseus (API baseline paths), Proteus (non-REST/multi-protocol hunter) and Pistis (consumer-driven contract); UI is Orion's, accessibility Antigone's, performance Hermes's, security Perseus's, database Charon's. Dispatched by Odysseus (odysseus), runs continuously post-recon."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

@@ -21,7 +21,7 @@ A single entry point — `marcus`. You don't call specialists yourself; the lead
 
 ## Roster (`claude/` + `codex/`)
 
-The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 22 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. Codex model mapping: `opus` → `gpt-5.5` + `xhigh`, `sonnet` → `gpt-5.5` + `medium`, `haiku` → `gpt-5.4-mini` + `medium`.
+The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 22 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. Codex model mapping: `opus` → `sol` + `xhigh`, `sonnet` → `terra` + `medium`, `haiku` → `luna` + `medium`.
 
 **Leader:** `marcus`
 

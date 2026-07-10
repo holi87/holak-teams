@@ -10,7 +10,7 @@ slug: numa
 source: hephaestus/claude/management/numa.md
 source_model_hint: haiku
 source_color: purple
-model: gpt-5.4-mini
+model: luna
 model_reasoning_effort: medium
 sandbox_mode: workspace-write
 purpose: Use to summarise stand-ups and sprint ceremonies, track impediments and action items with owners, and surface risks and blockers for Marcus. Typically dispatched via Marcus's delegation plan.
@@ -25,7 +25,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Write
 
 Codex runtime mapping:
-- model: gpt-5.4-mini
+- model: luna
 - model_reasoning_effort: medium
 
 Codex operating rules:

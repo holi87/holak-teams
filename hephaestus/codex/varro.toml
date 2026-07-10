@@ -1,6 +1,6 @@
 name = "varro"
 description = "Use to elicit, clarify and document requirements — INVEST user stories with Gherkin acceptance criteria, process maps, edge cases and non-functional needs — before design or build starts. Typically dispatched via Marcus's delegation plan for vague or product-level goals."
-model = "gpt-5.5"
+model = "terra"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "medium"
 
@@ -14,7 +14,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Write, WebFetch
 
 Codex runtime mapping:
-- model: gpt-5.5
+- model: terra
 - model_reasoning_effort: medium
 
 Codex operating rules:

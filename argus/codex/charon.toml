@@ -1,6 +1,6 @@
 name = "charon"
 description = "Argus QA Team Bug Hunter for the DATABASE lane (GATED) — dispatched by Odysseus, activated ONLY when Kalchas's recon confirms direct DB access — hunts data-layer defects read-only (constraints, indexes, transactions, cascades, soft-delete resurrection, type/precision drift, seed/migration integrity) correlated against API behaviour, filing one file per bug under bugs/ with the CHA- prefix."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

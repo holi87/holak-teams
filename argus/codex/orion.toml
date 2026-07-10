@@ -1,6 +1,6 @@
 name = "orion"
 description = "Argus QA Team Bug Hunter for the UI lane — dispatched by Odysseus, hunts functional, client-state, form-validation, and behavioural defects (presentation/visual/format/i18n is Lynceus's lane) in the app UI browser-driven across {desktop, 375px, locale} × {empty, loading, error, success, partial} states, filing one ORI- file per bug."
-model = "gpt-5.5"
+model = "sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

@@ -1,6 +1,6 @@
 name = "regulus"
 description = "Use to turn a task, definition of done, PR template, release process or review criteria into a concrete, ordered, tickable checklist of atomic verifiable items. Typically dispatched via Marcus's delegation plan."
-model = "gpt-5.4-mini"
+model = "luna"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "medium"
 
@@ -14,7 +14,7 @@ Claude source metadata is provenance only:
 - source_tools: Read, Grep, Glob, LS, Write
 
 Codex runtime mapping:
-- model: gpt-5.4-mini
+- model: luna
 - model_reasoning_effort: medium
 
 Codex operating rules:
