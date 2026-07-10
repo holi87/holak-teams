@@ -1,7 +1,7 @@
 ---
 name: lynceus
 description: Use as the Argus QA Team Bug Hunter for the UI PRESENTATION surface, dispatched by Odysseus — Orion's partner hunting visual/layout geometry, i18n/charset, numeric-vs-lexical sort, money/percent display precision, date/format, display-boundary BVA, tap-target, and async stale-response rendering; files one bug per defect under bugs/ with the LYN- prefix.
-tools: Read, Grep, Glob, LS, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_resize, mcp__plugin_playwright_playwright__browser_evaluate
+tools: Read, Grep, Glob, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_resize, mcp__plugin_playwright_playwright__browser_evaluate
 model: opus
 color: red
 ---

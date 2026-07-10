@@ -1,7 +1,7 @@
 ---
 name: daidalos
 description: Argus QA Team Senior Test Automation Engineer on the FRONTEND/UI lane — owns tests/ui/ (Playwright UI automation) and the a11y AUTO suite, encodes Penelope's UI regression baseline as green E2E, and turns Orion's, Lynceus's + Antigone's confirmed bugs into RED-linked regression tests. Dispatched by Odysseus (odysseus).
-tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_evaluate, mcp__plugin_playwright_playwright__browser_take_screenshot
+tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_evaluate, mcp__plugin_playwright_playwright__browser_take_screenshot
 model: sonnet
 color: green
 ---

@@ -277,6 +277,12 @@
       ]
     },
     {
+      "value": "ai_agents_internal/preflight.json",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
       "value": "ai_agents_internal/REPORT_RUN1/RUN2/LAST.html",
       "consumers": [
         "kleio"

@@ -1,7 +1,7 @@
 ---
 name: perseus
 description: Use as the Argus QA Team Senior QA CyberSecurity Bug Hunter, dispatched by Odysseus, owning the Security lane — black-box STRIDE/OWASP hunting (broken auth, broken access control / IDOR / BOLA, mass-assignment / privilege escalation, injection, sensitive-data exposure, SSRF, misconfig, OWASP-LLM) — filing your own confirmed defects to bugs/ with the PER- prefix.
-tools: Read, Grep, Glob, LS, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests
+tools: Read, Grep, Glob, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests
 model: opus
 color: red
 ---

@@ -13,6 +13,7 @@
 #      is reported as a non-fatal WARN (role-specific variants are allowed)
 #   f) the Argus plugin exposes a valid /argus:run main-thread entry point
 #   g) every Argus runtime asset is packaged, synced, inventoried, and in budget
+#   h) every Argus frontmatter and runtime lane has a validated capability contract
 #
 # Exit code: 0 when every check passes, 1 otherwise.
 
@@ -179,6 +180,12 @@ if "$ROOT/scripts/smoke-argus-assets.sh" --static; then
   pass "[argus] (g) runtime assets packaged, synced, inventoried, and in budget"
 else
   fail "[argus] (g) runtime asset packaging contract"
+fi
+
+if "$ROOT/scripts/smoke-argus-preflight.sh"; then
+  pass "[argus] (h) supported tool vocabulary and full/partial/insufficient preflight contract"
+else
+  fail "[argus] (h) capability-based runtime preflight contract"
 fi
 
 echo ""

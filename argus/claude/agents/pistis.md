@@ -1,7 +1,7 @@
 ---
 name: pistis
 description: Use as the Argus QA Team Consumer-Driven Contract Analyst, dispatched by Odysseus — DEFINES the cross-service contract baseline (consumer pacts, provider-verification specs, version/backward-compat checks) as solution/paths/contract-*.md handed to Talos; runs in the API lane, complements Theseus, not a bug hunter.
-tools: Read, Grep, Glob, LS, Bash, Write, WebFetch
+tools: Read, Grep, Glob, Bash, Write, WebFetch
 model: sonnet
 color: yellow
 ---

@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-07-10T12:00:00.000Z",
+  "targetReachable": true,
+  "artifactWritable": true,
+  "availableTools": [
+    "Agent", "Bash", "Edit", "Glob", "Grep", "Read",
+    "TaskCreate", "TaskGet", "TaskList", "TaskUpdate",
+    "WebFetch", "WebSearch", "Write"
+  ],
+  "mcpServers": [],
+  "features": [],
+  "commands": ["claude", "curl", "date", "find", "git", "grep", "node", "npm", "printf", "python", "rm", "tail"]
+}

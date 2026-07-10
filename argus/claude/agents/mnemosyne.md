@@ -1,7 +1,7 @@
 ---
 name: mnemosyne
 description: Argus QA Team agent dispatched by Odysseus — Senior Test Automation Engineer on the GATED Database lane, automating data-integrity invariants and DB-level constraints (tests/db/) via read-only DB access, wired into the single run-tests.sh.
-tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
 color: green
 ---

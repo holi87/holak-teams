@@ -1,7 +1,7 @@
 ---
 name: kalchas
 description: Use for the Argus QA Team System Analyst first recon — mapping an unknown app stack, endpoints, roles, data and rules for the team. Dispatched by Odysseus (odysseus) at engagement start, and mid-run whenever a teammate needs ground-truth on an unknown endpoint/role/field/state.
-tools: Read, Grep, Glob, LS, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_type, mcp__plugin_playwright_playwright__browser_console_messages
+tools: Read, Grep, Glob, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_type, mcp__plugin_playwright_playwright__browser_console_messages
 model: opus
 color: cyan
 ---

@@ -1,7 +1,7 @@
 ---
 name: minos
 description: Use as the Argus QA Team Bug Triage / QA Lead independently verifying bug severity and priority, deduping and ranking the defect ledger, and reconciling found-vs-surface coverage before any sign-off. Dispatched by Odysseus (odysseus), rolling as bugs land.
-tools: Read, Grep, Glob, LS, Bash, Write, Edit
+tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
 color: cyan
 ---

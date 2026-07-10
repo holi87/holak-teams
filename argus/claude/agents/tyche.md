@@ -1,7 +1,7 @@
 ---
 name: tyche
 description: Use as the Argus QA Team RESILIENCE / CHAOS Bug Hunter, dispatched by Odysseus — runs structural resilience oracles (timeout, bounded retry, circuit-breaker, idempotency-under-retry, partial-failure consistency) under gentle, non-destructive, fully-restorable fault injection; files one bug per defect under bugs/ with the TYC- prefix.
-tools: Read, Grep, Glob, LS, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_network_requests
+tools: Read, Grep, Glob, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_network_requests
 model: opus
 color: red
 ---

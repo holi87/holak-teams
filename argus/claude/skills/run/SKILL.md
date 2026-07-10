@@ -19,7 +19,9 @@ contract, then dispatch the required specialists yourself with the `Agent` tool.
 
 ## Preflight
 
-Perform these checks before claiming that the engagement started:
+Perform these checks before any target probe, test execution, or specialist dispatch.
+Writing the dedicated preflight report is the only allowed artifact mutation during this
+phase:
 
 1. If `$ARGUMENTS` is empty or contains only whitespace, stop and return:
    `ARGUS_PREFLIGHT_ERROR: TARGET_REQUIRED — invoke /argus:run <target and QA scope>`.
@@ -30,11 +32,26 @@ Perform these checks before claiming that the engagement started:
    minimum, the engagement must be able to resolve `argus:kalchas` and one additional
    specialist required by the selected mode. If they are unavailable, stop and return:
    `ARGUS_PREFLIGHT_ERROR: ARGUS_AGENTS_UNAVAILABLE — install/enable argus@holak-teams and run /reload-plugins`.
-4. Run `argus-assets verify`. If the executable is unavailable or any packaged file,
-   hash, inventory, or size budget fails, stop and return:
-   `ARGUS_PREFLIGHT_ERROR: RUNTIME_ASSETS_UNAVAILABLE — reinstall/update argus@holak-teams and run /reload-plugins`.
-5. Confirm that the target is concrete enough to probe. Ask one concise blocking question
-   only when no safe assumption can produce an executable target.
+4. Select Mode A, B, C, or D from Odysseus's contract and extract one executable primary
+   target: an HTTP(S) URL or an existing local path. Ask one concise blocking question
+   only when no safe assumption can produce one.
+5. Run the packaged preflight, passing the selected target and mode:
+   `argus-assets preflight --target <shell-escaped-url-or-path> --mode <A|B|C|D>`.
+   For a URL target the artifact root defaults to the current directory. For a local repo
+   it defaults to that repo. Add `--artifact-root <repo>` only when the engagement's QA
+   artifacts belong elsewhere. Add `--feature db-access`, `source-access`,
+   `existing-suite`, `multi-service`, `non-rest-surface`, or `browser-runtime` only for a
+   capability already proven by user input or safe read-only recon; never speculate.
+6. Read the persisted `ai_agents_internal/preflight.json`. If the command exits 2, the
+   report says `blocked`, the report was not persisted, or a mandatory check failed, stop
+   before target mutation/test execution and return:
+   `ARGUS_PREFLIGHT_ERROR: CAPABILITY_PREFLIGHT_BLOCKED — <failed check evidence>; report: <path-or-NOT_PERSISTED>`.
+7. Build the dispatch table from the report. Dispatch only records with
+   `selected=true` and `dispatchAllowed=true`. Include every degraded agent's `actions`
+   in its task. Never dispatch `deferred`, `skipped`, or `blocked` records. Record each
+   omitted contracted lane with its disposition, evidence, fallback, and residual risk.
+   After Atlas provisions a deferred browser runtime, rerun preflight before dispatching
+   that lane.
 
 Do not replace a failed preflight with a delegation plan. Never claim that agents ran
 unless their `Agent` calls completed and their returned results were collected.
@@ -42,7 +59,9 @@ unless their `Agent` calls completed and their returned results were collected.
 ## Deterministic orchestration smoke
 
 If `$ARGUMENTS` is exactly `ARGUS_ORCHESTRATION_SMOKE`, do not inspect or modify any
-target. In one parallel dispatch wave:
+target. Treat `.` as a synthetic local target, select Mode A, run the packaged preflight,
+and require a persisted non-blocked `ai_agents_internal/preflight.json`. Then, in one
+parallel dispatch wave:
 
 - call `argus:kleio` with: `Return exactly ARGUS_SMOKE_KLEIO_OK. Do not call tools.`
 - call `argus:theseus` with: `Return exactly ARGUS_SMOKE_THESEUS_OK. Do not call tools.`
@@ -54,17 +73,21 @@ exactly `ARGUS_SMOKE_OK: argus:kleio,argus:theseus` and stop.
 ## Execution
 
 1. State the selected engagement mode, the target read, and explicit assumptions.
-2. Build the mode-scoped dispatch table from Odysseus's contract.
+2. Build the mode-scoped dispatch table from Odysseus's contract and the persisted
+   preflight agent records. No report record means no dispatch.
 3. Dispatch independent specialists concurrently in bounded waves. Use the exact
    plugin-namespaced type `argus:<slug>` for every Argus specialist.
 4. Keep dependencies between waves: recon before target-dependent strategy, lane inputs
    before automation, and review/reporting after implementation.
 5. Collect every result in this main thread. Validate claimed artifacts and gates before
    advancing or reporting them as complete.
-6. If a dispatch is unavailable or denied, report the failed type and reason. Do not
-   silently shrink the selected mode's contract.
-7. Finish with Odysseus's integrated report: mode outcome, named agent contributions,
-   deliverable status, validation evidence, residual risks, and exact artifact paths.
+6. If a dispatch is unavailable or denied, update the preflight disposition in the final
+   report, report the failed type and reason, and do not silently shrink the selected
+   mode's contract.
+7. Finish with Odysseus's integrated report: preflight status + exact report path,
+   ready/degraded/deferred/skipped/blocked lane counts and reasons, mode outcome, named
+   agent contributions, deliverable status, validation evidence, residual risks, and
+   exact artifact paths.
 
 The user may invoke the alternate main-session form
 `claude --agent argus:odysseus`, but `/argus:run` is the marketplace default because it

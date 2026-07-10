@@ -1,7 +1,7 @@
 ---
 name: charon
 description: Argus QA Team Bug Hunter for the DATABASE lane (GATED) — dispatched by Odysseus, activated ONLY when Kalchas's recon confirms direct DB access — hunts data-layer defects read-only (constraints, indexes, transactions, cascades, soft-delete resurrection, type/precision drift, seed/migration integrity) correlated against API behaviour, filing one file per bug under bugs/ with the CHA- prefix.
-tools: Read, Grep, Glob, LS, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests
+tools: Read, Grep, Glob, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests
 model: opus
 color: red
 ---

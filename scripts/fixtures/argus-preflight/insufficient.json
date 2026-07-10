@@ -1,0 +1,9 @@
+{
+  "generatedAt": "2026-07-10T12:00:00.000Z",
+  "targetReachable": false,
+  "artifactWritable": true,
+  "availableTools": ["Bash", "Read"],
+  "mcpServers": [],
+  "features": [],
+  "commands": ["node"]
+}

@@ -52,7 +52,15 @@ session:
 argus-assets verify
 argus-assets list
 argus-assets path browser-isolation
+argus-assets preflight --target /path/to/target-repo --mode D
 ```
+
+`/argus:run` performs that preflight before any probe, test, or specialist dispatch and
+persists `ai_agents_internal/preflight.json`. The report covers target reachability,
+artifact paths, packaged assets, supported tools, MCP servers, host commands, browser
+runtime, and every selected specialist. Only `ready` and `degraded` agents may dispatch;
+degraded records include their mandatory fallback, while deferred/skipped/blocked records
+stay out of the dispatch table. A blocked mandatory check exits before target execution.
 
 On a greenfield BUILD engagement, Atlas can seed a framework without access to this
 repository checkout:
