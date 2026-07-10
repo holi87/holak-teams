@@ -16,9 +16,11 @@ Determinism is a feature: **no retries, no rerun plugin**. Flakiness is fixed at
 
 ## Run
 ```bash
-./run-tests.sh                      # every lane (api + ui + regression; perf/security/db self-skip unless gated)
-./run-tests.sh -m api               # API lane only
-./run-tests.sh -m "ui or regression"
+./run-tests.sh --mode baseline             # strict green, excludes regression
+./run-tests.sh --mode defect-evidence      # known RED only; requires adapter events
+./run-tests.sh --mode candidate-regression # strict green over regression tests
+./run-tests.sh --mode full-suite           # strict green over all selected tests
+./run-tests.sh --mode baseline -- -m api
 PERF_BUDGET_MS=300 ./run-tests.sh -m perf      # enable the perf gate with a STATED budget
 SECURITY_ENABLED=1 ./run-tests.sh -m security  # enable the security lane (target must be cleared)
 DB_URL=postgres://… ./run-tests.sh -m db       # enable direct-DB integrity checks (read-only)
@@ -32,8 +34,15 @@ Reports after every run:
 - `reports/html/index.html` — human report (self-contained).
 - `reports/report.json` — machine-readable (tooling/aggregation).
 - `reports/junit.xml` — CI ingestion.
+- `reports/argus-runner-result.json` — shared `argus/runner-result@1` categories and exit code.
 
-Extra args pass straight through to pytest (`-k`, `-x`, `-m`, `--lf`, …). Exit code reflects pass/fail.
+Outcome adapters append the shared seven-field TSV records to `reports/outcomes.raw.tsv`.
+Extra args after `--` pass through to pytest. Exit codes are 0 or 10-15 per
+`RUNNER-CONTRACT.md`; known RED succeeds only in `defect-evidence` and fails
+candidate/full green gates.
+Pytest hooks/fixtures record outcomes with `scripts/outcome-event.sh <case> <category>
+<status> <expected> <lifecycle> <BUG-NNNN|-> <reason-token>`; parallel appends are
+lock-safe.
 
 ### Lane gating (perf / security / db)
 The gated lanes **self-skip** unless their prerequisite env var is set, so an unset run shows them *skipped* (not failed) and the exit code stays `0`:

@@ -3,10 +3,18 @@
   "$id": "https://github.com/holi87/holak-teams/argus/schemas/final-summary.schema.json",
   "title": "Argus final engagement summary v1",
   "type": "object", "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "engagementId", "owner", "status", "counts", "sourceSchemas", "summary", "generatedAt"],
+  "required": ["$schema", "schemaVersion", "engagementId", "owner", "status", "counts", "runner", "sourceSchemas", "summary", "generatedAt"],
   "properties": {
     "$schema": { "const": "argus/final-summary@1" }, "schemaVersion": { "const": 1 }, "engagementId": { "type": "string", "minLength": 1 }, "owner": { "const": "kleio" }, "status": { "enum": ["completed", "blocked", "degraded"] },
     "counts": { "type": "object", "additionalProperties": false, "required": ["bugs", "automated", "evidence"], "properties": { "bugs": { "type": "integer", "minimum": 0 }, "automated": { "type": "integer", "minimum": 0 }, "evidence": { "type": "integer", "minimum": 0 } } },
+    "runner": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "status", "exitCode", "resultPath", "categories"],
+      "properties": {
+        "mode": { "enum": ["baseline", "defect-evidence", "candidate-regression", "full-suite"] }, "status": { "enum": ["pass", "fail"] }, "exitCode": { "enum": [0, 10, 11, 12, 13, 14, 15] }, "resultPath": { "type": "string", "minLength": 1 },
+        "categories": { "type": "object", "additionalProperties": false, "required": ["product", "automation", "infrastructure", "skip", "policy"], "properties": { "product": { "type": "integer", "minimum": 0 }, "automation": { "type": "integer", "minimum": 0 }, "infrastructure": { "type": "integer", "minimum": 0 }, "skip": { "type": "integer", "minimum": 0 }, "policy": { "type": "integer", "minimum": 0 } } }
+      }
+    },
     "sourceSchemas": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^argus/[a-z-]+@1$" } }, "summary": { "type": "string", "minLength": 1 }, "generatedAt": { "type": "string", "format": "date-time" }
   }
 }

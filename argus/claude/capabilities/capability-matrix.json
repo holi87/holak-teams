@@ -30,8 +30,9 @@
     "capability-matrix",
     "canonical-contracts",
     "engagement-policy",
-      "runtime-library",
-      "runtime-schemas"
+    "runtime-library",
+    "runner-contract",
+    "runtime-schemas"
     ],
     "artifactPaths": [
       "ai_agents_internal/authorization.json",

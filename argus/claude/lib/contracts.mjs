@@ -65,6 +65,18 @@ export function renderFinalSummary(document) {
     `- Automated: ${document.counts.automated}`,
     `- Evidence references: ${document.counts.evidence}`,
     '',
+    '## Runner outcome',
+    '',
+    `- Mode: ${document.runner.mode}`,
+    `- Status: ${document.runner.status}`,
+    `- Exit code: ${document.runner.exitCode}`,
+    `- Result: ${document.runner.resultPath}`,
+    `- Product: ${document.runner.categories.product}`,
+    `- Automation: ${document.runner.categories.automation}`,
+    `- Infrastructure: ${document.runner.categories.infrastructure}`,
+    `- Skip: ${document.runner.categories.skip}`,
+    `- Policy: ${document.runner.categories.policy}`,
+    '',
     '## Source contracts',
     '',
     ...document.sourceSchemas.map((source) => `- ${source}`),
@@ -129,4 +141,10 @@ function validateFinalSummary(document, errors) {
   if (!object(document.counts) || !['bugs', 'automated', 'evidence'].every((key) => Number.isInteger(document.counts[key]) && document.counts[key] >= 0)) errors.push('counts are invalid');
   if (!list(document.sourceSchemas, (value) => /^argus\/[a-z-]+@1$/.test(value))) errors.push('sourceSchemas are invalid');
   if (!string(document.summary) || !ISO(document.generatedAt) || !ID.lane.test(document.owner ?? '')) errors.push('summary, generatedAt, or owner is invalid');
+  const runner = document.runner;
+  if (!object(runner) || !['baseline', 'defect-evidence', 'candidate-regression', 'full-suite'].includes(runner.mode) || !['pass', 'fail'].includes(runner.status) || ![0, 10, 11, 12, 13, 14, 15].includes(runner.exitCode) || !string(runner.resultPath)) {
+    errors.push('runner mode, status, exitCode, or resultPath is invalid');
+  } else if (!object(runner.categories) || !['product', 'automation', 'infrastructure', 'skip', 'policy'].every((key) => Number.isInteger(runner.categories[key]) && runner.categories[key] >= 0)) {
+    errors.push('runner categories are invalid');
+  }
 }

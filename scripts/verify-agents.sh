@@ -17,6 +17,7 @@
 #   i) risky lanes share one deny-by-default authorization, audit, and redaction policy
 #   j) every lane shares the packaged immutability, ownership, barrier, and cleanup runtime
 #   k) canonical QA contracts reject malformed fixtures and render a source-versioned summary
+#   l) all framework templates share explicit runner modes, lifecycle, categories, and exits
 #
 # Exit code: 0 when every check passes, 1 otherwise.
 
@@ -207,6 +208,12 @@ if "$ROOT/scripts/smoke-argus-schemas.sh"; then
   pass "[argus] (k) canonical schemas, fixtures, fragment compatibility, and source-versioned summary"
 else
   fail "[argus] (k) canonical QA contract"
+fi
+
+if "$ROOT/scripts/smoke-argus-runner-contract.sh"; then
+  pass "[argus] (l) runner modes, defect lifecycle, outcome categories, and exit codes"
+else
+  fail "[argus] (l) runner outcome contract"
 fi
 
 echo ""

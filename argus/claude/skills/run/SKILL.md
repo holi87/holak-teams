@@ -81,6 +81,9 @@ phase:
    Load `${CLAUDE_PLUGIN_ROOT}/references/CANONICAL-CONTRACTS.md` before structured
    delivery work. Submit lane plans, ledgers, evidence, automation status, and final
    summaries only as their versioned JSON documents; use stable identity keys for IDs.
+   Load `${CLAUDE_PLUGIN_ROOT}/references/RUNNER-CONTRACT.md` before executing a suite.
+   Use `baseline`, `defect-evidence`, `candidate-regression`, and `full-suite` only for
+   their documented purpose; never interpret a known RED as a green regression gate.
 
 Do not replace a failed preflight with a delegation plan. Never claim that agents ran
 unless their `Agent` calls completed and their returned results were collected.
@@ -137,6 +140,9 @@ remains active, return exactly `ARGUS_SMOKE_OK: argus:kleio,argus:theseus`, and 
    canonical owners/merge digests, allocation uniqueness, checkpoint/resume evidence,
    atomic ID range, exclusive reset/fault windows, and cleanup status with zero active
    leases/locks.
+   Include the runner mode/result path/exit code and separate product, automation,
+   infrastructure, skip, and policy outcomes. An unexpected failure remains a failed
+   gate even when known defect evidence exists.
 
 The user may invoke the alternate main-session form
 `claude --agent argus:odysseus`, but `/argus:run` is the marketplace default because it

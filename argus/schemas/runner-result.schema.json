@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/runner-result.schema.json",
+  "title": "Argus runner result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "mode", "status", "exitCode", "categories", "events"],
+  "properties": {
+    "$schema": { "const": "argus/runner-result@1" },
+    "schemaVersion": { "const": 1 },
+    "mode": { "enum": ["baseline", "defect-evidence", "candidate-regression", "full-suite"] },
+    "status": { "enum": ["pass", "fail"] },
+    "exitCode": { "enum": [0, 10, 11, 12, 13, 14, 15] },
+    "categories": {
+      "type": "object", "additionalProperties": false,
+      "required": ["product", "automation", "infrastructure", "skip", "policy"],
+      "properties": {
+        "product": { "type": "integer", "minimum": 0 }, "automation": { "type": "integer", "minimum": 0 },
+        "infrastructure": { "type": "integer", "minimum": 0 }, "skip": { "type": "integer", "minimum": 0 },
+        "policy": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "events": { "type": "array", "items": { "$ref": "#/$defs/event" } }
+  },
+  "$defs": {
+    "event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["caseId", "category", "status", "expected", "lifecycle", "bugId", "reason"],
+      "properties": {
+        "caseId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$" },
+        "category": { "enum": ["product", "automation", "infrastructure", "skip", "policy"] },
+        "status": { "enum": ["pass", "fail", "skipped", "denied"] },
+        "expected": { "type": "boolean" },
+        "lifecycle": { "enum": ["discovered", "reproduced", "automated", "fixed", "closed", "n/a"] },
+        "bugId": { "type": ["string", "null"], "pattern": "^BUG-[0-9]{4}$" },
+        "reason": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$" }
+      }
+    }
+  }
+}

@@ -37,6 +37,12 @@
       "destination": "references/CANONICAL-CONTRACTS.md"
     },
     {
+      "id": "runner-contract",
+      "kind": "reference",
+      "source": "argus/RUNNER-CONTRACT.md",
+      "destination": "references/RUNNER-CONTRACT.md"
+    },
+    {
       "id": "runtime-schemas",
       "kind": "schemas",
       "source": "argus/schemas",

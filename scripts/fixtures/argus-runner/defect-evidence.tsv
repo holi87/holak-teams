@@ -1,0 +1,3 @@
+bug-discovered	product	pass	false	discovered	BUG-0001	discovery-recorded
+bug-reproduced	product	fail	true	reproduced	BUG-0001	spec-mismatch
+bug-automated	product	fail	true	automated	BUG-0001	regression-red

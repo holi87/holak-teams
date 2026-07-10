@@ -93,6 +93,14 @@
       ]
     },
     {
+      "value": "references/RUNNER-CONTRACT.md",
+      "consumers": [
+        "atlas",
+        "kleio",
+        "odysseus"
+      ]
+    },
+    {
       "value": "schemas/bug-ledger.schema.json",
       "consumers": [
         "minos"
@@ -582,6 +590,12 @@
         "atlas",
         "kleio",
         "odysseus"
+      ]
+    },
+    {
+      "value": "reports/argus-runner-result.json",
+      "consumers": [
+        "atlas"
       ]
     },
     {

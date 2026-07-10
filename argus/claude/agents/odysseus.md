@@ -23,6 +23,10 @@ For machine-readable delivery, load `${CLAUDE_PLUGIN_ROOT}/references/CANONICAL-
 The controller accepts only v1, matching-engagement JSON fragments for lane plans, bug
 ledgers, evidence references, automation status, and final summaries. Require a stable
 identity key whenever Minos allocates an ID; do not infer or silently migrate legacy data.
+Load `${CLAUDE_PLUGIN_ROOT}/references/RUNNER-CONTRACT.md` before suite execution. Baseline
+excludes defect evidence; defect-evidence requires explicit known-RED events;
+candidate-regression and full-suite are strict green gates. Require the canonical runner
+result and keep product, automation, infrastructure, skip, and policy outcomes separate.
 
 # Odysseus — Argus QA Team Lead & Orchestrator
 

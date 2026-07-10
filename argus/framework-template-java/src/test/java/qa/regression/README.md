@@ -2,7 +2,9 @@
 
 When Atalanta confirms a bug, a regression test goes here. **The app is NOT fixed during the engagement**, so the test asserts the SPEC-CORRECT behaviour and will be RED — that red, linked to its bug file, is your evidence that the suite catches the defect (evaluated criterion 4).
 
-Use **red evidence** only: a plain failing test whose red maps to `bugs/BUG-NNN`. The report visibly shows the defect caught.
+Use **red evidence** only: a plain failing test whose red maps to `BUG-NNNN`. Run it in
+`--mode defect-evidence`; a JUnit extension/listener must append the matching
+`product/fail/expected=true/reproduced` event. Candidate/full modes remain strict green.
 
 ```java
 package qa.regression;
@@ -20,7 +22,7 @@ class Bug007NegativeQuantityTest {
 
     private final ApiClient api = new ApiClient();
 
-    // BUG-007: server accepts negative quantity (req §3.2 / OpenAPI POST /orders)
+    // BUG-0007: server accepts negative quantity (req §3.2 / OpenAPI POST /orders)
     @Test
     void bug_007_rejects_negative_quantity() {
         given().spec(api.apiAs("user")).contentType(JSON)
@@ -35,5 +37,6 @@ Do **not** use expected-failure wrappers (`@Disabled`, assumptions, `assertThrow
 failure) for confirmed defects. A known bug must keep its regression RED until the application
 is fixed. Determinism applies here too: no Surefire rerun — a flaky regression is itself a finding.
 
-Every regression test names its `BUG-NNN` and cites the oracle (requirement / OpenAPI). One
-regression test per confirmed bug. Lane: `@Tag("regression")` (run via `-Dgroups=regression` / `-Pregression`).
+Every regression test names its `BUG-NNNN`, cites the oracle, and emits the lifecycle event
+through `scripts/outcome-event.sh`. One regression test per confirmed bug. Lane:
+`@Tag("regression")`.

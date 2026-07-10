@@ -1,0 +1,5 @@
+bug-closed	product	pass	false	closed	BUG-0001	regression-green
+suite-code	automation	pass	false	n/a	-	tests-valid
+test-stack	infrastructure	pass	false	n/a	-	stack-ready
+db-lane	skip	skipped	true	n/a	-	prerequisite-unavailable
+authorization	policy	pass	false	n/a	-	policy-satisfied
