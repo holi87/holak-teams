@@ -186,7 +186,7 @@ Every agent runs on an **Anthropic** model under Claude Code and on a **mapped O
 | Asklepios | `asklepios` | Test-suite sanitation / deflaking (brownfield) | opus | gpt-5.5 · xhigh |
 | Talos | `talos` | API regression automation | sonnet | gpt-5.5 · medium |
 | Daidalos | `daidalos` | UI E2E + a11y automation | sonnet | gpt-5.5 · medium |
-| Aegis | `aegis` | Security regression automation | sonnet | gpt-5.5 · medium |
+| Aegis | `aegis` | Security regression automation | opus | gpt-5.5 · xhigh |
 | Nike | `nike` | Perf regression automation | sonnet | gpt-5.5 · medium |
 | Mnemosyne | `mnemosyne` | DB invariants automation *(gated)* | sonnet | gpt-5.5 · medium |
 
@@ -251,7 +251,7 @@ A second, **separate**, **permanent** QA team (**27 agents**) you point at any t
 
 **Cross-cutting / deep journey (5):** **Ariadne** — deep lifecycle & business-rule journey hunter · **Atlas** — Automation Architect, owner of the SINGLE aggregating `run-tests.sh` + the shared oracle helpers · **Aristarchus** — Code Reviewer of the automation, runs **LAST** (determinism, oracle-honesty, blocklist) · **Tiresias** — White-box Source Analyst *(gated: source access)*, code→surface leads to the lanes · **Asklepios** — Test-Suite Sanitation / deflaking, heals a sick existing suite (brownfield Mode D), fixes flakiness at the source.
 
-Current Argus QA frontmatter models: **18 opus** + **9 sonnet** (`kleio`, `talos`, `daidalos`, `aegis`, `mnemosyne`, `theseus`, `penelope`, `nike`, `pistis`). Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) — `argus/COLOR-SCHEME.md`. The same 27 Argus agents are also available for Codex in `argus/codex/` as paired `*.toml` + `*.md` custom-agent files.
+Current Argus QA frontmatter models: **19 opus** + **8 sonnet** (`kleio`, `talos`, `daidalos`, `mnemosyne`, `theseus`, `penelope`, `nike`, `pistis`; `aegis` is opus — its security-regression deny-side authz encoding is the suite's worst silent-failure mode). Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) — `argus/COLOR-SCHEME.md`. The same 27 Argus agents are also available for Codex in `argus/codex/` as paired `*.toml` + `*.md` custom-agent files.
 
 **Separation:** a separate lead (Odysseus = the Argus QA hub), baked-in QA doctrine (modes/deliverables/paths/rules), a separate `argus/` directory. **Collaboration:** the crew resolves within its own lanes (it has dedicated UI/API/Perf/DB/Sec/a11y) — the main team is pulled in only for a real gap and only via Odysseus→Marcus (e.g. Cassius=deep security, Maximus/Fabricius=wiring in the framework, Seneca=strategy sanity). **The hard rule baked into everyone:** NEVER modify the application under test.
 

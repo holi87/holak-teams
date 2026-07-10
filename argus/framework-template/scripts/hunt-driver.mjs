@@ -53,6 +53,11 @@
  *   --keep                  do NOT clear the profile first (default: reuse profile)
  *   --fresh                 wipe this agent's profile before launch (clean session)
  *   --headed                run headed (debug only; default headless)
+ *   --tz <timezoneId>       emulate a timezone (context timezoneId, e.g. Europe/Warsaw)
+ *   --locale <locale>       emulate a browser locale (context locale, e.g. pl-PL)
+ *   --clock <ISO datetime>  pin the page clock (Playwright clock API) before the first
+ *                           navigation — deterministic Date/timers for date/format oracles
+ *   --reduced-motion        emulate prefers-reduced-motion: reduce (context reducedMotion)
  *
  * Example — sweep My Courses at mobile width as a student, capture evidence:
  *   node scripts/hunt-driver.mjs --agent orion --role student \
@@ -85,6 +90,10 @@ let role = null;
 let keep = true;
 let fresh = false;
 let headed = false;
+let tz = null;
+let locale = null;
+let clock = null;
+let reducedMotion = false;
 const actions = []; // ordered
 
 for (let i = 0; i < argv.length; i++) {
@@ -96,6 +105,10 @@ for (let i = 0; i < argv.length; i++) {
     case '--keep': keep = true; break;
     case '--fresh': fresh = true; break;
     case '--headed': headed = true; break;
+    case '--tz': tz = next(); break;
+    case '--locale': locale = next(); break;
+    case '--clock': clock = next(); break;
+    case '--reduced-motion': reducedMotion = true; break;
     case '--goto': actions.push(['goto', next()]); break;
     case '--wait': actions.push(['wait', next()]); break;
     case '--viewport': actions.push(['viewport', next()]); break;
@@ -117,6 +130,7 @@ for (let i = 0; i < argv.length; i++) {
   }
 }
 if (!agent) fail('--agent <name> is required (drives the per-agent profile dir)');
+if (clock && Number.isNaN(Date.parse(clock))) fail(`--clock: '${clock}' is not a parseable datetime (use ISO 8601, e.g. 2026-01-15T12:00:00Z)`);
 const anon = !role || role === 'anon';
 
 // ---- token mint (API login) ---------------------------------------------
@@ -144,7 +158,13 @@ const ctx = await chromium.launchPersistentContext(profileDir, {
   viewport: { width: 1280, height: 800 },
   userAgent: cfg.userAgent,
   baseURL: BASE,
+  ...(tz ? { timezoneId: tz } : {}),
+  ...(locale ? { locale } : {}),
+  ...(reducedMotion ? { reducedMotion: 'reduce' } : {}),
 });
+if (tz || locale || reducedMotion) {
+  log('context', [tz && `tz=${tz}`, locale && `locale=${locale}`, reducedMotion && 'reducedMotion=reduce'].filter(Boolean).join(' '));
+}
 
 // collect console + network for the whole session
 const consoleMsgs = [];
@@ -155,6 +175,14 @@ page.on('console', (m) => consoleMsgs.push(`${m.type()}: ${m.text()}`));
 page.on('response', (r) => netReqs.push(`${r.request().method()} ${r.status()} ${r.url()}`));
 
 try {
+  // Pin the page clock BEFORE any navigation so Date/timers are deterministic from
+  // the first script run (UTC-vs-local, expiry tick-over, stale relative-time oracles).
+  // clock.install pins the START instant; time still ticks (not a frozen clock).
+  if (clock) {
+    await page.clock.install({ time: new Date(clock) });
+    log('clock', `installed @ ${new Date(clock).toISOString()}`);
+  }
+
   // Inject role tokens BEFORE any navigation (guard sees session on first script run).
   if (!anon) {
     const apiCtx = await ctx.request;
