@@ -25,6 +25,12 @@
       "destination": "schemas"
     },
     {
+      "id": "capability-matrix",
+      "kind": "capabilities",
+      "source": "argus/capabilities",
+      "destination": "capabilities"
+    },
+    {
       "id": "typescript-template",
       "kind": "template",
       "source": "argus/framework-template",

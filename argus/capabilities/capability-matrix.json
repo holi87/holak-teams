@@ -1,0 +1,299 @@
+{
+  "$schema": "../schemas/capability-matrix.schema.json",
+  "schemaVersion": 1,
+  "supportedBuiltinTools": [
+    "Agent",
+    "Bash",
+    "Edit",
+    "Glob",
+    "Grep",
+    "Read",
+    "TaskCreate",
+    "TaskGet",
+    "TaskList",
+    "TaskUpdate",
+    "WebFetch",
+    "WebSearch",
+    "Write"
+  ],
+  "legacyToolReplacements": {
+    "LS": "Glob or Bash",
+    "MultiEdit": "Edit",
+    "Task": "Agent",
+    "TodoWrite": "TaskCreate, TaskGet, TaskList, and TaskUpdate"
+  },
+  "orchestration": {
+    "requiredTools": ["Agent", "Read", "Bash"],
+    "requiredAssets": ["capability-matrix", "runtime-schemas"],
+    "artifactPaths": [
+      "ai_agents_internal/preflight.json",
+      "solution/",
+      "bugs/"
+    ]
+  },
+  "capabilities": {
+    "browser-runtime": {
+      "kind": "browser",
+      "missingDisposition": "deferred",
+      "fallback": "Atlas must provision the packaged isolated driver and a Playwright browser, then rerun preflight before any browser lane is dispatched."
+    },
+    "context7": {
+      "kind": "mcp",
+      "serverPatterns": ["plugin:context7:context7", "context7"],
+      "missingDisposition": "degraded",
+      "fallback": "Use WebFetch against current official documentation and record the exact source URL."
+    },
+    "db-access": {
+      "kind": "target",
+      "missingDisposition": "skipped",
+      "fallback": "Route data-integrity coverage to Atalanta through the public API and record direct DB coverage as skipped."
+    },
+    "existing-suite": {
+      "kind": "target",
+      "missingDisposition": "skipped",
+      "fallback": "Do not dispatch suite sanitation when no existing test suite is present."
+    },
+    "multi-service": {
+      "kind": "target",
+      "missingDisposition": "skipped",
+      "fallback": "Record consumer-driven contract coverage as not applicable until multiple services or consumers are confirmed."
+    },
+    "non-rest-surface": {
+      "kind": "target",
+      "missingDisposition": "skipped",
+      "fallback": "Record GraphQL, gRPC, WebSocket, SSE, messaging, and webhook coverage as not applicable when recon finds none."
+    },
+    "playwright-mcp": {
+      "kind": "mcp",
+      "serverPatterns": ["plugin:playwright:playwright", "playwright"],
+      "missingDisposition": "degraded",
+      "fallback": "Use scripted CLI probes; browser lanes use the isolated hunt-driver. Shared MCP is never a fallback for authenticated or multi-step flows."
+    },
+    "source-access": {
+      "kind": "target",
+      "missingDisposition": "skipped",
+      "fallback": "Keep the engagement black-box and record white-box source analysis as skipped."
+    }
+  },
+  "agents": [
+    {
+      "slug": "aegis",
+      "lane": "security-automation",
+      "modes": ["A", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "optionalCapabilities": ["context7"],
+      "artifactPaths": ["tests/security/"]
+    },
+    {
+      "slug": "antigone",
+      "lane": "accessibility-hunt",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "requiredCapabilities": ["browser-runtime"],
+      "optionalCapabilities": ["playwright-mcp"],
+      "artifactPaths": ["bugs/ANG-*"]
+    },
+    {
+      "slug": "ariadne",
+      "lane": "journey-hunt",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "optionalCapabilities": ["browser-runtime", "playwright-mcp"],
+      "artifactPaths": ["bugs/ARI-*", "solution/STATE_MODEL.md"]
+    },
+    {
+      "slug": "aristarchus",
+      "lane": "automation-review",
+      "modes": ["A", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash"],
+      "artifactPaths": []
+    },
+    {
+      "slug": "asklepios",
+      "lane": "suite-sanitation",
+      "modes": ["A", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "requiredCapabilities": ["existing-suite"],
+      "optionalCapabilities": ["context7"],
+      "artifactPaths": ["solution/TEST-HEALTH.md"]
+    },
+    {
+      "slug": "atalanta",
+      "lane": "api-hunt",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "optionalCapabilities": ["playwright-mcp"],
+      "artifactPaths": ["bugs/ATA-*"]
+    },
+    {
+      "slug": "atlas",
+      "lane": "automation-architecture",
+      "modes": ["A", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "optionalCapabilities": ["context7"],
+      "artifactPaths": ["solution/ARCHITECTURE.md", "run-tests.sh"]
+    },
+    {
+      "slug": "charon",
+      "lane": "database-hunt",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "requiredCapabilities": ["db-access"],
+      "optionalCapabilities": ["playwright-mcp"],
+      "artifactPaths": ["bugs/CHA-*"]
+    },
+    {
+      "slug": "daidalos",
+      "lane": "ui-automation",
+      "modes": ["A", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "requiredCapabilities": ["browser-runtime"],
+      "optionalCapabilities": ["context7", "playwright-mcp"],
+      "artifactPaths": ["tests/ui/"]
+    },
+    {
+      "slug": "hermes",
+      "lane": "performance-hunt",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "optionalCapabilities": ["playwright-mcp"],
+      "artifactPaths": ["bugs/HER-*", "solution/PERF-REPORT.md"]
+    },
+    {
+      "slug": "kalchas",
+      "lane": "recon",
+      "modes": ["A", "B", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "optionalCapabilities": ["browser-runtime", "playwright-mcp"],
+      "artifactPaths": ["ai_agents_internal/recon/"]
+    },
+    {
+      "slug": "kleio",
+      "lane": "reporting",
+      "modes": ["A", "B", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "artifactPaths": ["README.md", "solution/IMPLEMENTATION-REPORT.md"]
+    },
+    {
+      "slug": "lynceus",
+      "lane": "presentation-hunt",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "requiredCapabilities": ["browser-runtime"],
+      "optionalCapabilities": ["playwright-mcp"],
+      "artifactPaths": ["bugs/LYN-*"]
+    },
+    {
+      "slug": "metis",
+      "lane": "strategy",
+      "modes": ["A", "B", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "artifactPaths": ["solution/TEST-STRATEGY.md", "solution/ORACLES.md"]
+    },
+    {
+      "slug": "minos",
+      "lane": "triage",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "artifactPaths": ["solution/BUG-LEDGER.md"]
+    },
+    {
+      "slug": "mnemosyne",
+      "lane": "database-automation",
+      "modes": ["A", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "requiredCapabilities": ["db-access"],
+      "optionalCapabilities": ["context7"],
+      "artifactPaths": ["tests/db/"]
+    },
+    {
+      "slug": "nike",
+      "lane": "performance-resilience-automation",
+      "modes": ["A", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "optionalCapabilities": ["context7"],
+      "artifactPaths": ["tests/perf/", "tests/resilience/"]
+    },
+    {
+      "slug": "odysseus",
+      "lane": "orchestration",
+      "modes": ["A", "B", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "Agent"],
+      "artifactPaths": ["ai_agents_internal/preflight.json", "ai_agents_internal/dispatch-plan.md"]
+    },
+    {
+      "slug": "orion",
+      "lane": "ui-hunt",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "requiredCapabilities": ["browser-runtime"],
+      "optionalCapabilities": ["playwright-mcp"],
+      "artifactPaths": ["bugs/ORI-*"]
+    },
+    {
+      "slug": "penelope",
+      "lane": "ui-path-analysis",
+      "modes": ["A", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "requiredCapabilities": ["browser-runtime"],
+      "optionalCapabilities": ["playwright-mcp"],
+      "artifactPaths": ["solution/paths/ui-*.md"]
+    },
+    {
+      "slug": "perseus",
+      "lane": "security-hunt",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "optionalCapabilities": ["playwright-mcp"],
+      "artifactPaths": ["bugs/PER-*"]
+    },
+    {
+      "slug": "pistis",
+      "lane": "contract-analysis",
+      "modes": ["A", "C"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "requiredCapabilities": ["multi-service"],
+      "artifactPaths": ["solution/paths/contract-*.md", "solution/contracts/"]
+    },
+    {
+      "slug": "proteus",
+      "lane": "multi-protocol-hunt",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "requiredCapabilities": ["non-rest-surface"],
+      "optionalCapabilities": ["playwright-mcp"],
+      "artifactPaths": ["bugs/PRO-*"]
+    },
+    {
+      "slug": "talos",
+      "lane": "api-automation",
+      "modes": ["A", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      "optionalCapabilities": ["context7"],
+      "artifactPaths": ["tests/api/"]
+    },
+    {
+      "slug": "theseus",
+      "lane": "api-path-analysis",
+      "modes": ["A", "C", "D"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "artifactPaths": ["solution/paths/api-*.md"]
+    },
+    {
+      "slug": "tiresias",
+      "lane": "source-analysis",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash"],
+      "requiredCapabilities": ["source-access"],
+      "artifactPaths": []
+    },
+    {
+      "slug": "tyche",
+      "lane": "resilience-hunt",
+      "modes": ["A", "B"],
+      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
+      "optionalCapabilities": ["playwright-mcp"],
+      "artifactPaths": ["bugs/TYC-*", "solution/RESILIENCE-REPORT.md"]
+    }
+  ]
+}

@@ -40,6 +40,7 @@ restricted context receives the same explicit preflight error.
 Marketplace installs are self-contained. The plugin ships:
 
 - `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation and shared doctrine;
+- `${CLAUDE_PLUGIN_ROOT}/capabilities/` — the mode-aware capability matrix for all 27 roles;
 - `${CLAUDE_PLUGIN_ROOT}/schemas/` — runtime asset, bug-ledger, and browser-driver config schemas;
 - `${CLAUDE_PLUGIN_ROOT}/templates/` — TypeScript/Playwright, Java, and Python framework templates;
 - `argus-assets` — a PATH executable that verifies hashes and budgets or safely copies a template/driver.
@@ -49,6 +50,21 @@ Maintainers edit the canonical sources under `argus/` and run
 byte-for-byte by `--check`; the generated prompt inventory covers all 27 agents. The
 budget is 350 KB for generated runtime assets and 1.5 MB for the complete installed
 plugin. `COLOR-SCHEME.md` and team graphs are intentionally maintainer-only.
+
+## Runtime preflight
+
+`/argus:run` invokes `argus-assets preflight` before any target probe, test execution, or
+specialist dispatch. Given a primary URL/path and Mode A–D, it persists
+`ai_agents_internal/preflight.json` and evaluates orchestration tools, the strict
+frontmatter vocabulary, connected MCP servers, referenced host commands, packaged asset
+hashes, browser support, target reachability/features, and safe writable artifact paths.
+
+Every role receives one disposition: `ready`, `degraded`, `deferred`, `skipped`, or
+`blocked`. Only `ready` and `degraded` records have `dispatchAllowed=true`; degraded
+records carry a deterministic fallback action. A mandatory failure blocks the whole run
+before target execution. Deferred browser roles require Atlas to provision the packaged
+driver/runtime and a second preflight. The final engagement report must include the exact
+preflight path, counts, non-ready reasons, fallback actions, and capability drift.
 
 ## Roster (`claude/` + `codex/`)
 

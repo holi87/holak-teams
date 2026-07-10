@@ -1,0 +1,40 @@
+name: Validate Argus contracts
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  capability-preflight:
+    name: Capability preflight environments
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify full, partial, insufficient, and unsafe-path environments
+        run: scripts/smoke-argus-preflight.sh
+
+  agent-contracts:
+    name: Agent and packaged-runtime contracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify agent, entry-point, asset, and capability contracts
+        run: scripts/verify-agents.sh

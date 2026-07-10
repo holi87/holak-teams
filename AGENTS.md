@@ -91,6 +91,7 @@ holak-teams/                         # this repo == the marketplace
     │   ├── agents/                  # 27 flat specialist defs (loaded by Claude Code)
     │   ├── skills/run/SKILL.md      # /argus:run main-thread orchestrator
     │   ├── bin/argus-assets         # list/verify/copy packaged runtime assets
+    │   ├── capabilities/            # generated 27-role capability and fallback matrix
     │   ├── references/ + schemas/   # generated, installed runtime references/contracts
     │   ├── templates/               # generated TS / Java / Python framework copies
     │   └── runtime-*.json           # generated asset manifest + prompt inventory
@@ -121,10 +122,19 @@ counts, bytes and SHA-256 values; `runtime-reference-inventory.json` inventories
 paths, target-repo paths and host commands referenced by all 27 prompts.
 
 Installed users can run `argus-assets list`, `argus-assets verify`,
+`argus-assets preflight --target <url-or-path> --mode <A|B|C|D>`,
 `argus-assets copy-template <typescript|java|python> <empty-destination>`, or
 `argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 350 KB
 and the complete installed Argus plugin at 1.5 MB. `COLOR-SCHEME.md` and team graphs are
 explicitly maintainer-only; their runtime values already live in agent frontmatter.
+
+The preflight writes `ai_agents_internal/preflight.json` before any target probe, test,
+or specialist dispatch. It verifies orchestration tools, strict frontmatter vocabulary,
+MCP connections, host commands, packaged assets, browser runtime, target reachability,
+target-specific gates, and safe writable artifact paths. Each of the 27 roles receives a
+machine-readable `ready`, `degraded`, `deferred`, `skipped`, or `blocked` disposition.
+Only `ready` and `degraded` records are dispatchable; every degraded record carries a
+deterministic fallback action. CI exercises full, partial, and insufficient profiles.
 
 ---
 

@@ -82,7 +82,7 @@ function collectPaths(value, out = []) {
 }
 
 function isWriteTool(toolName) {
-  return /^(Write|Edit|MultiEdit)$/i.test(String(toolName));
+  return /^(Write|Edit)$/i.test(String(toolName));
 }
 
 function isAllowed(filePath, cwd, allowed) {

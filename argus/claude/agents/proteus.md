@@ -1,7 +1,7 @@
 ---
 name: proteus
 description: Use as the Argus QA Team Bug Hunter for the non-REST / multi-protocol API lane, dispatched by Odysseus — adversarially hunts GraphQL, gRPC, WebSocket/SSE, async/event messaging, and webhooks (authz, cross-tenant leakage, idempotency, contract conformance, SSRF); files one bug per defect under bugs/ with the PRO- prefix.
-tools: Read, Grep, Glob, LS, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_type, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_evaluate
+tools: Read, Grep, Glob, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_type, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_evaluate
 model: opus
 color: red
 ---

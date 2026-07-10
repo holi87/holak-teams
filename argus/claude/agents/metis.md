@@ -1,7 +1,7 @@
 ---
 name: metis
 description: Use as the Argus QA Team Test Strategist authoring the risk-based solution/TEST-STRATEGY.md (test planning — what/why/in what order) from Kalchas's recon map, as an ENUMERATED coverage grid with funded UI/perf/security/a11y lanes and a found-vs-surface reconciliation gate. Dispatched by Odysseus (odysseus) early in the engagement.
-tools: Read, Grep, Glob, LS, Bash, Write, Edit
+tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
 color: cyan
 ---

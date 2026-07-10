@@ -1,0 +1,20 @@
+{
+  "generatedAt": "2026-07-10T12:00:00.000Z",
+  "targetReachable": true,
+  "artifactWritable": true,
+  "availableTools": [
+    "Agent", "Bash", "Edit", "Glob", "Grep", "Read",
+    "TaskCreate", "TaskGet", "TaskList", "TaskUpdate",
+    "WebFetch", "WebSearch", "Write"
+  ],
+  "mcpServers": ["plugin:context7:context7", "plugin:playwright:playwright"],
+  "features": [
+    "browser-runtime", "db-access", "existing-suite", "multi-service",
+    "non-rest-surface", "source-access"
+  ],
+  "commands": [
+    "autocannon", "claude", "curl", "date", "docker", "find", "git",
+    "gradle", "grep", "java", "k6", "make", "node", "npm", "playwright",
+    "printf", "psql", "pytest", "python", "rm", "tail", "tsc"
+  ]
+}

@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  accessSync,
   chmodSync,
   copyFileSync,
   cpSync,
+  constants,
   existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   statSync,
+  writeFileSync,
 } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
 const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
+const CAPABILITY_MATRIX_PATH = join(ROOT, 'capabilities', 'capability-matrix.json');
 const manifest = readJson(MANIFEST_PATH);
 const [command = 'help', ...args] = process.argv.slice(2);
 
@@ -40,6 +45,9 @@ switch (command) {
   case 'verify':
     verify();
     break;
+  case 'preflight':
+    process.exitCode = await preflight(args);
+    break;
   case 'copy-template':
     copyTemplate(args[0], args[1]);
     break;
@@ -58,8 +66,16 @@ Usage:
   argus-assets path <asset-id>
   argus-assets inventory
   argus-assets verify
+  argus-assets preflight --target <url-or-path> --mode <A|B|C|D> [options]
   argus-assets copy-template <typescript|java|python> <empty-destination>
   argus-assets copy-browser-driver <target-repo>
+
+Preflight options:
+  --artifact-root <path>       Root for QA artifacts (defaults to a path target or cwd)
+  --output <relative-path>     Report path under artifact root
+  --feature <capability>       Confirm a target capability; repeat as needed
+  --profile <json>             Deterministic capability override for CI
+  --json                       Print the complete report to stdout
 
 Templates are copied only to a new or empty directory. In ADAPT mode, copy to a
 temporary directory, diff against the target's existing harness, and merge explicitly.`);
@@ -71,27 +87,355 @@ function printPath(id) {
 }
 
 function verify() {
+  try {
+    const stats = verifyRuntimeAssets();
+    console.log(`PASS  ${stats.assets} assets verified (${stats.assetBytes} bytes); plugin ${stats.pluginBytes} bytes`);
+  } catch (error) {
+    fail(error.message);
+  }
+}
+
+function verifyRuntimeAssets() {
   let assetBytes = 0;
   for (const asset of manifest.assets) {
     const path = assetPath(asset);
-    if (!existsSync(path)) fail(`missing packaged asset: ${asset.id} (${asset.destination})`);
+    if (!existsSync(path)) throw new Error(`missing packaged asset: ${asset.id} (${asset.destination})`);
     const stats = treeStats(path);
     if (stats.files !== asset.files || stats.bytes !== asset.bytes || stats.sha256 !== asset.sha256) {
-      fail(`packaged asset hash mismatch: ${asset.id}`);
+      throw new Error(`packaged asset hash mismatch: ${asset.id}`);
     }
     assetBytes += stats.bytes;
   }
   if (assetBytes > manifest.budgets.generatedAssetsBytes) {
-    fail(`generated asset budget exceeded: ${assetBytes} > ${manifest.budgets.generatedAssetsBytes}`);
+    throw new Error(`generated asset budget exceeded: ${assetBytes} > ${manifest.budgets.generatedAssetsBytes}`);
   }
   const pluginBytes = treeStats(ROOT).bytes;
   if (pluginBytes > manifest.budgets.installedPluginBytes) {
-    fail(`installed plugin budget exceeded: ${pluginBytes} > ${manifest.budgets.installedPluginBytes}`);
+    throw new Error(`installed plugin budget exceeded: ${pluginBytes} > ${manifest.budgets.installedPluginBytes}`);
   }
-  if (!existsSync(INVENTORY_PATH)) fail('missing runtime-reference-inventory.json');
+  if (!existsSync(INVENTORY_PATH)) throw new Error('missing runtime-reference-inventory.json');
   const inventory = readJson(INVENTORY_PATH);
-  if (inventory.agentsScanned !== 27) fail(`runtime inventory covers ${inventory.agentsScanned} agents; expected 27`);
-  console.log(`PASS  ${manifest.assets.length} assets verified (${assetBytes} bytes); plugin ${pluginBytes} bytes`);
+  if (inventory.agentsScanned !== 27) throw new Error(`runtime inventory covers ${inventory.agentsScanned} agents; expected 27`);
+  return { assets: manifest.assets.length, assetBytes, pluginBytes };
+}
+
+async function preflight(argv) {
+  const options = parsePreflightOptions(argv);
+  const matrix = readJson(CAPABILITY_MATRIX_PATH);
+  const inventory = readJson(INVENTORY_PATH);
+  const profile = options.profile ? readJson(resolve(options.profile)) : {};
+  const mode = options.mode ?? 'A';
+  if (!['A', 'B', 'C', 'D'].includes(mode)) fail('preflight --mode must be A, B, C, or D');
+  if (!options.target) fail('preflight requires --target <url-or-path>');
+  for (const feature of options.features) {
+    if (!Object.hasOwn(matrix.capabilities, feature)) fail(`unknown preflight feature: ${feature}`);
+  }
+
+  const target = await inspectTarget(options.target, profile);
+  const targetPath = target.kind === 'path' ? resolve(options.target) : null;
+  const artifactRootPath = resolve(options.artifactRoot ?? (targetPath && statSafe(targetPath)?.isDirectory() ? targetPath : process.cwd()));
+  const outputRelative = options.output ?? 'ai_agents_internal/preflight.json';
+  const requestedOutputPath = resolve(artifactRootPath, outputRelative);
+  const fallbackOutputPath = resolve(artifactRootPath, 'ai_agents_internal/preflight.json');
+  const requestedOutputSafe = isWithin(artifactRootPath, requestedOutputPath);
+  const outputPath = requestedOutputSafe ? requestedOutputPath : fallbackOutputPath;
+  const contractedArtifactPaths = [
+    ...matrix.orchestration.artifactPaths,
+    ...matrix.agents.flatMap((agent) => agent.artifactPaths),
+  ];
+  const safePaths = requestedOutputSafe && contractedArtifactPaths.every((path) => {
+    const stablePrefix = path.replace(/[*?].*$/, '').replace(/\/$/, '');
+    return isWithin(artifactRootPath, resolve(artifactRootPath, stablePrefix));
+  });
+  const artifactWritable = typeof profile.artifactWritable === 'boolean'
+    ? profile.artifactWritable
+    : isWritableDirectory(artifactRootPath);
+
+  const availableTools = new Set(profile.availableTools ?? matrix.supportedBuiltinTools);
+  const commandAvailability = detectCommands(inventory, profile);
+  const mcpServers = profile.mcpServers ?? detectMcpServers();
+  const detectedFeatures = new Set([
+    ...(Array.isArray(profile.features) ? profile.features : detectTargetFeatures(targetPath)),
+    ...options.features,
+  ]);
+
+  const capabilityState = {};
+  for (const [id, definition] of Object.entries(matrix.capabilities)) {
+    let available = detectedFeatures.has(id);
+    let evidence = available ? `target/profile feature confirmed: ${id}` : `target/profile feature not detected: ${id}`;
+    if (definition.kind === 'mcp') {
+      const match = mcpServers.find((server) => definition.serverPatterns.some((pattern) => server.includes(pattern)));
+      available = Boolean(match);
+      evidence = match ? `connected MCP server: ${match}` : `no connected MCP server matched ${definition.serverPatterns.join(', ')}`;
+    }
+    if (id === 'browser-runtime' && !available) {
+      available = hasBrowserRuntime(targetPath);
+      evidence = available
+        ? 'target has an installed Playwright runtime and packaged isolated driver is available'
+        : 'no installed Playwright runtime detected at target root';
+    }
+    capabilityState[id] = { available, evidence };
+  }
+
+  const checks = [];
+  addCheck(checks, 'target-reachable', true, target.reachable, target.evidence);
+  addCheck(checks, 'artifact-root-writable', true, artifactWritable, artifactWritable ? `writable: ${artifactRootPath}` : `not writable: ${artifactRootPath}`);
+  addCheck(checks, 'artifact-paths-safe', true, safePaths, safePaths ? 'all contracted paths remain under the artifact root' : 'a contracted or output path escapes the artifact root');
+  try {
+    const assetStats = verifyRuntimeAssets();
+    addCheck(checks, 'packaged-assets', true, true, `${assetStats.assets} assets and hashes verified`);
+  } catch (error) {
+    addCheck(checks, 'packaged-assets', true, false, error.message);
+  }
+  for (const tool of matrix.orchestration.requiredTools) {
+    addCheck(checks, `tool:${tool}`, true, availableTools.has(tool), availableTools.has(tool) ? 'available' : 'unavailable');
+  }
+  for (const [id, state] of Object.entries(capabilityState)) {
+    addCheck(checks, `capability:${id}`, false, state.available, state.evidence);
+  }
+  const selectedSlugs = new Set(matrix.agents.filter((agent) => agent.modes.includes(mode)).map((agent) => agent.slug));
+  for (const [command, state] of Object.entries(commandAvailability)) {
+    const consumers = inventory.commandReferences.find((item) => item.value === command)?.consumers ?? [];
+    if (consumers.some((consumer) => selectedSlugs.has(consumer))) {
+      addCheck(checks, `command:${command}`, false, state.available, state.evidence);
+    }
+  }
+
+  const commandConsumers = new Map(inventory.commandReferences.map((item) => [item.value, new Set(item.consumers)]));
+  const mandatoryFailure = checks.some((check) => check.mandatory && check.status === 'fail');
+  const agents = matrix.agents.map((contract) => evaluateAgent({
+    contract,
+    mode,
+    availableTools,
+    capabilityState,
+    commandAvailability,
+    commandConsumers,
+    matrix,
+    mandatoryFailure,
+  }));
+  const selectedAgents = agents.filter((agent) => agent.selected);
+  const summary = {
+    selected: selectedAgents.length,
+    ready: selectedAgents.filter((agent) => agent.status === 'ready').length,
+    degraded: selectedAgents.filter((agent) => agent.status === 'degraded').length,
+    deferred: selectedAgents.filter((agent) => agent.status === 'deferred').length,
+    skipped: selectedAgents.filter((agent) => agent.status === 'skipped').length,
+    blocked: selectedAgents.filter((agent) => agent.status === 'blocked').length,
+    dispatchable: selectedAgents.filter((agent) => agent.dispatchAllowed).length,
+  };
+  const status = mandatoryFailure || summary.blocked > 0
+    ? 'blocked'
+    : summary.degraded + summary.deferred + summary.skipped > 0
+      ? 'degraded'
+      : 'ready';
+
+  const report = {
+    $schema: 'https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/preflight-report.schema.json',
+    schemaVersion: 1,
+    generatedAt: profile.generatedAt ?? new Date().toISOString(),
+    mode,
+    status,
+    target,
+    artifactRoot: { path: artifactRootPath, writable: artifactWritable, safePaths },
+    checks,
+    capabilities: Object.entries(capabilityState).map(([id, state]) => ({ id, ...state })),
+    agents,
+    summary,
+  };
+
+  let persisted = false;
+  if (artifactWritable && isWithin(artifactRootPath, outputPath)) {
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`);
+    persisted = true;
+  }
+  if (options.json) console.log(JSON.stringify(report, null, 2));
+  console.log(
+    `PREFLIGHT  ${status} mode=${mode} selected=${summary.selected} dispatchable=${summary.dispatchable} ` +
+    `degraded=${summary.degraded} deferred=${summary.deferred} skipped=${summary.skipped} blocked=${summary.blocked} ` +
+    `report=${persisted ? outputPath : 'NOT_PERSISTED'}`,
+  );
+  return status === 'blocked' ? 2 : 0;
+}
+
+function evaluateAgent({ contract, mode, availableTools, capabilityState, commandAvailability, commandConsumers, matrix, mandatoryFailure }) {
+  const selected = contract.modes.includes(mode);
+  if (!selected) return agentResult(contract, false, 'not-selected', false, [], [], [], contract.artifactPaths);
+  if (mandatoryFailure) {
+    return agentResult(contract, true, 'blocked', false, [], [], ['Orchestration preflight failed; no specialist may be dispatched.'], contract.artifactPaths);
+  }
+
+  const missingTools = contract.requiredTools.filter((tool) => !availableTools.has(tool));
+  const missingRequired = (contract.requiredCapabilities ?? []).filter((id) => !capabilityState[id]?.available);
+  const missingOptional = (contract.optionalCapabilities ?? []).filter((id) => !capabilityState[id]?.available);
+  const missingCommands = Object.entries(commandAvailability)
+    .filter(([command, state]) => !state.available && commandConsumers.get(command)?.has(contract.slug))
+    .map(([command]) => `command:${command}`);
+  const actions = [];
+
+  if (missingTools.length > 0) {
+    actions.push(`Mandatory tools unavailable: ${missingTools.join(', ')}. Stop before dispatch.`);
+    return agentResult(contract, true, 'blocked', false, missingTools, [...missingRequired, ...missingOptional, ...missingCommands], actions, contract.artifactPaths);
+  }
+
+  let status = 'ready';
+  for (const id of missingRequired) {
+    const capability = matrix.capabilities[id];
+    actions.push(`${id}: ${capability.fallback}`);
+    if (capability.missingDisposition === 'skipped') status = 'skipped';
+    else if (status !== 'skipped') status = 'deferred';
+  }
+  for (const id of missingOptional) {
+    actions.push(`${id}: ${matrix.capabilities[id].fallback}`);
+    if (status === 'ready') status = 'degraded';
+  }
+  if (missingCommands.length > 0) {
+    actions.push(`Optional host commands unavailable: ${missingCommands.map((item) => item.slice(8)).join(', ')}; use an available equivalent or record the probe as skipped.`);
+    if (status === 'ready') status = 'degraded';
+  }
+  return agentResult(
+    contract,
+    true,
+    status,
+    status === 'ready' || status === 'degraded',
+    [],
+    [...missingRequired, ...missingOptional, ...missingCommands],
+    actions,
+    contract.artifactPaths,
+  );
+}
+
+function agentResult(contract, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths) {
+  return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths };
+}
+
+function parsePreflightOptions(args) {
+  const options = { features: [], json: false };
+  for (let index = 0; index < args.length; index += 1) {
+    const name = args[index];
+    if (name === '--json') {
+      options.json = true;
+      continue;
+    }
+    const value = args[index + 1];
+    if (!value || value.startsWith('--')) fail(`preflight ${name} requires a value`);
+    index += 1;
+    if (name === '--target') options.target = value;
+    else if (name === '--mode') options.mode = value.toUpperCase();
+    else if (name === '--artifact-root') options.artifactRoot = value;
+    else if (name === '--output') options.output = value;
+    else if (name === '--profile') options.profile = value;
+    else if (name === '--feature') options.features.push(value);
+    else fail(`unknown preflight option: ${name}`);
+  }
+  return options;
+}
+
+async function inspectTarget(value, profile) {
+  if (/^https?:\/\//i.test(value)) {
+    if (typeof profile.targetReachable === 'boolean') {
+      return { value, kind: 'url', reachable: profile.targetReachable, evidence: `profile override: reachable=${profile.targetReachable}` };
+    }
+    try {
+      const response = await fetch(value, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(5000) });
+      return { value, kind: 'url', reachable: true, evidence: `HTTP HEAD responded with ${response.status}` };
+    } catch (error) {
+      return { value, kind: 'url', reachable: false, evidence: `HTTP HEAD failed: ${error.message}` };
+    }
+  }
+  const path = resolve(value);
+  let reachable = typeof profile.targetReachable === 'boolean' ? profile.targetReachable : existsSync(path);
+  if (reachable && typeof profile.targetReachable !== 'boolean') {
+    try {
+      accessSync(path, constants.R_OK);
+    } catch {
+      reachable = false;
+    }
+  }
+  return {
+    value: path,
+    kind: 'path',
+    reachable,
+    evidence: typeof profile.targetReachable === 'boolean'
+      ? `profile override: reachable=${profile.targetReachable}`
+      : reachable ? `local path exists and is readable: ${path}` : `local path is missing or unreadable: ${path}`,
+  };
+}
+
+function detectCommands(inventory, profile) {
+  const override = Array.isArray(profile.commands) ? new Set(profile.commands) : null;
+  const result = {};
+  for (const { value } of inventory.commandReferences) {
+    const available = override ? override.has(value) : commandExists(value);
+    result[value] = { available, evidence: override ? `profile command ${available ? 'available' : 'missing'}` : `PATH command ${available ? 'found' : 'missing'}` };
+  }
+  return result;
+}
+
+function commandExists(command) {
+  try {
+    execFileSync('sh', ['-c', 'command -v "$1" >/dev/null 2>&1', 'argus-preflight', command]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function detectMcpServers() {
+  try {
+    return execFileSync('claude', ['mcp', 'list'], { encoding: 'utf8', timeout: 15000 })
+      .split('\n')
+      .filter((line) => /Connected/.test(line))
+      .map((line) => line.split(': ').at(0).trim());
+  } catch {
+    return [];
+  }
+}
+
+function detectTargetFeatures(targetPath) {
+  if (!targetPath || !existsSync(targetPath)) return [];
+  const features = [];
+  const has = (...paths) => paths.some((path) => existsSync(join(targetPath, path)));
+  if (has('src', 'app', 'lib', 'package.json', 'pyproject.toml', 'pom.xml', 'build.gradle')) features.push('source-access');
+  if (has('tests', 'test', 'spec', 'playwright.config.ts', 'pytest.ini', 'vitest.config.ts', 'jest.config.js')) features.push('existing-suite');
+  if (has('docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml')) features.push('multi-service');
+  const manifests = ['package.json', 'pyproject.toml', 'pom.xml'].filter((path) => existsSync(join(targetPath, path)));
+  if (manifests.some((path) => /graphql|grpc|websocket|socket\.io|kafka|rabbitmq|nats/i.test(readFileSync(join(targetPath, path), 'utf8')))) {
+    features.push('non-rest-surface');
+  }
+  if (process.env.DATABASE_URL || process.env.PGHOST || process.env.MYSQL_HOST) features.push('db-access');
+  return features;
+}
+
+function hasBrowserRuntime(targetPath) {
+  if (!targetPath || !existsSync(targetPath)) return false;
+  return existsSync(join(targetPath, 'node_modules', 'playwright')) || existsSync(join(targetPath, 'node_modules', '@playwright', 'test'));
+}
+
+function isWritableDirectory(path) {
+  try {
+    if (!statSync(path).isDirectory()) return false;
+    accessSync(path, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function statSafe(path) {
+  try {
+    return statSync(path);
+  } catch {
+    return null;
+  }
+}
+
+function isWithin(root, path) {
+  return path === root || path.startsWith(`${root}${sep}`);
+}
+
+function addCheck(checks, id, mandatory, passed, evidence) {
+  checks.push({ id, mandatory, status: passed ? 'pass' : mandatory ? 'fail' : 'degraded', evidence });
 }
 
 function copyTemplate(runtime, destination) {

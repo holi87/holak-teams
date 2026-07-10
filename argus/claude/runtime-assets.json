@@ -29,9 +29,18 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 3,
-      "bytes": 5005,
-      "sha256": "23a39ba991f22772ab2d6b155adc200fc74a0eb6afef99901bb19ffcc7c40e36"
+      "files": 5,
+      "bytes": 11677,
+      "sha256": "7630c0423ddc8dfbf7d538b72f6a30d8aee35db3e242e641587830e30f6a5df4"
+    },
+    {
+      "id": "capability-matrix",
+      "kind": "capabilities",
+      "source": "argus/capabilities",
+      "destination": "capabilities",
+      "files": 1,
+      "bytes": 10152,
+      "sha256": "d0b337962200c552e89476709b2c43587593f4f21ada472ed34440c54dd2b370"
     },
     {
       "id": "typescript-template",
@@ -39,8 +48,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 46,
-      "bytes": 126810,
-      "sha256": "a954944ca25ea4b5a1481a774c02c658ce1c2b8f20a9e6735dafb83ba077e4fb"
+      "bytes": 126800,
+      "sha256": "2faffa1c1bc6e64d89372f424a67d6a64a75a58a9dbf3d84ad7b319e60d27eaa"
     },
     {
       "id": "java-template",

@@ -1,7 +1,7 @@
 ---
 name: hermes
 description: Use as the Argus QA Team PERFORMANCE Bug Hunter, dispatched by Odysseus — runs structural single-request perf oracles (payload size, cache headers, unbounded-limit clamp, N+1, over-fetch, compression) first, then characterises latency (p50/p95/p99); files one bug per defect under bugs/ with the HER- prefix; writes the coverage-grid characterisation summary to solution/PERF-REPORT.md.
-tools: Read, Grep, Glob, LS, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_evaluate, mcp__plugin_playwright_playwright__browser_network_requests
+tools: Read, Grep, Glob, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_evaluate, mcp__plugin_playwright_playwright__browser_network_requests
 model: opus
 color: red
 ---

@@ -59,6 +59,7 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   │   ├── agents/              # 27 flat agent defs (odysseus, orion, …)
 │   │   ├── skills/run/SKILL.md  # /argus:run main-thread orchestrator
 │   │   ├── bin/argus-assets     # verify/copy packaged assets
+│   │   ├── capabilities/        # 27-role runtime capability + fallback matrix
 │   │   ├── references/ + schemas/
 │   │   └── templates/           # installed TS / Java / Python framework copies
 │   ├── codex/                   # 27 Codex-format agents (*.toml + *.md) — separate

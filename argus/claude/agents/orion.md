@@ -1,7 +1,7 @@
 ---
 name: orion
 description: Argus QA Team Bug Hunter for the UI lane — dispatched by Odysseus, hunts functional, client-state, form-validation, and behavioural defects (presentation/visual/format/i18n is Lynceus's lane) in the app UI browser-driven across {desktop, 375px, locale} × {empty, loading, error, success, partial} states, filing one ORI- file per bug.
-tools: Read, Grep, Glob, LS, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_navigate_back, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_resize, mcp__plugin_playwright_playwright__browser_evaluate
+tools: Read, Grep, Glob, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_navigate_back, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_resize, mcp__plugin_playwright_playwright__browser_evaluate
 model: opus
 color: red
 ---

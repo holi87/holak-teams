@@ -1,7 +1,7 @@
 ---
 name: theseus
 description: Argus QA Team API Test-path Analyst dispatched by Odysseus to DEFINE the canonical API regression baseline from the OpenAPI contract — happy-path contract tests plus core CRUD/lifecycle sequences — written as path specs in solution/paths/api-*.md and handed to Talos as the 100%-green baseline; runs in the API lane, not a bug hunter.
-tools: Read, Grep, Glob, LS, Bash, Write, WebFetch
+tools: Read, Grep, Glob, Bash, Write, WebFetch
 model: sonnet
 color: yellow
 ---

@@ -57,6 +57,15 @@ fi
 (cd "$WORK_DIR" && "$INSTALLED_PLUGIN/bin/argus-assets" copy-template python "$WORK_DIR/python")
 mkdir "$WORK_DIR/driver-target"
 (cd "$WORK_DIR" && "$INSTALLED_PLUGIN/bin/argus-assets" copy-browser-driver "$WORK_DIR/driver-target")
+mkdir "$WORK_DIR/preflight-target"
+(
+  cd "$WORK_DIR"
+  "$INSTALLED_PLUGIN/bin/argus-assets" preflight \
+    --target "$WORK_DIR/preflight-target" \
+    --mode A \
+    --profile "$ROOT/scripts/fixtures/argus-preflight/full.json" \
+    >/dev/null
+)
 
 (
   cd "$WORK_DIR"
@@ -71,6 +80,11 @@ mkdir "$WORK_DIR/driver-target"
   bash -n typescript/run-tests.sh java/run-tests.sh python/run-tests.sh
   test -f driver-target/scripts/driver-config.schema.json
   test -f typescript/solution/bug-ledger.example.json
+  node - <<'NODE'
+const fs = require('fs');
+const report = JSON.parse(fs.readFileSync('preflight-target/ai_agents_internal/preflight.json', 'utf8'));
+if (report.status !== 'ready' || report.summary.ready !== 27) throw new Error('installed preflight did not evaluate all 27 agents as ready');
+NODE
 )
 
 printf 'PASS  clean marketplace install runs packaged assets outside repository\n'

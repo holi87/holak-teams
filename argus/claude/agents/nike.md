@@ -1,7 +1,7 @@
 ---
 name: nike
 description: Argus QA Team Senior Test Automation Engineer owning the Performance lane (tests/perf/) — turns Hermes's structural perf oracles plus load/latency characterisation into repeatable RED-linked assertions wired into the single run-tests.sh; ALSO owns the Resilience-automation lane (tests/resilience/) as Tyche's pair, turning her fault-injection findings into repeatable RED-linked recovery/idempotency regressions. Dispatched by Odysseus (odysseus).
-tools: Read, Grep, Glob, LS, Bash, Write, Edit, MultiEdit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
 color: green
 ---
