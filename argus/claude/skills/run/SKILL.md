@@ -44,10 +44,15 @@ phase:
    capability already proven by user input or safe read-only recon; never speculate.
    Add `--environment <name>` only when user input or authoritative target configuration
    proves it. Add `--authorization <path>` only for a user-approved manifest under the
-   artifact root. Otherwise preflight creates `ai_agents_internal/authorization.json`
+   artifact root and `--engagement <path>` only for an operator-authored manifest under
+   that root. Otherwise preflight creates `ai_agents_internal/authorization.json`
    with every high-risk grant disabled; unknown, staging, and production targets remain
-   production-like/read-only by default.
-6. Read the persisted `ai_agents_internal/preflight.json`. If the command exits 2, the
+   production-like/read-only by default. It also creates
+   `ai_agents_internal/engagement.json` plus atomic resumable state and verifies the
+   installed plugin's packaged `PreToolUse` guard.
+6. Read the persisted `ai_agents_internal/preflight.json`. Verify the engagement manifest
+   path/digest, state path/current phase, immutability audit path, selected count, and
+   `hookPackaged=true`. If the command exits 2, the
    report says `blocked`, the report was not persisted, or a mandatory check failed, stop
    before target mutation/test execution and return:
    `ARGUS_PREFLIGHT_ERROR: CAPABILITY_PREFLIGHT_BLOCKED — <failed check evidence>; report: <path-or-NOT_PERSISTED>`.
@@ -67,6 +72,12 @@ phase:
    `argus-assets redact` before text evidence reaches console or artifacts. Raw sensitive
    screenshots/traces/browser profiles are prohibited until independently masked and
    reviewed.
+9. Allocate or resume one engagement lease for `odysseus` and one for every dispatchable
+   specialist with `argus-assets engagement allocate`. Pass each worker only its own
+   token, browser profile, account alias, data namespace, port, temporary directory, and
+   output directory. Never persist lease tokens in reports or canonical artifacts. Full
+   installed coordination contract:
+   `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 
 Do not replace a failed preflight with a delegation plan. Never claim that agents ran
 unless their `Agent` calls completed and their returned results were collected.
@@ -75,15 +86,17 @@ unless their `Agent` calls completed and their returned results were collected.
 
 If `$ARGUMENTS` is exactly `ARGUS_ORCHESTRATION_SMOKE`, do not inspect or modify any
 target. Treat `.` as a synthetic local target, select Mode A, run the packaged preflight,
-and require a persisted non-blocked `ai_agents_internal/preflight.json`. Then, in one
+and require a persisted non-blocked `ai_agents_internal/preflight.json`. Allocate Kleio
+and Theseus through the engagement controller. Then, in one
 parallel dispatch wave:
 
 - call `argus:kleio` with: `Return exactly ARGUS_SMOKE_KLEIO_OK. Do not call tools.`
 - call `argus:theseus` with: `Return exactly ARGUS_SMOKE_THESEUS_OK. Do not call tools.`
 
 Collect both results. If either dispatch fails or either marker is missing, return
-`ARGUS_PREFLIGHT_ERROR: SMOKE_DISPATCH_FAILED — <concise evidence>`. Otherwise return
-exactly `ARGUS_SMOKE_OK: argus:kleio,argus:theseus` and stop.
+`ARGUS_PREFLIGHT_ERROR: SMOKE_DISPATCH_FAILED — <concise evidence>`. Otherwise clean both
+leases with `engagement cleanup --outcome success`, verify neither allocation nor lock
+remains active, return exactly `ARGUS_SMOKE_OK: argus:kleio,argus:theseus`, and stop.
 
 ## Execution
 
@@ -92,20 +105,33 @@ exactly `ARGUS_SMOKE_OK: argus:kleio,argus:theseus` and stop.
    preflight agent records. No report record means no dispatch.
 3. Dispatch independent specialists concurrently in bounded waves. Use the exact
    plugin-namespaced type `argus:<slug>` for every Argus specialist.
-4. Keep dependencies between waves: recon before target-dependent strategy, lane inputs
-   before automation, and review/reporting after implementation.
+4. Enforce the manifest phase barriers: discovery, hunting, automation, verification,
+   then reporting. A worker records a monotonic checkpoint and `barrier arrive`; Odysseus
+   advances only when `barrier status` has no missing participant. Never dispatch the next
+   phase early. Keep dependencies between waves: recon before target-dependent strategy,
+   lane inputs before automation, and review/reporting after implementation.
 5. Collect every result in this main thread. Validate claimed artifacts and gates before
    advancing or reporting them as complete.
 6. If a dispatch is unavailable or denied, update the preflight disposition in the final
    report, report the failed type and reason, and do not silently shrink the selected
    mode's contract.
-7. Finish with Odysseus's integrated report: preflight status + exact report path,
+7. Workers never write canonical artifacts directly. They submit immutable fragments;
+   the manifest owner merges them deterministically. Reset and fault work additionally
+   requires an exclusive controller claim plus authorization. After every worker result
+   or failure, run `engagement cleanup --outcome success|failure`; verify browser profile,
+   auth/token, temporary state, lease, and held locks are gone while durable output,
+   checkpoints, and fragments remain.
+8. Finish with Odysseus's integrated report: preflight status + exact report path,
    ready/degraded/deferred/skipped/blocked lane counts and reasons, mode outcome, named
    agent contributions, deliverable status, validation evidence, residual risks, and
    exact artifact paths.
    Include the authorization manifest path/SHA-256, production-like verdict, default or
    explicit grant posture, audit path, allow/deny counts + denied rule IDs, abort/rollback
    outcomes, redaction status, and sensitive binary evidence deliberately omitted.
+   Include engagement manifest/state/audit paths + digest, final phase, barrier evidence,
+   canonical owners/merge digests, allocation uniqueness, checkpoint/resume evidence,
+   atomic ID range, exclusive reset/fault windows, and cleanup status with zero active
+   leases/locks.
 
 The user may invoke the alternate main-session form
 `claude --agent argus:odysseus`, but `/argus:run` is the marketplace default because it

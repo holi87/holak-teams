@@ -32,13 +32,18 @@ require_text 'ARGUS_PREFLIGHT_ERROR: ARGUS_AGENTS_UNAVAILABLE' "$SKILL" "missing
 require_text 'ARGUS_PREFLIGHT_ERROR: CAPABILITY_PREFLIGHT_BLOCKED' "$SKILL" "missing capability preflight error"
 require_text 'ai_agents_internal/preflight.json' "$SKILL" "run skill does not persist the preflight report"
 require_text 'ai_agents_internal/authorization.json' "$SKILL" "run skill does not create/load the shared authorization manifest"
+require_text 'ai_agents_internal/engagement.json' "$SKILL" "run skill does not create/load the shared engagement manifest"
 require_text 'argus-assets authorization check' "$SKILL" "run skill does not enforce authorization decisions"
 require_text 'argus-assets redact' "$SKILL" "run skill does not enforce output redaction"
+require_text 'argus-assets engagement allocate' "$SKILL" "run skill does not allocate isolated worker leases"
+require_text 'engagement cleanup --outcome success|failure' "$SKILL" "run skill does not guarantee cleanup on both outcomes"
 require_text 'dispatchAllowed=true' "$SKILL" "run skill does not gate dispatch from the preflight report"
 require_text 'ARGUS_SMOKE_OK: argus:kleio,argus:theseus' "$SKILL" "missing deterministic smoke result"
 require_text 'tools: Read, Grep, Glob, Bash, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, Agent' "$ODYSSEUS" "Odysseus does not expose current orchestration tools"
 require_text 'argus-assets preflight' "$ODYSSEUS" "Odysseus does not run the packaged capability preflight"
 require_text 'AUTHORIZATION-POLICY.md' "$ODYSSEUS" "Odysseus does not load the packaged authorization policy"
+require_text 'ENGAGEMENT-POLICY.md' "$ODYSSEUS" "Odysseus does not load the packaged engagement policy"
+require_text 'packaged `PreToolUse` guard' "$ODYSSEUS" "Odysseus does not enforce the installed immutability hook"
 
 if grep -Fq 'a subagent cannot spawn other subagents' "$ODYSSEUS"; then
   fail "Odysseus still contains the obsolete no-nested-agent claim"
@@ -79,9 +84,10 @@ CLAUDE_CONFIG_DIR="$CONFIG_DIR" claude plugin install argus@holak-teams --scope 
 CLAUDE_CONFIG_DIR="$CONFIG_DIR" claude plugin details argus@holak-teams >"$DETAILS_OUTPUT"
 require_text 'Skills (1)  run' "$DETAILS_OUTPUT" "clean marketplace install does not expose the run skill"
 require_text 'Agents (27)' "$DETAILS_OUTPUT" "clean marketplace install does not expose all 27 agents"
+require_text 'Hooks (1)  PreToolUse' "$DETAILS_OUTPUT" "clean marketplace install does not activate the PreToolUse guard"
 INSTALLED_PLUGIN="$(find "$CONFIG_DIR/plugins/cache/holak-teams/argus" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 [ -n "$INSTALLED_PLUGIN" ] && [ -d "$INSTALLED_PLUGIN" ] || fail "clean marketplace install did not create an Argus plugin cache"
-printf 'PASS  clean marketplace install exposes /argus:run and 27 agents\n'
+printf 'PASS  clean marketplace install exposes /argus:run, 27 agents, and the PreToolUse guard\n'
 
 (
   cd "$WORKDIR"
@@ -107,10 +113,21 @@ const fs = require('fs');
 const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 if (report.status === 'blocked') throw new Error('live orchestration smoke produced a blocked preflight');
 if (!report.authorization?.defaultReadOnly || !report.authorization?.sha256) throw new Error('live orchestration smoke did not create a default-deny authorization manifest');
+if (!report.engagement?.sha256 || !report.engagement?.hookPackaged || report.engagement?.phase !== 'discovery') throw new Error('live orchestration smoke did not create guarded engagement state');
 if (!report.agents.find((agent) => agent.slug === 'kleio')?.dispatchAllowed) throw new Error('Kleio was not dispatchable');
 if (!report.agents.find((agent) => agent.slug === 'theseus')?.dispatchAllowed) throw new Error('Theseus was not dispatchable');
 NODE
 test -f "$WORKDIR/ai_agents_internal/authorization.json" || fail "live smoke did not persist its authorization manifest"
+test -f "$WORKDIR/ai_agents_internal/engagement.json" || fail "live smoke did not persist its engagement manifest"
+test -f "$WORKDIR/ai_agents_internal/engagement-state.json" || fail "live smoke did not persist resumable engagement state"
+node - "$WORKDIR/ai_agents_internal/engagement-state.json" <<'NODE'
+const fs = require('fs');
+const state = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+for (const lane of ['kleio', 'theseus']) {
+  if (state.allocations[lane]?.status !== 'released') throw new Error(`${lane} smoke lease was not cleaned`);
+}
+if (Object.keys(state.exclusiveLocks).length) throw new Error('live smoke left an exclusive engagement lock');
+NODE
 
 printf 'PASS  /argus:run live dispatch: preflight + argus:kleio + argus:theseus collected\n'
 

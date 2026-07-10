@@ -91,6 +91,7 @@ holak-teams/                         # this repo == the marketplace
     │   ├── agents/                  # 27 flat specialist defs (loaded by Claude Code)
     │   ├── skills/run/SKILL.md      # /argus:run main-thread orchestrator
     │   ├── bin/argus-assets         # list/verify/copy packaged runtime assets
+    │   ├── hooks/hooks.json         # packaged PreToolUse target-immutability guard
     │   ├── capabilities/            # generated 27-role capability and fallback matrix
     │   ├── policies/ + lib/         # authorization template, redactor rules, evaluator
     │   ├── references/ + schemas/   # generated, installed runtime references/contracts
@@ -101,6 +102,7 @@ holak-teams/                         # this repo == the marketplace
     ├── framework-template-java/     # RestAssured + JUnit5 + Playwright-Java (shared reference)
     ├── framework-template-python/   # pytest + Playwright + httpx (shared reference)
     ├── AUTHORIZATION-POLICY.md       # canonical authorization, audit, and redaction contract
+    ├── ENGAGEMENT-POLICY.md          # canonical ownership, barriers, leases, and cleanup
     ├── policies/ + runtime/          # canonical manifests, patterns, and evaluator sources
     ├── COLOR-SCHEME.md              # colors by role type (shared reference)
     ├── SHARED-DOCTRINE.md           # cross-agent QA doctrine (shared reference)
@@ -127,12 +129,13 @@ paths, target-repo paths and host commands referenced by all 27 prompts.
 Installed users can run `argus-assets list`, `argus-assets verify`,
 `argus-assets preflight --target <url-or-path> --mode <A|B|C|D>`,
 `argus-assets copy-template <typescript|java|python> <empty-destination>`, or
-`argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 350 KB
-and the complete installed Argus plugin at 1.5 MB. `COLOR-SCHEME.md` and team graphs are
+`argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 550 KB
+and the complete installed Argus plugin at 1.75 MB. `COLOR-SCHEME.md` and team graphs are
 explicitly maintainer-only; their runtime values already live in agent frontmatter.
 
-The preflight writes `ai_agents_internal/preflight.json` before any target probe, test,
-or specialist dispatch. It verifies orchestration tools, strict frontmatter vocabulary,
+The preflight writes only dedicated control artifacts under `ai_agents_internal/` before
+any target probe, test, or specialist dispatch: preflight, authorization, engagement, and
+atomic state. It verifies orchestration tools, strict frontmatter vocabulary,
 MCP connections, host commands, packaged assets, browser runtime, target reachability,
 target-specific gates, and safe writable artifact paths. Each of the 27 roles receives a
 machine-readable `ready`, `degraded`, `deferred`, `skipped`, or `blocked` disposition.
@@ -148,6 +151,14 @@ carry explicit risk-action contracts; every role uses the same packaged redactor
 commands are `argus-assets authorization init|check` and `argus-assets redact`. Decisions
 append redacted rule-ID events to `ai_agents_internal/authorization-audit.jsonl`; binary
 evidence fails closed until independently masked and reviewed.
+
+Preflight also creates or loads `ai_agents_internal/engagement.json`. The installed
+plugin's `PreToolUse` hook resolves physical paths and blocks target-source mutation,
+canonical direct writes, shell redirection, patching, and recognized subprocess writes.
+The engagement controller provides immutable per-agent fragments, deterministic
+single-owner merges, ordered phase barriers, unique browser/account/namespace/port/output
+leases, exclusive reset/fault windows, atomic IDs, monotonic resumable checkpoints, and
+success/failure cleanup. Denials append redacted `GUARD-*` events without raw commands.
 
 ---
 
@@ -191,7 +202,8 @@ stay equal:
 - One agent = one flat `*.md` file in `<team>/claude/agents/`, **same kebab-case slug** as
   the Codex variant in `<team>/codex/`.
 - Frontmatter: `name`, `description`, `tools`, `model`, `color`. **Not supported in plugin
-  agents:** `hooks`, `mcpServers`, `permissionMode` (Claude Code strips/ignores them).
+  agent frontmatter:** `hooks`, `mcpServers`, `permissionMode` (Claude Code strips/ignores
+  them). Plugin-wide hooks belong in `<team>/claude/hooks/hooks.json`.
 - Keep the team theme (Hephaestus = Roman, Argus = Greek) and a **unique slug** within a team.
 - Update the plugin's `README.md` roster and bump the version (see above).
 

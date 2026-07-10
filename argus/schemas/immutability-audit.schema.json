@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/immutability-audit.schema.json",
+  "title": "Argus target-immutability audit event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "schemaVersion", "timestamp", "engagementId", "tool", "decision",
+    "ruleId", "reason", "paths", "commandSha256"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "tool": { "type": "string", "minLength": 1 },
+    "decision": { "enum": ["allow", "deny"] },
+    "ruleId": { "type": "string", "pattern": "^GUARD-[A-Z0-9-]+$" },
+    "reason": { "type": "string", "minLength": 1 },
+    "paths": { "type": "array", "items": { "type": "string" } },
+    "commandSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+  }
+}

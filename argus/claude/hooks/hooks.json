@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/argus-assets\" guard",
+            "timeout": 10,
+            "statusMessage": "Enforcing Argus engagement write policy"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -2,8 +2,8 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 350000,
-    "installedPluginBytes": 1500000
+    "generatedAssetsBytes": 550000,
+    "installedPluginBytes": 1750000
   },
   "assets": [
     {
@@ -23,6 +23,12 @@
       "kind": "reference",
       "source": "argus/AUTHORIZATION-POLICY.md",
       "destination": "references/AUTHORIZATION-POLICY.md"
+    },
+    {
+      "id": "engagement-policy",
+      "kind": "reference",
+      "source": "argus/ENGAGEMENT-POLICY.md",
+      "destination": "references/ENGAGEMENT-POLICY.md"
     },
     {
       "id": "runtime-schemas",

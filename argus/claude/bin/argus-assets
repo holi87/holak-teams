@@ -30,14 +30,37 @@ import {
   validateAuthorizationManifest,
   validateRedactionPatterns,
 } from '../lib/authorization.mjs';
+import {
+  advanceBarrier,
+  allocateId,
+  allocateWorker,
+  arriveBarrier,
+  buildGuardAudit,
+  claimExclusive,
+  cleanupWorker,
+  createDefaultEngagement,
+  evaluateWriteGuard,
+  getBarrierStatus,
+  getEngagementStatus,
+  initializeEngagementState,
+  locateEngagementManifest,
+  mergeCanonical,
+  releaseExclusive,
+  validateEngagementManifest,
+  writeCheckpoint,
+  writeFragment,
+} from '../lib/engagement.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
 const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
 const CAPABILITY_MATRIX_PATH = join(ROOT, 'capabilities', 'capability-matrix.json');
 const AUTHORIZATION_TEMPLATE_PATH = join(ROOT, 'policies', 'authorization.template.json');
+const ENGAGEMENT_TEMPLATE_PATH = join(ROOT, 'policies', 'engagement.template.json');
 const REDACTION_PATTERNS_PATH = join(ROOT, 'policies', 'redaction-patterns.json');
+const HOOKS_PATH = join(ROOT, 'hooks', 'hooks.json');
 const manifest = readJson(MANIFEST_PATH);
+const matrix = readJson(CAPABILITY_MATRIX_PATH);
 const [command = 'help', ...args] = process.argv.slice(2);
 
 switch (command) {
@@ -66,6 +89,12 @@ switch (command) {
   case 'authorization':
     process.exitCode = authorizationCommand(args);
     break;
+  case 'engagement':
+    process.exitCode = engagementCommand(args);
+    break;
+  case 'guard':
+    process.exitCode = guardCommand(args);
+    break;
   case 'redact':
     process.exitCode = redactCommand(args);
     break;
@@ -90,6 +119,8 @@ Usage:
   argus-assets preflight --target <url-or-path> --mode <A|B|C|D> [options]
   argus-assets authorization init --target <url-or-path> [options]
   argus-assets authorization check --manifest <path> --lane <slug> --action <action> --target <target> [options]
+  argus-assets engagement <init|validate|allocate|status|claim|release|fragment|merge|id|checkpoint|barrier|cleanup> [options]
+  argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
   argus-assets copy-template <typescript|java|python> <empty-destination>
   argus-assets copy-browser-driver <target-repo>
@@ -98,6 +129,7 @@ Preflight options:
   --artifact-root <path>       Root for QA artifacts (defaults to a path target or cwd)
   --output <relative-path>     Report path under artifact root
   --authorization <path>      Existing manifest under artifact root (default is generated)
+  --engagement <path>         Existing engagement manifest under artifact root
   --environment <name>        unknown|development|test|staging|production
   --engagement-id <id>        Stable authorization/audit correlation identifier
   --feature <capability>       Confirm a target capability; repeat as needed
@@ -117,6 +149,17 @@ Authorization check boundaries:
   --resource <safe-label>      Optional label; audit output is always redacted
   --at <ISO-timestamp>         Deterministic evaluation time (tests only)
 
+Engagement coordination:
+  init --target <target> --artifact-root <root> --mode <A|B|C|D> [--output <path>]
+  allocate --manifest <path> --lane <slug>
+  fragment --manifest <path> --lane <slug> --token <lease> --canonical <path> --id <id> --input <file|->
+  merge --manifest <path> --owner <slug> --token <lease> --canonical <path>
+  claim|release --manifest <path> --lane <slug> --token <lease> --resource <reset|fault>
+  id --manifest <path> --lane <slug> --token <lease> --kind <kind>
+  checkpoint --manifest <path> --lane <slug> --token <lease> --phase <phase> --sequence <n> --input <json-file|->
+  barrier arrive|status|advance --manifest <path> [lease options]
+  cleanup --manifest <path> --lane <slug> --token <lease> --outcome <success|failure>
+
 Templates are copied only to a new or empty directory. In ADAPT mode, copy to a
 temporary directory, diff against the target's existing harness, and merge explicitly.`);
 }
@@ -126,6 +169,207 @@ function authorizationCommand(args) {
   if (operation === 'init') return initializeAuthorization(rest);
   if (operation === 'check') return checkAuthorization(rest);
   fail('usage: argus-assets authorization <init|check> [options]');
+}
+
+function engagementCommand(args) {
+  const [operation, ...rest] = args;
+  try {
+    if (operation === 'init') return initializeEngagement(rest);
+    if (operation === 'validate') return validateEngagement(rest);
+    if (operation === 'allocate') return engagementAllocate(rest);
+    if (operation === 'status') return engagementStatus(rest);
+    if (operation === 'claim') return engagementClaim(rest);
+    if (operation === 'release') return engagementRelease(rest);
+    if (operation === 'fragment') return engagementFragment(rest);
+    if (operation === 'merge') return engagementMerge(rest);
+    if (operation === 'id') return engagementId(rest);
+    if (operation === 'checkpoint') return engagementCheckpoint(rest);
+    if (operation === 'barrier') return engagementBarrier(rest);
+    if (operation === 'cleanup') return engagementCleanup(rest);
+  } catch (error) {
+    fail(`engagement ${operation ?? '(missing)'}: ${error.message}`);
+  }
+  fail('usage: argus-assets engagement <init|validate|allocate|status|claim|release|fragment|merge|id|checkpoint|barrier|cleanup> [options]');
+}
+
+function initializeEngagement(args) {
+  const options = parseNamedOptions(args, new Set(['--target', '--artifact-root', '--mode', '--output', '--engagement-id']));
+  for (const required of ['target', 'artifactRoot', 'mode']) if (!options[required]) fail(`engagement init requires --${camelToKebab(required)}`);
+  if (!['A', 'B', 'C', 'D'].includes(options.mode)) fail('engagement init --mode must be A, B, C, or D');
+  const artifactRoot = resolve(options.artifactRoot);
+  const output = resolve(artifactRoot, options.output ?? 'ai_agents_internal/engagement.json');
+  if (!isWithin(artifactRoot, output)) fail('engagement manifest path escapes artifact root');
+  if (existsSync(output)) fail(`refusing to overwrite existing engagement manifest: ${output}`);
+  const selectedAgents = matrix.agents.filter((agent) => agent.modes.includes(options.mode)).map((agent) => agent.slug);
+  const targetPath = statSafe(resolve(options.target)) ? resolve(options.target) : null;
+  const engagement = createDefaultEngagement({
+    template: readJson(ENGAGEMENT_TEMPLATE_PATH),
+    target: options.target,
+    targetRoot: targetPath,
+    artifactRoot,
+    mode: options.mode,
+    engagementId: options.engagementId ?? `argus-${new Date().toISOString().replace(/[:.]/g, '-')}`,
+    selectedAgents,
+  });
+  const errors = validateEngagementManifest(engagement);
+  if (errors.length > 0) fail(`generated engagement manifest is invalid: ${errors.join('; ')}`);
+  mkdirSync(dirname(output), { recursive: true });
+  writeFileSync(output, `${JSON.stringify(engagement, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(output, 0o600);
+  const state = initializeEngagementState(engagement);
+  console.log(`ENGAGEMENT  initialized manifest=${output} state=${state.path} selected=${selectedAgents.length}`);
+  return 0;
+}
+
+function validateEngagement(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest']));
+  const { manifest: engagement, path } = loadEngagement(options);
+  initializeEngagementState(engagement);
+  console.log(`PASS  engagement manifest=${path} selected=${engagement.selectedAgents.length}`);
+  return 0;
+}
+
+function engagementAllocate(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane']));
+  requireOptions(options, ['manifest', 'lane'], 'engagement allocate');
+  const { manifest: engagement } = loadEngagement(options);
+  console.log(JSON.stringify(allocateWorker(engagement, options.lane)));
+  return 0;
+}
+
+function engagementStatus(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest']));
+  const { manifest: engagement } = loadEngagement(options);
+  console.log(JSON.stringify(getEngagementStatus(engagement), null, 2));
+  return 0;
+}
+
+function engagementClaim(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--resource']));
+  requireOptions(options, ['manifest', 'lane', 'resource'], 'engagement claim');
+  const { manifest: engagement } = loadEngagement(options);
+  console.log(JSON.stringify(claimExclusive(engagement, options.lane, leaseToken(options), options.resource)));
+  return 0;
+}
+
+function engagementRelease(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--resource']));
+  requireOptions(options, ['manifest', 'lane', 'resource'], 'engagement release');
+  const { manifest: engagement } = loadEngagement(options);
+  console.log(JSON.stringify(releaseExclusive(engagement, options.lane, leaseToken(options), options.resource)));
+  return 0;
+}
+
+function engagementFragment(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--canonical', '--id', '--input']));
+  requireOptions(options, ['manifest', 'lane', 'canonical', 'id', 'input'], 'engagement fragment');
+  const { manifest: engagement } = loadEngagement(options);
+  const content = readTextInput(options.input);
+  console.log(JSON.stringify(writeFragment(engagement, options.lane, leaseToken(options), options.canonical, options.id, content)));
+  return 0;
+}
+
+function engagementMerge(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--owner', '--token', '--canonical']));
+  requireOptions(options, ['manifest', 'owner', 'canonical'], 'engagement merge');
+  const { manifest: engagement } = loadEngagement(options);
+  console.log(JSON.stringify(mergeCanonical(engagement, options.owner, leaseToken(options), options.canonical)));
+  return 0;
+}
+
+function engagementId(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--kind']));
+  requireOptions(options, ['manifest', 'lane', 'kind'], 'engagement id');
+  const { manifest: engagement } = loadEngagement(options);
+  console.log(allocateId(engagement, options.lane, leaseToken(options), options.kind));
+  return 0;
+}
+
+function engagementCheckpoint(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--phase', '--sequence', '--input']));
+  requireOptions(options, ['manifest', 'lane', 'phase', 'sequence', 'input'], 'engagement checkpoint');
+  const sequence = Number(options.sequence);
+  const raw = readTextInput(options.input);
+  let payload;
+  try { payload = JSON.parse(raw); }
+  catch { payload = { text: raw }; }
+  const { manifest: engagement } = loadEngagement(options);
+  console.log(JSON.stringify(writeCheckpoint(engagement, options.lane, leaseToken(options), options.phase, sequence, payload)));
+  return 0;
+}
+
+function engagementBarrier(args) {
+  const [operation, ...rest] = args;
+  const options = parseNamedOptions(rest, new Set(['--manifest', '--lane', '--token', '--phase']));
+  const { manifest: engagement } = loadEngagement(options);
+  if (operation === 'status') {
+    console.log(JSON.stringify(getBarrierStatus(engagement, options.phase), null, 2));
+    return 0;
+  }
+  if (operation === 'arrive') {
+    requireOptions(options, ['lane', 'phase'], 'engagement barrier arrive');
+    console.log(JSON.stringify(arriveBarrier(engagement, options.lane, leaseToken(options), options.phase)));
+    return 0;
+  }
+  if (operation === 'advance') {
+    requireOptions(options, ['lane'], 'engagement barrier advance');
+    console.log(JSON.stringify(advanceBarrier(engagement, options.lane, leaseToken(options))));
+    return 0;
+  }
+  fail('usage: argus-assets engagement barrier <arrive|status|advance> [options]');
+}
+
+function engagementCleanup(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--outcome']));
+  requireOptions(options, ['manifest', 'lane', 'outcome'], 'engagement cleanup');
+  const { manifest: engagement } = loadEngagement(options);
+  console.log(JSON.stringify(cleanupWorker(engagement, options.lane, leaseToken(options), options.outcome)));
+  return 0;
+}
+
+function guardCommand(args) {
+  if (args.length > 0) fail('usage: argus-assets guard');
+  const raw = readFileSync(0, 'utf8');
+  let payload;
+  try { payload = JSON.parse(raw); }
+  catch { return denyHook('GUARD-MANIFEST-INVALID', 'PreToolUse payload is not valid JSON'); }
+  const cwd = resolve(payload.cwd ?? process.cwd());
+  const manifestPath = locateEngagementManifest(cwd, process.env.ARGUS_ENGAGEMENT_MANIFEST);
+  if (!manifestPath) return 0;
+  let engagement;
+  try { engagement = JSON.parse(readFileSync(manifestPath, 'utf8')); }
+  catch { return denyHook('GUARD-MANIFEST-INVALID', 'engagement manifest is not valid JSON'); }
+  const errors = validateEngagementManifest(engagement);
+  if (errors.length > 0) return denyHook('GUARD-MANIFEST-INVALID', errors.join('; '));
+  const decision = evaluateWriteGuard({
+    manifest: engagement,
+    manifestPath,
+    payload,
+    cwd,
+    bypassToken: process.env.ARGUS_IMMUTABILITY_BYPASS_TOKEN,
+  });
+  if (decision.decision === 'deny' || decision.ruleId === 'GUARD-EXPLICIT-BYPASS') {
+    const patterns = readJson(REDACTION_PATTERNS_PATH);
+    const event = redactValue(buildGuardAudit({ manifest: engagement, payload, decision, timestamp: new Date().toISOString() }), patterns).value;
+    const auditPath = resolve(engagement.artifactRoot, engagement.writePolicy.auditPath);
+    if (!isWithin(engagement.artifactRoot, auditPath)) return denyHook('GUARD-MANIFEST-INVALID', 'guard audit path escapes artifact root');
+    mkdirSync(dirname(auditPath), { recursive: true });
+    appendFileSync(auditPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
+    chmodSync(auditPath, 0o600);
+  }
+  if (decision.decision === 'deny') return denyHook(decision.ruleId, `${decision.reason}; audit=${engagement.writePolicy.auditPath}`);
+  return 0;
+}
+
+function denyHook(ruleId, reason) {
+  console.log(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: `${ruleId}: ${String(reason).replace(/[\r\n]+/g, ' ')}`,
+    },
+  }));
+  return 0;
 }
 
 function initializeAuthorization(args) {
@@ -275,12 +519,12 @@ function verifyRuntimeAssets() {
 
 async function preflight(argv) {
   const options = parsePreflightOptions(argv);
-  const matrix = readJson(CAPABILITY_MATRIX_PATH);
   const inventory = readJson(INVENTORY_PATH);
   const profile = options.profile ? readJson(resolve(options.profile)) : {};
   const mode = options.mode ?? 'A';
   if (!['A', 'B', 'C', 'D'].includes(mode)) fail('preflight --mode must be A, B, C, or D');
   if (!options.target) fail('preflight requires --target <url-or-path>');
+  const selectedSlugs = new Set(matrix.agents.filter((agent) => agent.modes.includes(mode)).map((agent) => agent.slug));
   for (const feature of options.features) {
     if (!Object.hasOwn(matrix.capabilities, feature)) fail(`unknown preflight feature: ${feature}`);
   }
@@ -358,6 +602,63 @@ async function preflight(argv) {
     defaultReadOnly: !authorization || Object.values(authorization.actionGrants ?? {}).every((grant) => !grant.enabled),
   };
 
+  const requestedEngagementPath = resolve(artifactRootPath, options.engagement ?? 'ai_agents_internal/engagement.json');
+  const engagementPathSafe = isWithin(artifactRootPath, requestedEngagementPath);
+  let engagement = null;
+  let engagementCreated = false;
+  let engagementState = null;
+  const engagementErrors = [];
+  if (!engagementPathSafe) {
+    engagementErrors.push('engagement manifest path escapes the artifact root');
+  } else if (existsSync(requestedEngagementPath)) {
+    try { engagement = JSON.parse(readFileSync(requestedEngagementPath, 'utf8')); }
+    catch (error) { engagementErrors.push(`engagement manifest is not valid JSON: ${error.message}`); }
+  } else if (options.engagement) {
+    engagementErrors.push(`supplied engagement manifest is missing: ${requestedEngagementPath}`);
+  } else if (!artifactWritable) {
+    engagementErrors.push('artifact root is not writable; cannot create engagement manifest');
+  } else if (!authorization || authorizationErrors.length > 0) {
+    engagementErrors.push('valid authorization manifest is required before engagement initialization');
+  } else {
+    engagement = createDefaultEngagement({
+      template: readJson(ENGAGEMENT_TEMPLATE_PATH),
+      target: options.target,
+      targetRoot: targetPath,
+      artifactRoot: artifactRootPath,
+      mode,
+      engagementId: authorization.engagementId,
+      selectedAgents: [...selectedSlugs],
+    });
+    mkdirSync(dirname(requestedEngagementPath), { recursive: true });
+    writeFileSync(requestedEngagementPath, `${JSON.stringify(engagement, null, 2)}\n`, { mode: 0o600 });
+    chmodSync(requestedEngagementPath, 0o600);
+    engagementCreated = true;
+  }
+  if (engagement) {
+    engagementErrors.push(...validateEngagementManifest(engagement));
+    if (engagement.mode !== mode) engagementErrors.push(`engagement mode ${engagement.mode} does not match preflight mode ${mode}`);
+    if (typeof engagement.artifactRoot !== 'string' || resolve(engagement.artifactRoot) !== artifactRootPath) engagementErrors.push('engagement artifactRoot does not match preflight artifact root');
+    if (engagement.engagementId !== authorization?.engagementId) engagementErrors.push('engagementId does not match authorization manifest');
+    if (!Array.isArray(engagement.selectedAgents) || JSON.stringify([...engagement.selectedAgents].sort()) !== JSON.stringify([...selectedSlugs].sort())) engagementErrors.push('engagement selectedAgents do not match the selected mode');
+    if (engagementErrors.length === 0) {
+      try { engagementState = initializeEngagementState(engagement); }
+      catch (error) { engagementErrors.push(`engagement state initialization failed: ${error.message}`); }
+    }
+  }
+  const engagementUsable = engagement && engagementErrors.length === 0;
+  const engagementSummary = {
+    manifestPath: requestedEngagementPath,
+    statePath: engagementUsable ? resolve(engagement.artifactRoot, engagement.statePath) : resolve(artifactRootPath, 'ai_agents_internal/engagement-state.json'),
+    immutabilityAuditPath: engagementUsable ? resolve(engagement.artifactRoot, engagement.writePolicy.auditPath) : resolve(artifactRootPath, 'ai_agents_internal/immutability-audit.jsonl'),
+    sha256: engagementUsable ? createHash('sha256').update(JSON.stringify(engagement)).digest('hex') : null,
+    created: engagementCreated,
+    stateCreated: engagementState?.created ?? false,
+    phase: engagementState?.state.currentPhase ?? null,
+    selectedAgents: engagementUsable ? engagement.selectedAgents.length : 0,
+    hookPath: HOOKS_PATH,
+    hookPackaged: existsSync(HOOKS_PATH),
+  };
+
   const availableTools = new Set(profile.availableTools ?? matrix.supportedBuiltinTools);
   const commandAvailability = detectCommands(inventory, profile);
   const mcpServers = profile.mcpServers ?? detectMcpServers();
@@ -397,6 +698,22 @@ async function preflight(argv) {
       ? `${authorizationCreated ? 'created default-deny' : 'loaded'} manifest sha256=${authorizationSummary.sha256}`
       : authorizationErrors.join('; '),
   );
+  addCheck(
+    checks,
+    'engagement-manifest',
+    true,
+    engagementErrors.length === 0,
+    engagementErrors.length === 0
+      ? `${engagementCreated ? 'created' : 'loaded'} manifest sha256=${engagementSummary.sha256}; phase=${engagementSummary.phase}`
+      : engagementErrors.join('; '),
+  );
+  addCheck(
+    checks,
+    'path-immutability-hook',
+    true,
+    engagementSummary.hookPackaged,
+    engagementSummary.hookPackaged ? `packaged PreToolUse hook: ${HOOKS_PATH}` : 'plugin hooks/hooks.json is missing',
+  );
   if (authorization && authorizationErrors.length === 0) {
     const boundaryDecision = evaluateAuthorization({
       manifest: authorization,
@@ -419,7 +736,6 @@ async function preflight(argv) {
   for (const [id, state] of Object.entries(capabilityState)) {
     addCheck(checks, `capability:${id}`, false, state.available, state.evidence);
   }
-  const selectedSlugs = new Set(matrix.agents.filter((agent) => agent.modes.includes(mode)).map((agent) => agent.slug));
   for (const [command, state] of Object.entries(commandAvailability)) {
     const consumers = inventory.commandReferences.find((item) => item.value === command)?.consumers ?? [];
     if (consumers.some((consumer) => selectedSlugs.has(consumer))) {
@@ -469,6 +785,7 @@ async function preflight(argv) {
     target,
     artifactRoot: { path: artifactRootPath, writable: artifactWritable, safePaths },
     authorization: authorizationSummary,
+    engagement: engagementSummary,
     checks,
     capabilities: Object.entries(capabilityState).map(([id, state]) => ({ id, ...state })),
     agents,
@@ -600,6 +917,7 @@ function parsePreflightOptions(args) {
     else if (name === '--artifact-root') options.artifactRoot = value;
     else if (name === '--output') options.output = value;
     else if (name === '--authorization') options.authorization = value;
+    else if (name === '--engagement') options.engagement = value;
     else if (name === '--environment') options.environment = value;
     else if (name === '--engagement-id') options.engagementId = value;
     else if (name === '--profile') options.profile = value;
@@ -727,6 +1045,28 @@ function parseNamedOptions(args, allowed) {
     options[kebabToCamel(name.slice(2))] = value;
   }
   return options;
+}
+
+function loadEngagement(options) {
+  const path = resolve(options.manifest ?? process.env.ARGUS_ENGAGEMENT_MANIFEST ?? 'ai_agents_internal/engagement.json');
+  const engagement = readJson(path);
+  const errors = validateEngagementManifest(engagement);
+  if (errors.length > 0) throw new Error(`invalid manifest ${path}: ${errors.join('; ')}`);
+  return { manifest: engagement, path };
+}
+
+function requireOptions(options, required, command) {
+  for (const key of required) if (!options[key]) fail(`${command} requires --${camelToKebab(key)}`);
+}
+
+function leaseToken(options) {
+  const token = options.token ?? process.env.ARGUS_ENGAGEMENT_LEASE_TOKEN;
+  if (!token) fail('engagement operation requires --token or ARGUS_ENGAGEMENT_LEASE_TOKEN');
+  return token;
+}
+
+function readTextInput(input) {
+  return input === '-' ? readFileSync(0, 'utf8') : readFileSync(resolve(input), 'utf8');
 }
 
 function parsePositiveOption(value, label) {

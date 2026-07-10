@@ -4,7 +4,6 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
-  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -99,12 +98,23 @@ function sourceFiles(asset) {
 
 function writeAsset(asset) {
   const destinationAbs = safePluginPath(asset.destination);
-  rmSync(destinationAbs, { recursive: true, force: true });
   const files = sourceFiles(asset);
+  const sourceIsFile = statSync(join(ROOT, asset.source)).isFile();
+  if (sourceIsFile) {
+    if (existsSync(destinationAbs) && statSync(destinationAbs).isDirectory()) rmSync(destinationAbs, { recursive: true, force: true });
+  } else {
+    if (existsSync(destinationAbs) && !statSync(destinationAbs).isDirectory()) rmSync(destinationAbs, { force: true });
+    mkdirSync(destinationAbs, { recursive: true });
+    const expected = new Set(files.map((file) => file.relativePath));
+    for (const existing of walkFiles(destinationAbs)) {
+      const relativePath = relative(destinationAbs, existing).split(sep).join('/');
+      if (!expected.has(relativePath)) rmSync(existing, { force: true });
+    }
+  }
   for (const file of files) {
     const target = file.relativePath ? join(destinationAbs, file.relativePath) : destinationAbs;
     mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(file.sourceAbs, target);
+    writeFileSync(target, readFileSync(file.sourceAbs));
     chmodSync(target, statSync(file.sourceAbs).mode & 0o777);
   }
 }

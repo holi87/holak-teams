@@ -4,7 +4,7 @@
   "title": "Argus runtime preflight report",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generatedAt", "mode", "status", "target", "artifactRoot", "authorization", "checks", "capabilities", "agents", "summary"],
+  "required": ["schemaVersion", "generatedAt", "mode", "status", "target", "artifactRoot", "authorization", "engagement", "checks", "capabilities", "agents", "summary"],
   "properties": {
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
@@ -45,6 +45,23 @@
         "productionLike": { "type": "boolean" },
         "productionSignals": { "$ref": "#/$defs/stringList" },
         "defaultReadOnly": { "type": "boolean" }
+      }
+    },
+    "engagement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifestPath", "statePath", "immutabilityAuditPath", "sha256", "created", "stateCreated", "phase", "selectedAgents", "hookPath", "hookPackaged"],
+      "properties": {
+        "manifestPath": { "type": "string", "minLength": 1 },
+        "statePath": { "type": "string", "minLength": 1 },
+        "immutabilityAuditPath": { "type": "string", "minLength": 1 },
+        "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "created": { "type": "boolean" },
+        "stateCreated": { "type": "boolean" },
+        "phase": { "type": ["string", "null"] },
+        "selectedAgents": { "type": "integer", "minimum": 0 },
+        "hookPath": { "type": "string", "minLength": 1 },
+        "hookPackaged": { "type": "boolean" }
       }
     },
     "checks": {

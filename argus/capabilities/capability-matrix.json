@@ -28,12 +28,16 @@
       "authorization-policies",
       "authorization-policy",
       "capability-matrix",
+      "engagement-policy",
       "runtime-library",
       "runtime-schemas"
     ],
     "artifactPaths": [
       "ai_agents_internal/authorization.json",
       "ai_agents_internal/authorization-audit.jsonl",
+      "ai_agents_internal/engagement.json",
+      "ai_agents_internal/engagement-state.json",
+      "ai_agents_internal/immutability-audit.jsonl",
       "ai_agents_internal/preflight.json",
       "solution/",
       "bugs/"

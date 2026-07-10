@@ -55,6 +55,38 @@
       ]
     },
     {
+      "value": "references/ENGAGEMENT-POLICY.md",
+      "consumers": [
+        "aegis",
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "kleio",
+        "lynceus",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
+      ]
+    },
+    {
       "value": "schemas/bug-ledger.schema.json",
       "consumers": [
         "minos"
@@ -93,38 +125,6 @@
   ],
   "targetFileReferences": [
     {
-      "value": ".pw-profiles/<agent>",
-      "consumers": [
-        "lynceus",
-        "odysseus",
-        "orion"
-      ]
-    },
-    {
-      "value": ".pw-profiles/<your-name>",
-      "consumers": [
-        "antigone",
-        "ariadne",
-        "atalanta",
-        "charon",
-        "daidalos",
-        "hermes",
-        "kalchas",
-        "lynceus",
-        "orion",
-        "penelope",
-        "perseus",
-        "proteus",
-        "tyche"
-      ]
-    },
-    {
-      "value": ".pw-profiles/ariadne",
-      "consumers": [
-        "ariadne"
-      ]
-    },
-    {
       "value": "AGENTS.md",
       "consumers": [
         "aristarchus",
@@ -137,7 +137,8 @@
       "consumers": [
         "antigone",
         "kleio",
-        "lynceus"
+        "lynceus",
+        "odysseus"
       ]
     },
     {

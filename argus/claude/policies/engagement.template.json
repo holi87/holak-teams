@@ -1,0 +1,86 @@
+{
+  "$schema": "../schemas/engagement-manifest.schema.json",
+  "schemaVersion": 1,
+  "engagementId": "argus-template",
+  "mode": "A",
+  "target": {
+    "identifier": "<TARGET>",
+    "root": "<TARGET_ROOT>"
+  },
+  "artifactRoot": "<ARTIFACT_ROOT>",
+  "selectedAgents": ["odysseus"],
+  "phasePlan": [
+    { "id": "preflight", "participants": ["odysseus"] },
+    { "id": "discovery", "participants": ["kalchas"] },
+    { "id": "hunting", "participants": [] },
+    { "id": "automation", "participants": [] },
+    { "id": "verification", "participants": [] },
+    { "id": "reporting", "participants": ["kleio"] },
+    { "id": "complete", "participants": ["odysseus"] }
+  ],
+  "writePolicy": {
+    "auditPath": "ai_agents_internal/immutability-audit.jsonl",
+    "fragmentRoot": "ai_agents_internal/fragments",
+    "checkpointRoot": "ai_agents_internal/checkpoints",
+    "workerRoot": "ai_agents_internal/workers",
+    "allowedArtifactRoots": [
+      "ai_agents_internal/heartbeat",
+      "ai_agents_internal/recon",
+      "ai_agents_internal/reports",
+      "bugs",
+      "reports",
+      "solution/findings",
+      "solution/paths",
+      "solution/contracts"
+    ],
+    "generatedTestRoots": [
+      "tests",
+      "test",
+      "e2e",
+      "qa",
+      "scripts/hunt-driver.mjs",
+      "scripts/driver.config.json",
+      "scripts/driver.config.example.json",
+      "scripts/driver-config.schema.json"
+    ],
+    "canonicalArtifacts": [
+      { "path": "README.md", "owner": "kleio", "format": "markdown" },
+      { "path": "run-tests.sh", "owner": "atlas", "format": "text" },
+      { "path": "solution/ARCHITECTURE.md", "owner": "atlas", "format": "markdown" },
+      { "path": "solution/BUG-LEDGER.md", "owner": "minos", "format": "markdown" },
+      { "path": "solution/bug-ledger.json", "owner": "minos", "format": "json-document" },
+      { "path": "solution/FINDINGS.md", "owner": "kleio", "format": "markdown" },
+      { "path": "solution/IMPLEMENTATION-REPORT.md", "owner": "kleio", "format": "markdown" },
+      { "path": "solution/ORACLES.md", "owner": "metis", "format": "markdown" },
+      { "path": "solution/PERF-REPORT.md", "owner": "hermes", "format": "markdown" },
+      { "path": "solution/RESILIENCE-REPORT.md", "owner": "tyche", "format": "markdown" },
+      { "path": "solution/STATE_MODEL.md", "owner": "ariadne", "format": "markdown" },
+      { "path": "solution/TEST-HEALTH.md", "owner": "asklepios", "format": "markdown" },
+      { "path": "solution/TEST-STRATEGY.md", "owner": "metis", "format": "markdown" },
+      { "path": "solution/TRACEABILITY.md", "owner": "kleio", "format": "markdown" },
+      { "path": "solution/WHITEBOX-LEADS.md", "owner": "minos", "format": "markdown" }
+    ],
+    "bypass": {
+      "enabled": false,
+      "approvedBy": null,
+      "reason": null,
+      "expiresAt": null,
+      "allowedPaths": [],
+      "tokenSha256": null
+    }
+  },
+  "resourcePolicy": {
+    "portRange": { "start": 43000, "end": 43999 },
+    "exclusiveOperations": {
+      "reset": "odysseus",
+      "fault": "tyche"
+    }
+  },
+  "idAllocators": {
+    "bug": { "owner": "minos", "prefix": "BUG", "width": 4 }
+  },
+  "cleanup": {
+    "removeOnRelease": ["browser-profile", "auth", "tmp", "locks"]
+  },
+  "statePath": "ai_agents_internal/engagement-state.json"
+}

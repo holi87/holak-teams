@@ -15,6 +15,8 @@ fail() {
 "$ROOT/scripts/sync-argus-runtime-assets.mjs" --check
 "$PLUGIN/bin/argus-assets" verify
 node "$PLUGIN/templates/typescript/scripts/hunt-driver.mjs" --help >/dev/null
+test -f "$PLUGIN/hooks/hooks.json" || fail "plugin does not package hooks/hooks.json"
+jq -e '.hooks.PreToolUse[] | select(.matcher == "Write|Edit|MultiEdit|Bash")' "$PLUGIN/hooks/hooks.json" >/dev/null || fail "plugin hook does not cover direct and shell writes"
 
 if command -v claude >/dev/null 2>&1; then
   claude plugin validate --strict "$PLUGIN" >/dev/null
@@ -46,6 +48,7 @@ CLAUDE_CONFIG_DIR="$CONFIG_DIR" claude plugin install argus@holak-teams --scope 
 
 INSTALLED_PLUGIN="$(find "$CONFIG_DIR/plugins/cache/holak-teams/argus" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 [ -n "$INSTALLED_PLUGIN" ] && [ -d "$INSTALLED_PLUGIN" ] || fail "clean marketplace install did not create an Argus plugin cache"
+test -f "$INSTALLED_PLUGIN/hooks/hooks.json" || fail "clean marketplace install omitted the PreToolUse hook"
 
 if find "$INSTALLED_PLUGIN" -type l -print -quit | grep -q .; then
   fail "installed plugin contains a symlink instead of self-contained assets"
@@ -77,6 +80,16 @@ cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-t
   printf '%s\n' '{"password":"installed-secret","email":"installed@example.com"}' | \
     "$INSTALLED_PLUGIN/bin/argus-assets" redact --input - --output "$WORK_DIR/preflight-target/redacted.json" \
     >/dev/null
+  "$INSTALLED_PLUGIN/bin/argus-assets" engagement validate \
+    --manifest "$WORK_DIR/preflight-target/ai_agents_internal/engagement.json" \
+    >/dev/null
+  allocation="$("$INSTALLED_PLUGIN/bin/argus-assets" engagement allocate \
+    --manifest "$WORK_DIR/preflight-target/ai_agents_internal/engagement.json" --lane kleio)"
+  lease="$(jq -r .token <<<"$allocation")"
+  "$INSTALLED_PLUGIN/bin/argus-assets" engagement cleanup \
+    --manifest "$WORK_DIR/preflight-target/ai_agents_internal/engagement.json" \
+    --lane kleio --token "$lease" --outcome success \
+    >/dev/null
 )
 
 (
@@ -96,11 +109,23 @@ cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-t
 const fs = require('fs');
 const report = JSON.parse(fs.readFileSync('preflight-target/ai_agents_internal/preflight.json', 'utf8'));
 if (report.status !== 'ready' || report.summary.ready !== 27) throw new Error('installed preflight did not evaluate all 27 agents as ready');
+if (!report.engagement?.hookPackaged || !report.engagement?.sha256 || report.engagement?.phase !== 'discovery') throw new Error('installed preflight did not create guarded engagement state');
 NODE
   if grep -Fq 'installed-secret' preflight-target/redacted.json; then
     fail "installed redactor leaked a secret"
   fi
   test -f preflight-target/ai_agents_internal/authorization-audit.jsonl
+  test -f preflight-target/ai_agents_internal/engagement.json
+  test -f preflight-target/ai_agents_internal/engagement-state.json
+  denied="$(printf '%s\n' '{"tool_name":"Write","cwd":"'"$WORK_DIR"'/preflight-target","tool_input":{"file_path":"app/source.ts","content":"installed-secret"}}' | \
+    "$INSTALLED_PLUGIN/bin/argus-assets" guard)"
+  grep -Fq 'GUARD-TARGET-IMMUTABLE' <<<"$denied" || fail "installed guard allowed target-source mutation"
+  allowed="$(printf '%s\n' '{"tool_name":"Write","cwd":"'"$WORK_DIR"'/preflight-target","tool_input":{"file_path":"tests/installed.spec.ts","content":"safe"}}' | \
+    "$INSTALLED_PLUGIN/bin/argus-assets" guard)"
+  test -z "$allowed" || fail "installed guard denied generated-test output"
+  if grep -Fq 'installed-secret' preflight-target/ai_agents_internal/immutability-audit.jsonl; then
+    fail "installed guard audit leaked tool content"
+  fi
 )
 
 printf 'PASS  clean marketplace install runs packaged assets outside repository\n'
