@@ -19,13 +19,13 @@
 
 ## Reproduction
 ```
-<one copy-pasteable command, e.g. curl -X POST ...>
+<one copy-pasteable command for the selected runtime and target>
 ```
 1. <step>
 2. <step>
 
 ## Expected (oracle)
-<what should happen — cite the Oracle-id above (OpenAPI operation / requirement clause / business rule it maps to)>
+<what should happen — cite the Oracle-id above (contract operation / requirement clause / business rule it maps to)>
 
 ## Actual
 <what happened — status code, response body, error>

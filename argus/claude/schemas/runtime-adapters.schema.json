@@ -64,11 +64,11 @@
     "claude": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["adapterId", "preloadedSkill", "toolSource", "modelSource", "routingCapabilities"],
+      "required": ["adapterId", "skillSource", "toolSource", "modelSource", "routingCapabilities"],
       "properties": {
         "adapterId": { "const": "claude-plugin-agent@1" },
-        "preloadedSkill": { "const": "qa-doctrine" },
-        "toolSource": { "const": "role-manifest" },
+        "skillSource": { "const": "capability-matrix" },
+        "toolSource": { "const": "capability-matrix" },
         "modelSource": { "const": "model-policy" },
         "routingCapabilities": { "$ref": "#/$defs/routingCapabilities" }
       }

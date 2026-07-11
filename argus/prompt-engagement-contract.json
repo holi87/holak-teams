@@ -10,23 +10,23 @@
     "mode": "A",
     "description": "Full-stack black-box engagement from discovery through final reporting",
     "requirements": [
-      { "id": "preflight-and-dispatch", "source": "odysseus", "markers": ["preflight", "Direct orchestration", "solution/lane-plan.json"] },
+      { "id": "preflight-and-dispatch", "source": "odysseus", "markers": ["preflight", "machine orchestration plan", "solution/lane-plan.json"] },
       { "id": "surface-discovery", "source": "kalchas", "markers": ["solution/surface-inventory.json", "role × operation matrix", "DB-access verdict"] },
       { "id": "risk-strategy", "source": "metis", "markers": ["solution/TEST-STRATEGY.md", "solution/ORACLES.md", "risk register"] },
       { "id": "shared-runner", "source": "atlas", "markers": ["run-tests.sh", "reports/results.json", "solution/ARCHITECTURE.md"] },
-      { "id": "ui-hunt", "source": "orion", "markers": ["bugs/ORI-", "screenshot", "browser_console_messages"] },
+      { "id": "ui-hunt", "source": "orion", "markers": ["bugs/ORI-", "screenshot", "--console", "--net"] },
       { "id": "api-hunt", "source": "atalanta", "markers": ["bugs/ATA-", "OpenAPI", "mass-assignment"] },
       { "id": "ui-automation", "source": "daidalos", "markers": ["tests/ui/", "RED", "a11y"] },
       { "id": "api-automation", "source": "talos", "markers": ["tests/api/", "expectMatchesSchema", "@e2e"] },
       { "id": "canonical-triage", "source": "minos", "markers": ["solution/BUG-LEDGER.md", "BUG-NNNN", "dedup"] },
       { "id": "final-report", "source": "kleio", "markers": ["solution/IMPLEMENTATION-REPORT.md", "coverage-result.json", "go/no-go"] },
-      { "id": "target-immutability", "source": "qa-doctrine", "markers": ["Never modify application source", "write guard", "untrusted data"] },
-      { "id": "browser-isolation", "source": "qa-doctrine", "markers": ["isolated", "hunt-driver", "single-shot public recon"] },
-      { "id": "oracle-honesty", "source": "qa-doctrine", "markers": ["RED on the faulty target", "Never green-encode", "falsifiable"] },
-      { "id": "artifact-language", "source": "qa-doctrine", "markers": ["100% English", "commit messages"] },
-      { "id": "event-progress", "source": "qa-doctrine", "markers": ["event-driven", "Do not run timer-based heartbeat loops", "final RESULT envelope"] },
-      { "id": "capability-template-selection", "source": "qa-doctrine", "markers": ["template detect", "runtime choice", "action=adapt", "Unsupported capabilities"] },
-      { "id": "shared-template-semantics", "source": "qa-doctrine", "markers": ["argus/template-contract@1", "four modes", "expiring quarantine ledger"] }
+      { "id": "target-immutability", "source": "qa-core", "markers": ["Never modify target application source", "write guard", "untrusted data"] },
+      { "id": "browser-isolation", "source": "qa-browser", "markers": ["leased browser profile", "managed hunt driver", "shared public"] },
+      { "id": "oracle-honesty", "source": "qa-framework-runner", "markers": ["RED on the faulty target", "Never green-encode", "truthful exit"] },
+      { "id": "artifact-language", "source": "qa-core", "markers": ["Every durable artifact", "commit message", "English"] },
+      { "id": "event-progress", "source": "qa-core", "markers": ["event-driven", "timer-based chatter", "blockers"] },
+      { "id": "capability-template-selection", "source": "qa-framework-runner", "markers": ["Detect the target language", "Adapt a healthy existing suite", "Scaffold only"] },
+      { "id": "shared-template-semantics", "source": "qa-framework-runner", "markers": ["defect-evidence", "candidate-regression", "owner, reason, evidence, expiry"] }
     ]
   }
 }

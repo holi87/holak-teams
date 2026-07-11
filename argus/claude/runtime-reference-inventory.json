@@ -1,135 +1,34 @@
 {
-  "schemaVersion": 1,
-  "generatedFrom": "effective argus/claude/agents/*.md plus preloaded skills and /argus:run",
+  "schemaVersion": 2,
+  "generatedFrom": "all packaged Argus agents, skills, entrypoints, capability declarations, runtime imports, hooks, CLI commands, and template compositions",
   "agentsScanned": 27,
-  "skillsScanned": 1,
+  "skillsScanned": 7,
   "entrypointsScanned": 1,
+  "runtimeFilesScanned": 8,
+  "runtimeImportsScanned": 11,
+  "hooksScanned": 1,
   "pluginAssetReferences": [
-    {
-      "value": "agents/odysseus.md",
-      "consumers": [
-        "/argus:run"
-      ]
-    },
     {
       "value": "references/AUTHORIZATION-POLICY.md",
       "consumers": [
-        "aegis",
-        "antigone",
-        "ariadne",
-        "aristarchus",
-        "asklepios",
-        "atalanta",
-        "atlas",
-        "charon",
-        "daidalos",
-        "hermes",
-        "kalchas",
-        "kleio",
-        "lynceus",
-        "metis",
-        "minos",
-        "mnemosyne",
-        "nike",
-        "odysseus",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
+        "skill:qa-core"
       ]
     },
     {
       "value": "references/BROWSER-ISOLATION.md",
       "consumers": [
-        "aegis",
-        "antigone",
-        "ariadne",
-        "aristarchus",
-        "asklepios",
-        "atalanta",
-        "atlas",
-        "charon",
-        "daidalos",
-        "hermes",
-        "kalchas",
-        "kleio",
-        "lynceus",
-        "metis",
-        "minos",
-        "mnemosyne",
-        "nike",
-        "odysseus",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
-      ]
-    },
-    {
-      "value": "references/CANONICAL-CONTRACTS.md",
-      "consumers": [
-        "/argus:run"
-      ]
-    },
-    {
-      "value": "references/COVERAGE-CONTRACT.md",
-      "consumers": [
-        "/argus:run"
+        "skill:qa-browser"
       ]
     },
     {
       "value": "references/ENGAGEMENT-POLICY.md",
       "consumers": [
-        "/argus:run",
-        "aegis",
-        "antigone",
-        "ariadne",
-        "aristarchus",
-        "asklepios",
-        "atalanta",
-        "atlas",
-        "charon",
-        "daidalos",
-        "hermes",
-        "kalchas",
-        "kleio",
-        "lynceus",
-        "metis",
-        "minos",
-        "mnemosyne",
-        "nike",
-        "odysseus",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
-      ]
-    },
-    {
-      "value": "references/RACI-CONTRACT.md",
-      "consumers": [
-        "/argus:run"
+        "skill:qa-core"
       ]
     },
     {
       "value": "references/RUNNER-CONTRACT.md",
       "consumers": [
-        "/argus:run",
         "atlas",
         "kleio"
       ]
@@ -137,34 +36,7 @@
     {
       "value": "references/TEMPLATE-CONTRACT.md",
       "consumers": [
-        "/argus:run",
-        "aegis",
-        "antigone",
-        "ariadne",
-        "aristarchus",
-        "asklepios",
-        "atalanta",
-        "atlas",
-        "charon",
-        "daidalos",
-        "hermes",
-        "kalchas",
-        "kleio",
-        "lynceus",
-        "metis",
-        "minos",
-        "mnemosyne",
-        "nike",
-        "odysseus",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
+        "skill:qa-framework-runner"
       ]
     },
     {
@@ -174,7 +46,27 @@
       ]
     },
     {
-      "value": "skills/qa-doctrine/SKILL.md",
+      "value": "skills/orchestration-core/SKILL.md",
+      "consumers": [
+        "/argus:run",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "skills/qa-browser/SKILL.md",
+      "consumers": [
+        "antigone",
+        "ariadne",
+        "daidalos",
+        "kalchas",
+        "lynceus",
+        "orion",
+        "penelope",
+        "perseus"
+      ]
+    },
+    {
+      "value": "skills/qa-core/SKILL.md",
       "consumers": [
         "aegis",
         "antigone",
@@ -206,31 +98,47 @@
       ]
     },
     {
-      "value": "templates/java/",
+      "value": "skills/qa-coverage-reporting/SKILL.md",
+      "consumers": [
+        "aristarchus",
+        "atlas",
+        "kalchas",
+        "kleio",
+        "metis",
+        "minos",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "skills/qa-framework-runner/SKILL.md",
+      "consumers": [
+        "aegis",
+        "aristarchus",
+        "asklepios",
+        "atlas",
+        "daidalos",
+        "kleio",
+        "metis",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "talos"
+      ]
+    },
+    {
+      "value": "templates/",
       "consumers": [
         "atlas"
       ]
     },
     {
-      "value": "templates/python/",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
-      "value": "templates/typescript/",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
-      "value": "templates/typescript/solution/bug-ledger.example.json",
+      "value": "templates/common/solution/bug-ledger.example.json",
       "consumers": [
         "minos"
       ]
     },
     {
-      "value": "templates/typescript/solution/STATE_MODEL.md",
+      "value": "templates/common/solution/STATE_MODEL.md",
       "consumers": [
         "ariadne"
       ]
@@ -240,45 +148,13 @@
     {
       "value": "ai_agents_internal/",
       "consumers": [
-        "kleio",
-        "odysseus"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/authorization.json",
-      "consumers": [
-        "/argus:run"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/dispatch-plan.md",
-      "consumers": [
-        "odysseus"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/engagement.json",
-      "consumers": [
-        "/argus:run"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/<slug>.log",
-      "consumers": [
-        "odysseus"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/odysseus.log",
-      "consumers": [
-        "odysseus"
+        "kleio"
       ]
     },
     {
       "value": "ai_agents_internal/preflight.json",
       "consumers": [
-        "/argus:run",
-        "odysseus"
+        "skill:orchestration-core"
       ]
     },
     {
@@ -300,7 +176,6 @@
         "kleio",
         "lynceus",
         "minos",
-        "odysseus",
         "orion",
         "penelope",
         "perseus",
@@ -328,21 +203,9 @@
       ]
     },
     {
-      "value": "bugs/*",
-      "consumers": [
-        "odysseus"
-      ]
-    },
-    {
       "value": "bugs/<PREFIX>-NNN-*.md",
       "consumers": [
         "minos"
-      ]
-    },
-    {
-      "value": "bugs/ANG-*",
-      "consumers": [
-        "odysseus"
       ]
     },
     {
@@ -352,21 +215,9 @@
       ]
     },
     {
-      "value": "bugs/ARI-*",
-      "consumers": [
-        "odysseus"
-      ]
-    },
-    {
       "value": "bugs/ARI-NNN-<slug>.md",
       "consumers": [
         "ariadne"
-      ]
-    },
-    {
-      "value": "bugs/ASK-*",
-      "consumers": [
-        "odysseus"
       ]
     },
     {
@@ -376,21 +227,9 @@
       ]
     },
     {
-      "value": "bugs/ATA-*",
-      "consumers": [
-        "odysseus"
-      ]
-    },
-    {
       "value": "bugs/ATA-NNN-<slug>.md",
       "consumers": [
         "atalanta"
-      ]
-    },
-    {
-      "value": "bugs/CHA-*",
-      "consumers": [
-        "odysseus"
       ]
     },
     {
@@ -402,8 +241,7 @@
     {
       "value": "bugs/HER-*",
       "consumers": [
-        "hermes",
-        "odysseus"
+        "hermes"
       ]
     },
     {
@@ -413,21 +251,9 @@
       ]
     },
     {
-      "value": "bugs/LYN-*",
-      "consumers": [
-        "odysseus"
-      ]
-    },
-    {
       "value": "bugs/LYN-NNN-<slug>.md",
       "consumers": [
         "lynceus"
-      ]
-    },
-    {
-      "value": "bugs/ORI-*",
-      "consumers": [
-        "odysseus"
       ]
     },
     {
@@ -437,33 +263,15 @@
       ]
     },
     {
-      "value": "bugs/PER-*",
-      "consumers": [
-        "odysseus"
-      ]
-    },
-    {
       "value": "bugs/PER-NNN-<slug>.md",
       "consumers": [
         "perseus"
       ]
     },
     {
-      "value": "bugs/PRO-*",
-      "consumers": [
-        "odysseus"
-      ]
-    },
-    {
       "value": "bugs/PRO-NNN-<slug>.md",
       "consumers": [
         "proteus"
-      ]
-    },
-    {
-      "value": "bugs/TIR-*",
-      "consumers": [
-        "odysseus"
       ]
     },
     {
@@ -475,7 +283,6 @@
     {
       "value": "bugs/TYC-*",
       "consumers": [
-        "odysseus",
         "tyche"
       ]
     },
@@ -514,8 +321,7 @@
     {
       "value": "README.md",
       "consumers": [
-        "kleio",
-        "odysseus"
+        "kleio"
       ]
     },
     {
@@ -535,8 +341,7 @@
       "value": "reports/html/",
       "consumers": [
         "atlas",
-        "daidalos",
-        "odysseus"
+        "daidalos"
       ]
     },
     {
@@ -561,8 +366,7 @@
       "value": "reports/results.json",
       "consumers": [
         "atlas",
-        "daidalos",
-        "odysseus"
+        "daidalos"
       ]
     },
     {
@@ -586,7 +390,6 @@
         "minos",
         "mnemosyne",
         "nike",
-        "odysseus",
         "talos"
       ]
     },
@@ -599,10 +402,7 @@
     {
       "value": "scripts/hunt-driver.mjs",
       "consumers": [
-        "charon",
-        "daidalos",
-        "penelope",
-        "proteus"
+        "daidalos"
       ]
     },
     {
@@ -611,8 +411,7 @@
         "aristarchus",
         "atlas",
         "kleio",
-        "minos",
-        "odysseus"
+        "minos"
       ]
     },
     {
@@ -624,7 +423,6 @@
     {
       "value": "solution/ACCESSIBILITY-REPORT.md",
       "consumers": [
-        "/argus:run",
         "antigone",
         "daidalos",
         "kleio"
@@ -636,7 +434,6 @@
         "atlas",
         "kleio",
         "metis",
-        "odysseus",
         "talos"
       ]
     },
@@ -650,32 +447,9 @@
       "value": "solution/bug-ledger.json",
       "consumers": [
         "aegis",
-        "antigone",
-        "ariadne",
-        "aristarchus",
-        "asklepios",
-        "atalanta",
-        "atlas",
-        "charon",
-        "daidalos",
-        "hermes",
-        "kalchas",
         "kleio",
-        "lynceus",
-        "metis",
         "minos",
-        "mnemosyne",
-        "nike",
-        "odysseus",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
+        "mnemosyne"
       ]
     },
     {
@@ -683,14 +457,12 @@
       "consumers": [
         "aristarchus",
         "kleio",
-        "minos",
-        "odysseus"
+        "minos"
       ]
     },
     {
       "value": "solution/contracts/",
       "consumers": [
-        "odysseus",
         "pistis"
       ]
     },
@@ -724,7 +496,7 @@
       "value": "solution/FINDINGS.md",
       "consumers": [
         "kleio",
-        "odysseus"
+        "skill:orchestration-core"
       ]
     },
     {
@@ -732,7 +504,6 @@
       "consumers": [
         "atalanta",
         "lynceus",
-        "odysseus",
         "penelope",
         "proteus",
         "theseus"
@@ -761,8 +532,7 @@
       "consumers": [
         "aristarchus",
         "kleio",
-        "metis",
-        "odysseus"
+        "metis"
       ]
     },
     {
@@ -776,8 +546,7 @@
       "consumers": [
         "ariadne",
         "kalchas",
-        "metis",
-        "odysseus"
+        "metis"
       ]
     },
     {
@@ -791,7 +560,6 @@
     {
       "value": "solution/paths/api-*.md",
       "consumers": [
-        "odysseus",
         "theseus"
       ]
     },
@@ -804,7 +572,6 @@
     {
       "value": "solution/paths/contract-*.md",
       "consumers": [
-        "odysseus",
         "pistis",
         "talos"
       ]
@@ -818,7 +585,6 @@
     {
       "value": "solution/paths/ui-*.md",
       "consumers": [
-        "odysseus",
         "penelope"
       ]
     },
@@ -838,14 +604,12 @@
       "value": "solution/PERF-REPORT.md",
       "consumers": [
         "hermes",
-        "kleio",
-        "odysseus"
+        "kleio"
       ]
     },
     {
       "value": "solution/RESILIENCE-REPORT.md",
       "consumers": [
-        "odysseus",
         "tyche"
       ]
     },
@@ -853,8 +617,7 @@
       "value": "solution/STATE_MODEL.md",
       "consumers": [
         "ariadne",
-        "kalchas",
-        "odysseus"
+        "kalchas"
       ]
     },
     {
@@ -862,15 +625,13 @@
       "consumers": [
         "atlas",
         "kalchas",
-        "odysseus",
         "orion"
       ]
     },
     {
       "value": "solution/TEST-HEALTH.md",
       "consumers": [
-        "asklepios",
-        "odysseus"
+        "asklepios"
       ]
     },
     {
@@ -883,7 +644,6 @@
         "kleio",
         "metis",
         "nike",
-        "odysseus",
         "talos"
       ]
     },
@@ -893,7 +653,6 @@
         "hermes",
         "kleio",
         "metis",
-        "odysseus",
         "tyche"
       ]
     },
@@ -901,72 +660,15 @@
       "value": "solution/WHITEBOX-LEADS.md",
       "consumers": [
         "minos",
-        "odysseus",
         "tiresias"
-      ]
-    },
-    {
-      "value": "src/",
-      "consumers": [
-        "aegis",
-        "antigone",
-        "ariadne",
-        "aristarchus",
-        "asklepios",
-        "atalanta",
-        "atlas",
-        "charon",
-        "daidalos",
-        "hermes",
-        "kalchas",
-        "kleio",
-        "lynceus",
-        "metis",
-        "minos",
-        "mnemosyne",
-        "nike",
-        "odysseus",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
       ]
     },
     {
       "value": "tests/",
       "consumers": [
-        "aegis",
-        "antigone",
-        "ariadne",
-        "aristarchus",
-        "asklepios",
-        "atalanta",
         "atlas",
-        "charon",
-        "daidalos",
-        "hermes",
-        "kalchas",
         "kleio",
-        "lynceus",
-        "metis",
-        "minos",
-        "mnemosyne",
-        "nike",
-        "odysseus",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
+        "pistis"
       ]
     },
     {
@@ -988,14 +690,12 @@
       "value": "tests/api/<resource>/",
       "consumers": [
         "metis",
-        "odysseus",
         "talos"
       ]
     },
     {
       "value": "tests/api/contract/",
       "consumers": [
-        "odysseus",
         "pistis",
         "talos"
       ]
@@ -1004,16 +704,14 @@
       "value": "tests/db/",
       "consumers": [
         "atlas",
-        "mnemosyne",
-        "odysseus"
+        "mnemosyne"
       ]
     },
     {
       "value": "tests/perf/",
       "consumers": [
         "atlas",
-        "nike",
-        "odysseus"
+        "nike"
       ]
     },
     {
@@ -1025,16 +723,14 @@
     {
       "value": "tests/resilience/",
       "consumers": [
-        "nike",
-        "odysseus"
+        "nike"
       ]
     },
     {
       "value": "tests/security/",
       "consumers": [
         "aegis",
-        "atlas",
-        "odysseus"
+        "atlas"
       ]
     },
     {
@@ -1050,8 +746,7 @@
     {
       "value": "tests/ui/<flow>/",
       "consumers": [
-        "metis",
-        "odysseus"
+        "metis"
       ]
     }
   ],
@@ -1061,9 +756,7 @@
       "consumers": [
         "atlas",
         "hermes",
-        "metis",
-        "nike",
-        "odysseus"
+        "nike"
       ]
     },
     {
@@ -1075,7 +768,6 @@
     {
       "value": "claude",
       "consumers": [
-        "/argus:run",
         "odysseus"
       ]
     },
@@ -1099,7 +791,6 @@
         "atalanta",
         "charon",
         "lynceus",
-        "odysseus",
         "orion",
         "perseus",
         "proteus",
@@ -1113,7 +804,6 @@
         "kalchas",
         "metis",
         "nike",
-        "odysseus",
         "tyche"
       ]
     },
@@ -1126,7 +816,6 @@
         "kleio",
         "metis",
         "minos",
-        "odysseus",
         "tiresias"
       ]
     },
@@ -1135,7 +824,6 @@
       "consumers": [
         "aristarchus",
         "kleio",
-        "odysseus",
         "tiresias"
       ]
     },
@@ -1144,8 +832,7 @@
       "consumers": [
         "aristarchus",
         "asklepios",
-        "kleio",
-        "odysseus"
+        "kleio"
       ]
     },
     {
@@ -1161,20 +848,12 @@
       ]
     },
     {
-      "value": "java",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
       "value": "k6",
       "consumers": [
         "aristarchus",
         "atlas",
         "hermes",
-        "metis",
-        "nike",
-        "odysseus"
+        "nike"
       ]
     },
     {
@@ -1200,22 +879,11 @@
       "consumers": [
         "aegis",
         "antigone",
-        "ariadne",
-        "aristarchus",
         "asklepios",
         "atalanta",
-        "atlas",
-        "charon",
         "daidalos",
-        "hermes",
-        "kalchas",
         "kleio",
-        "lynceus",
-        "metis",
-        "minos",
-        "mnemosyne",
         "nike",
-        "odysseus",
         "orion",
         "penelope",
         "perseus",
@@ -1223,8 +891,7 @@
         "proteus",
         "talos",
         "theseus",
-        "tiresias",
-        "tyche"
+        "tiresias"
       ]
     },
     {
@@ -1271,15 +938,13 @@
     {
       "value": "pytest",
       "consumers": [
-        "kleio",
-        "metis"
+        "kleio"
       ]
     },
     {
       "value": "python",
       "consumers": [
-        "ariadne",
-        "atlas"
+        "ariadne"
       ]
     },
     {
@@ -1297,8 +962,7 @@
     {
       "value": "tail",
       "consumers": [
-        "asklepios",
-        "odysseus"
+        "asklepios"
       ]
     },
     {
@@ -1320,5 +984,1267 @@
         "proteus"
       ]
     }
-  ]
+  ],
+  "assetConsumers": [
+    {
+      "assetId": "browser-isolation",
+      "destination": "references/BROWSER-ISOLATION.md",
+      "consumers": [
+        {
+          "consumer": "skill:qa-browser",
+          "kind": "skill",
+          "mechanism": "plugin-path",
+          "reference": "references/BROWSER-ISOLATION.md"
+        }
+      ]
+    },
+    {
+      "assetId": "authorization-policy",
+      "destination": "references/AUTHORIZATION-POLICY.md",
+      "consumers": [
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "authorization-policy"
+        },
+        {
+          "consumer": "skill:qa-core",
+          "kind": "skill",
+          "mechanism": "plugin-path",
+          "reference": "references/AUTHORIZATION-POLICY.md"
+        }
+      ]
+    },
+    {
+      "assetId": "engagement-policy",
+      "destination": "references/ENGAGEMENT-POLICY.md",
+      "consumers": [
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "engagement-policy"
+        },
+        {
+          "consumer": "skill:qa-core",
+          "kind": "skill",
+          "mechanism": "plugin-path",
+          "reference": "references/ENGAGEMENT-POLICY.md"
+        }
+      ]
+    },
+    {
+      "assetId": "canonical-contracts",
+      "destination": "references/CANONICAL-CONTRACTS.md",
+      "consumers": [
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "canonical-contracts"
+        }
+      ]
+    },
+    {
+      "assetId": "runner-contract",
+      "destination": "references/RUNNER-CONTRACT.md",
+      "consumers": [
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "references/RUNNER-CONTRACT.md"
+        },
+        {
+          "consumer": "kleio",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "references/RUNNER-CONTRACT.md"
+        },
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "runner-contract"
+        }
+      ]
+    },
+    {
+      "assetId": "template-contract",
+      "destination": "references/TEMPLATE-CONTRACT.md",
+      "consumers": [
+        {
+          "consumer": "skill:qa-framework-runner",
+          "kind": "skill",
+          "mechanism": "plugin-path",
+          "reference": "references/TEMPLATE-CONTRACT.md"
+        }
+      ]
+    },
+    {
+      "assetId": "coverage-contract",
+      "destination": "references/COVERAGE-CONTRACT.md",
+      "consumers": [
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "coverage-contract"
+        },
+        {
+          "consumer": "kalchas",
+          "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "coverage-contract"
+        },
+        {
+          "consumer": "metis",
+          "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "coverage-contract"
+        }
+      ]
+    },
+    {
+      "assetId": "raci-contract",
+      "destination": "references/RACI-CONTRACT.md",
+      "consumers": [
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "raci-contract"
+        }
+      ]
+    },
+    {
+      "assetId": "raci-matrix",
+      "destination": "references/raci.json",
+      "consumers": [
+        {
+          "consumer": "command:argus-assets orchestration plan",
+          "kind": "command",
+          "mechanism": "explicit-command-dependency",
+          "reference": "raci-matrix"
+        },
+        {
+          "consumer": "orchestration-plan",
+          "kind": "orchestration",
+          "mechanism": "plan-reference",
+          "reference": "raci:references/raci.json"
+        },
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "raci-matrix"
+        }
+      ]
+    },
+    {
+      "assetId": "orchestration-core-skill",
+      "destination": "skills/orchestration-core",
+      "consumers": [
+        {
+          "consumer": "/argus:run",
+          "kind": "entrypoint",
+          "mechanism": "plugin-path",
+          "reference": "skills/orchestration-core/SKILL.md"
+        },
+        {
+          "consumer": "odysseus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "orchestration-core"
+        },
+        {
+          "consumer": "odysseus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "orchestration-core"
+        },
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "orchestration-core-skill"
+        },
+        {
+          "consumer": "profile:orchestration-core",
+          "kind": "profile",
+          "mechanism": "doctrine-profile-required-asset",
+          "reference": "orchestration-core"
+        }
+      ]
+    },
+    {
+      "assetId": "qa-core-skill",
+      "destination": "skills/qa-core",
+      "consumers": [
+        {
+          "consumer": "aegis",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "aegis",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "antigone",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "antigone",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "ariadne",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "ariadne",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "aristarchus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "aristarchus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "asklepios",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "asklepios",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "atalanta",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "atalanta",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "charon",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "charon",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "daidalos",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "daidalos",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "hermes",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "hermes",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "kalchas",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "kalchas",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "kleio",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "kleio",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "lynceus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "lynceus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "metis",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "metis",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "minos",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "minos",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "mnemosyne",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "mnemosyne",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "nike",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "nike",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "odysseus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "odysseus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "qa-core-skill"
+        },
+        {
+          "consumer": "orion",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "orion",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "penelope",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "penelope",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "perseus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "perseus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "pistis",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "pistis",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "profile:qa-core",
+          "kind": "profile",
+          "mechanism": "doctrine-profile-required-asset",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "proteus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "proteus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "talos",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "talos",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "theseus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "theseus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "tiresias",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "tiresias",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "tyche",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-core"
+        },
+        {
+          "consumer": "tyche",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-core"
+        }
+      ]
+    },
+    {
+      "assetId": "qa-browser-skill",
+      "destination": "skills/qa-browser",
+      "consumers": [
+        {
+          "consumer": "antigone",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "antigone",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "ariadne",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "ariadne",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "daidalos",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "daidalos",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "kalchas",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "kalchas",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "lynceus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "lynceus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "orion",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "orion",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "penelope",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "penelope",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "perseus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "perseus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-browser"
+        },
+        {
+          "consumer": "profile:qa-browser",
+          "kind": "profile",
+          "mechanism": "doctrine-profile-required-asset",
+          "reference": "qa-browser"
+        }
+      ]
+    },
+    {
+      "assetId": "qa-framework-runner-skill",
+      "destination": "skills/qa-framework-runner",
+      "consumers": [
+        {
+          "consumer": "aegis",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "aegis",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "aristarchus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "aristarchus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "asklepios",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "asklepios",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "daidalos",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "daidalos",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "kleio",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "kleio",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "metis",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "metis",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "mnemosyne",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "mnemosyne",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "nike",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "nike",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "odysseus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "odysseus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "profile:qa-framework-runner",
+          "kind": "profile",
+          "mechanism": "doctrine-profile-required-asset",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "talos",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-framework-runner"
+        },
+        {
+          "consumer": "talos",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-framework-runner"
+        }
+      ]
+    },
+    {
+      "assetId": "qa-coverage-reporting-skill",
+      "destination": "skills/qa-coverage-reporting",
+      "consumers": [
+        {
+          "consumer": "aristarchus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "aristarchus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "kalchas",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "kalchas",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "kleio",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "kleio",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "metis",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "metis",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "minos",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "minos",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "odysseus",
+          "kind": "agent",
+          "mechanism": "doctrine-profile-assignment",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "odysseus",
+          "kind": "agent",
+          "mechanism": "preloaded-skill",
+          "reference": "qa-coverage-reporting"
+        },
+        {
+          "consumer": "profile:qa-coverage-reporting",
+          "kind": "profile",
+          "mechanism": "doctrine-profile-required-asset",
+          "reference": "qa-coverage-reporting"
+        }
+      ]
+    },
+    {
+      "assetId": "competition-profile-skill",
+      "destination": "skills/competition-profile",
+      "consumers": [
+        {
+          "consumer": "user:competition-profile",
+          "kind": "user",
+          "mechanism": "user-invocable-skill",
+          "reference": "skills/competition-profile/SKILL.md"
+        }
+      ]
+    },
+    {
+      "assetId": "runtime-schemas",
+      "destination": "schemas",
+      "consumers": [
+        {
+          "consumer": "command:argus-assets model benchmark",
+          "kind": "command",
+          "mechanism": "explicit-command-dependency",
+          "reference": "runtime-schemas"
+        },
+        {
+          "consumer": "command:argus-assets schema validate (schema compatibility)",
+          "kind": "command",
+          "mechanism": "explicit-command-dependency",
+          "reference": "runtime-schemas"
+        },
+        {
+          "consumer": "minos",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "schemas/bug-ledger.schema.json"
+        },
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "runtime-schemas"
+        },
+        {
+          "consumer": "runtime:copyBrowserDriver",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "runtime-schemas"
+        }
+      ]
+    },
+    {
+      "assetId": "capability-matrix",
+      "destination": "capabilities/capability-matrix.json",
+      "consumers": [
+        {
+          "consumer": "command:argus-assets orchestration plan",
+          "kind": "command",
+          "mechanism": "explicit-command-dependency",
+          "reference": "capability-matrix"
+        },
+        {
+          "consumer": "orchestration-plan",
+          "kind": "orchestration",
+          "mechanism": "plan-reference",
+          "reference": "capabilityMatrix:capabilities/capability-matrix.json"
+        },
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "capability-matrix"
+        }
+      ]
+    },
+    {
+      "assetId": "orchestration-plan",
+      "destination": "capabilities/orchestration-plan.json",
+      "consumers": [
+        {
+          "consumer": "command:argus-assets orchestration plan",
+          "kind": "command",
+          "mechanism": "explicit-command-dependency",
+          "reference": "orchestration-plan"
+        },
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "orchestration-plan"
+        }
+      ]
+    },
+    {
+      "assetId": "model-policy",
+      "destination": "capabilities/model-policy.json",
+      "consumers": [
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "model-policy"
+        }
+      ]
+    },
+    {
+      "assetId": "runtime-adapters",
+      "destination": "capabilities/runtime-adapters.json",
+      "consumers": [
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "runtime-adapters"
+        },
+        {
+          "consumer": "runtime:assertTrustedRuntimeAdapterAsset",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "runtime-adapters"
+        }
+      ]
+    },
+    {
+      "assetId": "template-policy",
+      "destination": "capabilities/template-contract.json",
+      "consumers": [
+        {
+          "consumer": "command:argus-assets template detect/select/scaffold",
+          "kind": "command",
+          "mechanism": "explicit-command-dependency",
+          "reference": "template-policy"
+        }
+      ]
+    },
+    {
+      "assetId": "model-policy-benchmark",
+      "destination": "capabilities/model-policy.benchmark.json",
+      "consumers": [
+        {
+          "consumer": "command:argus-assets model benchmark",
+          "kind": "command",
+          "mechanism": "explicit-command-dependency",
+          "reference": "model-policy-benchmark"
+        }
+      ]
+    },
+    {
+      "assetId": "authorization-policies",
+      "destination": "policies",
+      "consumers": [
+        {
+          "consumer": "command:argus-assets schema validate (schema compatibility)",
+          "kind": "command",
+          "mechanism": "explicit-command-dependency",
+          "reference": "authorization-policies"
+        },
+        {
+          "consumer": "hook:PreToolUse guard",
+          "kind": "hook",
+          "mechanism": "guard-command-dependency",
+          "reference": "authorization-policies"
+        },
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "authorization-policies"
+        }
+      ]
+    },
+    {
+      "assetId": "runtime-library",
+      "destination": "lib",
+      "consumers": [
+        {
+          "consumer": "bin/argus-assets",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "../lib/authorization.mjs"
+        },
+        {
+          "consumer": "bin/argus-assets",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "../lib/contracts.mjs"
+        },
+        {
+          "consumer": "bin/argus-assets",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "../lib/coverage.mjs"
+        },
+        {
+          "consumer": "bin/argus-assets",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "../lib/engagement.mjs"
+        },
+        {
+          "consumer": "bin/argus-assets",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "../lib/json-schema.mjs"
+        },
+        {
+          "consumer": "bin/argus-assets",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "../lib/model-policy.mjs"
+        },
+        {
+          "consumer": "bin/argus-assets",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "../lib/orchestration-plan.mjs"
+        },
+        {
+          "consumer": "bin/argus-assets",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "../lib/template-policy.mjs"
+        },
+        {
+          "consumer": "command:argus-assets orchestration plan",
+          "kind": "command",
+          "mechanism": "explicit-command-dependency",
+          "reference": "runtime-library"
+        },
+        {
+          "consumer": "command:argus-assets schema validate (schema compatibility)",
+          "kind": "command",
+          "mechanism": "explicit-command-dependency",
+          "reference": "runtime-library"
+        },
+        {
+          "consumer": "command:argus-assets template detect/select/scaffold",
+          "kind": "command",
+          "mechanism": "explicit-command-dependency",
+          "reference": "runtime-library"
+        },
+        {
+          "consumer": "hook:PreToolUse guard",
+          "kind": "hook",
+          "mechanism": "guard-command-dependency",
+          "reference": "runtime-library"
+        },
+        {
+          "consumer": "lib/contracts.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./json-schema.mjs"
+        },
+        {
+          "consumer": "lib/engagement.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./contracts.mjs"
+        },
+        {
+          "consumer": "lib/orchestration-plan.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./json-schema.mjs"
+        },
+        {
+          "consumer": "orchestration:controller",
+          "kind": "orchestration",
+          "mechanism": "required-asset",
+          "reference": "runtime-library"
+        }
+      ]
+    },
+    {
+      "assetId": "common-template",
+      "destination": "templates/common",
+      "consumers": [
+        {
+          "consumer": "ariadne",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "templates/common/solution/STATE_MODEL.md"
+        },
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "templates/"
+        },
+        {
+          "consumer": "command:argus-assets template scaffold java",
+          "kind": "command",
+          "mechanism": "validated-template-composition",
+          "reference": "java:common"
+        },
+        {
+          "consumer": "command:argus-assets template scaffold python",
+          "kind": "command",
+          "mechanism": "validated-template-composition",
+          "reference": "python:common"
+        },
+        {
+          "consumer": "command:argus-assets template scaffold typescript",
+          "kind": "command",
+          "mechanism": "validated-template-composition",
+          "reference": "typescript:common"
+        },
+        {
+          "consumer": "minos",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "templates/common/solution/bug-ledger.example.json"
+        }
+      ]
+    },
+    {
+      "assetId": "typescript-template",
+      "destination": "templates/typescript",
+      "consumers": [
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "templates/"
+        },
+        {
+          "consumer": "command:argus-assets template scaffold typescript",
+          "kind": "command",
+          "mechanism": "validated-template-composition",
+          "reference": "typescript:runtime"
+        },
+        {
+          "consumer": "runtime:copyBrowserDriver",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "typescript-template"
+        }
+      ]
+    },
+    {
+      "assetId": "java-template",
+      "destination": "templates/java",
+      "consumers": [
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "templates/"
+        },
+        {
+          "consumer": "command:argus-assets template scaffold java",
+          "kind": "command",
+          "mechanism": "validated-template-composition",
+          "reference": "java:runtime"
+        }
+      ]
+    },
+    {
+      "assetId": "python-template",
+      "destination": "templates/python",
+      "consumers": [
+        {
+          "consumer": "atlas",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "templates/"
+        },
+        {
+          "consumer": "command:argus-assets template scaffold python",
+          "kind": "command",
+          "mechanism": "validated-template-composition",
+          "reference": "python:runtime"
+        }
+      ]
+    }
+  ],
+  "unconsumedAssets": [],
+  "unknownAssetReferences": [],
+  "unknownProfileReferences": [],
+  "unownedPluginReferences": [],
+  "unownedRuntimeReferences": [],
+  "unownedSkills": []
 }

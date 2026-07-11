@@ -27,6 +27,16 @@ Every shipped runner fails with policy exit 13 when that explicit selection reco
 missing or names an incompatible runtime/package manager; low-level template copies are
 not runnable engagement frameworks.
 
+The installed template is a manifest-declared composition: one canonical common layer
+(`templates/common`) plus exactly one runtime layer. Runtime layers never duplicate a
+common file. `template scaffold` is the supported engagement interface and validates both
+layer hashes before writing; it rejects symlinks, unsafe or case-colliding paths,
+file/file and file/ancestor collisions, and non-empty destinations. The copy preserves
+file and directory modes and creates each file exclusively. Maintainers edit
+`framework-template-common/` for shared files, then run
+`scripts/sync-argus-runtime-assets.mjs --write`; direct edits to generated common copies
+inside the three complete source templates are drift.
+
 ## Shared minimum contract
 
 All three templates implement the same four modes, `argus/runner-result@1`, seven-field

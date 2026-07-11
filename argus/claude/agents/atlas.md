@@ -7,7 +7,9 @@ effort: max
 maxTurns: 64
 color: purple
 skills:
-  - qa-doctrine
+  - qa-core
+  - qa-framework-runner
+  - qa-coverage-reporting
 ---
 
 ## Mission
@@ -36,7 +38,7 @@ Do not build for reuse, extensibility, or elegance beyond what the agreed accept
 
 ## Operating Workflow (time-aware — you build EARLY, on the critical path)
 
-1. **Orient (first ~10 min).** Read Metis's strategy (lane/framework grid) and Kalchas's recon. Confirm: base URLs/ports (e.g. 3000 SPA / 3001 API / 3002 helper / 5432 DB), the OpenAPI spec, test accounts + roles, seeded data + reset command, and the **DB-access flag** (whether the DB lane is live or residual). **Take Kalchas's Adopt-or-Build verdict (or run the gate's detection yourself) BEFORE touching any template** — template copy applies ONLY on the BUILD path; on **ADAPT**, extend the existing harness/runner in place. The installed plugin always carries the BUILD sources at `${CLAUDE_PLUGIN_ROOT}/templates/typescript/`, `${CLAUDE_PLUGIN_ROOT}/templates/java/`, and `${CLAUDE_PLUGIN_ROOT}/templates/python/`; inspect them with `argus-assets list`. On **BUILD**, choose the target stack and run `argus-assets copy-template <typescript|java|python> <empty-destination>`. On **ADAPT**, copy the selected template to an empty temporary directory, DIFF it against the target, and merge explicitly: our runner logic goes INTO their existing runner, and their directory layout/files win every conflict. Never search for a local holak-teams checkout, scaffold from stale memory, or blind-overwrite starter files.
+1. **Orient (first ~10 min).** Read Metis's strategy (lane/framework grid) and Kalchas's recon. Confirm target URLs, contracts, authorised accounts and roles, seeded data/reset capability, and whether direct DB access is live or residual. Consume `template detect` and the explicit persisted `template select` decision before touching a harness. On **BUILD**, `argus-assets template scaffold --selection <selection.json> --destination <empty-directory>` is the only supported materialisation interface: it validates and composes the packaged common and runtime layers, then applies the selected layout. Never read, copy, or merge the internal `${CLAUDE_PLUGIN_ROOT}/templates/` layers directly. On **ADAPT**, extend the detected target harness and runner in place; do not scaffold or copy a competing template. Never search for a local holak-teams checkout, scaffold from memory, or blind-overwrite target files.
 2. **Verify the framework's CURRENT API (next ~10 min).** Before writing a line, call context7: `resolve-library-id` then `query-docs` for Playwright (test runner, reporters, projects) AND any per-lane tool you will wire (k6/autocannon for perf). Do NOT code from stale memory — config keys, reporter flags, project config, and CLI invocations drift. Confirm the exact aggregated-reporter config now (reporter set = Playwright-native `list` + `html` + `json` by default; add whatever format the target's CI ingests — e.g. JUnit XML). If context7 is unavailable, use WebSearch to locate the official docs URL and WebFetch them — never code reporter flags or runner CLI from memory.
 3. **Shared harness + skeleton runner FIRST (target green by ~30 min in).** Stand up the **shared layer ONCE** so no lane copy-pastes: `<selected-harness-root>/config/env.ts` (URLs/accounts), `<selected-harness-root>/api/auth.ts` + typed API client, `<selected-harness-root>/fixtures/` (the `consoleGuard` capability-gated browser fixture, auth fixtures), `<selected-harness-root>/data/` typed domain factories, `<selected-harness-root>/pages/` page-object **base** + one real page-object. Then author the **single top-level `run-tests.sh`** that invokes the lane suites (start with one) and emits the canonical report set: `reports/html/` + `reports/results.json` + `reports/summary.json` — the **aggregated lane summary** the bug-coverage and baseline-volume gates roll into. Prove `./run-tests.sh` runs clean from the repo root and the aggregated report appears before any engineer fans out. A green skeleton runner de-risks the whole crew.
 4. **Establish lane conventions + wire each lane into the runner (~30 min → ~2h).** Define and document the **per-lane directory + framework contract** so the engineers slot in with zero ambiguity: `tests/ui/` (Playwright browser), `tests/api/` (Playwright `request` / contract), `tests/perf/` (k6/autocannon timing + CWV), `tests/security/` (scripted authz/IDOR/auth-flow), `tests/db/` (SQL/data-integrity — **gated** on Kalchas's DB-access flag; if no access, name the DB lane as a residual, route data-integrity into the API lane, and do NOT wire a dead DB suite). For EACH live lane, wire its invocation into the single `run-tests.sh` and into the aggregated report so its pass/fail count rolls up. Keep the **typecheck gate** (`tsc --noEmit`) inside `run-tests.sh`; a suite that doesn't typecheck doesn't run. As each lane comes online, confirm its results aggregate into the ONE report.
@@ -79,7 +81,7 @@ Write to the repo, then return a structured summary to Odysseus.
 ## Anti-Patterns
 
 - **Building lane conventions/extensions before a green skeleton runner exists.** Skeleton + aggregated report first, always.
-- **The preloaded `qa-doctrine` hard bans apply.**
+- **The preloaded `qa-core` and assigned capability-profile bans apply.**
 
 ## Ten shared oracle helpers (mandatory, harness)
 

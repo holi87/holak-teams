@@ -1,0 +1,172 @@
+{
+  "$schema": "argus/technique-catalog@1",
+  "schemaVersion": 1,
+  "catalogId": "argus/technique-catalog/metis@1",
+  "role": "metis",
+  "catalogType": "strategy",
+  "valuePolicy": "discover-never-assume",
+  "executionRule": "each-applicable-entry-covered-or-gap",
+  "iso25010": [
+    {
+      "id": "functional-suitability",
+      "focus": ["completeness", "correctness", "appropriateness", "operations, views, and business rules"],
+      "coverageRule": "covered-or-named-residual-risk"
+    },
+    {
+      "id": "performance-efficiency",
+      "focus": ["time behaviour", "resource use", "capacity", "structural invariants when no SLA exists"],
+      "coverageRule": "covered-or-named-residual-risk"
+    },
+    {
+      "id": "compatibility",
+      "focus": ["co-existence", "interoperability", "risk-derived browser, device, and locale support", "unfunded cross-browser scope remains explicit"],
+      "coverageRule": "covered-or-named-residual-risk"
+    },
+    {
+      "id": "usability",
+      "focus": ["learnability", "operability", "user error protection", "declared accessibility standard and level"],
+      "coverageRule": "covered-or-named-residual-risk"
+    },
+    {
+      "id": "reliability",
+      "focus": ["maturity", "fault tolerance", "recoverability", "error handling, lifecycle invariants, and idempotency"],
+      "coverageRule": "covered-or-named-residual-risk"
+    },
+    {
+      "id": "security",
+      "focus": ["confidentiality", "integrity", "authenticity", "accountability", "authorization, injection, SSRF, and no-leak controls"],
+      "coverageRule": "covered-or-named-residual-risk"
+    },
+    {
+      "id": "maintainability",
+      "focus": ["application maintainability only when source access is authorized", "test-code maintainability always judged independently", "missing application-source access is explicit"],
+      "coverageRule": "covered-or-named-residual-risk"
+    },
+    {
+      "id": "portability",
+      "focus": ["adaptability", "installability", "assess only a declared installer, package, image, or deployment target", "missing target requirement is explicit"],
+      "coverageRule": "covered-or-named-residual-risk"
+    }
+  ],
+  "istqb": {
+    "process": ["analysis", "design", "implementation", "execution", "completion"],
+    "techniques": [
+      "boundary-value-analysis",
+      "equivalence-partitioning",
+      "decision-table",
+      "state-transition",
+      "pairwise-combinatorial",
+      "use-case",
+      "error-guessing-exploratory-charter"
+    ],
+    "mappingRule": "each-funded-row-names-technique-characteristic-lane-owner"
+  },
+  "journeyClasses": [
+    {
+      "id": "primary-user-cycle",
+      "requiredOutcomes": ["derive the target's complete primary-user lifecycle from recon", "assert the final business outcome through the real stack"],
+      "techniques": ["use-case", "state-transition"],
+      "tag": "@e2e",
+      "coverageRule": "funded-or-justified"
+    },
+    {
+      "id": "value-transaction",
+      "requiredOutcomes": ["cover both successful and failed value transfer when the target handles money or equivalent value", "justify absence when no value transaction exists"],
+      "techniques": ["use-case", "state-transition"],
+      "tag": "@e2e",
+      "coverageRule": "funded-or-justified"
+    },
+    {
+      "id": "cross-role-workflow",
+      "requiredOutcomes": ["drive a real workflow across at least two discovered roles", "assert role-specific visibility and the shared business outcome"],
+      "techniques": ["use-case", "state-transition"],
+      "tag": "@e2e",
+      "coverageRule": "funded-or-justified"
+    },
+    {
+      "id": "content-lifecycle",
+      "requiredOutcomes": ["drive the target's draft, publish, consume, revise, archive, or equivalent states", "assert state and visibility at each transition"],
+      "techniques": ["use-case", "state-transition"],
+      "tag": "@e2e",
+      "coverageRule": "funded-or-justified"
+    },
+    {
+      "id": "moderation-approval",
+      "requiredOutcomes": ["drive submit, review, approve or reject, and resulting visibility when present", "justify absence when the target has no approval surface"],
+      "techniques": ["use-case", "state-transition"],
+      "tag": "@e2e",
+      "coverageRule": "funded-or-justified"
+    }
+  ],
+  "boundaryRegister": {
+    "required": true,
+    "artifact": "solution/TEST-STRATEGY.md",
+    "rowIdPattern": "^BND-[0-9]{3}$",
+    "kinds": ["threshold", "range", "limit", "enum", "page-size", "rate", "cutoff", "charset-field"],
+    "requiredColumns": ["id", "source", "kind", "documentedRule", "exactBoundaryState", "technique", "laneOwner", "tag"],
+    "mandates": [
+      "record-inclusive-exclusive-or-question",
+      "construct-b-minus-b-b-plus-at-domain-step",
+      "register-every-charset-field",
+      "reconcile-covered-versus-total-per-lane"
+    ]
+  },
+  "archetypes": [
+    {
+      "id": "boundary-equality",
+      "techniques": ["boundary-value-analysis", "decision-table"],
+      "lanes": ["api", "ui", "journey"],
+      "oracle": "At exactly B, acceptance or rejection matches the sourced inclusive or exclusive rule; B-minus-step and B-plus-step prove both partitions.",
+      "coverageRule": "filled-or-justified"
+    },
+    {
+      "id": "charset-equivalence",
+      "techniques": ["equivalence-partitioning", "boundary-value-analysis", "round-trip testing"],
+      "lanes": ["api", "ui"],
+      "oracle": "ASCII, target-locale, multibyte, emoji, combining, RTL, whitespace, and case classes use the sourced character unit, round-trip without corruption, and preserve uniqueness rules.",
+      "coverageRule": "filled-or-justified"
+    },
+    {
+      "id": "api-past-widget",
+      "techniques": ["equivalence-partitioning", "negative testing"],
+      "lanes": ["api", "security"],
+      "oracle": "The server rejects UI-impossible values with the sourced field-bound 4xx and persists no state change; client controls are never the only validator.",
+      "coverageRule": "filled-or-justified"
+    },
+    {
+      "id": "concurrency-race",
+      "techniques": ["state-transition", "pairwise-combinatorial"],
+      "lanes": ["api", "performance", "resilience", "data"],
+      "oracle": "Bounded parallel interleavings preserve exactly-once effects, idempotency keys, uniqueness, non-negative capacity, and no oversell or duplicate grant.",
+      "coverageRule": "filled-or-justified"
+    },
+    {
+      "id": "soft-delete-resurrection",
+      "techniques": ["state-transition", "negative testing"],
+      "lanes": ["api", "ui", "security", "data"],
+      "oracle": "A deleted entity is absent or explicitly deleted across direct, list, search, relationship, mutation, and authentication paths, including old sessions and tokens.",
+      "coverageRule": "filled-or-justified"
+    },
+    {
+      "id": "money-cross-view-recalculation",
+      "techniques": ["decision-table", "state-transition", "invariant testing"],
+      "lanes": ["api", "ui", "data"],
+      "oracle": "Every funded view agrees at the discovered minor unit and sourced rounding rule before and after mutation; line, subtotal, discount, tax, and total reconcile exactly.",
+      "coverageRule": "filled-or-justified"
+    },
+    {
+      "id": "effect-message-content",
+      "techniques": ["decision-table", "state verification"],
+      "lanes": ["api", "ui", "security", "performance", "resilience", "data", "accessibility", "journey", "contract", "reporting"],
+      "oracle": "Every state-changing cell proves its post-condition by read-back and every error identifies the field and rule; status-only and generic-message assertions are insufficient.",
+      "coverageRule": "filled-or-justified"
+    },
+    {
+      "id": "perf-seeded-structural",
+      "techniques": ["structural-oracle", "boundary-value-analysis"],
+      "lanes": ["performance", "data", "api"],
+      "oracle": "On a controlled discovered-scale dataset, list limits clamp, totals conserve across pages, defaults stay bounded, bytes do not grow super-linearly, and latency does not scale with an ignored limit.",
+      "coverageRule": "filled-or-justified"
+    }
+  ]
+}

@@ -18,7 +18,18 @@ export const CONTRACT_KINDS = Object.freeze([
 ]);
 
 const SCHEMAS = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas');
+const POLICIES = join(dirname(fileURLToPath(import.meta.url)), '..', 'policies');
 const validators = new Map();
+
+const compatibility = loadJson(join(POLICIES, 'schema-compatibility.json'), 'schema compatibility policy');
+const compatibilitySchema = loadJson(join(SCHEMAS, 'schema-compatibility.schema.json'), 'schema compatibility schema');
+const compatibilityErrors = compileJsonSchema(compatibilitySchema)(compatibility);
+if (compatibilityErrors.length > 0) {
+  throw new Error(`invalid schema compatibility policy: ${compatibilityErrors.map(formatValidationError).join('; ')}`);
+}
+if (compatibility.current !== CONTRACT_VERSION || !compatibility.readCompatible.includes(CONTRACT_VERSION)) {
+  throw new Error(`schema compatibility policy does not permit contract version ${CONTRACT_VERSION}`);
+}
 
 export function schemaId(kind) {
   if (!CONTRACT_KINDS.includes(kind)) throw new Error(`unknown canonical contract: ${kind}`);
@@ -107,6 +118,11 @@ function canonicalValidator(kind) {
     validators.set(kind, compileJsonSchema(schema));
   }
   return validators.get(kind);
+}
+
+function loadJson(path, label) {
+  try { return JSON.parse(readFileSync(path, 'utf8')); }
+  catch (error) { throw new Error(`cannot load ${label} ${path}: ${error.message}`); }
 }
 
 function formatValidationError(error) {

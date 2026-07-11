@@ -43,10 +43,10 @@ The runner fail-fasts on a dead environment ("ENVIRONMENT NOT READY") and gates 
 | File | Owner | Answers |
 |------|-------|---------|
 | `TEST-STRATEGY.md` | Metis | WHAT we test, WHY, in what order — planning of tests, zero implementation detail |
-| `ARCHITECTURE.md` | Talos (framework) + Metis (§1–2 digest) + Kleio (§10–11) | the reviewer-facing strategy+framework doc: what-we-test digest, key risks, stack & layers, How-we-used-AI, Summary — the agreed brief names THIS file as the strategy + run-summary deliverable |
+| `ARCHITECTURE.md` | Atlas (canonical merge); contributor fragments from Metis, lane engineers, and Kleio | the reviewer-facing strategy+framework doc: what-we-test digest, key risks, stack & layers, How-we-used-AI, Summary — the agreed brief names THIS file as the strategy + run-summary deliverable |
 | `IMPLEMENTATION-REPORT.md` | Kleio (at finalisation) | what was DELIVERED vs designed — honest reconciliation + residual risk |
 | `ACCESSIBILITY-REPORT.md` | Kleio (from Antigone + Daidalos) | standard, level, tools, manual and automated checks, limitations, risk-derived browser matrix, and privacy-safe evidence |
-| `TRACEABILITY.md` | Metis seeds → Talos fills → Kleio reconciles | matrix: RISK → why this path → implemented tests → defects found |
+| `TRACEABILITY.md` | Kleio (canonical merge of immutable contributor fragments) | matrix: RISK → why this path → implemented tests → defects found |
 | `PERF-REPORT.md` | Hermes (optional) | perf probe: verdict vs a STATED budget, or light characterisation — p50/p97.5/p99, anomalies as candidate defects |
 
 Plus `solution/BUG-LEDGER.md` (Minos — in `solution/` so `bugs/` stays strictly one-file-per-bug): ranked defect ledger + **Severity × Priority matrix** + detection-source split (automated suite vs agent exploratory/manual — each bug carries a `Detected by` field).

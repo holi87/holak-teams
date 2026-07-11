@@ -1,0 +1,89 @@
+[
+  {
+    "id": "dependency-cycle",
+    "operation": "set-role-field",
+    "slug": "kalchas",
+    "field": "dependsOn",
+    "value": ["atlas"],
+    "expects": "dependency cycle"
+  },
+  {
+    "id": "unknown-dependency",
+    "operation": "set-role-field",
+    "slug": "kalchas",
+    "field": "dependsOn",
+    "value": ["unknown-role"],
+    "expects": "unknown dependency unknown-role"
+  },
+  {
+    "id": "incorrect-gate",
+    "operation": "set-role-field",
+    "slug": "charon",
+    "field": "gates",
+    "value": [],
+    "expects": "gates differ from capability matrix"
+  },
+  {
+    "id": "unknown-gate",
+    "operation": "set-role-field",
+    "slug": "charon",
+    "field": "gates",
+    "value": ["invented-capability"],
+    "expects": "unknown capability gate invented-capability"
+  },
+  {
+    "id": "incorrect-modes",
+    "operation": "set-role-field",
+    "slug": "talos",
+    "field": "modes",
+    "value": ["A", "C"],
+    "expects": "modes differ from capability matrix"
+  },
+  {
+    "id": "incorrect-mode-count",
+    "operation": "set-plan-field",
+    "field": "modeCounts",
+    "value": { "A": 27, "B": 15, "C": 14, "D": 14 },
+    "expects": "modeCounts.B"
+  },
+  {
+    "id": "duplicate-role",
+    "operation": "set-role-field",
+    "slug": "aegis",
+    "field": "slug",
+    "value": "kalchas",
+    "expects": "duplicate role slug kalchas"
+  },
+  {
+    "id": "unknown-roster-role",
+    "operation": "set-role-field",
+    "slug": "aegis",
+    "field": "slug",
+    "value": "invented-role",
+    "expects": "role roster: unknown invented-role"
+  },
+  {
+    "id": "future-wave-dependency",
+    "operation": "set-role-field",
+    "slug": "kalchas",
+    "field": "dependsOn",
+    "value": ["kleio"],
+    "expects": "assigned to a future wave"
+  },
+  {
+    "id": "controller-dispatch",
+    "operation": "set-role-field",
+    "slug": "odysseus",
+    "field": "dispatch",
+    "value": true,
+    "expects": "must be the non-dispatched controller"
+  },
+  {
+    "id": "schema-corruption",
+    "operation": "set-role-field",
+    "slug": "aegis",
+    "field": "undeclaredField",
+    "value": true,
+    "expects": "additional property undeclaredField"
+  }
+]

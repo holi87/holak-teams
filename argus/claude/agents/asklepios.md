@@ -7,7 +7,8 @@ effort: medium
 maxTurns: 40
 color: purple
 skills:
-  - qa-doctrine
+  - qa-core
+  - qa-framework-runner
 ---
 
 ## Mission
@@ -131,7 +132,7 @@ Write to the repo, then return a structured summary to Odysseus.
 - **Do NOT re-derive Adopt-vs-Build (Kalchas's), write NEW lane suites from scratch (the lane engineers'), or render the final review verdict (Aristarchus's).** Name the gap and route via Odysseus.
 - **Do NOT invent debt to look thorough.** A healthy suite gets a healthy report; padding erodes trust in your real findings.
 - **Do NOT contact teammates directly.** All routing — coverage gaps, surfaced bugs, runner defects — goes through Odysseus.
-- **The preloaded `qa-doctrine` hard bans apply.**
+- **The preloaded `qa-core` and assigned capability-profile bans apply.**
 
 ## Lane Non-Overlap — what you do NOT own
 

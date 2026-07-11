@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const AGENTS_DIR = join(ROOT, 'argus', 'claude', 'agents');
-const DOCTRINE = readFileSync(join(ROOT, 'argus', 'claude', 'skills', 'qa-doctrine', 'SKILL.md'), 'utf8');
+const SKILLS_DIR = join(ROOT, 'argus', 'claude', 'skills');
 const MATRIX_PATH = join(ROOT, 'argus', 'capabilities', 'capability-matrix.json');
 const LEGACY_PROMPT_PATTERNS = [
   { pattern: /\bGlob\s*\/\s*LS\b/, label: 'Glob/LS' },
@@ -30,6 +30,9 @@ assert(Array.isArray(matrix.agents) && matrix.agents.length === 27, 'capability 
 
 const supported = new Set(matrix.supportedBuiltinTools);
 const capabilities = new Set(Object.keys(matrix.capabilities));
+const toolProfiles = new Set(Object.keys(matrix.toolProfiles));
+const doctrineProfiles = new Set(Object.keys(matrix.doctrineProfiles));
+const techniqueCatalogs = new Set(Object.keys(matrix.techniqueCatalogs));
 const matrixBySlug = new Map();
 for (const agent of matrix.agents) {
   assert(!matrixBySlug.has(agent.slug), `duplicate capability matrix agent: ${agent.slug}`);
@@ -37,6 +40,10 @@ for (const agent of matrix.agents) {
   for (const capability of [...(agent.requiredCapabilities ?? []), ...(agent.optionalCapabilities ?? [])]) {
     assert(capabilities.has(capability), `${agent.slug} references unknown capability: ${capability}`);
   }
+  for (const profile of agent.toolProfiles) assert(toolProfiles.has(profile), `${agent.slug} references unknown tool profile: ${profile}`);
+  for (const profile of agent.doctrineProfiles) assert(doctrineProfiles.has(profile), `${agent.slug} references unknown doctrine profile: ${profile}`);
+  for (const catalog of agent.techniqueCatalogs) assert(techniqueCatalogs.has(catalog), `${agent.slug} references unknown technique catalog: ${catalog}`);
+  assert(agent.doctrineProfiles[0] === 'qa-core', `${agent.slug} must preload qa-core first`);
   for (const tool of agent.requiredTools) {
     assert(supported.has(tool), `${agent.slug} requires unsupported built-in tool: ${tool}`);
   }
@@ -70,7 +77,6 @@ for (const name of agentFiles) {
   const slug = name.slice(0, -3);
   const path = join(AGENTS_DIR, name);
   const text = readFileSync(path, 'utf8');
-  const effectivePrompt = `${text}\n${DOCTRINE}`;
   const frontmatter = parseFrontmatter(text, name);
   const tools = parseTools(frontmatter.tools, name);
   const toolSet = new Set(tools);
@@ -83,14 +89,24 @@ for (const name of agentFiles) {
   }
 
   const contract = matrixBySlug.get(slug);
+  const skills = parseSkills(text, name);
+  assert(JSON.stringify(skills) === JSON.stringify(contract.doctrineProfiles), `${name} preloaded skills differ from capability matrix`);
+  const effectivePrompt = `${text}\n${skills.map((skill) => readFileSync(join(SKILLS_DIR, skill, 'SKILL.md'), 'utf8')).join('\n')}`;
+  const expectedTools = [
+    ...contract.requiredTools,
+    ...contract.toolProfiles.flatMap((profile) => matrix.toolProfiles[profile].tools),
+  ];
+  assert(JSON.stringify(tools) === JSON.stringify(expectedTools), `${name} tool allowlist differs from capability profiles`);
   for (const required of contract.requiredTools) {
     assert(toolSet.has(required), `${name} capability matrix requires missing frontmatter tool: ${required}`);
   }
 
   const hasContext7 = tools.some((tool) => tool.startsWith('mcp__plugin_context7_context7__'));
   const hasPlaywright = tools.some((tool) => tool.startsWith('mcp__plugin_playwright_playwright__'));
-  assert(!hasContext7 || (contract.optionalCapabilities ?? []).includes('context7'), `${name} exposes Context7 without a context7 fallback contract`);
-  assert(!hasPlaywright || (contract.optionalCapabilities ?? []).includes('playwright-mcp'), `${name} exposes Playwright MCP without a playwright-mcp fallback contract`);
+  assert(hasContext7 === contract.toolProfiles.includes('official-docs'), `${name} Context7 tools differ from official-docs profile`);
+  assert(hasPlaywright === contract.toolProfiles.includes('public-browser-recon'), `${name} Playwright tools differ from public-browser-recon profile`);
+  if (hasContext7) assert((contract.optionalCapabilities ?? []).includes('context7'), `${name} exposes Context7 without a fallback contract`);
+  if (hasPlaywright) assert((contract.optionalCapabilities ?? []).includes('playwright-mcp'), `${name} exposes Playwright without a fallback contract`);
   assert(effectivePrompt.includes('argus-assets redact'), `${name} does not enforce the shared evidence redactor`);
   assert(effectivePrompt.includes('${CLAUDE_PLUGIN_ROOT}/references/AUTHORIZATION-POLICY.md'), `${name} does not reference the packaged authorization policy`);
   assert(effectivePrompt.includes('argus-assets engagement allocate'), `${name} does not allocate/resume its engagement lease`);
@@ -143,6 +159,14 @@ function parseTools(value, name) {
   const tools = value.split(',').map((tool) => tool.trim()).filter(Boolean);
   assert(tools.length > 0, `${name} has an empty tools field`);
   return tools;
+}
+
+function parseSkills(text, name) {
+  const frontmatter = text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+  const block = frontmatter.match(/^skills:\s*\n((?:\s+-\s+[^\n]+\n?)*)/m)?.[1] ?? '';
+  const skills = [...block.matchAll(/^\s+-\s+([^\s#]+)\s*$/gm)].map((match) => match[1]);
+  assert(skills.length > 0, `${name} has no preloaded skills`);
+  return skills;
 }
 
 function readJson(path) {

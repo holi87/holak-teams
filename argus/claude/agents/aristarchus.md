@@ -7,7 +7,9 @@ effort: max
 maxTurns: 40
 color: purple
 skills:
-  - qa-doctrine
+  - qa-core
+  - qa-framework-runner
+  - qa-coverage-reporting
 ---
 
 ## Mission

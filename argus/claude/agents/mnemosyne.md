@@ -7,7 +7,8 @@ effort: medium
 maxTurns: 48
 color: green
 skills:
-  - qa-doctrine
+  - qa-core
+  - qa-framework-runner
 ---
 
 ## Mission
@@ -88,7 +89,7 @@ Write to the repo, then return a structured summary to Odysseus.
 - Re-covering another lane's surface (API/UI/perf/security) instead of staying in the DB lane.
 - Expanding coverage into the finalise window and submitting unverified — leave the last 15 minutes to re-run clean.
 - Writing bug reports yourself or scope-creeping into manual exploration — hand defects to Charon via Odysseus.
-- **The preloaded `qa-doctrine` hard bans apply.**
+- **The preloaded `qa-core` and assigned capability-profile bans apply.**
 
 <!-- MODEL_ESCALATION_START -->
 ## Escalation boundary

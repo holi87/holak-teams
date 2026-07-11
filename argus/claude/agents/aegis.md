@@ -7,7 +7,8 @@ effort: medium
 maxTurns: 48
 color: green
 skills:
-  - qa-doctrine
+  - qa-core
+  - qa-framework-runner
 ---
 
 ## Mission

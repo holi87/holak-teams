@@ -5,487 +5,143 @@
     "modelPolicy": "argus/model-policy.json",
     "ownership": "argus/raci.json",
     "capabilities": "argus/capabilities/capability-matrix.json",
-    "doctrine": "argus/shared-skills/qa-doctrine/SKILL.md",
     "adapters": "argus/runtime-adapters.json"
   },
   "roles": [
     {
       "slug": "aegis",
       "source": "aegis.md",
-      "color": "green",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "Edit",
-        "WebSearch",
-        "WebFetch",
-        "mcp__plugin_context7_context7__resolve-library-id",
-        "mcp__plugin_context7_context7__query-docs"
-      ]
+      "color": "green"
     },
     {
       "slug": "antigone",
       "source": "antigone.md",
-      "color": "red",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "WebFetch",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_navigate_back",
-        "mcp__plugin_playwright_playwright__browser_snapshot",
-        "mcp__plugin_playwright_playwright__browser_click",
-        "mcp__plugin_playwright_playwright__browser_type",
-        "mcp__plugin_playwright_playwright__browser_fill_form",
-        "mcp__plugin_playwright_playwright__browser_press_key",
-        "mcp__plugin_playwright_playwright__browser_wait_for",
-        "mcp__plugin_playwright_playwright__browser_take_screenshot",
-        "mcp__plugin_playwright_playwright__browser_console_messages",
-        "mcp__plugin_playwright_playwright__browser_network_requests",
-        "mcp__plugin_playwright_playwright__browser_resize",
-        "mcp__plugin_playwright_playwright__browser_evaluate",
-        "mcp__plugin_playwright_playwright__browser_hover",
-        "mcp__plugin_playwright_playwright__browser_select_option",
-        "mcp__plugin_playwright_playwright__browser_file_upload",
-        "mcp__plugin_playwright_playwright__browser_handle_dialog"
-      ]
+      "color": "red"
     },
     {
       "slug": "ariadne",
       "source": "ariadne.md",
-      "color": "red",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "WebFetch",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_navigate_back",
-        "mcp__plugin_playwright_playwright__browser_snapshot",
-        "mcp__plugin_playwright_playwright__browser_click",
-        "mcp__plugin_playwright_playwright__browser_type",
-        "mcp__plugin_playwright_playwright__browser_fill_form",
-        "mcp__plugin_playwright_playwright__browser_press_key",
-        "mcp__plugin_playwright_playwright__browser_wait_for",
-        "mcp__plugin_playwright_playwright__browser_take_screenshot",
-        "mcp__plugin_playwright_playwright__browser_console_messages",
-        "mcp__plugin_playwright_playwright__browser_network_requests",
-        "mcp__plugin_playwright_playwright__browser_evaluate",
-        "mcp__plugin_playwright_playwright__browser_select_option",
-        "mcp__plugin_playwright_playwright__browser_file_upload",
-        "mcp__plugin_playwright_playwright__browser_handle_dialog"
-      ]
+      "color": "red"
     },
     {
       "slug": "aristarchus",
       "source": "aristarchus.md",
-      "color": "purple",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash"
-      ]
+      "color": "purple"
     },
     {
       "slug": "asklepios",
       "source": "asklepios.md",
-      "color": "purple",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "Edit",
-        "WebSearch",
-        "WebFetch",
-        "mcp__plugin_context7_context7__resolve-library-id",
-        "mcp__plugin_context7_context7__query-docs"
-      ]
+      "color": "purple"
     },
     {
       "slug": "atalanta",
       "source": "atalanta.md",
-      "color": "red",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "WebFetch",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_snapshot",
-        "mcp__plugin_playwright_playwright__browser_network_requests"
-      ]
+      "color": "red"
     },
     {
       "slug": "atlas",
       "source": "atlas.md",
-      "color": "purple",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "Edit",
-        "WebSearch",
-        "WebFetch",
-        "mcp__plugin_context7_context7__resolve-library-id",
-        "mcp__plugin_context7_context7__query-docs"
-      ]
+      "color": "purple"
     },
     {
       "slug": "charon",
       "source": "charon.md",
-      "color": "red",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "WebFetch",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_snapshot",
-        "mcp__plugin_playwright_playwright__browser_take_screenshot",
-        "mcp__plugin_playwright_playwright__browser_console_messages",
-        "mcp__plugin_playwright_playwright__browser_network_requests"
-      ]
+      "color": "red"
     },
     {
       "slug": "daidalos",
       "source": "daidalos.md",
-      "color": "green",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "Edit",
-        "WebSearch",
-        "WebFetch",
-        "mcp__plugin_context7_context7__resolve-library-id",
-        "mcp__plugin_context7_context7__query-docs",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_snapshot",
-        "mcp__plugin_playwright_playwright__browser_click",
-        "mcp__plugin_playwright_playwright__browser_evaluate",
-        "mcp__plugin_playwright_playwright__browser_take_screenshot"
-      ]
+      "color": "green"
     },
     {
       "slug": "hermes",
       "source": "hermes.md",
-      "color": "red",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_evaluate",
-        "mcp__plugin_playwright_playwright__browser_network_requests"
-      ]
+      "color": "red"
     },
     {
       "slug": "kalchas",
       "source": "kalchas.md",
-      "color": "cyan",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "WebFetch",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_snapshot",
-        "mcp__plugin_playwright_playwright__browser_take_screenshot",
-        "mcp__plugin_playwright_playwright__browser_click",
-        "mcp__plugin_playwright_playwright__browser_type",
-        "mcp__plugin_playwright_playwright__browser_console_messages"
-      ]
+      "color": "cyan"
     },
     {
       "slug": "kleio",
       "source": "kleio.md",
-      "color": "cyan",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "Edit"
-      ]
+      "color": "cyan"
     },
     {
       "slug": "lynceus",
       "source": "lynceus.md",
-      "color": "red",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_snapshot",
-        "mcp__plugin_playwright_playwright__browser_wait_for",
-        "mcp__plugin_playwright_playwright__browser_take_screenshot",
-        "mcp__plugin_playwright_playwright__browser_console_messages",
-        "mcp__plugin_playwright_playwright__browser_network_requests",
-        "mcp__plugin_playwright_playwright__browser_resize",
-        "mcp__plugin_playwright_playwright__browser_evaluate"
-      ]
+      "color": "red"
     },
     {
       "slug": "metis",
       "source": "metis.md",
-      "color": "cyan",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "Edit"
-      ]
+      "color": "cyan"
     },
     {
       "slug": "minos",
       "source": "minos.md",
-      "color": "cyan",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "Edit"
-      ]
+      "color": "cyan"
     },
     {
       "slug": "mnemosyne",
       "source": "mnemosyne.md",
-      "color": "green",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "Edit",
-        "WebSearch",
-        "WebFetch",
-        "mcp__plugin_context7_context7__resolve-library-id",
-        "mcp__plugin_context7_context7__query-docs"
-      ]
+      "color": "green"
     },
     {
       "slug": "nike",
       "source": "nike.md",
-      "color": "green",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "Edit",
-        "WebSearch",
-        "WebFetch",
-        "mcp__plugin_context7_context7__resolve-library-id",
-        "mcp__plugin_context7_context7__query-docs"
-      ]
+      "color": "green"
     },
     {
       "slug": "odysseus",
       "source": "odysseus.md",
-      "color": "cyan",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "TaskCreate",
-        "TaskGet",
-        "TaskList",
-        "TaskUpdate",
-        "Agent"
-      ]
+      "color": "cyan"
     },
     {
       "slug": "orion",
       "source": "orion.md",
-      "color": "red",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_navigate_back",
-        "mcp__plugin_playwright_playwright__browser_snapshot",
-        "mcp__plugin_playwright_playwright__browser_take_screenshot",
-        "mcp__plugin_playwright_playwright__browser_console_messages",
-        "mcp__plugin_playwright_playwright__browser_network_requests",
-        "mcp__plugin_playwright_playwright__browser_wait_for",
-        "mcp__plugin_playwright_playwright__browser_resize",
-        "mcp__plugin_playwright_playwright__browser_evaluate"
-      ]
+      "color": "red"
     },
     {
       "slug": "penelope",
       "source": "penelope.md",
-      "color": "yellow",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "WebFetch",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_navigate_back",
-        "mcp__plugin_playwright_playwright__browser_snapshot",
-        "mcp__plugin_playwright_playwright__browser_click",
-        "mcp__plugin_playwright_playwright__browser_type",
-        "mcp__plugin_playwright_playwright__browser_fill_form",
-        "mcp__plugin_playwright_playwright__browser_press_key",
-        "mcp__plugin_playwright_playwright__browser_wait_for",
-        "mcp__plugin_playwright_playwright__browser_take_screenshot",
-        "mcp__plugin_playwright_playwright__browser_console_messages",
-        "mcp__plugin_playwright_playwright__browser_network_requests",
-        "mcp__plugin_playwright_playwright__browser_resize",
-        "mcp__plugin_playwright_playwright__browser_evaluate",
-        "mcp__plugin_playwright_playwright__browser_hover",
-        "mcp__plugin_playwright_playwright__browser_select_option",
-        "mcp__plugin_playwright_playwright__browser_file_upload",
-        "mcp__plugin_playwright_playwright__browser_handle_dialog"
-      ]
+      "color": "yellow"
     },
     {
       "slug": "perseus",
       "source": "perseus.md",
-      "color": "red",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_snapshot",
-        "mcp__plugin_playwright_playwright__browser_take_screenshot",
-        "mcp__plugin_playwright_playwright__browser_console_messages",
-        "mcp__plugin_playwright_playwright__browser_network_requests"
-      ]
+      "color": "red"
     },
     {
       "slug": "pistis",
       "source": "pistis.md",
-      "color": "yellow",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "WebFetch"
-      ]
+      "color": "yellow"
     },
     {
       "slug": "proteus",
       "source": "proteus.md",
-      "color": "red",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "WebFetch",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_snapshot",
-        "mcp__plugin_playwright_playwright__browser_click",
-        "mcp__plugin_playwright_playwright__browser_type",
-        "mcp__plugin_playwright_playwright__browser_wait_for",
-        "mcp__plugin_playwright_playwright__browser_take_screenshot",
-        "mcp__plugin_playwright_playwright__browser_console_messages",
-        "mcp__plugin_playwright_playwright__browser_network_requests",
-        "mcp__plugin_playwright_playwright__browser_evaluate"
-      ]
+      "color": "red"
     },
     {
       "slug": "talos",
       "source": "talos.md",
-      "color": "green",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "Edit",
-        "WebSearch",
-        "WebFetch",
-        "mcp__plugin_context7_context7__resolve-library-id",
-        "mcp__plugin_context7_context7__query-docs"
-      ]
+      "color": "green"
     },
     {
       "slug": "theseus",
       "source": "theseus.md",
-      "color": "yellow",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "WebFetch"
-      ]
+      "color": "yellow"
     },
     {
       "slug": "tiresias",
       "source": "tiresias.md",
-      "color": "purple",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash"
-      ]
+      "color": "purple"
     },
     {
       "slug": "tyche",
       "source": "tyche.md",
-      "color": "red",
-      "claudeTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash",
-        "Write",
-        "mcp__plugin_playwright_playwright__browser_navigate",
-        "mcp__plugin_playwright_playwright__browser_network_requests"
-      ]
+      "color": "red"
     }
   ]
 }

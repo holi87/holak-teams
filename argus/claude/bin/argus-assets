@@ -7,7 +7,6 @@ import {
   appendFileSync,
   chmodSync,
   copyFileSync,
-  cpSync,
   constants,
   existsSync,
   linkSync,
@@ -64,6 +63,7 @@ import {
   validateModelDecisionBinding,
   validateModelPolicy,
 } from '../lib/model-policy.mjs';
+import { projectOrchestrationPlan, validateOrchestrationPlan } from '../lib/orchestration-plan.mjs';
 import {
   detectTemplateCapabilities,
   materializeTemplateLayout,
@@ -80,10 +80,13 @@ const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
 const CAPABILITY_MATRIX_PATH = join(ROOT, 'capabilities', 'capability-matrix.json');
 const RACI_PATH = join(ROOT, 'references', 'raci.json');
 const MODEL_POLICY_PATH = join(ROOT, 'capabilities', 'model-policy.json');
+const MODEL_BENCHMARK_PATH = join(ROOT, 'capabilities', 'model-policy.benchmark.json');
+const MODEL_BENCHMARK_SCHEMA_PATH = join(ROOT, 'schemas', 'model-policy-benchmark.schema.json');
 const RUNTIME_ADAPTERS_PATH = join(ROOT, 'capabilities', 'runtime-adapters.json');
 const RUNTIME_ADAPTERS_SCHEMA_PATH = join(ROOT, 'schemas', 'runtime-adapters.schema.json');
 const MODEL_DECISION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-decision.schema.json');
 const MODEL_TELEMETRY_SCHEMA_PATH = join(ROOT, 'schemas', 'model-telemetry-event.schema.json');
+const ORCHESTRATION_PLAN_PATH = join(ROOT, 'capabilities', 'orchestration-plan.json');
 const TEMPLATE_CONTRACT_PATH = join(ROOT, 'capabilities', 'template-contract.json');
 const AUTHORIZATION_TEMPLATE_PATH = join(ROOT, 'policies', 'authorization.template.json');
 const ENGAGEMENT_TEMPLATE_PATH = join(ROOT, 'policies', 'engagement.template.json');
@@ -92,14 +95,22 @@ const HOOKS_PATH = join(ROOT, 'hooks', 'hooks.json');
 const manifest = readJson(MANIFEST_PATH);
 const matrix = readJson(CAPABILITY_MATRIX_PATH);
 const modelPolicy = readJson(MODEL_POLICY_PATH);
+const raciContract = readJson(RACI_PATH);
 const modelPolicyErrors = validateModelPolicy(modelPolicy, matrix.agents.map((agent) => agent.slug));
 if (modelPolicyErrors.length) fail(`model policy invalid: ${modelPolicyErrors.join('; ')}`);
+const modelBenchmark = readJson(MODEL_BENCHMARK_PATH);
+const validateModelBenchmark = compileJsonSchema(readJson(MODEL_BENCHMARK_SCHEMA_PATH));
+assertSchemaDocument(validateModelBenchmark, modelBenchmark, 'model policy benchmark');
+if (modelBenchmark.policyId !== modelPolicy.policyId) fail('model policy benchmark is bound to a different policy');
 const runtimeAdapters = readJson(RUNTIME_ADAPTERS_PATH);
 const validateRuntimeAdapters = compileJsonSchema(readJson(RUNTIME_ADAPTERS_SCHEMA_PATH));
 const runtimeAdapterErrors = validateRuntimeAdapters(runtimeAdapters);
 if (runtimeAdapterErrors.length) fail(`runtime adapter snapshot invalid: ${formatSchemaErrors(runtimeAdapterErrors)}`);
 const validateModelDecisionSchema = compileJsonSchema(readJson(MODEL_DECISION_SCHEMA_PATH));
 const validateModelTelemetrySchema = compileJsonSchema(readJson(MODEL_TELEMETRY_SCHEMA_PATH));
+const orchestrationPlan = readJson(ORCHESTRATION_PLAN_PATH);
+const orchestrationPlanErrors = validateOrchestrationPlan(orchestrationPlan, matrix, raciContract);
+if (orchestrationPlanErrors.length) fail(`orchestration plan invalid: ${orchestrationPlanErrors.join('; ')}`);
 const templateContract = readJson(TEMPLATE_CONTRACT_PATH);
 const templateContractErrors = validateTemplateContract(templateContract);
 if (templateContractErrors.length) fail(`template contract invalid: ${templateContractErrors.join('; ')}`);
@@ -146,6 +157,9 @@ switch (command) {
   case 'model':
     process.exitCode = modelCommand(args);
     break;
+  case 'orchestration':
+    process.exitCode = orchestrationCommand(args);
+    break;
   case 'template':
     process.exitCode = templateCommand(args);
     break;
@@ -181,8 +195,10 @@ Usage:
   argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]
   argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
   argus-assets model list
+  argus-assets model benchmark
   argus-assets model route --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n>
   argus-assets model telemetry --manifest <engagement.json> --decision <model-decision.json> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false> [options]
+  argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--output <json|->]
   argus-assets template <detect|select|scaffold> [options]
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
@@ -304,6 +320,11 @@ function modelCommand(args) {
     }
     return 0;
   }
+  if (operation === 'benchmark') {
+    if (rest.length > 0) fail('usage: argus-assets model benchmark');
+    console.log(JSON.stringify(modelBenchmark, null, 2));
+    return 0;
+  }
   if (operation === 'route') {
     const options = parseNamedOptions(rest, new Set(['--manifest', '--agent', '--runtime', '--signal', '--dispatch-id', '--attempt']));
     requireOptions(options, ['manifest', 'agent', 'runtime', 'signal', 'dispatchId', 'attempt'], 'model route');
@@ -374,6 +395,34 @@ function modelCommand(args) {
     return 0;
   }
   fail('usage: argus-assets model <list|route|telemetry> [options]');
+}
+
+function orchestrationCommand(args) {
+  const [operation, ...rest] = args;
+  if (operation !== 'plan') {
+    fail('usage: argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--output <json|->]');
+  }
+  const options = parseNamedOptions(rest, new Set(['--mode', '--dispatchable', '--output']));
+  requireOptions(options, ['mode'], 'orchestration plan');
+  const dispatchable = options.dispatchable === undefined
+    ? undefined
+    : options.dispatchable.split(',').map((slug) => slug.trim()).filter(Boolean);
+  if (dispatchable !== undefined && dispatchable.length !== new Set(dispatchable).size) {
+    fail('orchestration plan --dispatchable contains duplicate slugs');
+  }
+  const projection = projectOrchestrationPlan(orchestrationPlan, matrix, options.mode, dispatchable, raciContract);
+  const serialized = `${JSON.stringify(projection, null, 2)}\n`;
+  if (options.output === undefined || options.output === '-') {
+    process.stdout.write(serialized);
+  } else {
+    const output = resolve(options.output);
+    if (existsSync(output)) fail(`refusing to overwrite orchestration plan: ${output}`);
+    mkdirSync(dirname(output), { recursive: true });
+    writeFileSync(output, serialized, { mode: 0o600, flag: 'wx' });
+    chmodSync(output, 0o600);
+    console.log(`WROTE  ${output}`);
+  }
+  return 0;
 }
 
 function loadModelEngagement(explicitPath, requiredAgent) {
@@ -1501,19 +1550,131 @@ function nonEmptyString(value) {
 }
 
 function copyTemplate(runtime, destination) {
-  const ids = {
-    typescript: 'typescript-template',
-    java: 'java-template',
-    python: 'python-template',
-  };
-  if (!ids[runtime]) fail('copy-template runtime must be typescript, java, or python');
+  const composition = manifest.templateCompositions?.[runtime];
+  if (!composition) fail('copy-template runtime must be typescript, java, or python');
   if (!destination) fail('copy-template requires an empty destination path');
-  const source = assetPath(requireAsset(ids[runtime]));
+  const layers = [requireAsset(composition.commonAsset), requireAsset(composition.runtimeAsset)];
+  const entries = validateTemplateLayers(runtime, layers);
+  for (const asset of layers) assertPackagedAsset(asset, `template layer ${asset.id}`);
   const target = resolve(destination);
   assertEmptyDestination(target);
   mkdirSync(target, { recursive: true });
-  for (const name of readdirSync(source)) cpSync(join(source, name), join(target, name), { recursive: true, force: false, errorOnExist: true });
+  if (lstatSync(target).isSymbolicLink() || !lstatSync(target).isDirectory()) {
+    fail(`template destination must be a real directory: ${target}`);
+  }
+  for (const entry of entries.filter((item) => item.type === 'directory')) {
+    const output = resolve(target, entry.relativePath);
+    if (!isWithin(target, output)) fail(`template output escapes destination: ${entry.relativePath}`);
+    if (!existsSync(output)) mkdirSync(output);
+    if (lstatSync(output).isSymbolicLink() || !lstatSync(output).isDirectory()) {
+      fail(`template output directory is unsafe: ${entry.relativePath}`);
+    }
+    chmodSync(output, entry.mode);
+  }
+  for (const entry of entries.filter((item) => item.type === 'file')) {
+    const output = resolve(target, entry.relativePath);
+    if (!isWithin(target, output)) fail(`template output escapes destination: ${entry.relativePath}`);
+    if (existsSync(output)) fail(`refusing to overwrite composed template file: ${entry.relativePath}`);
+    const parent = dirname(output);
+    if (lstatSync(parent).isSymbolicLink() || !lstatSync(parent).isDirectory()) {
+      fail(`template output parent is unsafe: ${entry.relativePath}`);
+    }
+    copyFileSync(entry.source, output, constants.COPYFILE_EXCL);
+    chmodSync(output, entry.mode);
+  }
   console.log(`COPIED  ${runtime} template -> ${target}`);
+}
+
+function validateTemplateLayers(runtime, layers) {
+  if (layers.length !== 2 || layers[0].id !== 'common-template' || layers[1].id !== `${runtime}-template`) {
+    fail(`${runtime} template composition is invalid`);
+  }
+  const declarations = [];
+  for (const asset of layers) declarations.push(...scanTemplateLayer(asset));
+  const exact = new Map();
+  const folded = new Map();
+  for (const entry of declarations) {
+    const priorCase = folded.get(entry.relativePath.toLocaleLowerCase('en-US'));
+    if (priorCase && priorCase !== entry.relativePath) {
+      fail(`template composition has a case-insensitive collision: ${priorCase} vs ${entry.relativePath}`);
+    }
+    folded.set(entry.relativePath.toLocaleLowerCase('en-US'), entry.relativePath);
+    const prior = exact.get(entry.relativePath);
+    if (prior) {
+      if (prior.type !== 'directory' || entry.type !== 'directory') {
+        fail(`template composition file collision: ${entry.relativePath}`);
+      }
+      if (prior.mode !== entry.mode) {
+        fail(`template composition directory mode collision: ${entry.relativePath}`);
+      }
+      continue;
+    }
+    exact.set(entry.relativePath, entry);
+  }
+  for (const entry of exact.values()) {
+    const parts = entry.relativePath.split('/');
+    for (let index = 1; index < parts.length; index += 1) {
+      const ancestor = exact.get(parts.slice(0, index).join('/'));
+      if (ancestor?.type === 'file') {
+        fail(`template composition file/ancestor collision: ${ancestor.relativePath} vs ${entry.relativePath}`);
+      }
+    }
+  }
+  return [...exact.values()].sort((left, right) => {
+    if (left.type !== right.type) return left.type === 'directory' ? -1 : 1;
+    const depth = left.relativePath.split('/').length - right.relativePath.split('/').length;
+    return depth || left.relativePath.localeCompare(right.relativePath);
+  });
+}
+
+function scanTemplateLayer(asset) {
+  const root = assetPath(asset);
+  if (!existsSync(root) || lstatSync(root).isSymbolicLink() || !lstatSync(root).isDirectory()) {
+    fail(`template layer ${asset.id} must be a real directory`);
+  }
+  const entries = [];
+  const visit = (directory, prefix = '') => {
+    for (const name of readdirSync(directory).sort()) {
+      const source = join(directory, name);
+      const relativePath = prefix ? `${prefix}/${name}` : name;
+      validateTemplateRelativePath(relativePath);
+      const info = lstatSync(source);
+      if (info.isSymbolicLink()) fail(`template layer ${asset.id} contains a symbolic link: ${relativePath}`);
+      if (info.isDirectory()) {
+        entries.push({ type: 'directory', relativePath, source, mode: info.mode & 0o777 });
+        visit(source, relativePath);
+      } else if (info.isFile()) {
+        entries.push({ type: 'file', relativePath, source, mode: info.mode & 0o777 });
+      } else {
+        fail(`template layer ${asset.id} contains an unsupported entry: ${relativePath}`);
+      }
+    }
+  };
+  visit(root);
+  return entries;
+}
+
+function validateTemplateRelativePath(relativePath) {
+  if (!relativePath || relativePath.includes('\\') || relativePath.includes('\0')) {
+    fail(`template composition contains an unsafe path: ${relativePath || '(empty)'}`);
+  }
+  const parts = relativePath.split('/');
+  if (parts.some((part) =>
+    !part || part === '.' || part === '..' ||
+    /[\u0000-\u001f\u007f<>:"|?*]/.test(part) ||
+    /[. ]$/.test(part) ||
+    /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part)
+  )) {
+    fail(`template composition contains an unsafe path: ${relativePath}`);
+  }
+}
+
+function assertPackagedAsset(asset, label) {
+  const path = assetPath(asset);
+  const stats = treeStats(path);
+  if (stats.files !== asset.files || stats.bytes !== asset.bytes || stats.sha256 !== asset.sha256) {
+    fail(`${label} differs from the packaged asset manifest`);
+  }
 }
 
 function copyBrowserDriver(destination) {
@@ -1554,7 +1715,8 @@ function assetPath(asset, child = '') {
 
 function assertEmptyDestination(path) {
   if (!existsSync(path)) return;
-  if (!statSync(path).isDirectory()) fail(`destination is not a directory: ${path}`);
+  if (lstatSync(path).isSymbolicLink()) fail(`destination cannot be a symbolic link: ${path}`);
+  if (!lstatSync(path).isDirectory()) fail(`destination is not a directory: ${path}`);
   if (readdirSync(path).length > 0) fail(`refusing to copy into non-empty destination: ${path}`);
 }
 
@@ -1563,11 +1725,23 @@ function treeStats(path) {
   const files = isFile ? [path] : walkFiles(path);
   const hash = createHash('sha256');
   let bytes = 0;
+  if (!isFile) {
+    for (const directory of walkDirectories(path).sort()) {
+      hash.update('directory\0');
+      hash.update(relative(path, directory).split(sep).join('/'));
+      hash.update('\0');
+      hash.update((lstatSync(directory).mode & 0o777).toString(8));
+      hash.update('\0');
+    }
+  }
   for (const file of files.sort()) {
     const rel = isFile ? file.split(sep).at(-1) : relative(path, file).split(sep).join('/');
     const content = readFileSync(file);
     bytes += content.length;
+    hash.update('file\0');
     hash.update(rel);
+    hash.update('\0');
+    hash.update((statSync(file).mode & 0o777).toString(8));
     hash.update('\0');
     hash.update(content);
   }
@@ -1578,10 +1752,23 @@ function walkFiles(dir) {
   const out = [];
   for (const name of readdirSync(dir).sort()) {
     const path = join(dir, name);
-    const stat = statSync(path);
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink()) fail(`unsupported symbolic link in plugin: ${path}`);
     if (stat.isDirectory()) out.push(...walkFiles(path));
     else if (stat.isFile()) out.push(path);
     else fail(`unsupported filesystem entry in plugin: ${path}`);
+  }
+  return out;
+}
+
+function walkDirectories(dir) {
+  const out = [];
+  for (const name of readdirSync(dir).sort()) {
+    const path = join(dir, name);
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink()) fail(`unsupported symbolic link in plugin: ${path}`);
+    if (stat.isDirectory()) out.push(path, ...walkDirectories(path));
+    else if (!stat.isFile()) fail(`unsupported filesystem entry in plugin: ${path}`);
   }
   return out;
 }

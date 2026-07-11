@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Portable Argus quarantine evaluator. Keep byte-identical in all templates.
+# Portable Argus quarantine evaluator shared by every runtime template.
 set -euo pipefail
 
 events="" ledger="solution/quarantine.tsv" tagged_count=""

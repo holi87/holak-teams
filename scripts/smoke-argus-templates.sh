@@ -20,6 +20,140 @@ run_logged() {
   fi
 }
 
+assert_tree_equal() {
+  local source="$1" output="$2" label="$3"
+  REPO_ROOT="$ROOT" SOURCE_TREE="$source" OUTPUT_TREE="$output" TREE_LABEL="$label" node --input-type=module <<'NODE'
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
+
+function inventory(root, prefix = '', result = new Map()) {
+  for (const name of readdirSync(root).sort()) {
+    const path = join(root, name);
+    const relative = prefix ? `${prefix}/${name}` : name;
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink()) throw new Error(`${process.env.TREE_LABEL}: symlink ${relative}`);
+    if (stat.isDirectory()) {
+      result.set(relative, { type: 'directory', mode: stat.mode & 0o777 });
+      inventory(path, relative, result);
+    } else if (stat.isFile()) {
+      result.set(relative, {
+        type: 'file',
+        mode: stat.mode & 0o777,
+        sha256: createHash('sha256').update(readFileSync(path)).digest('hex'),
+      });
+    } else throw new Error(`${process.env.TREE_LABEL}: unsupported entry ${relative}`);
+  }
+  return result;
+}
+
+function trackableInventory(root) {
+  const repo = process.env.REPO_ROOT;
+  const sourcePrefix = `${relative(repo, root).split('\\').join('/')}/`;
+  const paths = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '--', sourcePrefix.slice(0, -1)], {
+    cwd: repo,
+    encoding: 'utf8',
+  }).split('\n').filter((path) => path.startsWith(sourcePrefix)).sort();
+  const result = new Map();
+  for (const path of paths) {
+    const relativePath = path.slice(sourcePrefix.length);
+    const source = join(repo, path);
+    const stat = lstatSync(source);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`${process.env.TREE_LABEL}: invalid source ${relativePath}`);
+    let parent = dirname(relativePath);
+    while (parent !== '.') {
+      if (!result.has(parent)) {
+        const parentStat = lstatSync(join(root, parent));
+        result.set(parent, { type: 'directory', mode: parentStat.mode & 0o777 });
+      }
+      parent = dirname(parent);
+    }
+    result.set(relativePath, {
+      type: 'file',
+      mode: stat.mode & 0o777,
+      sha256: createHash('sha256').update(readFileSync(source)).digest('hex'),
+    });
+  }
+  return new Map([...result].sort(([left], [right]) => left.localeCompare(right)));
+}
+
+const expected = trackableInventory(process.env.SOURCE_TREE);
+const actual = inventory(process.env.OUTPUT_TREE);
+const sortedActual = new Map([...actual].sort(([left], [right]) => left.localeCompare(right)));
+if (JSON.stringify([...expected]) !== JSON.stringify([...sortedActual])) {
+  const expectedPaths = [...expected.keys()];
+  const actualPaths = [...actual.keys()];
+  throw new Error(`${process.env.TREE_LABEL}: composed tree or mode mismatch\nexpected=${JSON.stringify(expectedPaths)}\nactual=${JSON.stringify(actualPaths)}`);
+}
+NODE
+}
+
+expect_copy_failure() {
+  local label="$1" cli="$2" runtime="$3" destination="$4"
+  if "$cli" copy-template "$runtime" "$destination" >"$WORK/$label.log" 2>&1; then
+    fail "$label unexpectedly copied a template"
+  fi
+  [ ! -e "$destination" ] || fail "$label wrote output before validation completed"
+}
+
+# The supported materialisation interface composes common + runtime layers into a byte-
+# and mode-exact copy of each complete maintainer source tree.
+for runtime in typescript java python; do
+  case "$runtime" in
+    typescript) source="$ROOT/argus/framework-template" ;;
+    java) source="$ROOT/argus/framework-template-java" ;;
+    python) source="$ROOT/argus/framework-template-python" ;;
+  esac
+  "$CLI" copy-template "$runtime" "$WORK/raw-$runtime" >/dev/null
+  assert_tree_equal "$source" "$WORK/raw-$runtime" "$runtime raw composition"
+  test -x "$WORK/raw-$runtime/scripts/runner-contract.sh" || fail "$runtime composition lost executable mode"
+done
+
+# Every layer is fully inspected before the destination is created. Corruption,
+# symlinks, duplicate files, case-fold collisions, file/ancestor collisions, and
+# platform-unsafe names all fail closed.
+cp -R "$ROOT/argus/claude" "$WORK/plugin-corrupt"
+printf '\ncorrupt\n' >>"$WORK/plugin-corrupt/templates/common/solution/STATE_MODEL.md"
+expect_copy_failure corrupt-layer "$WORK/plugin-corrupt/bin/argus-assets" typescript "$WORK/rejected-corrupt"
+
+cp -R "$ROOT/argus/claude" "$WORK/plugin-directory-mode"
+chmod 700 "$WORK/plugin-directory-mode/templates/common/bugs"
+expect_copy_failure directory-mode-drift "$WORK/plugin-directory-mode/bin/argus-assets" python "$WORK/rejected-directory-mode"
+
+cp -R "$ROOT/argus/claude" "$WORK/plugin-symlink"
+rm "$WORK/plugin-symlink/templates/common/bugs/_TEMPLATE.md"
+ln -s ../solution/STATE_MODEL.md "$WORK/plugin-symlink/templates/common/bugs/_TEMPLATE.md"
+expect_copy_failure symlink-layer "$WORK/plugin-symlink/bin/argus-assets" java "$WORK/rejected-symlink"
+
+cp -R "$ROOT/argus/claude" "$WORK/plugin-file-collision"
+cp "$WORK/plugin-file-collision/templates/common/solution/STATE_MODEL.md" \
+  "$WORK/plugin-file-collision/templates/python/solution/STATE_MODEL.md"
+expect_copy_failure file-collision "$WORK/plugin-file-collision/bin/argus-assets" python "$WORK/rejected-file-collision"
+
+cp -R "$ROOT/argus/claude" "$WORK/plugin-case-collision"
+mkdir "$WORK/plugin-case-collision/templates/java/Bugs"
+cp "$WORK/plugin-case-collision/templates/common/bugs/_TEMPLATE.md" \
+  "$WORK/plugin-case-collision/templates/java/Bugs/_template.md"
+expect_copy_failure case-collision "$WORK/plugin-case-collision/bin/argus-assets" java "$WORK/rejected-case-collision"
+
+cp -R "$ROOT/argus/claude" "$WORK/plugin-ancestor-collision"
+printf 'parent file\n' >"$WORK/plugin-ancestor-collision/templates/common/collision-root"
+mkdir "$WORK/plugin-ancestor-collision/templates/typescript/collision-root"
+printf 'child file\n' >"$WORK/plugin-ancestor-collision/templates/typescript/collision-root/child"
+expect_copy_failure ancestor-collision "$WORK/plugin-ancestor-collision/bin/argus-assets" typescript "$WORK/rejected-ancestor-collision"
+
+cp -R "$ROOT/argus/claude" "$WORK/plugin-unsafe-path"
+printf 'unsafe\n' >"$WORK/plugin-unsafe-path/templates/python/unsafe\\name"
+expect_copy_failure unsafe-path "$WORK/plugin-unsafe-path/bin/argus-assets" python "$WORK/rejected-unsafe"
+
+mkdir "$WORK/output-real"
+ln -s "$WORK/output-real" "$WORK/output-link"
+if "$CLI" copy-template typescript "$WORK/output-link" >"$WORK/output-symlink.log" 2>&1; then
+  fail "output symlink unexpectedly accepted a template"
+fi
+[ -z "$(find "$WORK/output-real" -mindepth 1 -print -quit)" ] || fail "output symlink received files"
+
 # Existing projects are detected from real files and produce ADAPT selections with
 # every unsupported adapter declared. No competing scaffold may be created.
 for runtime in typescript java python; do

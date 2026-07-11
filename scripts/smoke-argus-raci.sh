@@ -18,7 +18,7 @@ node "$ROOT/scripts/sync-argus-runtime-assets.mjs" --check >/dev/null
 [ "$(jq -r '.accountable' <<<"$($CLI raci route --transition defect:confirmed:automated)")" = atlas ] || fail 'defect automation transition did not route to Atlas'
 if "$CLI" raci route --surface unknown --activity discover >/dev/null 2>&1; then fail 'unknown surface route was accepted'; fi
 
-for file in "$ROOT/argus/claude/agents/atlas.md" "$ROOT/argus/codex/atlas.md" "$ROOT/argus/codex/atlas.toml"; do
+for file in "$ROOT/argus/claude/agents/atlas.md" "$ROOT/argus/codex/atlas.toml"; do
   grep -Fq '## Ten shared oracle helpers' "$file" || fail "Atlas helper heading is stale in $file"
   count="$(awk '/^## Ten shared oracle helpers/{inside=1; next} inside && /^Rules:/{inside=0} inside && /^\| `/{count++} END{print count+0}' "$file")"
   [ "$count" -eq 10 ] || fail "Atlas declares ten helpers but lists $count in $file"
@@ -26,7 +26,7 @@ done
 
 grep -Eq '^tools: .*Write' "$ROOT/argus/claude/agents/tiresias.md" && fail 'Tiresias unexpectedly has Write'
 grep -Fq 'Minos persists' "$ROOT/argus/claude/agents/tiresias.md" || fail 'Tiresias persistence handoff is missing'
-grep -Fq 'execute it unless the user explicitly requested planning only' "$ROOT/argus/claude/agents/odysseus.md" || fail 'Odysseus plan-versus-execute behavior is ambiguous'
+grep -Fq 'Execute the engagement unless the user explicitly requests planning only.' "$ROOT/argus/shared-skills/orchestration-core/SKILL.md" || fail 'controller plan-versus-execute behavior is ambiguous'
 grep -Fq '<!-- RACI_ROSTER_START -->' "$ROOT/argus/README.md" || fail 'README roster is not generated from RACI'
 
 role_corpus=("$ROOT/argus/roles" "$ROOT/argus/claude/agents" "$ROOT/argus/codex")

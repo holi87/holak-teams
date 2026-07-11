@@ -13,13 +13,31 @@ fail() {
 }
 
 "$ROOT/scripts/sync-argus-runtime-assets.mjs" --check
+node "$ROOT/scripts/smoke-argus-asset-consumers.mjs"
 "$PLUGIN/bin/argus-assets" verify
 node "$PLUGIN/templates/typescript/scripts/hunt-driver.mjs" --help >/dev/null
 INVENTORY="$PLUGIN/runtime-reference-inventory.json"
-jq -e '.agentsScanned == 27 and .skillsScanned >= 1 and .entrypointsScanned == 1' "$INVENTORY" >/dev/null || \
-  fail "runtime reference inventory does not cover agents, preloaded skills, and /argus:run"
-jq -e '.pluginAssetReferences[] | select(.value == "agents/odysseus.md") | .consumers | index("/argus:run")' "$INVENTORY" >/dev/null || \
+jq -e '
+  .schemaVersion == 2 and
+  .agentsScanned == 27 and .skillsScanned == 7 and .entrypointsScanned == 1 and
+  (.unconsumedAssets | length) == 0 and
+  (.unknownAssetReferences | length) == 0 and
+  (.unknownProfileReferences | length) == 0 and
+  (.unownedPluginReferences | length) == 0 and
+  (.unownedRuntimeReferences | length) == 0 and
+  (.unownedSkills | length) == 0
+' "$INVENTORY" >/dev/null || \
+  fail "runtime reference inventory v2 is incomplete or contains unresolved ownership"
+jq -e '.pluginAssetReferences[] | select(.value == "skills/orchestration-core/SKILL.md") | .consumers | index("/argus:run")' "$INVENTORY" >/dev/null || \
   fail "runtime reference inventory did not scan the /argus:run entrypoint"
+for consumer in \
+  "command:argus-assets model benchmark" \
+  "command:argus-assets orchestration plan" \
+  "command:argus-assets schema validate (schema compatibility)"; do
+  jq -e --arg consumer "$consumer" \
+    '[.assetConsumers[].consumers[] | select(.consumer == $consumer)] | length > 0' \
+    "$INVENTORY" >/dev/null || fail "runtime reference inventory omitted semantic consumer: $consumer"
+done
 for command in grpcurl buf grpc_cli websocat wscat kcat kafka-console-producer kafka-console-consumer rabbitmqadmin nc; do
   jq -e --arg command "$command" \
     '.commandReferences[] | select(.value == $command) | .consumers == ["proteus"]' \
@@ -30,6 +48,17 @@ jq -e '.assets[] | select(.id == "runtime-schemas")' "$PLUGIN/runtime-assets.jso
 jq -e '.assets[] | select(.id == "runner-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits runner contract"
 jq -e '.assets[] | select(.id == "template-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits template contract"
 jq -e '.assets[] | select(.id == "template-policy")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits template policy"
+jq -e '
+  .templateCompositions.typescript == {source:"argus/framework-template",commonAsset:"common-template",runtimeAsset:"typescript-template"} and
+  .templateCompositions.java == {source:"argus/framework-template-java",commonAsset:"common-template",runtimeAsset:"java-template"} and
+  .templateCompositions.python == {source:"argus/framework-template-python",commonAsset:"common-template",runtimeAsset:"python-template"} and
+  ([.assets[] | select(.id == "common-template")] | length) == 1
+' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits template compositions"
+while IFS= read -r common_path; do
+  for runtime in typescript java python; do
+    test ! -e "$PLUGIN/templates/$runtime/$common_path" || fail "$runtime packaged layer duplicates common path: $common_path"
+  done
+done < <(cd "$PLUGIN/templates/common" && find . -type f -print | sed 's#^./##' | sort)
 jq -e '.assets[] | select(.id == "coverage-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits coverage contract"
 jq -e '.assets[] | select(.id == "raci-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits RACI contract"
 jq -e '.assets[] | select(.id == "raci-matrix")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits RACI matrix"
@@ -75,6 +104,11 @@ fi
 (cd "$WORK_DIR" && "$INSTALLED_PLUGIN/bin/argus-assets" copy-template typescript "$WORK_DIR/typescript")
 (cd "$WORK_DIR" && "$INSTALLED_PLUGIN/bin/argus-assets" copy-template java "$WORK_DIR/java")
 (cd "$WORK_DIR" && "$INSTALLED_PLUGIN/bin/argus-assets" copy-template python "$WORK_DIR/python")
+for runtime in typescript java python; do
+  test -f "$WORK_DIR/$runtime/solution/TRACEABILITY.md" || fail "$runtime composition omitted shared solution documents"
+  test -f "$WORK_DIR/$runtime/solution/ARCHITECTURE.md" || fail "$runtime composition omitted runtime architecture"
+  test -x "$WORK_DIR/$runtime/scripts/runner-contract.sh" || fail "$runtime composition lost executable mode"
+done
 mkdir "$WORK_DIR/driver-target"
 (cd "$WORK_DIR" && "$INSTALLED_PLUGIN/bin/argus-assets" copy-browser-driver "$WORK_DIR/driver-target")
 mkdir "$WORK_DIR/preflight-target"

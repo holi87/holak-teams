@@ -15,7 +15,9 @@ import { compileJsonSchema } from '../argus/runtime/json-schema.mjs';
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const policy = readJson('argus/model-policy.json');
 const adapters = readJson('argus/runtime-adapters.json');
+const benchmark = readJson('argus/model-policy.benchmark.json');
 const validateAdapters = compileJsonSchema(readJson('argus/schemas/runtime-adapters.schema.json'));
+const validateBenchmark = compileJsonSchema(readJson('argus/schemas/model-policy-benchmark.schema.json'));
 const validateDecision = compileJsonSchema(readJson('argus/schemas/model-decision.schema.json'));
 const validateTelemetry = compileJsonSchema(readJson('argus/schemas/model-telemetry-event.schema.json'));
 const baseContext = {
@@ -28,6 +30,10 @@ const baseContext = {
 
 assert(validateModelPolicy(policy, policy.roles.map((role) => role.slug)).length === 0, 'model policy is invalid');
 assert(validateAdapters(adapters).length === 0, 'runtime adapter snapshot is invalid');
+assert(validateBenchmark(benchmark).length === 0, 'model policy benchmark is invalid');
+const oversizedBenchmark = structuredClone(benchmark);
+oversizedBenchmark.scenarios[0].runs.push(structuredClone(oversizedBenchmark.scenarios[0].runs[0]));
+assert(validateBenchmark(oversizedBenchmark).some((error) => error.keyword === 'maxItems'), 'runtime schema compiler ignored maxItems');
 
 const actualClaudeBaseline = decide(adapters, { slug: 'aegis', runtime: 'claude', signal: 'normal' });
 assert(actualClaudeBaseline.status === 'selected', 'Claude baseline must be enforceable by static agent configuration');

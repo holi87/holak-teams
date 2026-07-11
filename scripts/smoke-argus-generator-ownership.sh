@@ -53,9 +53,11 @@ cmp -s "$WORK/root-primary-second" "$WORK/root-after-bootstrap" || fail 'rejecte
 
 CASE="$WORK/case"
 mkdir -p "$CASE/scripts" "$CASE/argus/claude"
+test -d "$ROOT/node_modules" || fail 'node_modules is required for the isolated generator ownership case'
+ln -s "$ROOT/node_modules" "$CASE/node_modules"
 cp "$ROOT/README.md" "$ROOT/agents-roster.html" "$CASE/"
 cp "$ROOT/scripts/sync-argus-role-variants.mjs" "$ROOT/scripts/sync-argus-model-policy.mjs" "$ROOT/scripts/sync-argus-raci.mjs" "$ROOT/scripts/refactor-argus-prompts.mjs" "$CASE/scripts/"
-cp -R "$ROOT/argus/roles" "$ROOT/argus/capabilities" "$ROOT/argus/policies" "$ROOT/argus/runtime" "$ROOT/argus/shared-skills" "$ROOT/argus/codex" "$CASE/argus/"
+cp -R "$ROOT/argus/roles" "$ROOT/argus/capabilities" "$ROOT/argus/policies" "$ROOT/argus/runtime" "$ROOT/argus/shared-skills" "$ROOT/argus/schemas" "$ROOT/argus/technique-catalogs" "$ROOT/argus/codex" "$CASE/argus/"
 cp -R "$ROOT/argus/claude/agents" "$CASE/argus/claude/"
 cp "$ROOT/argus/model-policy.json" "$ROOT/argus/runtime-adapters.json" "$ROOT/argus/raci.json" "$ROOT/argus/MODEL-POLICY.md" "$ROOT/argus/RACI-CONTRACT.md" "$ROOT/argus/README.md" "$CASE/argus/"
 

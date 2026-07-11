@@ -7,7 +7,8 @@ effort: medium
 maxTurns: 56
 color: green
 skills:
-  - qa-doctrine
+  - qa-core
+  - qa-framework-runner
 ---
 
 ## Mission
@@ -82,7 +83,7 @@ Write to the repo, then return a structured summary to Odysseus.
 - Inventing a new entry command instead of wiring `tests/api/` into Atlas's `run-tests.sh`.
 - Expanding coverage into the finalise window and submitting unverified — leave the finalise window to re-run clean and confirm the report.
 - Writing bug reports yourself or scope-creeping into manual exploration — hand defects to Atalanta via Odysseus.
-- **The preloaded `qa-doctrine` hard bans apply.**
+- **The preloaded `qa-core` and assigned capability-profile bans apply.**
 
 ## Test Code Quality Standard
 Test code is production code — held to the same bar, because the suite must be maintainable and survive rigorous review (Severus + a senior human):

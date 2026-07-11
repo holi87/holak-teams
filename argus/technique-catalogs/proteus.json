@@ -1,0 +1,162 @@
+{
+  "$schema": "argus/technique-catalog@1",
+  "schemaVersion": 1,
+  "catalogId": "argus/technique-catalog/proteus@1",
+  "role": "proteus",
+  "catalogType": "hunter",
+  "valuePolicy": "discover-never-assume",
+  "executionRule": "each-applicable-entry-covered-or-gap",
+  "absentSurfaceDisposition": "not-applicable-with-evidence",
+  "entries": [
+    {
+      "id": "PRO-T01",
+      "title": "GraphQL query-cost amplification",
+      "scope": ["graphql", "resource-control"],
+      "techniques": ["boundary value analysis", "abuse-case testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Discover depth, complexity, alias, batch, and connection-size controls", "Exceed each limit separately with nested selections, repeated aliases, batched operations, and large first or last values"],
+      "oracles": ["The documented cost control rejects before unbounded resolver execution; one request cannot amplify into uncontrolled work"],
+      "routes": ["performance", "security"]
+    },
+    {
+      "id": "PRO-T02",
+      "title": "GraphQL introspection and error leakage",
+      "scope": ["graphql", "information-exposure"],
+      "techniques": ["configuration testing", "error guessing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Run schema and type introspection against the declared environment", "Trigger typed validation and resolver failures"],
+      "oracles": ["Introspection follows the sourced environment policy; errors disclose no stack, resolver internals, ORM or SQL fragments, paths, secrets, or framework versions"],
+      "routes": ["security", "contract"]
+    },
+    {
+      "id": "PRO-T03",
+      "title": "GraphQL field-level authorization",
+      "scope": ["graphql", "authorization", "tenant-isolation"],
+      "techniques": ["role-operation matrix", "object-level access testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["For an allowed parent query, enumerate sensitive child fields for anonymous, wrong-role, wrong-owner, and cross-tenant actors", "Fetch foreign objects by global node ID"],
+      "oracles": ["Every field and edge enforces the sourced role and tenant rule independently of root-operation access"],
+      "routes": ["security"]
+    },
+    {
+      "id": "PRO-T04",
+      "title": "GraphQL mutation binding and request integrity",
+      "scope": ["graphql", "mass-assignment", "csrf", "persisted-query"],
+      "techniques": ["negative testing", "state verification"],
+      "appliesWhen": "surface-present",
+      "construct": ["Submit privileged extra mutation inputs and re-read state", "Where required, send arbitrary non-persisted operations and cross-origin state-changing requests"],
+      "oracles": ["Unauthorized inputs never bind; persisted-query allowlists and CSRF or SameSite controls enforce the sourced posture; rejected requests create no state change"],
+      "routes": ["security", "contract"]
+    },
+    {
+      "id": "PRO-T05",
+      "title": "gRPC protobuf and status conformance",
+      "scope": ["grpc", "contract"],
+      "techniques": ["schema validation", "decision table"],
+      "appliesWhen": "surface-present",
+      "construct": ["Diff messages against protobuf field numbers, types, optionality, oneof, unknown-field, and response declarations", "Exercise invalid, missing, unauthorized, deadline, and capacity states"],
+      "oracles": ["Messages match the declared types and each error returns the exact sourced gRPC status rather than UNKNOWN or INTERNAL masking the cause"],
+      "routes": ["contract"]
+    },
+    {
+      "id": "PRO-T06",
+      "title": "gRPC method authorization and metadata propagation",
+      "scope": ["grpc", "authorization", "deadline"],
+      "techniques": ["role-operation matrix", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Call every service method anonymously, wrong-role, wrong-owner, and cross-tenant", "Vary auth, tenant, and trace metadata; set tight deadlines and cancel in-flight work"],
+      "oracles": ["Every method derives identity and tenant from trusted credentials, propagates safe metadata, honors deadlines and cancellation, and returns precise auth statuses"],
+      "routes": ["security", "resilience"]
+    },
+    {
+      "id": "PRO-T07",
+      "title": "gRPC streaming lifecycle and message bounds",
+      "scope": ["grpc", "streaming", "resource-control"],
+      "techniques": ["state transition", "boundary value analysis"],
+      "appliesWhen": "surface-present",
+      "construct": ["Drive unary, client-stream, server-stream, and bidirectional lifecycles through half-close, mid-stream error, cancellation, ordering, and slow-consumer states", "Send a message just beyond the discovered size limit"],
+      "oracles": ["Streams terminate, order, and backpressure as documented without silent loss or hangs; oversized input is rejected atomically with RESOURCE_EXHAUSTED or the sourced equivalent"],
+      "routes": ["performance", "resilience", "contract"]
+    },
+    {
+      "id": "PRO-T08",
+      "title": "Realtime handshake and message authorization",
+      "scope": ["websocket-sse", "authorization"],
+      "techniques": ["state transition", "role-operation matrix"],
+      "appliesWhen": "surface-present",
+      "construct": ["Open each socket or stream anonymously, expired, wrong-role, and cross-tenant", "On a legitimate connection, subscribe or command foreign resources and privileged channels"],
+      "oracles": ["Handshake and every message independently enforce identity, authorization, scope, and expiry; connected state never grants blanket access"],
+      "routes": ["security"]
+    },
+    {
+      "id": "PRO-T09",
+      "title": "Realtime ordering, deduplication, backpressure, and resume",
+      "scope": ["websocket-sse", "delivery-semantics", "session-isolation"],
+      "techniques": ["state transition", "sequence testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Send ordered and duplicate events to a slow consumer", "Disconnect and reconnect with fresh, resumed, expired, and different-principal sessions"],
+      "oracles": ["Promised order is preserved, duplicates follow the sourced rule, backpressure is bounded and visible, and resume never inherits another identity, subscription, or buffered event"],
+      "routes": ["performance", "resilience", "security"]
+    },
+    {
+      "id": "PRO-T10",
+      "title": "Realtime cross-tenant broadcast isolation",
+      "scope": ["websocket-sse", "tenant-isolation", "data-exposure"],
+      "techniques": ["pairwise testing", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Connect principals from two tenants, trigger each user-, room-, topic-, and tenant-scoped event in one tenant, and observe both channels"],
+      "oracles": ["Only explicitly eligible principals receive the event; foreign channels receive no payload, metadata, timing-derived content, or replay"],
+      "routes": ["security"]
+    },
+    {
+      "id": "PRO-T11",
+      "title": "Event schema and redelivery idempotency",
+      "scope": ["async-event", "contract", "exactly-once-effect"],
+      "techniques": ["schema validation", "state verification"],
+      "appliesWhen": "surface-present",
+      "construct": ["Validate every produced event against AsyncAPI, registry, protobuf, or sourced shape including additional fields", "Redeliver the same key, ID, or offset"],
+      "oracles": ["Events contain exactly the declared fields and no internal data; at-least-once redelivery produces exactly one business effect"],
+      "routes": ["contract", "resilience", "data"]
+    },
+    {
+      "id": "PRO-T12",
+      "title": "Event ordering, poison handling, and replay safety",
+      "scope": ["async-event", "ordering", "dead-letter", "replay"],
+      "techniques": ["state transition", "error guessing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Interleave messages within and across ordering keys", "Inject malformed and unprocessable messages, then replay a bounded historical range"],
+      "oracles": ["Key-local order follows the contract; poison input reaches a bounded dead-letter path without partition stall or crash loop; replay causes no side-effect storm"],
+      "routes": ["resilience", "data"]
+    },
+    {
+      "id": "PRO-T13",
+      "title": "Delivery-semantics claim versus behaviour",
+      "scope": ["async-event", "delivery-semantics"],
+      "techniques": ["claim verification", "fault injection"],
+      "appliesWhen": "surface-present",
+      "construct": ["Source the exactly-once or at-least-once claim, interrupt delivery at the acknowledgement boundary, and force redelivery"],
+      "oracles": ["Observed duplicate handling matches the stated semantic; an exactly-once claim never leaks a duplicate effect and an at-least-once consumer is demonstrably idempotent"],
+      "routes": ["resilience", "contract", "data"]
+    },
+    {
+      "id": "PRO-T14",
+      "title": "Inbound webhook authenticity and replay protection",
+      "scope": ["webhook-inbound", "signature", "replay", "idempotency"],
+      "techniques": ["decision table", "state verification"],
+      "appliesWhen": "surface-present",
+      "construct": ["Send valid, tampered-body, missing-signature, wrong-secret, wrong-algorithm, stale, nonce-replayed, and duplicate-event-ID deliveries"],
+      "oracles": ["Only a valid fresh signed request is accepted; replay is rejected or deduplicated; duplicate delivery creates exactly one effect and rejected cases create none"],
+      "routes": ["security", "resilience"]
+    },
+    {
+      "id": "PRO-T15",
+      "title": "Outbound webhook destination and retry safety",
+      "scope": ["webhook-outbound", "ssrf", "retry-control", "data-exposure"],
+      "techniques": ["abuse-case testing", "state transition"],
+      "appliesWhen": "surface-present",
+      "construct": ["Using an owned sink, test loopback, link-local metadata, internal names, alternate schemes and ports, redirect chains, and rebinding-style destinations", "Return bounded failures to observe retry count, delay, payload, and headers"],
+      "oracles": ["Blocked destinations are never fetched; redirects are revalidated; retries are bounded with backoff; payloads and headers contain no secret or cross-tenant data"],
+      "routes": ["security", "performance", "resilience"]
+    }
+  ]
+}

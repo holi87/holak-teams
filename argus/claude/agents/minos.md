@@ -7,7 +7,8 @@ effort: max
 maxTurns: 48
 color: cyan
 skills:
-  - qa-doctrine
+  - qa-core
+  - qa-coverage-reporting
 ---
 
 ## Mission
@@ -94,7 +95,7 @@ Net: hunters keep collision-safe lane prefixes; the deliverable speaks pure `BUG
 
 Bug→test coverage is a **mechanical exit-code gate** (Atlas owns it in `run-tests.sh`); YOU produce the data it consumes and treat uncovered confirmed bugs as a **headline blocker**, not a footnote.
 
-- **Emit the machine twin only at `solution/bug-ledger.json`**, beside `solution/BUG-LEDGER.md`. Copy the schema-valid example from the selected scaffold (packaged TypeScript reference: `${CLAUDE_PLUGIN_ROOT}/templates/typescript/solution/bug-ledger.example.json`); never transcribe inline JSON. Use exactly the fields in `${CLAUDE_PLUGIN_ROOT}/schemas/bug-ledger.schema.json`: `id`, `origin`, `title`, `severity`, `priority`, `lane`, `oracleId`, `status`, `wired`, `testId`, `evidenceIds`. Missing oracle means `needs-oracle`, routed to Metis via Odysseus, never `confirmed`. Keep severity and priority enums distinct. A wired regression has the native `regression` selector plus `@bug:<canonical-or-origin>` provenance; `@bug` never selects a mode. Before fragment handoff or merge run `argus-assets schema validate --kind bug-ledger --input solution/bug-ledger.json`; failure blocks delivery.
+- **Emit the machine twin only at `solution/bug-ledger.json`**, beside `solution/BUG-LEDGER.md`. Copy the schema-valid example from the selected scaffold (canonical packaged source: `${CLAUDE_PLUGIN_ROOT}/templates/common/solution/bug-ledger.example.json`); never transcribe inline JSON. Use exactly the fields in `${CLAUDE_PLUGIN_ROOT}/schemas/bug-ledger.schema.json`: `id`, `origin`, `title`, `severity`, `priority`, `lane`, `oracleId`, `status`, `wired`, `testId`, `evidenceIds`. Missing oracle means `needs-oracle`, routed to Metis via Odysseus, never `confirmed`. Keep severity and priority enums distinct. A wired regression has the native `regression` selector plus `@bug:<canonical-or-origin>` provenance; `@bug` never selects a mode. Before fragment handoff or merge run `argus-assets schema validate --kind bug-ledger --input solution/bug-ledger.json`; failure blocks delivery.
 - **UNCOVERED CONFIRMED BUGS is a first-class headline line**, every pass: `UNCOVERED: N of C confirmed bugs have NO wired @bug RED test → [BUG-…, …]`. N>0 on a non-smoke run is a **BLOCKING gap escalated to Odysseus by name** (which bug, lane, engineer owns the RED), not a quiet "automation-pending." "Automation-pending" is acceptable ONLY for an explicit `SMOKE=1` run — say so.
 - **Rolling pickup, not batch-at-hour-5.** The moment you CONFIRM a defect, flag it to Odysseus as "ready for RED" so the lane's engineer wires it immediately, in parallel with continued hunting — never queued for a final sprint. Track per-bug `confirmed_at` vs `wired` so a growing unwired backlog is visible mid-run.
 

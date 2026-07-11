@@ -11,12 +11,11 @@
     "contracts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["modelPolicy", "ownership", "capabilities", "doctrine", "adapters"],
+      "required": ["modelPolicy", "ownership", "capabilities", "adapters"],
       "properties": {
         "modelPolicy": { "const": "argus/model-policy.json" },
         "ownership": { "const": "argus/raci.json" },
         "capabilities": { "const": "argus/capabilities/capability-matrix.json" },
-        "doctrine": { "const": "argus/shared-skills/qa-doctrine/SKILL.md" },
         "adapters": { "const": "argus/runtime-adapters.json" }
       }
     },
@@ -27,17 +26,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slug", "source", "color", "claudeTools"],
+        "required": ["slug", "source", "color"],
         "properties": {
           "slug": { "type": "string", "pattern": "^[a-z]+(?:-[a-z]+)*$" },
           "source": { "type": "string", "pattern": "^[a-z]+(?:-[a-z]+)*\\.md$" },
-          "color": { "enum": ["cyan", "red", "green", "yellow", "purple"] },
-          "claudeTools": {
-            "type": "array",
-            "minItems": 1,
-            "uniqueItems": true,
-            "items": { "type": "string", "minLength": 1 }
-          }
+          "color": { "enum": ["cyan", "red", "green", "yellow", "purple"] }
         }
       }
     }

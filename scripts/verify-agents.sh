@@ -9,8 +9,9 @@
 #   d) version in <team>/claude/.claude-plugin/plugin.json equals the plugin's
 #      entry version in .claude-plugin/marketplace.json
 #   e) Hephaestus keeps its inline Artifact Language contract; every Argus agent
-#      preloads the single packaged qa-doctrine skill containing that contract
+#      preloads the packaged qa-core profile containing that contract
 #   f) the Argus plugin exposes a valid /argus:run main-thread entry point
+#   f2) one machine-readable orchestration plan owns modes, gates, waves, and dependencies
 #   g) every Argus runtime asset is packaged, synced, inventoried, and in budget
 #   h) every Argus frontmatter and runtime lane has a validated capability contract
 #   i) risky lanes share one deny-by-default authorization, audit, and redaction policy
@@ -19,7 +20,7 @@
 #   l) all framework templates share explicit runner modes, lifecycle, categories, and exits
 #   m) coverage is derived from discovered target surfaces and defects cannot improve it
 #   n) all agent, artifact, transition, and routing ownership comes from one RACI source
-#   o) shared doctrine is preloaded once and prompt size/duplication budgets hold
+#   o) capability-scoped doctrine is preloaded once and prompt budgets hold
 #   p) one model source controls Claude/Codex tiers, effort, turns, escalation, and telemetry
 #   q) canonical role sources deterministically generate semantically paired runtime variants
 #
@@ -142,14 +143,14 @@ check_team() {
     fail "[$team] (d) version mismatch: plugin.json '$plugin_ver' != marketplace.json '$market_ver'"
   fi
 
-  # --- (e) Artifact Language: inline for Hephaestus, preloaded for Argus -------
+  # --- (e) Artifact Language: inline for Hephaestus, qa-core for Argus ----------
   local e_ok=1 ref_file="" tmp_ref tmp_cur
   tmp_ref="$(mktemp)"
   tmp_cur="$(mktemp)"
   if [ "$team" = "argus" ]; then
-    local doctrine="$ROOT/argus/claude/skills/qa-doctrine/SKILL.md"
+    local doctrine="$ROOT/argus/claude/skills/qa-core/SKILL.md"
     if [ ! -f "$doctrine" ] || ! grep -q '100% English' "$doctrine"; then
-      fail "[argus] (e) packaged qa-doctrine is missing the '100% English' contract"
+      fail "[argus] (e) packaged qa-core is missing the '100% English' contract"
       e_ok=0
     fi
     for file in "$agents_dir"/*.md; do
@@ -157,17 +158,17 @@ check_team() {
       if ! awk '
         /^---[[:space:]]*$/ { blocks++; next }
         blocks == 1 && /^skills:[[:space:]]*$/ { skills = 1; next }
-        blocks == 1 && skills && /^[[:space:]]*-[[:space:]]*qa-doctrine[[:space:]]*$/ { found = 1 }
+        blocks == 1 && skills && /^[[:space:]]*-[[:space:]]*qa-core[[:space:]]*$/ { found = 1 }
         blocks == 1 && skills && !/^[[:space:]]*-/ && !/^[[:space:]]*$/ { skills = 0 }
         blocks >= 2 { exit(found ? 0 : 1) }
         END { if (blocks < 2) exit 1 }
       ' "$file"; then
-        fail "[argus] (e) $slug.md does not preload qa-doctrine"
+        fail "[argus] (e) $slug.md does not preload qa-core"
         e_ok=0
       fi
     done
     rm -f "$tmp_ref" "$tmp_cur"
-    [ "$e_ok" -eq 1 ] && pass "[argus] (e) all agents preload packaged qa-doctrine with the '100% English' contract"
+    [ "$e_ok" -eq 1 ] && pass "[argus] (e) all agents preload packaged qa-core with the '100% English' contract"
     return
   fi
   for file in "$agents_dir"/*.md; do
@@ -206,6 +207,12 @@ if "$ROOT/scripts/smoke-argus-run.sh" --static; then
   pass "[argus] (f) /argus:run skill, preflight, and Odysseus runtime contract"
 else
   fail "[argus] (f) /argus:run main-thread orchestration contract"
+fi
+
+if node "$ROOT/scripts/smoke-argus-orchestration-plan.mjs"; then
+  pass "[argus] (f2) canonical 27-role mode, gate, wave, and dependency plan"
+else
+  fail "[argus] (f2) machine-readable orchestration plan contract"
 fi
 
 if "$ROOT/scripts/smoke-argus-assets.sh" --static; then
@@ -269,9 +276,9 @@ else
 fi
 
 if node "$ROOT/scripts/check-argus-prompts.mjs"; then
-  pass "[argus] (o) preloaded doctrine, prompt budgets, duplicate detection, and engagement regression contract"
+  pass "[argus] (o) capability-selected profiles, prompt budgets, duplicate detection, and engagement regression contract"
 else
-  fail "[argus] (o) compact prompt and shared-doctrine contract"
+  fail "[argus] (o) compact prompt and capability-profile contract"
 fi
 
 if "$ROOT/scripts/smoke-argus-model-policy.sh" && node "$ROOT/scripts/benchmark-argus-model-policy.mjs" --check; then

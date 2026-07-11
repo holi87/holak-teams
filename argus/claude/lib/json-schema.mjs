@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 
 const SUPPORTED_KEYWORDS = new Set([
   '$defs', '$id', '$ref', '$schema', 'additionalProperties', 'allOf', 'const',
-  'enum', 'format', 'if', 'items', 'maximum', 'minItems', 'minLength', 'minimum',
+  'enum', 'format', 'if', 'items', 'maximum', 'maxItems', 'minItems', 'minLength', 'minimum',
   'pattern', 'properties', 'required', 'then', 'title', 'type', 'uniqueItems',
 ]);
 
@@ -64,6 +64,9 @@ function validateString(schema, value, instancePath, schemaPath, errors) {
 function validateArray(schema, value, root, instancePath, schemaPath, errors) {
   if (schema.minItems !== undefined && value.length < schema.minItems) {
     addError(errors, instancePath, `${schemaPath}/minItems`, 'minItems', `must NOT have fewer than ${schema.minItems} items`);
+  }
+  if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+    addError(errors, instancePath, `${schemaPath}/maxItems`, 'maxItems', `must NOT have more than ${schema.maxItems} items`);
   }
   if (schema.uniqueItems) {
     for (let right = 1; right < value.length; right += 1) {

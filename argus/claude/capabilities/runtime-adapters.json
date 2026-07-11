@@ -37,8 +37,8 @@
   },
   "claude": {
     "adapterId": "claude-plugin-agent@1",
-    "preloadedSkill": "qa-doctrine",
-    "toolSource": "role-manifest",
+    "skillSource": "capability-matrix",
+    "toolSource": "capability-matrix",
     "modelSource": "model-policy",
     "routingCapabilities": {
       "baseline": {
@@ -58,8 +58,8 @@
     "adapterId": "codex-custom-agent@1",
     "modelSource": "model-policy",
     "sandboxPolicy": "read-only when the capability contract has no Write tool; workspace-write otherwise",
-    "doctrinePolicy": "embed the canonical doctrine because Codex custom-agent configuration cannot preload Claude plugin skills",
-    "toolPolicy": "record Claude tools as provenance and require available Codex equivalents at runtime",
+    "doctrinePolicy": "embed only capability-selected doctrine profiles and reviewed technique catalogs at generation time; never read catalogs at runtime",
+    "toolPolicy": "require contract-equivalent runtime capabilities and return CAPABILITY_GAP when an assigned capability is unavailable",
     "routingCapabilities": {
       "baseline": {
         "model": true,
@@ -95,8 +95,8 @@
     },
     {
       "field": "shared-doctrine",
-      "claude": "preloaded qa-doctrine plugin skill",
-      "codex": "doctrine embedded into developer_instructions",
+      "claude": "capability-selected plugin skills preloaded from the matrix",
+      "codex": "the same selected profiles embedded into developer_instructions",
       "reason": "standalone Codex custom agents do not load Claude plugin skills"
     },
     {

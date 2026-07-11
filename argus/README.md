@@ -45,9 +45,9 @@ contract is available through `argus-assets path coverage-contract`.
 
 Marketplace installs are self-contained. The plugin ships:
 
-- `${CLAUDE_PLUGIN_ROOT}/skills/qa-doctrine/` — the canonical contract preloaded into all 27 specialists exactly once;
+- `${CLAUDE_PLUGIN_ROOT}/skills/orchestration-core/` plus capability-selected `qa-*` profiles — complete policy without loading irrelevant role modules;
 - `${CLAUDE_PLUGIN_ROOT}/skills/competition-profile/` — an explicit opt-in adapter that is disabled and never preloaded by default;
-- `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, RACI/canonical ownership, and shared doctrine;
+- `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, RACI, runner, coverage, template, and canonical ownership contracts;
 - `${CLAUDE_PLUGIN_ROOT}/capabilities/` — the mode-aware capability matrix plus generated model policy and sanitized benchmark;
 - `${CLAUDE_PLUGIN_ROOT}/policies/` + `lib/` — authorization/engagement templates, redaction patterns, guards, and atomic controllers;
 - `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` — active `PreToolUse` target-immutability guard;
@@ -59,7 +59,7 @@ Maintainers edit the canonical sources under `argus/` and run
 `scripts/sync-argus-runtime-assets.mjs --write`. Generated plugin copies are checked
 byte-for-byte by `--check`; the generated prompt inventory covers all 27 agents.
 `node scripts/check-argus-prompts.mjs` enforces corpus, per-agent, description, and exact
-duplication budgets; verifies every doctrine preload and the default-off optional profile;
+duplication budgets; verifies every capability-selected profile and the default-off optional profile;
 and checks a representative Mode A output/quality contract. The budget is 625 KB for
 generated runtime assets and 1.75 MB for the complete installed
 plugin. `COLOR-SCHEME.md` and team graphs are intentionally maintainer-only.
@@ -160,7 +160,7 @@ transitions. The sole role-variant generator renders all 27 prompt descriptions 
 
 The model source of truth is `model-policy.json`, rendered as
 [`MODEL-POLICY.md`](MODEL-POLICY.md). It defines 10 frontier and 17 standard roles, native
-Claude/Codex models and effort, maximum turns, upward-only or fail-closed fallback, and
+runtime models and effort, maximum turns, upward-only or fail-closed fallback, and
 dynamic escalation signals. No full role may use the mechanical Haiku/Luna tier.
 `argus-assets model route` resolves dispatches and `argus-assets model telemetry` records
 only sanitized token/latency/provider-cost metrics. The committed synthetic benchmark
@@ -181,11 +181,15 @@ Claude/Codex differences and machine-readable support levels. Run
 `--check` to reject drift.
 
 The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same
-27 agents with the same slugs and names, each as a `*.toml` + readable `*.md` companion.
+27 agents with the same slugs and names. Each self-contained `*.toml` is the runtime input;
+its small `*.md` companion is a non-runtime provenance stub that records source, config,
+instruction hashes, assigned profiles/catalogs, and native Codex settings without copying
+the role body or Claude model metadata.
 The generator reads native model names and effort from `model-policy.json`, ownership and
-outputs from `raci.json`, inputs from the capability matrix, and safety/artifact-language
-rules from `qa-doctrine`. Codex custom-agent configuration embeds the shared doctrine
-because it cannot preload Claude plugin skills. Claude support is `plugin-native`; Codex
+outputs from `raci.json`, and tool, doctrine-profile, and technique-catalog assignments
+from the capability matrix. Claude preloads only the selected skills; Codex custom-agent
+configuration embeds those same selected bodies because it cannot preload Claude plugin
+skills. Claude support is `plugin-native`; Codex
 support is `parent-runtime-dependent` and requires parent-provided orchestration,
 packaged assets, and equivalent tools. Native validation uses `claude plugin validate
 --strict` and an isolated `codex doctor` load; those checks prove configuration loading,
@@ -226,9 +230,10 @@ not behavioral equivalence or target outcomes.
 The generated roster comes from `argus/raci.json`; the sole role-variant generator reads descriptions from the same source. Detailed ownership is in [`RACI-CONTRACT.md`](RACI-CONTRACT.md).
 
 `roles/` — canonical runtime-neutral role sources and adapters. `codex/` — generated Codex
-variant of the roster (27 `*.toml` + readable `*.md` pairs). `framework-template/`
+variant of the roster (27 runtime `*.toml` files + compact provenance `*.md` stubs). `framework-template/`
 (Playwright + TS), `framework-template-java/` (RestAssured + JUnit5 + Playwright-Java),
 `framework-template-python/` (pytest + Playwright + httpx) — project skeletons, all
-no-Selenium. `shared-skills/qa-doctrine/SKILL.md` is the single canonical doctrine;
-`competition-profile` is explicit opt-in. `COLOR-SCHEME.md`, `SHARED-DOCTRINE.md`, and
-`BROWSER-ISOLATION.md` are maintainer docs.
+no-Selenium. `shared-skills/qa-core`, `qa-browser`, `qa-framework-runner`,
+`qa-coverage-reporting`, and `orchestration-core` are the canonical scoped contracts;
+`competition-profile` is explicit opt-in. The old `qa-doctrine` monolith is retained only
+for maintainer comparison. `COLOR-SCHEME.md` and `SHARED-DOCTRINE.md` are maintainer docs.

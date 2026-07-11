@@ -1,0 +1,212 @@
+{
+  "$schema": "argus/technique-catalog@1",
+  "schemaVersion": 1,
+  "catalogId": "argus/technique-catalog/atalanta@1",
+  "role": "atalanta",
+  "catalogType": "hunter",
+  "valuePolicy": "discover-never-assume",
+  "executionRule": "each-applicable-entry-covered-or-gap",
+  "absentSurfaceDisposition": "not-applicable-with-evidence",
+  "entries": [
+    {
+      "id": "ATA-T01",
+      "title": "Strict response schema diff",
+      "scope": ["rest-contract", "data-exposure"],
+      "techniques": ["specification-based testing", "schema validation"],
+      "appliesWhen": "always",
+      "construct": ["Validate every response field for type, format, enum membership, nullability, and required presence", "Apply additionalProperties=false semantics so undocumented response fields are rejected"],
+      "oracles": ["The observed response is a strict subset of the sourced contract and contains no internal, credential, tenant, or soft-delete fields"],
+      "routes": ["contract", "security"]
+    },
+    {
+      "id": "ATA-T02",
+      "title": "Exact documented status code",
+      "scope": ["rest-contract", "error-contract"],
+      "techniques": ["decision table", "specification-based testing"],
+      "appliesWhen": "always",
+      "construct": ["Exercise each documented operation outcome, including create, missing, validation, conflict, unauthenticated, and forbidden states"],
+      "oracles": ["The exact documented code is returned; broad 2xx or 4xx class matching is insufficient and 5xx never substitutes for a client error"],
+      "routes": ["contract"]
+    },
+    {
+      "id": "ATA-T03",
+      "title": "Safe and idempotent HTTP methods",
+      "scope": ["rest-semantics", "state-integrity"],
+      "techniques": ["state transition", "repetition"],
+      "appliesWhen": "surface-present",
+      "construct": ["Invoke GET, HEAD, PUT, DELETE, and OPTIONS twice from a known state", "Replay POST with the same idempotency key when the contract offers one"],
+      "oracles": ["Safe methods create no state change; idempotent methods produce the same resulting state; an idempotency-key replay creates exactly one effect"],
+      "routes": ["api", "resilience"]
+    },
+    {
+      "id": "ATA-T04",
+      "title": "Method-by-state status semantics",
+      "scope": ["rest-semantics", "error-contract"],
+      "techniques": ["decision table", "state transition"],
+      "appliesWhen": "surface-present",
+      "construct": ["Cross each supported and unsupported method with present, missing, invalid, unauthenticated, forbidden, and conflicting resource states"],
+      "oracles": ["Create returns the sourced create code and Location when promised; unsupported methods return 405 with Allow; missing, auth, validation, and conflict states remain distinguishable"],
+      "routes": ["contract"]
+    },
+    {
+      "id": "ATA-T05",
+      "title": "REST conformance",
+      "scope": ["rest-semantics", "interoperability"],
+      "techniques": ["checklist-based testing", "specification review"],
+      "appliesWhen": "always",
+      "construct": ["Inspect resource naming, collection versus item behaviour, content types, statelessness, cache validators, and declared ETag semantics"],
+      "oracles": ["Observed behaviour matches the sourced REST contract; deviations without a normative requirement are recorded as interoperability risks, not invented defects"],
+      "routes": ["contract"]
+    },
+    {
+      "id": "ATA-T06",
+      "title": "Three-point boundary construction",
+      "scope": ["validation", "business-rules", "data-integrity"],
+      "techniques": ["boundary value analysis", "equivalence partitioning"],
+      "appliesWhen": "surface-present",
+      "construct": ["Discover each threshold, range, limit, enum, page seam, rate, date cutoff, and character limit from a source", "Construct B-minus-step, B, and B-plus-step on both range edges using the domain's smallest unit and arrange deep preconditions when needed"],
+      "oracles": ["Equality obeys the sourced inclusive or exclusive rule; accepted values persist exactly; rejected values produce the field-bound error and no state change"],
+      "routes": ["api", "data"]
+    },
+    {
+      "id": "ATA-T07",
+      "title": "Server validation past UI controls",
+      "scope": ["validation", "server-trust-boundary"],
+      "techniques": ["negative testing", "equivalence partitioning"],
+      "appliesWhen": "surface-present",
+      "construct": ["Bypass selects, steppers, date pickers, maxlength, and client validation with below-minimum, above-maximum, off-enum, wrong-type, oversized, and out-of-scope identifiers"],
+      "oracles": ["The server returns the sourced 4xx field error and no state change persists; it does not coerce, accept, or fail with 5xx"],
+      "routes": ["api", "security"]
+    },
+    {
+      "id": "ATA-T08",
+      "title": "Lifecycle revert and repeated mutation",
+      "scope": ["state-integrity", "business-workflow"],
+      "techniques": ["state transition", "repetition"],
+      "appliesWhen": "surface-present",
+      "construct": ["Drive create, update, complete, revert or un-complete, delete, and re-read transitions", "Repeat the same mutation and retry sequence from controlled state"],
+      "oracles": ["Only legal transitions occur and rewards, counters, totals, versions, and related rows do not accumulate an unintended second effect"],
+      "routes": ["api", "resilience", "data"]
+    },
+    {
+      "id": "ATA-T09",
+      "title": "Effect and message-content oracle",
+      "scope": ["state-integrity", "error-contract"],
+      "techniques": ["state verification", "decision table"],
+      "appliesWhen": "surface-present",
+      "construct": ["Capture the relevant state before a mutation, execute it, and re-read every promised view", "Trigger each documented field error"],
+      "oracles": ["The exact business post-condition occurs once; an error names the offending field and rule; a bare success code or generic error is insufficient"],
+      "routes": ["api", "data"]
+    },
+    {
+      "id": "ATA-T10",
+      "title": "Soft-delete resurrection sweep",
+      "scope": ["state-integrity", "authorization"],
+      "techniques": ["state transition", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["After deletion, probe direct read, every list, search, filter, export, relationship, mutation, authentication, and prior-session path discovered for the entity"],
+      "oracles": ["The entity is absent or carries the documented deleted state everywhere; zombie mutation is denied and deleted principals, tokens, and sessions cannot authenticate"],
+      "routes": ["api", "security", "data"]
+    },
+    {
+      "id": "ATA-T11",
+      "title": "Concurrent double-submit and last-unit race",
+      "scope": ["concurrency", "idempotency", "capacity-integrity"],
+      "techniques": ["state transition", "pairwise interleaving"],
+      "appliesWhen": "surface-present",
+      "construct": ["Fire the same create, submit, or payment request concurrently", "Discover a constrained resource, arrange exactly one unit remaining, and issue bounded parallel claims"],
+      "oracles": ["Exactly one effect occurs for an idempotent submission; successes never exceed capacity; no duplicate, oversell, negative balance, or exclusive-unit collision persists"],
+      "routes": ["api", "performance", "resilience", "data"]
+    },
+    {
+      "id": "ATA-T12",
+      "title": "Case-fold and normalization consistency",
+      "scope": ["identity", "search", "uniqueness"],
+      "techniques": ["equivalence partitioning", "metamorphic testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Vary case, NFC versus NFD, and leading, trailing, and internal whitespace across write, lookup, filter, and authentication paths"],
+      "oracles": ["Normalization follows the sourced rule consistently across paths; display data preserves promised form and uniqueness cannot be bypassed by case or normalization"],
+      "routes": ["api", "security"]
+    },
+    {
+      "id": "ATA-T13",
+      "title": "Credential whitespace consistency",
+      "scope": ["identity", "authentication"],
+      "techniques": ["equivalence partitioning", "round-trip testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Use leading, trailing, internal, tab, and whitespace-only values on registration, login, profile update, and password change"],
+      "oracles": ["Write and authentication paths preserve or trim identically; internal display-name spaces follow the contract; whitespace-only credentials are rejected without lockout-producing inconsistency"],
+      "routes": ["security"]
+    },
+    {
+      "id": "ATA-T14",
+      "title": "Target-locale diacritic identity round trip",
+      "scope": ["identity", "internationalization"],
+      "techniques": ["equivalence partitioning", "round-trip testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Discover the target locale and submit its multibyte diacritics at exact character-count boundaries in names and credentials"],
+      "oracles": ["Accepted text stores and returns without ASCII stripping or mojibake; character limits count characters rather than bytes and authentication remains exact"],
+      "routes": ["api", "security"]
+    },
+    {
+      "id": "ATA-T15",
+      "title": "Special-character identity and injection probe",
+      "scope": ["identity", "injection", "output-encoding"],
+      "techniques": ["equivalence partitioning", "error guessing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Submit punctuation, quotes, shell, SQL, HTML, and template metacharacters in passwords and identity display fields"],
+      "oracles": ["Passwords retain their allowed keyspace and authenticate exactly; display fields round-trip safely; no query change, code execution, unescaped rendering, internal leak, or 5xx occurs"],
+      "routes": ["security"]
+    },
+    {
+      "id": "ATA-T16",
+      "title": "Unicode identity edge classes",
+      "scope": ["identity", "internationalization", "storage-integrity"],
+      "techniques": ["equivalence partitioning", "boundary value analysis"],
+      "appliesWhen": "surface-present",
+      "construct": ["Exercise emoji, astral symbols, combining marks, ZWJ, RTL, zero-width characters, NFC/NFD variants, and overlong values"],
+      "oracles": ["Each value is clearly rejected or accepted and losslessly round-tripped; no 5xx, surrogate corruption, silent truncation, directionality leak, or byte-count boundary error occurs"],
+      "routes": ["api", "security", "data"]
+    },
+    {
+      "id": "ATA-T17",
+      "title": "Email positive and negative validity matrix",
+      "scope": ["identity", "validation"],
+      "techniques": ["equivalence partitioning", "decision table"],
+      "appliesWhen": "surface-present",
+      "construct": ["Pair a valid local-at-domain-dot-TLD case with missing-at, missing-domain, missing-TLD, spaces, double-at, consecutive-dot, overlong, IDN, Unicode-domain, and short-domain cases on every email field"],
+      "oracles": ["The valid address is accepted; each invalid partition follows the sourced rule with a field-bound error and never a 5xx"],
+      "routes": ["api", "security"]
+    },
+    {
+      "id": "ATA-T18",
+      "title": "Per-field case sensitivity",
+      "scope": ["identity", "authentication"],
+      "techniques": ["equivalence partitioning", "metamorphic testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Change only letter case in passwords, display names, identifiers, and lookup keys"],
+      "oracles": ["Passwords remain case-sensitive; display-name case is preserved; each identifier and lookup follows its explicit sourced case rule"],
+      "routes": ["security"]
+    },
+    {
+      "id": "ATA-T19",
+      "title": "Case-insensitive email uniqueness",
+      "scope": ["identity", "account-integrity"],
+      "techniques": ["state verification", "metamorphic testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Register one mixed-case email, attempt a case-only duplicate, count matching accounts, then authenticate with multiple email case variants"],
+      "oracles": ["Exactly one account exists; duplicate registration is rejected with the sourced conflict response and every supported case variant resolves to that same account"],
+      "routes": ["security", "data"]
+    },
+    {
+      "id": "ATA-T20",
+      "title": "All-string charset and storage fidelity",
+      "scope": ["string-fields", "storage-integrity", "cross-view-consistency"],
+      "techniques": ["equivalence partitioning", "boundary value analysis", "round-trip testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["For every discovered string field, test ASCII, target-locale text, multibyte boundary values, emoji, astral, combining, ZWJ, RTL, zero-width, normalization variants, and overlong input", "Write through the API and read through every funded view"],
+      "oracles": ["Limits use the sourced unit; accepted values are byte-faithful where promised and semantically consistent across views; rejected values are explicit; no double encoding, replacement, surrogate damage, silent truncation, or 5xx occurs"],
+      "routes": ["api", "data", "security"]
+    }
+  ]
+}

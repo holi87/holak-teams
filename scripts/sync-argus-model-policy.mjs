@@ -38,7 +38,7 @@ function updateRootReadme(content) {
   content = content.replace('**Tiers:** 19 opus · 8 sonnet.', '**Tiers:** 10 opus · 17 sonnet · 0 haiku full roles.');
   content = content.replace(
     /Current Argus QA (?:frontmatter models|policy):[^\n]+/,
-    'Current Argus QA policy: **10 opus / 17 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) records Claude/Codex models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`. The role-variant generator consumes the same policy for all 27 Codex `*.toml` + `*.md` variants.',
+    'Current Argus QA policy: **10 opus / 17 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.',
   );
   return content;
 }

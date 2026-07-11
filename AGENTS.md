@@ -90,14 +90,15 @@ holak-teams/                         # this repo == the marketplace
     │   ├── .claude-plugin/plugin.json
     │   ├── agents/                  # 27 flat specialist defs (loaded by Claude Code)
     │   ├── skills/run/SKILL.md      # /argus:run main-thread orchestrator
-    │   ├── skills/qa-doctrine/      # preloaded single-source contract for all 27 agents
+    │   ├── skills/orchestration-core/ # complete main-thread/controller contract
+    │   ├── skills/qa-*/             # capability-selected QA profiles
     │   ├── skills/competition-profile/ # explicit opt-in; never preloaded
     │   ├── bin/argus-assets         # list/verify/copy packaged runtime assets
     │   ├── hooks/hooks.json         # packaged PreToolUse target-immutability guard
     │   ├── capabilities/            # generated 27-role capability and fallback matrix
     │   ├── policies/ + lib/         # authorization template, redactor rules, evaluator
     │   ├── references/ + schemas/   # generated, installed runtime references/contracts
-    │   ├── templates/               # generated TS / Java / Python framework copies
+    │   ├── templates/               # common layer + generated TS / Java / Python layers
     │   └── runtime-*.json           # generated asset manifest + prompt inventory
     ├── codex/                       # Codex variants (*.toml + *.md) — separate, not in the plugin
     ├── framework-template/          # prepped Playwright + TS framework (shared reference)
@@ -143,13 +144,14 @@ Installed users can run `argus-assets list`, `argus-assets verify`,
 and the complete installed Argus plugin at 1.75 MB. `COLOR-SCHEME.md` and team graphs are
 explicitly maintainer-only; their runtime values already live in agent frontmatter.
 
-Every Claude specialist preloads `qa-doctrine` through supported agent frontmatter, so
-safety, ownership, browser isolation, evidence, quality, event-driven progress, and
-artifact-language rules enter its startup context exactly once. The optional
-`competition-profile` is packaged but disabled and never preloaded; it requires explicit
-user opt-in. `node scripts/check-argus-prompts.mjs` enforces the 35% corpus-reduction
-floor, per-agent/description budgets, zero exact duplicated doctrine paragraphs, all 27
-preloads, default-profile isolation, and a representative engagement regression contract.
+Every Claude specialist preloads the exact profiles selected by the capability matrix.
+`qa-core` is universal; browser, framework-runner, coverage-reporting, and orchestration
+policy are attached only where needed. Codex generation embeds the same selected bodies.
+The legacy `qa-doctrine` monolith is maintainer-only. The optional `competition-profile`
+is packaged but disabled and never preloaded; it requires explicit user opt-in.
+`node scripts/check-argus-prompts.mjs` enforces effective Claude and Codex corpus budgets,
+profile/tool assignments, semantic duplicate detection, default-profile isolation, and a
+representative engagement regression contract.
 
 Model selection is generated from `argus/model-policy.json`: 10 quality-critical roles
 use Claude `opus` / maximum effort and Codex `sol` / `xhigh`; 17 bounded execution roles
@@ -161,6 +163,8 @@ and a validator pass before merge. `model-policy.benchmark.json` records synthet
 quality, latency, token, and provider-cost comparisons without prompts, completions, or
 target data. Run `scripts/sync-argus-model-policy.mjs --write|--check` and
 `scripts/smoke-argus-model-policy.sh` after policy changes.
+The generated policy is the single cross-runtime mapping view. Worker prompts contain
+only their local execution envelope and never name the opposite runtime's model.
 
 The preflight writes only dedicated control artifacts under `ai_agents_internal/` before
 any target probe, test, or specialist dispatch: preflight, authorization, engagement, and
@@ -285,8 +289,8 @@ documented in `RELEASE.md`: `scripts/validate-release.sh`.
 
 Every artifact the agents write to disk — docs, reports, plans, bug reports, checklists,
 code, comments, test names, commit messages — is **100% English**, regardless of the
-conversation language. Argus receives the rule from its preloaded canonical
-`qa-doctrine`; Hephaestus keeps it inline. This repository's documentation follows the
+conversation language. Argus receives the rule from its universal `qa-core` profile;
+Hephaestus keeps it inline. This repository's documentation follows the
 same rule.
 
 <!-- Author: Grzegorz Holak -->

@@ -5,18 +5,29 @@
     "generatedAssetsBytes": 625000,
     "installedPluginBytes": 1750000
   },
+  "templateCompositions": {
+    "typescript": {
+      "source": "argus/framework-template",
+      "commonAsset": "common-template",
+      "runtimeAsset": "typescript-template"
+    },
+    "java": {
+      "source": "argus/framework-template-java",
+      "commonAsset": "common-template",
+      "runtimeAsset": "java-template"
+    },
+    "python": {
+      "source": "argus/framework-template-python",
+      "commonAsset": "common-template",
+      "runtimeAsset": "python-template"
+    }
+  },
   "assets": [
     {
       "id": "browser-isolation",
       "kind": "reference",
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md"
-    },
-    {
-      "id": "shared-doctrine",
-      "kind": "reference",
-      "source": "argus/SHARED-DOCTRINE.md",
-      "destination": "references/SHARED-DOCTRINE.md"
     },
     {
       "id": "authorization-policy",
@@ -67,10 +78,34 @@
       "destination": "references/raci.json"
     },
     {
-      "id": "qa-doctrine-skill",
+      "id": "orchestration-core-skill",
       "kind": "skill",
-      "source": "argus/shared-skills/qa-doctrine",
-      "destination": "skills/qa-doctrine"
+      "source": "argus/shared-skills/orchestration-core",
+      "destination": "skills/orchestration-core"
+    },
+    {
+      "id": "qa-core-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/qa-core",
+      "destination": "skills/qa-core"
+    },
+    {
+      "id": "qa-browser-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/qa-browser",
+      "destination": "skills/qa-browser"
+    },
+    {
+      "id": "qa-framework-runner-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/qa-framework-runner",
+      "destination": "skills/qa-framework-runner"
+    },
+    {
+      "id": "qa-coverage-reporting-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/qa-coverage-reporting",
+      "destination": "skills/qa-coverage-reporting"
     },
     {
       "id": "competition-profile-skill",
@@ -89,6 +124,12 @@
       "kind": "capabilities",
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json"
+    },
+    {
+      "id": "orchestration-plan",
+      "kind": "capabilities",
+      "source": "argus/orchestration-plan.json",
+      "destination": "capabilities/orchestration-plan.json"
     },
     {
       "id": "model-policy",
@@ -127,6 +168,12 @@
       "destination": "lib"
     },
     {
+      "id": "common-template",
+      "kind": "template",
+      "source": "argus/framework-template-common",
+      "destination": "templates/common"
+    },
+    {
       "id": "typescript-template",
       "kind": "template",
       "source": "argus/framework-template",
@@ -145,7 +192,45 @@
       "destination": "templates/python"
     }
   ],
+  "buildOnly": [
+    {
+      "source": "argus/runtime/technique-catalogs.mjs",
+      "reason": "Technique catalogs are validated and embedded by the role generator; installed agents never read them."
+    },
+    {
+      "source": "argus/schemas/prompt-budgets.schema.json",
+      "reason": "The prompt budget is a repository CI contract, not an engagement runtime contract."
+    },
+    {
+      "source": "argus/schemas/prompt-engagement-contract.schema.json",
+      "reason": "Representative prompt evaluation is enforced during repository validation only."
+    },
+    {
+      "source": "argus/schemas/role-manifest.schema.json",
+      "reason": "The canonical role manifest is consumed only by the build-time role generator."
+    },
+    {
+      "source": "argus/schemas/technique-catalog.schema.json",
+      "reason": "Technique catalogs are build-time generator inputs and are embedded into effective prompts."
+    },
+    {
+      "source": "argus/schemas/capability-matrix.schema.json",
+      "reason": "Capability/profile assignments are validated by repository generation and CI before packaging."
+    },
+    {
+      "source": "argus/schemas/raci.schema.json",
+      "reason": "RACI source synchronization and ownership validation are repository build-time gates."
+    }
+  ],
   "maintainerOnly": [
+    {
+      "source": "argus/SHARED-DOCTRINE.md",
+      "reason": "Compatibility pointer for maintainers; effective runtime doctrine is delivered by capability-scoped skills."
+    },
+    {
+      "source": "argus/shared-skills/qa-doctrine",
+      "reason": "Legacy monolithic doctrine retained as a maintainer comparison source after capability-scoped skill migration."
+    },
     {
       "source": "argus/COLOR-SCHEME.md",
       "reason": "The runtime color values are embedded in agent frontmatter."

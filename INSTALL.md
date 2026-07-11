@@ -33,9 +33,10 @@ cap and declared signals, checkpoints safely, then stops with an
 starts a new selected attempt; workers never choose or override models.
 
 `codex/` is the Codex-format variant. The canonical Argus framework and reference sources
-remain under `argus/`; byte-identical runtime copies of the three templates,
-browser-isolation guide, shared doctrine, and schemas are shipped inside the Claude
-plugin. `argus/COLOR-SCHEME.md` and the team graphs remain maintainer-only.
+remain under `argus/`; the Claude plugin ships hash-checked runtime assets, a shared
+template layer plus one runtime-specific layer, capability-selected skills, and schemas.
+`argus/COLOR-SCHEME.md`, the legacy monolithic doctrine, and the team graphs remain
+maintainer-only.
 
 ## Claude Code — plugin marketplace (recommended)
 
@@ -88,11 +89,13 @@ runtime, and every selected specialist. Only `ready` and `degraded` agents may d
 degraded records include their mandatory fallback, while deferred/skipped/blocked records
 stay out of the dispatch table. A blocked mandatory check exits before target execution.
 
-Each installed Argus specialist preloads `${CLAUDE_PLUGIN_ROOT}/skills/qa-doctrine/SKILL.md`
-at startup through agent frontmatter. The full shared safety, coordination, browser,
-quality, progress, and artifact-language contract therefore does not depend on an ad-hoc
-file read. `${CLAUDE_PLUGIN_ROOT}/skills/competition-profile/SKILL.md` is packaged but
-disabled by default and requires explicit invocation for a competition or scored course.
+Each installed Argus specialist preloads the capability-selected profiles declared by the
+matrix. `qa-core` is universal; browser, framework-runner, coverage-reporting, and
+orchestration profiles are attached only where needed. Codex generation embeds the same
+selected profile bodies because custom agents cannot preload Claude plugin skills. The
+legacy monolithic doctrine is not packaged. `${CLAUDE_PLUGIN_ROOT}/skills/competition-profile/SKILL.md`
+is packaged but disabled by default and requires explicit invocation for a competition or
+scored course.
 
 When no authorization file is supplied, preflight creates a default-deny manifest at
 `ai_agents_internal/authorization.json`. Unknown, staging, and production-like targets
@@ -201,8 +204,10 @@ Then in any session:
 ## Codex Install — Hephaestus + Argus
 
 A Codex subagent is configured by a **single self-contained `*.toml`** (the persona prompt lives inside it,
-in `developer_instructions`). The matching `*.md` is a readable generated companion and is
-**not read by Codex**, so install only the `*.toml`. Argus variants are generated from
+in `developer_instructions`). Codex does **not** read the matching `*.md`, so install only
+the `*.toml`. Hephaestus keeps a readable generated companion; each Argus `*.md` is instead
+a compact, hash-bound provenance stub and deliberately contains no runtime instructions.
+Argus variants are generated from
 `argus/roles/manifest.json` + `argus/roles/*.md` and their referenced contracts; direct
 edits under `argus/claude/agents/` or `argus/codex/` are rejected by CI. Only
 `scripts/sync-argus-role-variants.mjs` writes those runtime variants. Codex has no

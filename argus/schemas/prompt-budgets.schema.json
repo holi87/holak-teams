@@ -2,15 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://holak-teams.local/argus/prompt-budgets.schema.json",
   "type": "object",
-  "required": ["schemaVersion", "baseline", "approvedCorpus", "budgets", "requiredPreloadedSkill", "optionalProfiles"],
+  "required": ["schemaVersion", "baseline", "approvedCorpus", "budgets", "requiredPreloadedProfiles", "optionalProfiles"],
   "properties": {
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
     "baseline": {
       "type": "object",
-      "required": ["claudeAgentWords", "capturedAt", "sourceCommit"],
+      "required": ["claudeAgentWords", "codexTomlCharacters", "codexEstimatedTokens", "capturedAt", "sourceCommit"],
       "properties": {
         "claudeAgentWords": { "type": "integer", "minimum": 1 },
+        "codexTomlCharacters": { "type": "integer", "minimum": 1 },
+        "codexEstimatedTokens": { "type": "integer", "minimum": 1 },
         "capturedAt": { "type": "string", "format": "date" },
         "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" }
       },
@@ -48,17 +50,33 @@
     },
     "budgets": {
       "type": "object",
-      "required": ["maxClaudeAgentWords", "maxAgentWords", "maxDescriptionWords", "duplicateParagraphMinWords", "maxDuplicatedDoctrineInstances"],
+      "required": ["maxClaudeAgentWords", "maxEffectiveClaudeWords", "maxAgentWords", "maxEffectiveAgentWords", "maxCodexEstimatedTokens", "minimumCodexTokenReduction", "minRunSkillWords", "maxRunSkillWords", "maxOdysseusAgentWords", "maxCodexCapabilityDeltaWords", "maxFrontmatterToolEntries", "maxToolNameBytesPerAgent", "maxToolNameBytesCorpus", "maxPlaywrightMcpEntries", "maxDescriptionWords", "duplicateParagraphMinWords", "maxDuplicatedDoctrineInstances"],
       "properties": {
         "maxClaudeAgentWords": { "type": "integer", "minimum": 1 },
+        "maxEffectiveClaudeWords": { "type": "integer", "minimum": 1 },
         "maxAgentWords": { "type": "integer", "minimum": 1 },
+        "maxEffectiveAgentWords": { "type": "integer", "minimum": 1 },
+        "maxCodexEstimatedTokens": { "type": "integer", "minimum": 1 },
+        "minimumCodexTokenReduction": { "type": "integer", "minimum": 1 },
+        "minRunSkillWords": { "type": "integer", "minimum": 1 },
+        "maxRunSkillWords": { "type": "integer", "minimum": 1 },
+        "maxOdysseusAgentWords": { "type": "integer", "minimum": 1 },
+        "maxCodexCapabilityDeltaWords": { "type": "integer", "minimum": 1 },
+        "maxFrontmatterToolEntries": { "type": "integer", "minimum": 1 },
+        "maxToolNameBytesPerAgent": { "type": "integer", "minimum": 1 },
+        "maxToolNameBytesCorpus": { "type": "integer", "minimum": 1 },
+        "maxPlaywrightMcpEntries": { "type": "integer", "minimum": 0 },
         "maxDescriptionWords": { "type": "integer", "minimum": 1 },
         "duplicateParagraphMinWords": { "type": "integer", "minimum": 1 },
         "maxDuplicatedDoctrineInstances": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": false
     },
-    "requiredPreloadedSkill": { "const": "qa-doctrine" },
+    "requiredPreloadedProfiles": {
+      "type": "array",
+      "contains": { "const": "qa-core" },
+      "uniqueItems": true
+    },
     "optionalProfiles": {
       "type": "array",
       "contains": { "const": "competition-profile" }

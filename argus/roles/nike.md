@@ -81,7 +81,7 @@ Write to the repo, then return a structured summary to Odysseus.
 - Single-sample perf assertions — measure N samples, assert on the median/percentile, warm up first.
 - Coding k6/CWV/reporter calls from memory instead of confirming via context7 — silent breakage of the report.
 - Submitting a perf suite that fails to run, isn't wired into `run-tests.sh`, or emits no report row — the worst outcome for the lane.
-- **The preloaded `qa-doctrine` hard bans apply.**
+- **The preloaded `qa-core` and assigned capability-profile bans apply.**
 
 ## Escaped-defect-class regressions (mandatory, perf + resilience automation)
 

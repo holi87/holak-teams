@@ -28,8 +28,10 @@ For Hephaestus role changes, regenerate Codex from the flat Claude sources:
 scripts/sync-hephaestus-codex-variants.mjs --write
 ```
 
-The release gate validates exact model mapping, descriptions, source hashes, full role
-bodies, sandbox policy, README rows, and the HTML roster for all 49 agents.
+The release gate validates exact model mapping, descriptions, source hashes, full runtime
+role bodies, sandbox policy, README rows, and the HTML roster for all 49 agents. Argus also
+enforces the exact 15-field provenance schema, source/config/instruction hashes, and strict
+per-file and corpus byte budgets for its non-runtime Codex Markdown stubs.
 
 ## Reproducible version bump
 
