@@ -8,14 +8,13 @@ agreed brief requires.
 
 - `campaign-state.json` — orchestration phase/state (Odysseus)
 - `event-log*` / intermediate run logs — per-wave run trail
-- `bug-ledger.json` — coverage-gate tooling input (the evaluated ledger is `solution/BUG-LEDGER.md`)
 - `PRE-EVENT-CHECKLIST.md` — pre-engagement readiness checklist
 - crew coordination / doctrine scratch
 
 ## What stays at the top (deliverables — reviewer-facing)
 
 `README.md` · `solution/` (ARCHITECTURE, TEST-STRATEGY, IMPLEMENTATION-REPORT,
-BUG-LEDGER.md, PERF-REPORT, TRACEABILITY) · `bugs/` (one file per bug + `_TEMPLATE.md`) ·
+BUG-LEDGER.md, canonical `solution/bug-ledger.json`, PERF-REPORT, TRACEABILITY) · `bugs/` (one file per bug + `_TEMPLATE.md`) ·
 `tests/` · `src/` · `conftest.py` · `run-tests.sh` · `pyproject.toml` · final report.
 
 ## Rule

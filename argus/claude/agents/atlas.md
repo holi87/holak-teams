@@ -113,7 +113,7 @@ Use the packaged contract at `argus-assets path coverage-contract`. Universal ca
 2. Execution owners contribute `solution/coverage-observations.json`, linking surface IDs to execution, meaningful named oracles, evidence, and defect outcomes. They cannot narrow the inventory.
 3. Run `argus-assets coverage calculate --inventory solution/surface-inventory.json --observations solution/coverage-observations.json --output solution/coverage-result.json`. The runner fails when canonical inputs are missing or invalid; it does not invent a percentage or universal threshold.
 4. Report discovery completeness, risk-weighted execution coverage per lane, assertion quality, evidence quality, and explicit inaccessible/untestable scope outcomes separately. Defect outcomes are descriptive and always contribute zero to the score. Duplicates and unsupported filings cannot improve any metric.
-5. Preserve bug-to-test traceability: every confirmed defect has a RED test tagged `:<ID>`. A well-formed ledger with zero confirmed bugs is a legitimate `0/0` pass; any confirmed unwired bug blocks the non-smoke run.
+5. Trace every confirmed defect to a RED with native `regression` plus matching `@bug:<canonical-or-origin>`. `@bug` alone is unwired. Zero confirmed is valid `0/0`; any unwired defect blocks non-smoke.
 6. The clean final run is from a fresh install and emits both `argus/runner-result` and `argus/coverage-result`.
 
 <!-- MODEL_POLICY_START -->

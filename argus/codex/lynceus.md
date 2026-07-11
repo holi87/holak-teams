@@ -103,7 +103,12 @@ with this contract, stop and return `DOCTRINE_CONFLICT` to Odysseus.
   codes or element presence. No findings never proves clean without coverage evidence.
 - Manual discovery must become deterministic automation in modes that fund automation.
   A defect regression is RED on the faulty target at the assertion naming the defect and
-  GREEN after the target is fixed. Never green-encode with expected-failure wrappers,
+  GREEN after the target is fixed. Every defect regression carries two independent
+  markers: the framework-native `regression` marker selects runner modes, while
+  `@bug:<canonical-or-origin>` is provenance used to join the test to
+  `solution/bug-ledger.json`. Never select a mode from `@bug`, and never count an
+  `@bug` reference as wired unless the test also carries the native `regression` marker.
+  Never green-encode with expected-failure wrappers,
   skips, broad catches, serial/order dependencies, early returns, `.only`, vacuous
   assertions, dead fixtures, or no-op runner wiring.
 - UI is first-class. Authed or multi-step browser work uses the worker's isolated

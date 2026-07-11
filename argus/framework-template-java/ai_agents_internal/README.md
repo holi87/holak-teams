@@ -27,12 +27,11 @@ Walk this top to bottom before the engagement starts:
 
 - `campaign-state.json` — orchestration phase/state (Odysseus)
 - `event-log*` / intermediate run logs per wave
-- `bug-ledger.json` — coverage-gate tooling input (the evaluated ledger is `solution/BUG-LEDGER.md`)
 - this `PRE-EVENT-CHECKLIST` analog + crew coordination / doctrine scratch
 
 ## What stays at the top (deliverables — reviewer-facing)
 
-`README.md` · `solution/` · `bugs/` (one file per bug + `_TEMPLATE.md`) ·
+`README.md` · `solution/` (including canonical `solution/bug-ledger.json`) · `bugs/` (one file per bug + `_TEMPLATE.md`) ·
 `src/test/java/qa/**` · `run-tests.sh` · `pom.xml` · `reports/summary.html`.
 
 ## Rule

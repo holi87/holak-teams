@@ -271,7 +271,6 @@
         "atalanta",
         "charon",
         "kalchas",
-        "minos",
         "odysseus",
         "orion",
         "perseus",
@@ -610,10 +609,32 @@
       "value": "solution/bug-ledger.json",
       "consumers": [
         "aegis",
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
         "kleio",
+        "lynceus",
+        "metis",
         "minos",
         "mnemosyne",
-        "talos"
+        "nike",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
       ]
     },
     {
@@ -733,7 +754,6 @@
         "ariadne",
         "kalchas",
         "metis",
-        "minos",
         "odysseus"
       ]
     },

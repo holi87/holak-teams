@@ -11,6 +11,7 @@ export function validateTemplateContract(contract) {
   const modes = ['baseline', 'defect-evidence', 'candidate-regression', 'full-suite'];
   if (!sameSet(contract.runner?.modes, modes) || contract.runner?.resultSchema !== 'argus/runner-result@1' || contract.runner?.result !== 'reports/argus-runner-result.json' || contract.runner?.events !== 'reports/outcomes.raw.tsv' || contract.runner?.evidenceRoot !== 'reports/evidence') errors.push('runner minimum contract is invalid');
   if (!sameSet(contract.runner?.categories, ['product', 'automation', 'infrastructure', 'skip', 'policy']) || !sameSet(contract.runner?.exitCodes, [0, 10, 11, 12, 13, 14, 15])) errors.push('runner categories or exit codes are invalid');
+  if (contract.tags?.bugLinked !== 'regression' || contract.tags?.bugProvenance !== '@bug:<canonical-or-origin>') errors.push('regression selection or bug provenance contract is invalid');
   if (contract.retryPolicy?.maximumAttempts !== 1 || contract.retryPolicy?.automaticRetries !== false) errors.push('automatic retries must be disabled');
   if (contract.quarantine?.ledger !== 'solution/quarantine.tsv' || !sameSet(contract.quarantine?.columns, ['case_id', 'owner', 'reason', 'expires_on', 'issue'])) errors.push('quarantine contract is invalid');
   for (const runtime of RUNTIMES) {

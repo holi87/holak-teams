@@ -32,7 +32,11 @@ not runnable engagement frameworks.
 All three templates implement the same four modes, `argus/runner-result@1`, seven-field
 outcome events, category-specific exit codes, `reports/evidence/`, lane/regression/
 quarantine/contract-smoke tags, no automatic retries, and an expiring quarantine ledger.
-Framework-native selectors differ, but semantics do not.
+Framework-native selectors differ, but semantics do not. The native `regression` marker
+is the only defect-test selection signal. A separate `@bug:<canonical-or-origin>` token
+records provenance and lets the coverage gate join the test to
+`solution/bug-ledger.json`; it never selects a runner mode. Every defect regression must
+carry both markers.
 
 `solution/quarantine.tsv` has five tab-separated fields with no header:
 `case_id`, `owner`, safe reason token, ISO `expires_on`, and issue token. A quarantined

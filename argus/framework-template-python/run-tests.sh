@@ -106,10 +106,11 @@ if [ -n "${WORKERS:-}" ]; then
 fi
 
 # --- Run every lane. Markers gate the perf/security/db lanes via skipif inside the tests.
-set +e
-"${PYTEST[@]}" ${XDIST[@]+"${XDIST[@]}"} "${MODE_ARGS[@]}" "$@"
-code=$?
-set -e
+if "${PYTEST[@]}" ${XDIST[@]+"${XDIST[@]}"} "${MODE_ARGS[@]}" "$@"; then
+  code=0
+else
+  code=$?
+fi
 
 echo ""
 echo "Reports: reports/html/index.html (humans) | reports/report.json + reports/junit.xml (tooling)"

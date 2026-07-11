@@ -8,13 +8,17 @@ and a failed delivery gate. Every framework runner accepts `--mode <name>`, writ
 
 | Mode | Test selection | Required input | Output and success rule |
 |---|---|---|---|
-| `baseline` | All applicable tests except bug-linked regression/evidence cases. | Target URLs/config plus ordinary framework selectors. | Exit 0 only when the baseline has no unexpected product, automation, infrastructure, policy, or required-skip outcome. Known RED evidence is excluded, never counted as green. |
-| `defect-evidence` | Bug-linked tests only. | An adapter event file with at least one `product/fail/expected=true` event linked to `BUG-NNNN`. | Exit 0 only when every selected known defect reproduces and no unexpected outcome occurs. Missing events, unexpected failures, or a passing expected-RED case fail closed. |
-| `candidate-regression` | Bug-linked tests against a product-fix candidate. | Product fix candidate plus bug-linked cases. | Strict green: every failure remains unexpected even if it was historically known. Exit 0 proves the candidate closes the selected regressions. |
+| `baseline` | All applicable tests except cases carrying the framework-native `regression` marker. | Target URLs/config plus ordinary framework selectors. | Exit 0 only when the baseline has no unexpected product, automation, infrastructure, policy, or required-skip outcome. Known RED evidence is excluded, never counted as green. |
+| `defect-evidence` | Tests carrying the framework-native `regression` marker only. | An adapter event file with at least one `product/fail/expected=true` event linked to `BUG-NNNN`. | Exit 0 only when every selected known defect reproduces and no unexpected outcome occurs. Missing events, unexpected failures, or a passing expected-RED case fail closed. |
+| `candidate-regression` | Tests carrying the framework-native `regression` marker against a product-fix candidate. | Product fix candidate plus bug-linked cases. | Strict green: every failure remains unexpected even if it was historically known. Exit 0 proves the candidate closes the selected regressions. |
 | `full-suite` | Baseline plus bug-linked regression tests and enabled conditional lanes. | Complete target/runtime configuration. | Strict green over the whole selected suite. Known RED is visible as a product failure and fails the gate; it is never converted to pass/skip. |
 
 Extra framework-native selectors are passed after `--`. `baseline` and `full-suite` are
 delivery gates; `defect-evidence` is evidence collection, not a green regression gate.
+The separate `@bug:<canonical-or-origin>` token is provenance, not selection: it must
+match either the canonical `id` or one `origin` value in `solution/bug-ledger.json`.
+Every defect regression carries both the native `regression` marker and this provenance
+token.
 
 ## Adapter event input
 
@@ -34,7 +38,8 @@ case_id  category  status  expected  lifecycle  bug_id  reason
 
 Every runtime stores retained, redacted evidence below `reports/evidence/` and links it
 through the canonical evidence-reference contract. Lane semantics are `api`, `ui`,
-`perf`, `security`, and `db`; bug-linked tests use `regression`; target-independent
+`perf`, `security`, and `db`; bug-linked tests select with `regression` and join the
+canonical ledger through `@bug:<canonical-or-origin>`; target-independent
 scaffold validation uses `contract-smoke` (framework-native spelling may be adapted).
 
 ## Retry and quarantine semantics

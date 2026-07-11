@@ -6,7 +6,7 @@
   "runner": "junit5",
   "packageManagers": ["maven"],
   "layoutPlaceholders": { "testRoot": "src/test/java", "harnessRoot": "src/test/java/qa/support" },
-  "tagAdapter": { "contract-smoke": "@Tag(\"contract-smoke\")", "quarantine": "@Tag(\"quarantine\")", "regression": "@Tag(\"regression\")" },
+  "tagAdapter": { "contract-smoke": "@Tag(\"contract-smoke\")", "quarantine": "@Tag(\"quarantine\")", "regression": "@Tag(\"regression\")", "bug-provenance": "@bug:<canonical-or-origin>" },
   "extensionPoints": ["build-tool-adapter", "test-root", "harness-root", "ci-command"],
   "unsupportedByDefault": ["gradle", "testng"]
 }

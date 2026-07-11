@@ -40,7 +40,7 @@ Dependency direction: specs → fixtures/pages/data → api → config. Specs ne
 
 ## 5. Conventions
 - One dir per API resource under `tests/api/<resource>/` — parallel writers never collide; the shared `src/` harness is owned by the skeleton owner.
-- Tags: `@api`, `@ui`, `@regression BUG-NNN`. One regression test per confirmed bug, oracle cited.
+- Tags: `@api`, `@ui`, native `@regression` selection, and `@bug:<canonical-or-origin>` provenance. One regression test per confirmed bug, oracle cited; `@bug` never selects a runner mode by itself.
 - Locators: `getByRole`/`getByLabel`, never style-coupled CSS. Assertions live in specs, not page objects.
 - Determinism: `retries: 0`, no sleeps, unique data per test (factory), state reset between runs.
 - Reporting: Playwright-native — `list` + `html` (`reports/html/`) + `json` (`reports/results.json`).

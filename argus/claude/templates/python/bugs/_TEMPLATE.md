@@ -12,7 +12,7 @@
 - **Component / Endpoint:** <path or screen>
 - **Environment:** <build/commit, browser if UI, date>
 - **Oracle-id:** <ORC-### from solution/ORACLES.md — the source of truth this violates; required for ACCEPTED. If none exists yet, request it from Metis, do not invent the rule.>
-- **Links:** test `@regression BUG-NNN` · REQ-### · RISK-###
+- **Links:** test native `regression` marker + `@bug:<canonical-or-origin>` provenance · REQ-### · RISK-###
 
 ## Preconditions
 <state, account/role, data>

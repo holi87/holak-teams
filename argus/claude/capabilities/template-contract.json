@@ -14,6 +14,7 @@
   "tags": {
     "lanes": ["api", "ui", "perf", "security", "db"],
     "bugLinked": "regression",
+    "bugProvenance": "@bug:<canonical-or-origin>",
     "quarantine": "quarantine",
     "contractSmoke": "contract-smoke"
   },

@@ -39,8 +39,8 @@ fi
 
 MODE_ARGS=()
 case "$MODE" in
-  baseline) MODE_ARGS=(--grep-invert '@bug:BUG-[0-9]{4}|@quarantine') ;;
-  defect-evidence|candidate-regression) MODE_ARGS=(--grep '@bug:BUG-[0-9]{4}' --grep-invert '@quarantine') ;;
+  baseline) MODE_ARGS=(--grep-invert '@regression|@quarantine') ;;
+  defect-evidence|candidate-regression) MODE_ARGS=(--grep '@regression' --grep-invert '@quarantine') ;;
   full-suite) MODE_ARGS=(--grep-invert '@quarantine') ;;
 esac
 
@@ -95,24 +95,31 @@ if ! npx tsc --noEmit; then
 fi
 
 # Run all projects (setup + api + regression + ui). Args pass through, e.g. ./run-tests.sh --project=api
-set +e
-npx playwright test "${MODE_ARGS[@]}" "$@"
-pw_code=$?
+if npx playwright test "${MODE_ARGS[@]}" "$@"; then
+  pw_code=0
+else
+  pw_code=$?
+fi
 
 bug_gate_code=0
 if [ "${ARGUS_CONTRACT_SMOKE:-0}" != "1" ] && [ "$MODE" != baseline ]; then
-  node scripts/bug-coverage.mjs
-  bug_gate_code=$?
-  [ "$bug_gate_code" -eq 0 ] || emit_event bug-coverage automation fail false n/a - bug-coverage-gate-failed
+  if node scripts/bug-coverage.mjs; then
+    bug_gate_code=0
+  else
+    bug_gate_code=$?
+    emit_event bug-coverage automation fail false n/a - bug-coverage-gate-failed
+  fi
 fi
 
 baseline_gate_code=0
 if [ "${ARGUS_CONTRACT_SMOKE:-0}" != "1" ] && { [ "$MODE" = baseline ] || [ "$MODE" = full-suite ]; }; then
-  node scripts/baseline-coverage.mjs
-  baseline_gate_code=$?
-  [ "$baseline_gate_code" -eq 0 ] || emit_event baseline-coverage automation fail false n/a - baseline-coverage-gate-failed
+  if node scripts/baseline-coverage.mjs; then
+    baseline_gate_code=0
+  else
+    baseline_gate_code=$?
+    emit_event baseline-coverage automation fail false n/a - baseline-coverage-gate-failed
+  fi
 fi
-set -e
 
 echo ""
 echo "Reports: reports/html/index.html (npm run report)  |  reports/results.json"

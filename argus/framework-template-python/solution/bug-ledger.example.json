@@ -1,0 +1,33 @@
+{
+  "$schema": "argus/bug-ledger@1",
+  "schemaVersion": 1,
+  "engagementId": "replace-with-engagement-id",
+  "bugs": [
+    {
+      "id": "BUG-0001",
+      "origin": ["PER-001"],
+      "title": "IDOR: GET /api/orders/{id} returns another user's order",
+      "severity": "Critical",
+      "priority": "P1",
+      "lane": "perseus",
+      "oracleId": "ORC-SEC-001",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0001",
+      "evidenceIds": ["EVD-0001"]
+    },
+    {
+      "id": "BUG-0002",
+      "origin": ["ATA-002", "ARI-004"],
+      "title": "Cart total accepts a negative quantity",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-001",
+      "status": "confirmed",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    }
+  ]
+}

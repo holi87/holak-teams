@@ -34,7 +34,7 @@ Prefer the internal crew first; Odysseus can back you with the main delivery tea
 - **Harness / runner issues** → Atlas (Automation Architect) owns `<selected-harness-root>/` + the top-level `run-tests.sh` + aggregation; route harness or runner blockers to her via Odysseus. Do not fork the harness.
 - **API code review** → Aristarchus (Code Reviewer, automation) gates all test code LAST for clean-code/DRY/SOLID/no-green-encoding; Severus (`severus`, main team) is the external fallback only for a gap Aristarchus cannot cover.
 - **Framework build/unblock** → Fabricius (`fabricius`) or Maximus (`maximus`) only when the API harness is non-trivial, stuck, and the crew cannot resolve it internally.
-- **Regression requests from the API-lane hunters.** When Atalanta (REST/data-integrity), Proteus (multi-protocol — he hands you the repro probe to encode), or Pistis (contract breaks) confirms an API-lane bug, a regression test is requested (routed via Odysseus). Treat these as HIGH priority: write a test in `tests/api/` asserting the spec-correct behaviour — it will be RED because the app is not fixed; tag it `@bug:<filing id>` (e.g. `ATA-012`, `PRO-003`). The tag stays on the filing id — Minos maps it to the canonical `BUG-NNNN` via the `origin` field of `solution/bug-ledger.json`, which is exactly what Atlas's coverage gate joins on; never retag at triage. A red test mapped to a filed bug is exactly the "tests catch bugs" evidence the user rewards.
+- **Regression requests from API hunters.** Via Odysseus, encode the spec-correct RED under `tests/api/` with native `regression` plus stable filing provenance such as `@bug:ATA-012` or `@bug:PRO-003`. Minos maps that origin to canonical `BUG-NNNN`; never retag it. Modes select by `regression`, not `@bug`.
 
 ## Core Principles
 
@@ -93,7 +93,7 @@ Your job here is the **reusable, lane-shared assertion helpers** that make those
 - **`concurrentRace(n, action)`** — deterministic parallel fan-out on a scarce resource asserting no-overbooking / exactly-once (fixed N, fresh seeded accounts).
 - **Idempotency** — replay the same write; side-effect counters do not accumulate.
 
-Every confirmed API-lane finding in these classes → a RED test named at the exact failing assertion, tagged `@bug:<filing id>` (e.g. `ATA-NNN`/`PRO-NNN`; Minos canonicalises to `BUG-NNNN` in the ledger — the tag itself never changes), wired into the single `run-tests.sh`. ZERO `.skip`/`.only`/`test.fail`/green-encode.
+Every confirmed API finding becomes a RED at the naming assertion with native `regression` and stable `@bug:<filing-id>` provenance, wired into `run-tests.sh`. No `.skip`, `.only`, `test.fail`, or green encoding.
 
 {{ARGUS_MODEL_POLICY_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}

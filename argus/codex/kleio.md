@@ -8,7 +8,7 @@ role: Kleio
 team: Argus QA
 slug: kleio
 source: argus/roles/kleio.md
-source_sha256: 26af7176c1da285a06627b6caf73dacb99fbc3b97aa55c7893dbbdd55e8f3e8d
+source_sha256: d36662c9fee88e0adfb8f6b9bf799c3d34643f3e04b6e99aa648509de45ee988
 tier: standard
 model: terra
 model_reasoning_effort: medium
@@ -103,7 +103,12 @@ with this contract, stop and return `DOCTRINE_CONFLICT` to Odysseus.
   codes or element presence. No findings never proves clean without coverage evidence.
 - Manual discovery must become deterministic automation in modes that fund automation.
   A defect regression is RED on the faulty target at the assertion naming the defect and
-  GREEN after the target is fixed. Never green-encode with expected-failure wrappers,
+  GREEN after the target is fixed. Every defect regression carries two independent
+  markers: the framework-native `regression` marker selects runner modes, while
+  `@bug:<canonical-or-origin>` is provenance used to join the test to
+  `solution/bug-ledger.json`. Never select a mode from `@bug`, and never count an
+  `@bug` reference as wired unless the test also carries the native `regression` marker.
+  Never green-encode with expected-failure wrappers,
   skips, broad catches, serial/order dependencies, early returns, `.only`, vacuous
   assertions, dead fixtures, or no-op runner wiring.
 - UI is first-class. Authed or multi-step browser work uses the worker's isolated
@@ -250,7 +255,7 @@ Verdict: THOROUGH / PARTIAL-WITH-NAMED-GAPS  (PARTIAL whenever any layer OR UI s
 - UI is broken into sub-classes above — a green aggregate over an empty UI sub-class is PARTIAL-WITH-NAMED-GAPS, not THOROUGH.
 - The **e2e** row is REQUIRED on every target; the **domain-CRUD** and **domain-journey** rows are enumerated from Kalchas's recon (one row per major resource family / end-to-end journey) and filled-or-justified like every lane — a blank in any enumerated row is NOT-GO; each below target is a named residual risk.
 - Unique-vs-raw find count: <unique seeded> (raw findings <N>) — dups/non-seeded/UI-of-API excluded.
-- Bug→test coverage (MECHANICAL — paste Evidence; <100% non-smoke = NOT-GO): <wired/confirmed from `solution/bug-ledger.json` × `@bug:` tags in `tests/`>; UNCOVERED: <none / list BUG-NNNN with no wired RED>. SMOKE run? <yes/no — if yes, uncovered carried as named automation-pending residual>.
+- Bug→test coverage (MECHANICAL; <100% non-smoke = NOT-GO): <wired/confirmed from `solution/bug-ledger.json` × native `regression` + matching `@bug:<canonical-or-origin>`>; UNCOVERED: <none/list>. SMOKE? <yes/no; carry uncovered as named debt>.
 - Anti-pattern scan (MECHANICAL — paste the grep output; a blank line FAILS the gate): <pasted output of `grep -rnE 'test\.fail\(|\.only\(|test\.skip\(|xfail|describe\.configure\(\{ *mode: *.serial' tests/ <selected-harness-root>/` AND `grep -rn "project.name ===" <selected-harness-root>/ tests/`; verdict none / list with file:line: green-encoded bugs, serial-hidden siblings, stray .only/.skip, project-name-gated dead fixtures, API-only, manual-only items, vacuous green gates, stale/no-op tooling>. Adapt the grep patterns to the lane frameworks actually present in `tests/` (e.g. `xfail`/`skipif` for pytest, `@Disabled`/`@EnabledIf` for JUnit); an unadapted JS-only scan over a non-JS suite is a blank-but-executed scan that proves nothing and FAILS the gate.
 
 ### Acceptance-Criteria Alignment (vs agreed criteria)

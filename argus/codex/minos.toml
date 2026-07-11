@@ -92,7 +92,12 @@ with this contract, stop and return `DOCTRINE_CONFLICT` to Odysseus.
   codes or element presence. No findings never proves clean without coverage evidence.
 - Manual discovery must become deterministic automation in modes that fund automation.
   A defect regression is RED on the faulty target at the assertion naming the defect and
-  GREEN after the target is fixed. Never green-encode with expected-failure wrappers,
+  GREEN after the target is fixed. Every defect regression carries two independent
+  markers: the framework-native `regression` marker selects runner modes, while
+  `@bug:<canonical-or-origin>` is provenance used to join the test to
+  `solution/bug-ledger.json`. Never select a mode from `@bug`, and never count an
+  `@bug` reference as wired unless the test also carries the native `regression` marker.
+  Never green-encode with expected-failure wrappers,
   skips, broad catches, serial/order dependencies, early returns, `.only`, vacuous
   assertions, dead fixtures, or no-op runner wiring.
 - UI is first-class. Authed or multi-step browser work uses the worker's isolated
@@ -255,7 +260,7 @@ Net: hunters keep collision-safe lane prefixes; the deliverable speaks pure `BUG
 
 Bug→test coverage is a **mechanical exit-code gate** (Atlas owns it in `run-tests.sh`); YOU produce the data it consumes and treat uncovered confirmed bugs as a **headline blocker**, not a footnote.
 
-- **Emit a machine-readable twin: `solution/bug-ledger.json`** alongside `BUG-LEDGER.md`. One object per CONFIRMED distinct defect: `{ "id": "BUG-0002", "origin": ["ATA-002"], "title": "...", "severity": "Critical", "priority": "P1", "lane": "api", "oracle_id": "ORC-API-001", "wired": false, "test_ref": null }`. **`oracle_id` is the source-of-truth link into `solution/ORACLES.md`** — a confirmed defect with NO `oracle_id` is status `NEEDS_ORACLE`, never `ACCEPTED`: bounce it to Metis via Odysseus to add/confirm the `ORC-` row (the rule may be unsourced = itself a residual risk), don't accept an un-sourced opinion as a bug. `severity` ∈ canonical enum `Blocker|Critical|Major|Minor|Trivial` (impact), `priority` ∈ `P1|P2|P3|P4` (fix-order) — never conflate, never put a `P`-token in `severity`; the enum byte-matches `bugs/_TEMPLATE.md` and `BUG-LEDGER.md`. The executable schema ships at `${CLAUDE_PLUGIN_ROOT}/schemas/bug-ledger.schema.json`; the fillable example ships at `${CLAUDE_PLUGIN_ROOT}/templates/typescript/solution/bug-ledger.example.json`. `wired`/`test_ref` reflect whether a `@bug:<id>` RED test exists (scan `tests/` for the tag, or take engineer confirmation via Odysseus). This JSON is the join key Atlas's gate reads — keep current every pass; the `.md` is the human deliverable, the `.json` the gate's source of truth.
+- **Emit the machine twin only at `solution/bug-ledger.json`**, beside `solution/BUG-LEDGER.md`. Copy the schema-valid example from the selected scaffold (packaged TypeScript reference: `${CLAUDE_PLUGIN_ROOT}/templates/typescript/solution/bug-ledger.example.json`); never transcribe inline JSON. Use exactly the fields in `${CLAUDE_PLUGIN_ROOT}/schemas/bug-ledger.schema.json`: `id`, `origin`, `title`, `severity`, `priority`, `lane`, `oracleId`, `status`, `wired`, `testId`, `evidenceIds`. Missing oracle means `needs-oracle`, routed to Metis via Odysseus, never `confirmed`. Keep severity and priority enums distinct. A wired regression has the native `regression` selector plus `@bug:<canonical-or-origin>` provenance; `@bug` never selects a mode. Before fragment handoff or merge run `argus-assets schema validate --kind bug-ledger --input solution/bug-ledger.json`; failure blocks delivery.
 - **UNCOVERED CONFIRMED BUGS is a first-class headline line**, every pass: `UNCOVERED: N of C confirmed bugs have NO wired @bug RED test → [BUG-…, …]`. N>0 on a non-smoke run is a **BLOCKING gap escalated to Odysseus by name** (which bug, lane, engineer owns the RED), not a quiet "automation-pending." "Automation-pending" is acceptable ONLY for an explicit `SMOKE=1` run — say so.
 - **Rolling pickup, not batch-at-hour-5.** The moment you CONFIRM a defect, flag it to Odysseus as "ready for RED" so the lane's engineer wires it immediately, in parallel with continued hunting — never queued for a final sprint. Track per-bug `confirmed_at` vs `wired` so a growing unwired backlog is visible mid-run.
 

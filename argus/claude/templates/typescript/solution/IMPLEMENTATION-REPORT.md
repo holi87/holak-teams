@@ -20,7 +20,7 @@
 
 ## 4. Bugs
 - Filed: `<n>` in `bugs/` (ledger ranked by Minos) · top finds: <BUG-NNN one-liners>
-- Every confirmed bug has a linked `@regression BUG-NNN` test: yes/no (list gaps).
+- Every confirmed bug has a linked native `@regression` test with `@bug:<canonical-or-origin>` provenance: yes/no (list gaps).
 
 ## 5. Deviations, cuts & debt
 | What was cut or changed vs plan | Why | What it would take to finish |

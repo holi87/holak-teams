@@ -39,7 +39,10 @@ if (!existsSync(ledgerPath)) {
     const confirmed = entries.filter((entry) => String(entry.status ?? 'confirmed').toLowerCase() !== 'suspected' && entry.confirmed !== false);
     result.total_confirmed = confirmed.length;
 
-    const tags = collectBugTags(join(ROOT, 'tests'));
+    const { linkedTags: tags, unselectedTags } = collectBugTags(join(ROOT, 'tests'));
+    if (unselectedTags.size > 0) {
+      fail(`bug provenance without @regression selection marker: ${[...unselectedTags].sort().join(', ')}`);
+    }
     for (const entry of confirmed) {
       const ids = [entry.id, ...(Array.isArray(entry.origin) ? entry.origin : [])].filter(Boolean).map(String);
       if (!ids.length) {
@@ -75,17 +78,22 @@ function fail(message) {
 }
 
 function collectBugTags(dir) {
-  const tags = new Set();
-  if (!existsSync(dir)) return tags;
+  const linkedTags = new Set();
+  const unselectedTags = new Set();
+  if (!existsSync(dir)) return { linkedTags, unselectedTags };
   for (const file of walk(dir)) {
     const ext = extname(file);
-    if (!['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.md'].includes(ext)) continue;
+    if (!['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)) continue;
     const text = readFileSync(file, 'utf8');
-    for (const match of text.matchAll(/@bug:([A-Za-z]+-\d{3,4}|BUG-\d{4})/g)) {
-      tags.add(match[1]);
+    for (const declaration of text.matchAll(/\b(?:test|it)(?:\.(?:only|skip|fixme|fail|slow))?\s*\(\s*(['"`])([\s\S]*?)\1/g)) {
+      const title = declaration[2];
+      for (const match of title.matchAll(/@bug:([A-Za-z]+-\d{3,4}|BUG-\d{4})/g)) {
+        if (/@regression\b/.test(title)) linkedTags.add(match[1]);
+        else unselectedTags.add(match[1]);
+      }
     }
   }
-  return tags;
+  return { linkedTags, unselectedTags };
 }
 
 function* walk(dir) {

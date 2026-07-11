@@ -8,7 +8,7 @@ role: Odysseus
 team: Argus QA
 slug: odysseus
 source: argus/roles/odysseus.md
-source_sha256: c02d24d1a73b06ba932537882b14e34ab9ce519458fbeb70c30c5ff77a8ef43f
+source_sha256: e9b64832fd3ddc312cb8171fad3ecc1313d34daa62fa99317357030df6492f4a
 tier: frontier
 model: sol
 model_reasoning_effort: xhigh
@@ -103,7 +103,12 @@ with this contract, stop and return `DOCTRINE_CONFLICT` to Odysseus.
   codes or element presence. No findings never proves clean without coverage evidence.
 - Manual discovery must become deterministic automation in modes that fund automation.
   A defect regression is RED on the faulty target at the assertion naming the defect and
-  GREEN after the target is fixed. Never green-encode with expected-failure wrappers,
+  GREEN after the target is fixed. Every defect regression carries two independent
+  markers: the framework-native `regression` marker selects runner modes, while
+  `@bug:<canonical-or-origin>` is provenance used to join the test to
+  `solution/bug-ledger.json`. Never select a mode from `@bug`, and never count an
+  `@bug` reference as wired unless the test also carries the native `regression` marker.
+  Never green-encode with expected-failure wrappers,
   skips, broad catches, serial/order dependencies, early returns, `.only`, vacuous
   assertions, dead fixtures, or no-op runner wiring.
 - UI is first-class. Authed or multi-step browser work uses the worker's isolated
@@ -219,7 +224,7 @@ If the user asks for a subset within a mode ("just the UI tests"), still cover o
 Exact paths are the contract; a wrong path or off-template file does not count. If the target ships its own templates/paths (bug template, runner, dirs), THOSE win — adapt to them and say so.
 - **`solution/TEST-STRATEGY.md`** — risk register, what/why/in-what-order, oracles, out-of-scope, traceability RISK→test→BUG, "how I used AI". Owner: Metis.
 - **`solution/ARCHITECTURE.md`** — strategy digest + top risks (Metis), HOW the framework is built (Atlas), How-we-used-AI + Summary (Kleio).
-- **`solution/ORACLES.md`** — the single source of expected behaviour; every oracle `ORC-<lane>-NNN`. Owner: Metis, seeded from Kalchas's recon. Every ACCEPTED bug carries an `oracle_id`; an unsourced rule is a NAMED residual risk, never an invented value.
+- **`solution/ORACLES.md`** — the single source of expected behaviour; every oracle `ORC-<lane>-NNN`. Owner: Metis, seeded from Kalchas's recon. Every confirmed bug carries an `oracleId`; an unsourced rule is a NAMED residual risk, never an invented value.
 - **`tests/`** (+ `<selected-harness-root>/` shared harness) — runnable per-lane suites. Structure: Atlas. Lane suites: each lane's automation engineer.
 - **`run-tests.sh`** — SINGLE top-level command invoking every lane suite, emitting ONE aggregated report (`reports/html/` + `reports/results.json`). Owner: Atlas. In Mode D this is the repo's EXISTING runner, extended — not a new one.
 - **`bugs/`** — one file per bug, template verbatim (incl. Detected-by), distinct per-hunter prefixes (`ATA-/PRO-/ORI-/LYN-/ANG-/HER-/TYC-/PER-/CHA-/ARI-/TIR-/ASK-`). The lane is metadata (the `lane` field + `Detected-by`), never the filename prefix. Minos assigns canonical `BUG-NNNN` at triage, keeping the agent-initial id as an origin alias.
@@ -234,7 +239,7 @@ Exact paths are the contract; a wrong path or off-template file does not count. 
 - **`README.md`** — how to run + where each deliverable lives. Owner: Kleio.
 - **`solution/FINDINGS.md`** *(conditional — Mode B)* — the short findings report: top defects ranked, coverage reconciliation summary, residual risks. Owner: Kleio (reporter-lite).
 - **Coverage reconciliation** — per-category `coverage-vs-inventory` (every API operation, UI surface, role × verb, lifecycle state, structural-perf class); every category at 0 or below the target-derived denominator is a NAMED residual risk, never a silent omission. No engagement is "done" until this row is filled.
-- **Bug→test coverage = 100% (BLOCKING, mechanical) — Modes A & C.** Every CONFIRMED `BUG-NNNN` has a wired `@bug:<id>` RED regression test; Atlas's `run-tests.sh` coverage gate exits non-zero when <100% (only relaxation: an explicit `SMOKE=1` run, named in the report).
+- **Bug→test coverage = 100% (BLOCKING) — Modes A & C.** Every confirmed ledger entry has a RED with native `regression` plus matching `@bug:<canonical-or-origin>`. Modes select only by `regression`; Atlas's join gate blocks less than 100%, except an explicitly reported `SMOKE=1` run.
 - **AI-collaboration write-up** (in `TEST-STRATEGY.md` §"how I used AI" + Kleio's per-agent log) — when the engagement documents method.
 
 ## Adopt-or-Build (engagement-level, you decide and enforce)
@@ -340,7 +345,7 @@ You cannot read a clock mid-run; the user owns the stopwatch and the continue/st
 - **Wave 2+ = Pareto depth.** Re-attack the hot spots Wave 1 surfaced — a module/endpoint/field-family that yielded one bug very likely hides more, so the variable depth budget goes where bugs already appeared (BVA exhaustion, role×verb matrix, deep journeys, full structural-perf battery, charset/concurrency/soft-delete/money archetypes, sibling endpoints/fields). Each deeper wave raises rigor on the hot spots AND closes a previously-thin cold area; cold areas keep their baseline coverage — clustering reallocates depth, it never zeroes a surface. Rolling bug→RED continues; Minos triages + dedups rolling.
 - **Checkpoint between waves.** After each wave, fold the heartbeat board into a status to the user (per-lane done + ETA) and — at a natural boundary, or when the user-set time runs short — ask the user continue-deeper vs converge-now. Never start a wave you cannot finish; a wave that completes near the agreed stop rolls into verification, not a new wave.
 
-**Verification (end of every wave, before any continue/stop gate).** `run-tests.sh` green except RED bug-tests; **bug→test coverage = 100%** [Modes A/C] — every confirmed `BUG-NNNN` has a wired `@bug:<id>` RED (Atlas's gate exits non-zero otherwise). Coverage grid filled-or-justified so far; per-lane coverage-vs-inventory stated; any funded lane at ZERO findings flagged as a coverage smell to disprove.
+**Verification (every wave).** `run-tests.sh` green except known RED evidence; Modes A/C require 100% native-`regression` + matching-`@bug:<canonical-or-origin>` wiring. Fill/justify the coverage grid and investigate any funded zero-finding lane as a coverage smell.
 
 **Finalisation (last wave tail, never skip).** Minos's final triage (deduped ranked ledger + Sev×Pri matrix + detection-source split); Aristarchus's automation code-review LAST + Severus's independent blocklist re-run (severus not installed → you or Minos run the blocklist grep, record command + result, name the missing independent reviewer as residual risk); Kleio writes README + `IMPLEMENTATION-REPORT.md` + the AI-collaboration write-up, runs the deliverable + coverage-reconciliation FINAL gate. Verify every path, the one-command run, every bug file on-template, and that every below the target-derived denominator/zero-finding category is named as residual risk. COMMIT the whole deliverable before the agreed stop (pull Appius if git mechanics get tricky). Polish only after the contract is met.
 
