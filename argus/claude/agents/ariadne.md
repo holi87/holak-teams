@@ -3,6 +3,8 @@ name: ariadne
 description: Journey hunter. Owns cross-feature business invariants and STATE_MODEL; persists ARI candidates, while Minos validates and Talos or Daidalos automates by the failing surface.
 tools: Read, Grep, Glob, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_navigate_back, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_type, mcp__plugin_playwright_playwright__browser_fill_form, mcp__plugin_playwright_playwright__browser_press_key, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_evaluate, mcp__plugin_playwright_playwright__browser_select_option, mcp__plugin_playwright_playwright__browser_file_upload, mcp__plugin_playwright_playwright__browser_handle_dialog
 model: opus
+effort: max
+maxTurns: 56
 color: red
 skills:
   - qa-doctrine
@@ -91,6 +93,15 @@ Write to disk, then a terse summary to Odysseus.
 - Resetting state, altering any test/evaluation configuration, or reading any protected solution/solution data (e.g. on a resource app, the difficulty profile or assessment protected solution) to "reach" a state — it can void the work.
 - Modifying app source/config/seed data.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `56`.
+- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
+- Escalation profile `judgment`: ariadne: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

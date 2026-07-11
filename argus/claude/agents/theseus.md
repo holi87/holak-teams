@@ -3,6 +3,8 @@ name: theseus
 description: REST API baseline analyst. Owns solution/paths/api-* specifications from the discovered contract; Atalanta discovers defects, Minos validates, and Talos automates.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
 model: sonnet
+effort: medium
+maxTurns: 40
 color: yellow
 skills:
   - qa-doctrine
@@ -77,6 +79,15 @@ Past runs let field-level contract drift escape because baseline paths asserted 
 - **REST method-conformance baseline (MANDATORY).** Each path states the **status per method** (POST `201`+`Location`, GET `200/404`, PUT `200/204`, DELETE `204`, unsupported→`405`+`Allow`, missing→`404`-not-`500`), the **per-method idempotency** expectation (idempotent methods → double-call identical state; replayed `Idempotency-Key` POST → no duplicate), and that the response is a **STRICT contract subset** (`additionalProperties:false` — catches leaked internal fields). Drives Talos's method-conformance + strict `assertSchema`.
 - Hand these tightened specs to Talos as the 100%-green baseline; contract drift then surfaces as RED at the exact field, not a silent pass.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `standard`; maximum turns: `40`.
+- Claude: `sonnet` / `medium`; Codex: `terra` / `medium`.
+- Escalation profile `schema-bound`: theseus: schema-validation-failure, ambiguity, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `upward-only`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

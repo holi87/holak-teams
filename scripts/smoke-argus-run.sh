@@ -38,6 +38,8 @@ require_text 'argus-assets redact' "$SKILL" "run skill does not enforce output r
 require_text 'argus-assets engagement allocate' "$SKILL" "run skill does not allocate isolated worker leases"
 require_text 'engagement cleanup --outcome success|failure' "$SKILL" "run skill does not guarantee cleanup on both outcomes"
 require_text 'argus-assets raci route' "$SKILL" "run skill does not route from the packaged RACI contract"
+require_text 'argus-assets model route' "$SKILL" "run skill does not route from the packaged model policy"
+require_text 'argus-assets model telemetry' "$SKILL" "run skill does not record sanitized model telemetry"
 require_text 'RACI-CONTRACT.md' "$SKILL" "run skill does not load the packaged RACI contract"
 require_text 'dispatchAllowed=true' "$SKILL" "run skill does not gate dispatch from the preflight report"
 require_text 'ARGUS_SMOKE_OK: argus:kleio,argus:theseus' "$SKILL" "missing deterministic smoke result"

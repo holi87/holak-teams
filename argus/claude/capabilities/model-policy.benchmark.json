@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "policyId": "argus/model-policy@1",
+  "decision": "adopt-10-frontier-17-standard",
+  "recordedAt": "2026-07-11T05:22:39.857Z",
+  "claudeCodeVersion": "2.1.206 (Claude Code)",
+  "syntheticOnly": true,
+  "scenarios": [
+    {
+      "id": "cross-lane-safety-synthesis",
+      "agent": "odysseus",
+      "expectedTier": "frontier",
+      "classification": "quality-critical-orchestration",
+      "qualityMarkers": 6,
+      "runs": [
+        {
+          "requestedModel": "opus",
+          "runtimeModel": "claude-opus-4-8",
+          "qualityPassed": 6,
+          "qualityTotal": 6,
+          "latencyMs": 2508,
+          "inputTokens": 48756,
+          "outputTokens": 65,
+          "totalTokens": 48821,
+          "reportedCostUsd": 0.3492655,
+          "outputSha256": "edebf54201a03edecdd2837d1474517f560facc2fec297931b2bf1c1d29475ba"
+        },
+        {
+          "requestedModel": "sonnet",
+          "runtimeModel": "claude-sonnet-5",
+          "qualityPassed": 6,
+          "qualityTotal": 6,
+          "latencyMs": 2875,
+          "inputTokens": 53943,
+          "outputTokens": 65,
+          "totalTokens": 54008,
+          "reportedCostUsd": 0.2115015,
+          "outputSha256": "edebf54201a03edecdd2837d1474517f560facc2fec297931b2bf1c1d29475ba"
+        }
+      ]
+    },
+    {
+      "id": "conflicting-defect-triage",
+      "agent": "minos",
+      "expectedTier": "frontier",
+      "classification": "quality-critical-judgment",
+      "qualityMarkers": 5,
+      "runs": [
+        {
+          "requestedModel": "opus",
+          "runtimeModel": "claude-opus-4-8",
+          "qualityPassed": 5,
+          "qualityTotal": 5,
+          "latencyMs": 4954,
+          "inputTokens": 23212,
+          "outputTokens": 58,
+          "totalTokens": 23270,
+          "reportedCostUsd": 0.181817,
+          "outputSha256": "566e798401bfe0ca10325a97f3b58f6f67d5620fa124a853ce141a04ebd13ddb"
+        },
+        {
+          "requestedModel": "sonnet",
+          "runtimeModel": "claude-sonnet-5",
+          "qualityPassed": 5,
+          "qualityTotal": 5,
+          "latencyMs": 2248,
+          "inputTokens": 27117,
+          "outputTokens": 58,
+          "totalTokens": 27175,
+          "reportedCostUsd": 0.1103913,
+          "outputSha256": "566e798401bfe0ca10325a97f3b58f6f67d5620fa124a853ce141a04ebd13ddb"
+        }
+      ]
+    },
+    {
+      "id": "schema-bound-path-inventory",
+      "agent": "theseus",
+      "expectedTier": "standard",
+      "classification": "schema-bound-execution",
+      "qualityMarkers": 5,
+      "runs": [
+        {
+          "requestedModel": "opus",
+          "runtimeModel": "claude-opus-4-8",
+          "qualityPassed": 5,
+          "qualityTotal": 5,
+          "latencyMs": 2235,
+          "inputTokens": 23011,
+          "outputTokens": 47,
+          "totalTokens": 23058,
+          "reportedCostUsd": 0.179997,
+          "outputSha256": "f7b0919206562b4c564518db93cf977ccc8138d09ecda9dd80bc39e83aaeb040"
+        },
+        {
+          "requestedModel": "sonnet",
+          "runtimeModel": "claude-sonnet-5",
+          "qualityPassed": 5,
+          "qualityTotal": 5,
+          "latencyMs": 2172,
+          "inputTokens": 27076,
+          "outputTokens": 47,
+          "totalTokens": 27123,
+          "reportedCostUsd": 0.10934189999999999,
+          "outputSha256": "f7b0919206562b4c564518db93cf977ccc8138d09ecda9dd80bc39e83aaeb040"
+        }
+      ]
+    }
+  ]
+}

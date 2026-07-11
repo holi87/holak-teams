@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holak-teams.local/argus/model-telemetry-event.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "timestamp", "eventId", "agent", "runtime", "tier", "model", "effort",
+    "maxTurns", "signal", "fallbackUsed", "success", "inputTokens", "outputTokens",
+    "totalTokens", "durationMs"
+  ],
+  "properties": {
+    "schema": { "const": "argus/model-telemetry-event@1" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "eventId": { "type": "string", "pattern": "^MDL-[a-f0-9]{16}$" },
+    "agent": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "runtime": { "enum": ["claude", "codex"] },
+    "tier": { "enum": ["frontier", "standard", "mechanical"] },
+    "model": { "type": "string" },
+    "effort": { "type": "string" },
+    "maxTurns": { "type": "integer", "minimum": 1 },
+    "signal": { "type": "string" },
+    "fallbackUsed": { "type": "boolean" },
+    "success": { "type": "boolean" },
+    "inputTokens": { "type": "number", "minimum": 0 },
+    "outputTokens": { "type": "number", "minimum": 0 },
+    "totalTokens": { "type": "number", "minimum": 0 },
+    "durationMs": { "type": "number", "minimum": 0 },
+    "reportedCostUsd": { "type": "number", "minimum": 0 }
+  }
+}

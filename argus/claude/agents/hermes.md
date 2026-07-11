@@ -2,7 +2,9 @@
 name: hermes
 description: Performance hunter. Owns PERF-REPORT and persists HER candidates from structural and characterized latency evidence; Minos validates and Nike automates.
 tools: Read, Grep, Glob, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_evaluate, mcp__plugin_playwright_playwright__browser_network_requests
-model: opus
+model: sonnet
+effort: medium
+maxTurns: 40
 color: red
 skills:
   - qa-doctrine
@@ -91,6 +93,15 @@ Perf-lane STRUCTURAL signatures, value-AGNOSTIC: DISCOVER endpoints, params, gro
 
 - **Cross-cutting detection rule (all four).** Each needs ≥3 size/shape points so the SIGNATURE is the SLOPE / DELTA / RATIO, never an absolute number; arrange every precondition through Atlas's data factory (deterministic, idempotent, torn down), hold the controlled variable (returned-count or result-size) fixed, label every constant with its derived basis so the RED is judge-defensible not an invented SLA. Reconcile coverage-vs-inventory per signature in `PERF-REPORT.md`; a signature you could not construct (factory can't reach the cardinality, param space unknown) = NAMED residual risk to Odysseus, never a silent "clean."
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `standard`; maximum turns: `40`.
+- Claude: `sonnet` / `medium`; Codex: `terra` / `medium`.
+- Escalation profile `analysis`: hermes: ambiguity, safety, cross-lane, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `upward-only`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

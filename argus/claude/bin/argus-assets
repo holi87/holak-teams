@@ -52,18 +52,23 @@ import {
 } from '../lib/engagement.mjs';
 import { CONTRACT_KINDS, schemaId, validateCanonicalDocument } from '../lib/contracts.mjs';
 import { calculateCoverage, validateCoverageObservations, validateSurfaceInventory } from '../lib/coverage.mjs';
+import { buildModelTelemetryEvent, resolveModelDecision, validateModelPolicy } from '../lib/model-policy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
 const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
 const CAPABILITY_MATRIX_PATH = join(ROOT, 'capabilities', 'capability-matrix.json');
 const RACI_PATH = join(ROOT, 'references', 'raci.json');
+const MODEL_POLICY_PATH = join(ROOT, 'capabilities', 'model-policy.json');
 const AUTHORIZATION_TEMPLATE_PATH = join(ROOT, 'policies', 'authorization.template.json');
 const ENGAGEMENT_TEMPLATE_PATH = join(ROOT, 'policies', 'engagement.template.json');
 const REDACTION_PATTERNS_PATH = join(ROOT, 'policies', 'redaction-patterns.json');
 const HOOKS_PATH = join(ROOT, 'hooks', 'hooks.json');
 const manifest = readJson(MANIFEST_PATH);
 const matrix = readJson(CAPABILITY_MATRIX_PATH);
+const modelPolicy = readJson(MODEL_POLICY_PATH);
+const modelPolicyErrors = validateModelPolicy(modelPolicy, matrix.agents.map((agent) => agent.slug));
+if (modelPolicyErrors.length) fail(`model policy invalid: ${modelPolicyErrors.join('; ')}`);
 const [command = 'help', ...args] = process.argv.slice(2);
 
 switch (command) {
@@ -104,6 +109,9 @@ switch (command) {
   case 'raci':
     process.exitCode = raciCommand(args);
     break;
+  case 'model':
+    process.exitCode = modelCommand(args);
+    break;
   case 'guard':
     process.exitCode = guardCommand(args);
     break;
@@ -135,6 +143,7 @@ Usage:
   argus-assets schema <list|validate> [options]
   argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]
   argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
+  argus-assets model <list|route|telemetry> [options]
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
   argus-assets copy-template <typescript|java|python> <empty-destination>
@@ -177,6 +186,63 @@ Engagement coordination:
 
 Templates are copied only to a new or empty directory. In ADAPT mode, copy to a
 temporary directory, diff against the target's existing harness, and merge explicitly.`);
+}
+
+function modelCommand(args) {
+  const [operation, ...rest] = args;
+  const policy = modelPolicy;
+  if (operation === 'list') {
+    for (const role of policy.roles) {
+      const tier = policy.tiers[role.tier];
+      console.log(`${role.slug}\t${role.tier}\tclaude=${tier.claude.model}/${tier.claude.effort}\tcodex=${tier.codex.model}/${tier.codex.reasoningEffort}\tturns=${role.maxTurns}\tescalation=${role.escalationProfile}\tfallback=${role.fallbackPolicy}`);
+    }
+    return 0;
+  }
+  if (operation === 'route') {
+    const options = parseNamedOptions(rest, new Set(['--agent', '--runtime', '--signal', '--schema-validated', '--bounded-subrole']));
+    requireOptions(options, ['agent'], 'model route');
+    const decision = resolveModelDecision(policy, {
+      slug: options.agent,
+      runtime: options.runtime ?? 'claude',
+      signal: options.signal ?? 'normal',
+      schemaValidated: parseBooleanOption(options.schemaValidated, '--schema-validated') ?? false,
+      boundedSubrole: parseBooleanOption(options.boundedSubrole, '--bounded-subrole') ?? false,
+    });
+    console.log(JSON.stringify(decision));
+    return decision.status === 'blocked' ? 2 : 0;
+  }
+  if (operation === 'telemetry') {
+    const options = parseNamedOptions(rest, new Set([
+      '--agent', '--runtime', '--signal', '--input-tokens', '--output-tokens', '--duration-ms',
+      '--reported-cost-usd', '--success', '--output', '--at',
+    ]));
+    requireOptions(options, ['agent', 'inputTokens', 'outputTokens', 'durationMs', 'success'], 'model telemetry');
+    const decision = resolveModelDecision(policy, { slug: options.agent, runtime: options.runtime ?? 'claude', signal: options.signal ?? 'normal' });
+    if (decision.status === 'blocked') fail('model telemetry cannot record a blocked model decision');
+    const metric = (value, label) => {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) fail(`${label} must be a non-negative number`);
+      return parsed;
+    };
+    const event = buildModelTelemetryEvent(policy, decision, {
+      inputTokens: metric(options.inputTokens, '--input-tokens'),
+      outputTokens: metric(options.outputTokens, '--output-tokens'),
+      durationMs: metric(options.durationMs, '--duration-ms'),
+      reportedCostUsd: options.reportedCostUsd === undefined ? undefined : metric(options.reportedCostUsd, '--reported-cost-usd'),
+      success: parseBooleanOption(options.success, '--success'),
+    }, options.at ?? new Date().toISOString());
+    const relativeOutput = options.output ?? policy.telemetry.defaultPath;
+    if (relativeOutput.startsWith('/') || relativeOutput.split('/').includes('..') || !relativeOutput.startsWith('ai_agents_internal/')) {
+      fail('model telemetry output must stay under ai_agents_internal/');
+    }
+    const output = resolve(relativeOutput);
+    mkdirSync(dirname(output), { recursive: true });
+    appendFileSync(output, `${JSON.stringify(event)}\n`, { mode: 0o600 });
+    chmodSync(output, 0o600);
+    console.log(`MODEL_TELEMETRY  recorded output=${output} event=${event.eventId}`);
+    return 0;
+  }
+  fail('usage: argus-assets model <list|route|telemetry> [options]');
 }
 
 function raciCommand(args) {
@@ -968,7 +1034,8 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
 }
 
 function agentResult(contract, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths, authorization) {
-  return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths, authorization };
+  const model = resolveModelDecision(modelPolicy, { slug: contract.slug, runtime: 'claude', signal: 'normal' });
+  return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed, model, missingTools, missingCapabilities, actions, artifactPaths, authorization };
 }
 
 function evaluateRiskAuthorizations(contract, authorization, target, now) {

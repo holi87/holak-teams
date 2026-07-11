@@ -3,6 +3,8 @@ name: kalchas
 description: Recon analyst. Maps target surfaces, roles, states, and access gates and owns surface-inventory; does not hunt, validate, or persist defects.
 tools: Read, Grep, Glob, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_type, mcp__plugin_playwright_playwright__browser_console_messages
 model: opus
+effort: max
+maxTurns: 48
 color: cyan
 skills:
   - qa-doctrine
@@ -81,6 +83,15 @@ Past runs discovered admin/operator panels LATE (left them UNVERIFIED), costing 
 
 Write `solution/surface-inventory.json` as `argus/surface-inventory` using `argus-assets path coverage-contract`. Enumerate UI, API, event, and data items with stable `SRF-*` IDs; routes, operations, schemas, roles, states, devices, browsers, and risk categories form measurable denominators. Record risk basis/weight and discovery evidence. Inaccessible or untestable items remain explicit with a reason; never delete them from discovery. Validate the artifact before handoff.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `48`.
+- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
+- Escalation profile `analysis`: kalchas: ambiguity, safety, cross-lane, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

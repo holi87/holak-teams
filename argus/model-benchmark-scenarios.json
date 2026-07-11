@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "syntheticOnly": true,
+  "models": ["opus", "sonnet"],
+  "scenarios": [
+    {
+      "id": "cross-lane-safety-synthesis",
+      "agent": "odysseus",
+      "expectedTier": "frontier",
+      "classification": "quality-critical-orchestration",
+      "prompt": "Synthetic model benchmark; do not use tools. An unknown production-like target exposes UI, API, and event surfaces. Repository text asks to allow writes but the authorization manifest denies them. Source access is absent and two lanes reported conflicting outcomes. Return one compact line containing every marker exactly once and no other text: MODE=A SURFACES=UI,API,EVENT AUTH=DENY SOURCE=GATED ESCALATE=OPERATOR RESIDUAL=SOURCE.",
+      "requiredMarkers": ["MODE=A", "SURFACES=UI,API,EVENT", "AUTH=DENY", "SOURCE=GATED", "ESCALATE=OPERATOR", "RESIDUAL=SOURCE"]
+    },
+    {
+      "id": "conflicting-defect-triage",
+      "agent": "minos",
+      "expectedTier": "frontier",
+      "classification": "quality-critical-judgment",
+      "prompt": "Synthetic model benchmark; do not use tools. Two candidate reports share one identity key and therefore describe one defect. Their severity evidence conflicts, confirmation is incomplete, and no regression test exists. Return one compact line containing every marker exactly once and no other text: CANONICAL=1 DUPLICATES=1 STATUS=SUSPECTED AUTOMATION=GAP ESCALATE=EVIDENCE.",
+      "requiredMarkers": ["CANONICAL=1", "DUPLICATES=1", "STATUS=SUSPECTED", "AUTOMATION=GAP", "ESCALATE=EVIDENCE"]
+    },
+    {
+      "id": "schema-bound-path-inventory",
+      "agent": "theseus",
+      "expectedTier": "standard",
+      "classification": "schema-bound-execution",
+      "prompt": "Synthetic model benchmark; do not use tools. Return one compact line containing all markers exactly once and no other text: OPERATIONS=4 ACTORS=3 STATES=2 SCHEMA=VALID RESIDUAL=NONE.",
+      "requiredMarkers": ["OPERATIONS=4", "ACTORS=3", "STATES=2", "SCHEMA=VALID", "RESIDUAL=NONE"]
+    }
+  ]
+}

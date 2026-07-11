@@ -11,6 +11,13 @@ The agents live in this repo (`~/Desktop/GenAI/my_agents/`), split into two team
 
 Codex model mapping for both teams: Claude `opus` source roles use `model = "sol"` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles use `model = "terra"` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles use `model = "luna"` with `model_reasoning_effort = "medium"`.
 
+Argus does not infer tiers from that mapping. `argus/model-policy.json` explicitly assigns
+10 roles to `opus`/`sol`, 17 to `sonnet`/`terra`, and no full role to Haiku/Luna. The same
+source generates Claude effort and `maxTurns`, Codex reasoning effort, escalation and
+fallback blocks, and [`argus/MODEL-POLICY.md`](argus/MODEL-POLICY.md). Installed routing
+uses `argus-assets model route`; sanitized usage is appended with
+`argus-assets model telemetry` under `ai_agents_internal/`.
+
 `codex/` is the Codex-format variant. The canonical Argus framework and reference sources
 remain under `argus/`; byte-identical runtime copies of the three templates,
 browser-isolation guide, shared doctrine, and schemas are shipped inside the Claude

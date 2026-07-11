@@ -107,6 +107,8 @@ holak-teams/                         # this repo == the marketplace
     ├── ENGAGEMENT-POLICY.md          # canonical ownership, barriers, leases, and cleanup
     ├── CANONICAL-CONTRACTS.md        # schema registry, field owners, and transition ownership
     ├── RUNNER-CONTRACT.md            # four runner modes, outcome categories, and exit codes
+    ├── MODEL-POLICY.md               # generated Claude/Codex tier, effort, turns, and fallback table
+    ├── model-policy*.json            # canonical policy + sanitized benchmark evidence
     ├── policies/ + runtime/          # canonical manifests, patterns, and evaluator sources
     ├── COLOR-SCHEME.md              # colors by role type (shared reference)
     ├── shared-skills/               # canonical doctrine + optional profile sources
@@ -134,6 +136,7 @@ paths, target-repo paths and host commands referenced by all 27 prompts.
 
 Installed users can run `argus-assets list`, `argus-assets verify`,
 `argus-assets preflight --target <url-or-path> --mode <A|B|C|D>`,
+`argus-assets model list|route|telemetry`,
 `argus-assets copy-template <typescript|java|python> <empty-destination>`, or
 `argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 550 KB
 and the complete installed Argus plugin at 1.75 MB. `COLOR-SCHEME.md` and team graphs are
@@ -146,6 +149,17 @@ artifact-language rules enter its startup context exactly once. The optional
 user opt-in. `node scripts/check-argus-prompts.mjs` enforces the 35% corpus-reduction
 floor, per-agent/description budgets, zero exact duplicated doctrine paragraphs, all 27
 preloads, default-profile isolation, and a representative engagement regression contract.
+
+Model selection is generated from `argus/model-policy.json`: 10 quality-critical roles
+use Claude `opus` / maximum effort and Codex `sol` / `xhigh`; 17 bounded execution roles
+use Claude `sonnet` / medium and Codex `terra` / medium. Every role declares a maximum
+turn count, escalation profile, and fallback. Standard roles may escalate only upward;
+frontier unavailability fails closed. No complete role may use Haiku/Luna. That mechanical
+tier is reserved for a bounded subrole with no quality judgment, deterministic schema,
+and a validator pass before merge. `model-policy.benchmark.json` records synthetic
+quality, latency, token, and provider-cost comparisons without prompts, completions, or
+target data. Run `scripts/sync-argus-model-policy.mjs --write|--check` and
+`scripts/smoke-argus-model-policy.sh` after policy changes.
 
 The preflight writes only dedicated control artifacts under `ai_agents_internal/` before
 any target probe, test, or specialist dispatch: preflight, authorization, engagement, and

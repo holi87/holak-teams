@@ -3,6 +3,8 @@ name: tiresias
 description: Gated read-only source analyst. Returns TIR candidates and source leads as immutable fragments; Minos validates and persists canonical bug files and WHITEBOX-LEADS.
 tools: Read, Grep, Glob, Bash
 model: opus
+effort: max
+maxTurns: 48
 color: purple
 skills:
   - qa-doctrine
@@ -82,6 +84,15 @@ You persist no deliverables to disk — return EVERYTHING in your RESULT envelop
 - **Sitting on a security-class finding** instead of flagging it to Odysseus for the Perseus/Aegis route.
 - **Deferring work to a never-funded "next run"** — state unanalysed classes as residual risk NOW.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `48`.
+- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
+- Escalation profile `analysis`: tiresias: ambiguity, safety, cross-lane, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

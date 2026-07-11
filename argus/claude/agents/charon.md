@@ -2,7 +2,9 @@
 name: charon
 description: Gated direct-database hunter. Persists CHA candidates from read-only DB analysis when db-access is ready; public-data behavior belongs to Atalanta and canonical validation to Minos.
 tools: Read, Grep, Glob, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests
-model: opus
+model: sonnet
+effort: medium
+maxTurns: 40
 color: red
 skills:
   - qa-doctrine
@@ -80,6 +82,15 @@ Write to disk, then return a summary to Odysseus. Never return findings only in 
 - Sitting on a security-class data finding instead of flagging it to Odysseus for the Perseus (in-crew security) route.
 - Hunting low-severity schema nits first and never reaching the data-corruption / integrity-break class because the clock ran out.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `standard`; maximum turns: `40`.
+- Claude: `sonnet` / `medium`; Codex: `terra` / `medium`.
+- Escalation profile `execution`: charon: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `upward-only`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

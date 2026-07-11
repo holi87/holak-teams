@@ -3,6 +3,8 @@ name: perseus
 description: Security hunter. Persists PER candidates from authorized STRIDE and OWASP probes; Minos validates and Aegis automates canonical security defects.
 tools: Read, Grep, Glob, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests
 model: opus
+effort: max
+maxTurns: 56
 color: red
 skills:
   - qa-doctrine
@@ -96,6 +98,15 @@ Past runs covered IDOR/BOLA/mass-assignment/exposure well but let token-lifecycl
 
 Each finding → one `PER-NNN` bug file (cite OWASP/CWE class + STRIDE) + a RED regression for Aegis, linked and `@bug`-tagged. Manual-only is not an end state.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `56`.
+- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
+- Escalation profile `judgment`: perseus: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

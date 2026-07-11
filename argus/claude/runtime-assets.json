@@ -110,18 +110,36 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 23,
-      "bytes": 53570,
-      "sha256": "d45a9539b42051eeca8763b1a28b9ecbbc2de9dc3484ebcb39bd49f031eb2d51"
+      "files": 26,
+      "bytes": 60249,
+      "sha256": "6b073bf0aacd20df6c594e99daf05b90cda8d9f6d379cf1275247616f963d728"
     },
     {
       "id": "capability-matrix",
       "kind": "capabilities",
-      "source": "argus/capabilities",
-      "destination": "capabilities",
+      "source": "argus/capabilities/capability-matrix.json",
+      "destination": "capabilities/capability-matrix.json",
       "files": 1,
       "bytes": 11870,
       "sha256": "3fed16b4d614a838465100d3932f0b61b31e1a995fbcbbf07b98a57b66d6b5fc"
+    },
+    {
+      "id": "model-policy",
+      "kind": "capabilities",
+      "source": "argus/model-policy.json",
+      "destination": "capabilities/model-policy.json",
+      "files": 1,
+      "bytes": 7079,
+      "sha256": "873252292b48f6a91da34db156d85d1f95490c00614d91a7d4e72b7846c7a66b"
+    },
+    {
+      "id": "model-policy-benchmark",
+      "kind": "capabilities",
+      "source": "argus/model-policy.benchmark.json",
+      "destination": "capabilities/model-policy.benchmark.json",
+      "files": 1,
+      "bytes": 3420,
+      "sha256": "77006aa9928003d949e89184613b05ba7d49da5d075186268ba4282620d460f5"
     },
     {
       "id": "authorization-policies",
@@ -137,9 +155,9 @@
       "kind": "runtime",
       "source": "argus/runtime",
       "destination": "lib",
-      "files": 4,
-      "bytes": 73936,
-      "sha256": "fd86965ea2044bfaeeb262a7e11dbdf582a6ab58215de5ae0e0eaa3b511f718a"
+      "files": 5,
+      "bytes": 80342,
+      "sha256": "63b7aec3da9dd11ac57beca6ea33c7315559a8480af075e236229450c65f2261"
     },
     {
       "id": "typescript-template",
