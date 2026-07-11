@@ -127,6 +127,6 @@ Write to the repo, then return a structured summary to Odysseus.
 - **The final clean-code / oracle-honesty review verdict (APPROVE/BLOCK)** → **Aristarchus** (Code Reviewer, runs LAST). You **feed** him a healed suite; you do not render his verdict.
 - **Adopt-vs-Build detection** (does the repo already have a usable harness?) → **Kalchas** (recon). You **consume** his call and conform to it; you do not re-derive it.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

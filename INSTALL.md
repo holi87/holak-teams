@@ -27,6 +27,10 @@ source generates Claude effort and `maxTurns`, Codex reasoning effort, escalatio
 fallback blocks, and [`argus/MODEL-POLICY.md`](argus/MODEL-POLICY.md). Installed routing
 uses `argus-assets model route`; sanitized usage is appended with
 `argus-assets model telemetry` under `ai_agents_internal/`.
+Those commands belong only to Odysseus and `/argus:run`. Each worker sees its own turn
+cap and declared signals, checkpoints safely, then stops with an
+`argus/model-escalation-request@1` envelope. The controller validates the envelope and
+starts a new selected attempt; workers never choose or override models.
 
 `codex/` is the Codex-format variant. The canonical Argus framework and reference sources
 remain under `argus/`; byte-identical runtime copies of the three templates,

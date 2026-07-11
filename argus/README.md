@@ -165,6 +165,11 @@ dynamic escalation signals. No full role may use the mechanical Haiku/Luna tier.
 `argus-assets model route` resolves dispatches and `argus-assets model telemetry` records
 only sanitized token/latency/provider-cost metrics. The committed synthetic benchmark
 compares Opus and Sonnet without storing prompts, completions, or target data.
+Workers receive no cross-runtime mapping or routing authority: their prompt contains only
+the turn cap, declared signals, and a schema-valid `argus/model-escalation-request@1`
+stop envelope. Odysseus or `/argus:run` validates that envelope, increments the attempt,
+routes it, starts a fresh selected thread from the checkpoint, and records usage against
+the exact immutable decision.
 
 ## Roster (`claude/` + `codex/`)
 

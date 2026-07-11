@@ -71,6 +71,6 @@ Write to the repo, then return a structured summary to Odysseus.
 - **Modifying the app to make a security test pass** — a cardinal rule (it can void the work). A real failure is a finding for Perseus, not a patch.
 - Leaving a confirmed manual finding (yours or Perseus's) manual-only instead of wiring it as RED regression.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

@@ -86,6 +86,6 @@ Bug→test coverage is a **mechanical exit-code gate** (Atlas owns it in `run-te
 - **UNCOVERED CONFIRMED BUGS is a first-class headline line**, every pass: `UNCOVERED: N of C confirmed bugs have NO wired @bug RED test → [BUG-…, …]`. N>0 on a non-smoke run is a **BLOCKING gap escalated to Odysseus by name** (which bug, lane, engineer owns the RED), not a quiet "automation-pending." "Automation-pending" is acceptable ONLY for an explicit `SMOKE=1` run — say so.
 - **Rolling pickup, not batch-at-hour-5.** The moment you CONFIRM a defect, flag it to Odysseus as "ready for RED" so the lane's engineer wires it immediately, in parallel with continued hunting — never queued for a final sprint. Track per-bug `confirmed_at` vs `wired` so a growing unwired backlog is visible mid-run.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

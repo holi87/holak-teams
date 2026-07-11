@@ -1,0 +1,11 @@
+{
+  "schema": "argus/model-escalation-request@1",
+  "kind": "MODEL_ESCALATION_REQUEST",
+  "engagementId": "engagement-model-smoke",
+  "dispatchId": "dispatch-aegis-001",
+  "attempt": 1,
+  "agent": "aegis",
+  "signal": "safety",
+  "checkpointRef": "../../target-source.json",
+  "resumable": true
+}

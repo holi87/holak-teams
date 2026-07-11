@@ -98,15 +98,28 @@ Past runs covered IDOR/BOLA/mass-assignment/exposure well but let token-lifecycl
 
 Each finding → one `PER-NNN` bug file (cite OWASP/CWE class + STRIDE) + a RED regression for Aegis, linked and `@bug`-tagged. Manual-only is not an end state.
 
-<!-- MODEL_POLICY_START -->
-## Runtime Model Policy
+<!-- MODEL_ESCALATION_START -->
+## Escalation boundary
 
-- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `56`.
-- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
-- Escalation profile `judgment`: perseus: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
-- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
-- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
-<!-- MODEL_POLICY_END -->
+- Maximum turns: `56`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- On a declared signal, persist a monotonic checkpoint with the engagement controller. Substitute the current identifiers, attempt, declared signal, and returned path in this schema-valid envelope, return only the envelope, then stop:
+
+```json
+{
+  "schema": "argus/model-escalation-request@1",
+  "kind": "MODEL_ESCALATION_REQUEST",
+  "engagementId": "engagement-id",
+  "dispatchId": "dispatch-id",
+  "attempt": 1,
+  "agent": "perseus",
+  "signal": "safety",
+  "checkpointRef": "ai_agents_internal/checkpoints/perseus/00000001.json",
+  "resumable": true
+}
+```
+
+Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+<!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

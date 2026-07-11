@@ -79,6 +79,6 @@ Past runs let PRESENTATION defects escape even with the catalog driven, because 
 
 Each finding → one `LYN-NNN` bug file + RED regression from Daidalos via Odysseus, recording the discovered constant (locale/diacritic set, currency minor unit, threshold `N` + inclusive/exclusive rule, view list an amount spans) so the oracle reproduces without re-deriving. Manual-only is not an end state.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

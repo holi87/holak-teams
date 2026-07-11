@@ -28,6 +28,11 @@ Every document has `schemaVersion: 1`, an exact `$schema` ID, and the active
 `engagementId`. The generated human summary at `solution/FINAL-SUMMARY.md` is derived
 only from `final-summary.json` and starts with its source schema ID.
 
+`argus/model-escalation-request@1` is a controller-bound stop envelope, not a canonical
+solution artifact. A worker returns it after persisting a monotonic checkpoint. Odysseus
+validates its exact fields, current engagement/dispatch/attempt binding, declared signal,
+and checkpoint state before opening a new attempt in a new thread.
+
 ## Field ownership and state transitions
 
 | Record | Owner-controlled fields | Allowed state transitions | Evidence of transition |
@@ -40,6 +45,7 @@ only from `final-summary.json` and starts with its source schema ID.
 | Surface inventory | `items`, `discovery` | Discovery expands monotonically; accessibility changes require evidence | Stable `SRF-*` IDs, enumerated denominator dimensions, risk basis, and discovery evidence. |
 | Coverage observations | `surfaceId`, `executed`, `assertions`, `evidenceIds`, `defects` | Append or replace one stable surface observation | Inventory link plus named oracle and evidence IDs. |
 | Coverage result | `discovery`, `overall`, `lanes`, `scopedOutcomes`, `defectOutcomes` | Deterministically recalculated from canonical inputs | Exact input schema IDs and stable surface/evidence links; defect score contribution is always zero. |
+| Model escalation request | `engagementId`, `dispatchId`, `attempt`, `agent`, `signal`, `checkpointRef`, `resumable` | Worker stops; controller validates and opens the next attempt in a new thread | `argus/model-escalation-request@1`, current engagement state, and the referenced monotonic checkpoint. |
 | Final summary | `status`, `counts`, `runner`, `sourceSchemas`, `summary`, `generatedAt` | Terminal `completed`, `degraded`, or `blocked` | All linked source schemas, runner categories, and final barrier/merge evidence. |
 
 Only the controller changes coordination state: worker allocation, barriers, exclusive

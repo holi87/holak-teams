@@ -56,6 +56,6 @@ Write to disk, then return a summary to Odysseus. Never return path specs only i
 - Re-covering another lane's surface (API end-states beyond what the UI journey asserts, perf timing, a11y deep checks) instead of staying in the UI baseline lane.
 - Modifying any application source, config, or seed data — it can void the work.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

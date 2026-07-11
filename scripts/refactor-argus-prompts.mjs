@@ -27,7 +27,11 @@ const sharedHeadings = [
 assert(files.length === 27, `expected 27 canonical role sources, found ${files.length}`);
 for (const file of files) {
   const content = readFileSync(join(roleDir, file), 'utf8');
-  assert(count(content, '{{ARGUS_MODEL_POLICY_BLOCK}}') === 1, `${file}: model-policy placeholder is missing or duplicated`);
+  const expectedModelMarker = file === 'odysseus.md'
+    ? '{{ARGUS_MODEL_CONTROLLER_BLOCK}}'
+    : '{{ARGUS_MODEL_ESCALATION_BLOCK}}';
+  assert(count(content, expectedModelMarker) === 1, `${file}: model-control placeholder is missing or duplicated`);
+  assert(count(content, '{{ARGUS_MODEL_POLICY_BLOCK}}') === 0, `${file}: legacy model-policy placeholder remains`);
   assert(count(content, '{{ARGUS_RACI_CONTRACT_BLOCK}}') === 1, `${file}: RACI placeholder is missing or duplicated`);
   for (const heading of sharedHeadings) {
     assert(!content.includes(`## ${heading}`), `${file}: legacy shared section remains: ${heading}`);

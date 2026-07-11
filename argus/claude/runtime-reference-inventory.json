@@ -238,12 +238,6 @@
   ],
   "targetFileReferences": [
     {
-      "value": "AGENTS.md",
-      "consumers": [
-        "kleio"
-      ]
-    },
-    {
       "value": "ai_agents_internal/",
       "consumers": [
         "kleio",
@@ -489,12 +483,6 @@
       "value": "bugs/TYC-NNN-<slug>.md",
       "consumers": [
         "tyche"
-      ]
-    },
-    {
-      "value": "CLAUDE.md",
-      "consumers": [
-        "kleio"
       ]
     },
     {

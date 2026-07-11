@@ -75,6 +75,6 @@ Past runs let whole defect CLASSES escape because the technique was never applie
 
 Each finding → one `PRO-NNN` bug file + a RED regression requested from Talos. Manual-only is not an end state.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

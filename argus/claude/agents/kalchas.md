@@ -83,15 +83,28 @@ Past runs discovered admin/operator panels LATE (left them UNVERIFIED), costing 
 
 Build `solution/surface-inventory.json` as `argus/surface-inventory@1` using `argus-assets path coverage-contract`. Enumerate UI, API, event, and data items with stable `SRF-*` IDs; routes, operations, schemas, roles, states, devices, browsers, and risk categories form measurable denominators. Record risk basis/weight and discovery evidence. Inaccessible or untestable items remain explicit with a reason; never delete them from discovery. Validate it with `argus-assets schema validate --kind surface-inventory`, submit the immutable stable fragment `kalchas-surface-inventory` through `argus-assets engagement fragment`, then merge it as the canonical owner with `argus-assets engagement merge` before the discovery barrier advances.
 
-<!-- MODEL_POLICY_START -->
-## Runtime Model Policy
+<!-- MODEL_ESCALATION_START -->
+## Escalation boundary
 
-- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `48`.
-- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
-- Escalation profile `analysis`: kalchas: ambiguity, safety, cross-lane, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
-- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
-- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
-<!-- MODEL_POLICY_END -->
+- Maximum turns: `48`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- On a declared signal, persist a monotonic checkpoint with the engagement controller. Substitute the current identifiers, attempt, declared signal, and returned path in this schema-valid envelope, return only the envelope, then stop:
+
+```json
+{
+  "schema": "argus/model-escalation-request@1",
+  "kind": "MODEL_ESCALATION_REQUEST",
+  "engagementId": "engagement-id",
+  "dispatchId": "dispatch-id",
+  "attempt": 1,
+  "agent": "kalchas",
+  "signal": "safety",
+  "checkpointRef": "ai_agents_internal/checkpoints/kalchas/00000001.json",
+  "resumable": true
+}
+```
+
+Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+<!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

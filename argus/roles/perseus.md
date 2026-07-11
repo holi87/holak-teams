@@ -86,6 +86,6 @@ Past runs covered IDOR/BOLA/mass-assignment/exposure well but let token-lifecycl
 
 Each finding → one `PER-NNN` bug file (cite OWASP/CWE class + STRIDE) + a RED regression for Aegis, linked and `@bug`-tagged. Manual-only is not an end state.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

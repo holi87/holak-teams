@@ -15,6 +15,7 @@ claude plugin validate --strict "$ROOT/argus/claude" >/dev/null
 
 python3 - "$ROOT" <<'PY'
 import pathlib
+import re
 import sys
 import tomllib
 
@@ -34,10 +35,21 @@ for path in files:
     expected_sandbox = "read-only" if slug in read_only else "workspace-write"
     assert role["sandbox_mode"] == expected_sandbox, f"{slug}: sandbox does not follow capability write policy"
     instructions = role["developer_instructions"]
-    for marker in ["## Generated Semantic Contract", "## Explicit runtime differences", "## Shared QA Doctrine", "## Role Instructions", "Artifact language: 100% English"]:
+    for marker in ["## Generated Semantic Contract", "## Shared QA Doctrine", "## Role Instructions", "Artifact language: 100% English"]:
         assert marker in instructions, f"{slug}: missing semantic marker {marker}"
+    assert "## Explicit runtime differences" not in instructions, f"{slug}: cross-runtime comparison remains active"
     assert f"argus/roles/{slug}.md" in instructions, f"{slug}: canonical source provenance missing"
     assert f"argus/claude/{slug}.md" not in instructions, f"{slug}: stale Claude source path survived"
+    if slug != "odysseus":
+        for provider_model in ["opus", "sonnet", "haiku", "sol", "terra", "luna"]:
+            assert not re.search(rf"\b{provider_model}\b", instructions, re.IGNORECASE), f"{slug}: provider model token leaked into active instructions: {provider_model}"
+        assert "Claude" not in instructions, f"{slug}: opposite runtime leaked into active instructions"
+        assert "argus-assets model route" not in instructions, f"{slug}: worker can invoke model routing"
+        assert "argus-assets model telemetry" not in instructions, f"{slug}: worker can invoke model telemetry"
+        assert "MODEL_ESCALATION_REQUEST" in instructions, f"{slug}: worker escalation envelope missing"
+    else:
+        assert "argus-assets model route --manifest" in instructions, "odysseus: capability-bound route command missing"
+        assert "argus-assets model telemetry --manifest" in instructions, "odysseus: decision-bound telemetry command missing"
 PY
 
 mkdir "$WORK/agents"

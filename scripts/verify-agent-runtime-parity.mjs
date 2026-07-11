@@ -66,8 +66,7 @@ for (const team of Object.keys(expectedCounts)) {
     if (team === 'hephaestus') {
       assert(markdownRaw.includes(`source_model_hint: ${claude.model}`), `${team}/${slug}: readable Codex provenance has stale tier`);
     } else {
-      const claudeEffort = claude.model === 'opus' ? 'max' : claude.model === 'sonnet' ? 'medium' : 'low';
-      assert(markdownRaw.includes(`Claude \`${claude.model}/${claudeEffort}\``), `${team}/${slug}: readable Codex semantic contract has stale Claude tier`);
+      assert(!/Claude\s+`(?:opus|sonnet|haiku)\//.test(markdownRaw), `${team}/${slug}: readable Codex companion leaks cross-runtime model mapping`);
     }
     assert(markdownRaw.includes(`model: ${expected.model}`) && markdownRaw.includes(`model_reasoning_effort: ${expected.effort}`), `${team}/${slug}: readable Codex model drift`);
     const sourcePath = markdownRaw.match(/^source:\s*(.+)$/m)?.[1];

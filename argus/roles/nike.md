@@ -101,6 +101,6 @@ Mirror of Tyche's four fault-matrix classes — funded inline even when her hand
 - **(c) Timeout-vs-retry induced duplicate** — oracle: a single persisted effect after the timeout and the retry both resolve.
 - **(d) Recovery-after-restore no-wedge** — oracle: post-restore requests succeed (no stuck breaker, wedged pool, or poisoned cache).
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

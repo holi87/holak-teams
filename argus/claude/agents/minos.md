@@ -98,15 +98,28 @@ Bug→test coverage is a **mechanical exit-code gate** (Atlas owns it in `run-te
 - **UNCOVERED CONFIRMED BUGS is a first-class headline line**, every pass: `UNCOVERED: N of C confirmed bugs have NO wired @bug RED test → [BUG-…, …]`. N>0 on a non-smoke run is a **BLOCKING gap escalated to Odysseus by name** (which bug, lane, engineer owns the RED), not a quiet "automation-pending." "Automation-pending" is acceptable ONLY for an explicit `SMOKE=1` run — say so.
 - **Rolling pickup, not batch-at-hour-5.** The moment you CONFIRM a defect, flag it to Odysseus as "ready for RED" so the lane's engineer wires it immediately, in parallel with continued hunting — never queued for a final sprint. Track per-bug `confirmed_at` vs `wired` so a growing unwired backlog is visible mid-run.
 
-<!-- MODEL_POLICY_START -->
-## Runtime Model Policy
+<!-- MODEL_ESCALATION_START -->
+## Escalation boundary
 
-- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `48`.
-- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
-- Escalation profile `judgment`: minos: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
-- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
-- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
-<!-- MODEL_POLICY_END -->
+- Maximum turns: `48`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- On a declared signal, persist a monotonic checkpoint with the engagement controller. Substitute the current identifiers, attempt, declared signal, and returned path in this schema-valid envelope, return only the envelope, then stop:
+
+```json
+{
+  "schema": "argus/model-escalation-request@1",
+  "kind": "MODEL_ESCALATION_REQUEST",
+  "engagementId": "engagement-id",
+  "dispatchId": "dispatch-id",
+  "attempt": 1,
+  "agent": "minos",
+  "signal": "safety",
+  "checkpointRef": "ai_agents_internal/checkpoints/minos/00000001.json",
+  "resumable": true
+}
+```
+
+Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+<!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

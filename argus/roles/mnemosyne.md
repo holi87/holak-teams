@@ -78,6 +78,6 @@ Write to the repo, then return a structured summary to Odysseus.
 - Writing bug reports yourself or scope-creeping into manual exploration — hand defects to Charon via Odysseus.
 - **The preloaded `qa-doctrine` hard bans apply.**
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

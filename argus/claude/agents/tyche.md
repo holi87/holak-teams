@@ -94,15 +94,28 @@ Resilience-lane STRUCTURAL signatures, value-AGNOSTIC: DISCOVER dependencies, wr
 - **(d) Recovery after dependency restored — no stuck/wedged state.** *Technique: state-transition (fault present → cleared) + BVA on the breaker half-open window.* The recovery signature the fail-safe-during-fault check misses. Stop a dependency, drive traffic until the breaker opens / errors surface, then START it and keep driving the SAME traffic. Oracle: within a bounded window the system RECOVERS — breaker half-opens then closes, connections re-establish, requests succeed; a permanently-open breaker, a wedged pool, or a poisoned cache that never heals ⇒ defect. Detect by the success of post-restore requests, not by the fault-window behaviour. Route the availability-attack exploit to Odysseus for Perseus; keep the structural recovery RED for Nike.
 - **Cross-cutting detection rule (all four).** Each needs the fault INJECTED and then RESTORED with health re-verified, the persisted EFFECT (not the HTTP status) read as the oracle, and the precondition arranged through Atlas's data factory when the harness exists (Modes A/C) — in harness-less modes, self-arranged via `curl` with your own fresh accounts, the arrangement commands recorded in the bug repro — deterministic, idempotent, torn down either way. Label every constant (timeout value, burst size, retry count) with its derived basis so the RED is judge-defensible not an invented SLA. Reconcile coverage-vs-inventory per signature in `RESILIENCE-REPORT.md`; a signature you could not construct (dependency not faultable from the seam, write path unreachable) = NAMED residual risk to Odysseus, never a silent "clean." And the app is left in its baseline state — every restore run + verified.
 
-<!-- MODEL_POLICY_START -->
-## Runtime Model Policy
+<!-- MODEL_ESCALATION_START -->
+## Escalation boundary
 
-- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `48`.
-- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
-- Escalation profile `judgment`: tyche: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
-- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
-- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
-<!-- MODEL_POLICY_END -->
+- Maximum turns: `48`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- On a declared signal, persist a monotonic checkpoint with the engagement controller. Substitute the current identifiers, attempt, declared signal, and returned path in this schema-valid envelope, return only the envelope, then stop:
+
+```json
+{
+  "schema": "argus/model-escalation-request@1",
+  "kind": "MODEL_ESCALATION_REQUEST",
+  "engagementId": "engagement-id",
+  "dispatchId": "dispatch-id",
+  "attempt": 1,
+  "agent": "tyche",
+  "signal": "safety",
+  "checkpointRef": "ai_agents_internal/checkpoints/tyche/00000001.json",
+  "resumable": true
+}
+```
+
+Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+<!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

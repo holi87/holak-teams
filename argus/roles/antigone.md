@@ -82,6 +82,6 @@ Whole WCAG classes escaped past runs because the sweep below was not driven with
 
 Each finding → one `ANG-NNN` bug file (with the constructed exact-boundary state / charset partition + the captured a11y-tree/live-region/computed-`:focus` evidence) + a RED axe/keyboard regression for Daidalos's AUTO suite, RED-linked to `ANG-NNN`. Manual-only is not an end state.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

@@ -81,6 +81,6 @@ Write to disk, then a terse summary to Odysseus.
 - Resetting state, altering any test/evaluation configuration, or reading any protected solution/solution data (e.g. on a resource app, the difficulty profile or assessment protected solution) to "reach" a state — it can void the work.
 - Modifying app source/config/seed data.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

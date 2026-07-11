@@ -147,6 +147,6 @@ Each archetype row is reconciled in the coverage-vs-inventory gate with a per-ca
 
 Use `argus-assets path coverage-contract`. Risk-rank the stable `SRF-*` inventory without replacing it with test counts or predicted defect yield. Plan separate discovery completeness, risk-weighted execution coverage, meaningful assertion quality, evidence quality, and scoped outcomes. Defect outcomes are descriptive and contribute zero to quality.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

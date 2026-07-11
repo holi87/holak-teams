@@ -86,6 +86,6 @@ Whole UI defect CLASSES escaped past runs because the specific oracle was not dr
 
 Each finding → one `ORI-NNN` bug file + a RED regression requested from Daidalos. Manual-only is not an end state.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

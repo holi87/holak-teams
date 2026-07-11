@@ -14,6 +14,7 @@ export const CONTRACT_KINDS = Object.freeze([
   'surface-inventory',
   'coverage-observations',
   'coverage-result',
+  'model-escalation-request',
 ]);
 
 const SCHEMAS = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas');

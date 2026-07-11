@@ -81,6 +81,6 @@ Perf-lane STRUCTURAL signatures, value-AGNOSTIC: DISCOVER endpoints, params, gro
 
 - **Cross-cutting detection rule (all four).** Each needs ≥3 size/shape points so the SIGNATURE is the SLOPE / DELTA / RATIO, never an absolute number; arrange every precondition through Atlas's data factory (deterministic, idempotent, torn down), hold the controlled variable (returned-count or result-size) fixed, label every constant with its derived basis so the RED is judge-defensible not an invented SLA. Reconcile coverage-vs-inventory per signature in `PERF-REPORT.md`; a signature you could not construct (factory can't reach the cardinality, param space unknown) = NAMED residual risk to Odysseus, never a silent "clean."
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

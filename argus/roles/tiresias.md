@@ -72,6 +72,6 @@ You persist no deliverables to disk — return EVERYTHING in your RESULT envelop
 - **Sitting on a security-class finding** instead of flagging it to Odysseus for the Perseus/Aegis route.
 - **Deferring work to a never-funded "next run"** — state unanalysed classes as residual risk NOW.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

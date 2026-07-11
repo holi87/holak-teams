@@ -71,6 +71,8 @@ function renderPolicy(data) {
     '- Frontier roles never fall back to a weaker model. Unavailability blocks the dispatch and escalates to the operator.',
     '- Claude enforces the complete reviewed baseline in native agent frontmatter. Its current dispatch adapter blocks an escalation because no verified per-dispatch effort override exists. Codex native config enforces model and effort but blocks until the parent can also enforce max turns. Every runtime fails closed when model, effort, and turn cap cannot be honored together.',
     '- Haiku/Luna is reserved for a future bounded subrole with no quality judgment, a deterministic output schema, and a validator that passes before merge.',
+    '- Worker prompts contain only their turn cap, declared signals, and the `argus/model-escalation-request@1` stop envelope. They never select a model, invoke routing, or write telemetry.',
+    '- Odysseus and `/argus:run` alone validate escalation envelopes, increment attempts, create a fresh thread for a selected decision, and bind telemetry to that immutable decision.',
     '- `argus-assets model route` validates the engagement and trusted adapter snapshot, then atomically persists a selected or blocked immutable decision under `ai_agents_internal/model-decisions/`. `argus-assets model telemetry` accepts only that exact decision and writes sanitized usage metrics bound to its ID and hashes.', '',
     '## Benchmark', '',
     'The committed `model-policy.benchmark.json` compares representative synthesis, judgment, and schema-bound work on quality markers, latency, input/output tokens, and provider-reported cost without storing prompts, completions, targets, accounts, or evidence.', '');

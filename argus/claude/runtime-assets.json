@@ -48,8 +48,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 5667,
-      "sha256": "a366c8d5d94d47a8e4b989fecc73382272b0a4463246faf83b2961bafe1c93f7"
+      "bytes": 6307,
+      "sha256": "af7ac952bc8fdb44635830988654bd42b6a6899a13a733654c43e7a0c0d97d00"
     },
     {
       "id": "runner-contract",
@@ -119,9 +119,9 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 32,
-      "bytes": 82879,
-      "sha256": "341421966a4d3cfa89553e1dfc4dd9617c4ae41b0d598f95f2e8161614e606c3"
+      "files": 33,
+      "bytes": 84032,
+      "sha256": "92e59456f971a2bf8056e129d1d44ab9628da69b22b9ac26522273ac26d18cad"
     },
     {
       "id": "capability-matrix",
@@ -183,8 +183,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 7,
-      "bytes": 128059,
-      "sha256": "035cfbaefad701ddefe3cbcf0a04db72b0535389ca11cb57ee9a3c4cf4052128"
+      "bytes": 128089,
+      "sha256": "391a5df2856623fd8b08c2d8b1d7ef7fff8e7ab6729ea9371a63b74af1491c4c"
     },
     {
       "id": "typescript-template",

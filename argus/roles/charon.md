@@ -70,6 +70,6 @@ Write to disk, then return a summary to Odysseus. Never return findings only in 
 - Sitting on a security-class data finding instead of flagging it to Odysseus for the Perseus (in-crew security) route.
 - Hunting low-severity schema nits first and never reaching the data-corruption / integrity-break class because the clock ran out.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

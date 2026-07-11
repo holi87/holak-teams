@@ -93,15 +93,28 @@ Perf-lane STRUCTURAL signatures, value-AGNOSTIC: DISCOVER endpoints, params, gro
 
 - **Cross-cutting detection rule (all four).** Each needs ≥3 size/shape points so the SIGNATURE is the SLOPE / DELTA / RATIO, never an absolute number; arrange every precondition through Atlas's data factory (deterministic, idempotent, torn down), hold the controlled variable (returned-count or result-size) fixed, label every constant with its derived basis so the RED is judge-defensible not an invented SLA. Reconcile coverage-vs-inventory per signature in `PERF-REPORT.md`; a signature you could not construct (factory can't reach the cardinality, param space unknown) = NAMED residual risk to Odysseus, never a silent "clean."
 
-<!-- MODEL_POLICY_START -->
-## Runtime Model Policy
+<!-- MODEL_ESCALATION_START -->
+## Escalation boundary
 
-- Source: `argus/model-policy@1`; baseline tier: `standard`; maximum turns: `40`.
-- Claude: `sonnet` / `medium`; Codex: `terra` / `medium`.
-- Escalation profile `analysis`: hermes: ambiguity, safety, cross-lane, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
-- Fallback: `upward-only`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
-- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
-<!-- MODEL_POLICY_END -->
+- Maximum turns: `40`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- On a declared signal, persist a monotonic checkpoint with the engagement controller. Substitute the current identifiers, attempt, declared signal, and returned path in this schema-valid envelope, return only the envelope, then stop:
+
+```json
+{
+  "schema": "argus/model-escalation-request@1",
+  "kind": "MODEL_ESCALATION_REQUEST",
+  "engagementId": "engagement-id",
+  "dispatchId": "dispatch-id",
+  "attempt": 1,
+  "agent": "hermes",
+  "signal": "safety",
+  "checkpointRef": "ai_agents_internal/checkpoints/hermes/00000001.json",
+  "resumable": true
+}
+```
+
+Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+<!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

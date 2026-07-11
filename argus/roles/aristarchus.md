@@ -105,6 +105,6 @@ Rules for the output: the verdict line is first and unambiguous. BLOCK if and on
 - **Do NOT re-cover another lane's surface or re-run the hunt.** You review TEST honesty; cross-lane gaps you name and route to Odysseus.
 - **Do NOT contact teammates directly.** All routing — clarifications, hand-back to a lane engineer, escalation — goes through Odysseus.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

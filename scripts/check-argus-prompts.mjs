@@ -24,6 +24,7 @@ assert(/disable-model-invocation:\s*true/.test(competition), 'competition-profil
 const agents = new Map();
 const agentWords = {};
 let totalWords = 0;
+let boundedWorkers = 0;
 const corpusHash = createHash('sha256');
 for (const file of files) {
   const slug = file.slice(0, -3);
@@ -40,7 +41,23 @@ for (const file of files) {
   assert(words(description) <= budget.budgets.maxDescriptionWords, `${slug}: description exceeds ${budget.budgets.maxDescriptionWords} words`);
   assert(/^skills:\s*\n(?:\s+-\s+[^\n]+\n)*\s+-\s+qa-doctrine\s*$/m.test(frontmatter), `${slug}: qa-doctrine is not preloaded`);
   assert(!/^\s+-\s+competition-profile\s*$/m.test(frontmatter), `${slug}: optional competition-profile is preloaded`);
+  const body = content.replace(/^---[\s\S]*?---\s*/, '');
+  if (slug === 'odysseus') {
+    assert(body.includes('<!-- MODEL_CONTROLLER_START -->'), 'odysseus: model-controller block missing');
+    assert(body.includes('argus-assets model route --manifest'), 'odysseus: capability-bound model route missing');
+    assert(body.includes('argus-assets model telemetry --manifest'), 'odysseus: decision-bound model telemetry missing');
+  } else {
+    boundedWorkers += 1;
+    assert(body.includes('<!-- MODEL_ESCALATION_START -->'), `${slug}: neutral model-escalation block missing`);
+    assert(body.includes('"kind": "MODEL_ESCALATION_REQUEST"'), `${slug}: exact escalation envelope missing`);
+    assert(!/\b(?:opus|sonnet|haiku|sol|terra|luna)\b/i.test(body), `${slug}: provider model token leaked into worker instructions`);
+    assert(!/\bCodex\b/.test(body), `${slug}: opposite runtime leaked into worker instructions`);
+    assert(!body.includes('argus-assets model route'), `${slug}: worker can invoke model routing`);
+    assert(!body.includes('argus-assets model telemetry'), `${slug}: worker can invoke model telemetry`);
+    assert(!body.includes('MODEL_POLICY_START'), `${slug}: legacy cross-runtime model policy remains`);
+  }
 }
+assert(boundedWorkers === 26, `expected 26 bounded workers, found ${boundedWorkers}`);
 
 const corpusSha256 = corpusHash.digest('hex');
 const approvedAgents = budget.approvedCorpus.agents;
@@ -93,6 +110,7 @@ for (const requirement of comparison.representativeEngagement.requirements) {
 console.log(`PASS  Argus prompt budget: ${totalWords}/${budget.budgets.maxClaudeAgentWords} words (${(reduction * 100).toFixed(2)}% reduction from ${budget.baseline.claudeAgentWords})`);
 console.log(`PASS  Prompt regression gate: ${Object.keys(increases).length} agent increases, corpus ${corpusSha256.slice(0, 12)}, explicit approval ${Object.keys(increases).length ? 'verified' : 'not required'}`);
 console.log(`PASS  Shared doctrine: ${files.length} preloads, ${duplicates.length} duplicated doctrine paragraphs, competition profile opt-in`);
+console.log(`PASS  Model-control boundary: ${boundedWorkers} neutral workers, one routing/telemetry controller`);
 console.log(`PASS  Representative Mode ${comparison.representativeEngagement.mode} engagement: ${comparison.representativeEngagement.requirements.length} output and quality requirements preserved`);
 
 function duplicatedParagraphs(agentMap, minWords) {
@@ -100,7 +118,8 @@ function duplicatedParagraphs(agentMap, minWords) {
   for (const [slug, raw] of agentMap) {
     const content = raw
       .replace(/^---[\s\S]*?---\s*/, '')
-      .replace(/<!-- RACI_CONTRACT_START -->[\s\S]*?<!-- RACI_CONTRACT_END -->/g, '');
+      .replace(/<!-- RACI_CONTRACT_START -->[\s\S]*?<!-- RACI_CONTRACT_END -->/g, '')
+      .replace(/<!-- MODEL_ESCALATION_START -->[\s\S]*?<!-- MODEL_ESCALATION_END -->/g, '');
     for (const paragraph of content.split(/\n\s*\n/)) {
       const normalized = paragraph.replace(/\s+/g, ' ').trim();
       const count = words(normalized);

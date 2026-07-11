@@ -104,6 +104,6 @@ Use the packaged contract at `argus-assets path coverage-contract`. Universal ca
 5. Trace every confirmed defect to a RED with native `regression` plus matching `@bug:<canonical-or-origin>`. `@bug` alone is unwired. Zero confirmed is valid `0/0`; any unwired defect blocks non-smoke.
 6. The clean final run is from a fresh install and emits both `argus/runner-result` and `argus/coverage-result`.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

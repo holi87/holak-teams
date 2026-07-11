@@ -71,6 +71,6 @@ Past runs discovered admin/operator panels LATE (left them UNVERIFIED), costing 
 
 Build `solution/surface-inventory.json` as `argus/surface-inventory@1` using `argus-assets path coverage-contract`. Enumerate UI, API, event, and data items with stable `SRF-*` IDs; routes, operations, schemas, roles, states, devices, browsers, and risk categories form measurable denominators. Record risk basis/weight and discovery evidence. Inaccessible or untestable items remain explicit with a reason; never delete them from discovery. Validate it with `argus-assets schema validate --kind surface-inventory`, submit the immutable stable fragment `kalchas-surface-inventory` through `argus-assets engagement fragment`, then merge it as the canonical owner with `argus-assets engagement merge` before the discovery barrier advances.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

@@ -94,6 +94,6 @@ Your job here is the **reusable, lane-shared assertion helpers** that make those
 
 Every confirmed API finding becomes a RED at the naming assertion with native `regression` and stable `@bug:<filing-id>` provenance, wired into `run-tests.sh`. No `.skip`, `.only`, `test.fail`, or green encoding.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->
