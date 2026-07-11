@@ -249,6 +249,12 @@ else
   fail "[argus] (l) runner outcome contract"
 fi
 
+if "$ROOT/scripts/smoke-argus-templates.sh"; then
+  pass "[argus] (l2) capability detection, explicit selection, path adapters, shared semantics, and clean-room templates"
+else
+  fail "[argus] (l2) capability-based template contract"
+fi
+
 if "$ROOT/scripts/smoke-argus-coverage.sh"; then
   pass "[argus] (m) target-derived, risk-weighted coverage and defect-neutral quality metrics"
 else

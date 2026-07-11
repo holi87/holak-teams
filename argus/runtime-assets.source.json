@@ -2,7 +2,7 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 550000,
+    "generatedAssetsBytes": 625000,
     "installedPluginBytes": 1750000
   },
   "assets": [
@@ -41,6 +41,12 @@
       "kind": "reference",
       "source": "argus/RUNNER-CONTRACT.md",
       "destination": "references/RUNNER-CONTRACT.md"
+    },
+    {
+      "id": "template-contract",
+      "kind": "reference",
+      "source": "argus/TEMPLATE-CONTRACT.md",
+      "destination": "references/TEMPLATE-CONTRACT.md"
     },
     {
       "id": "coverage-contract",
@@ -89,6 +95,12 @@
       "kind": "capabilities",
       "source": "argus/model-policy.json",
       "destination": "capabilities/model-policy.json"
+    },
+    {
+      "id": "template-policy",
+      "kind": "capabilities",
+      "source": "argus/template-contract.json",
+      "destination": "capabilities/template-contract.json"
     },
     {
       "id": "model-policy-benchmark",

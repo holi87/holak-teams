@@ -88,11 +88,24 @@ with this contract, stop and return `DOCTRINE_CONFLICT` to Odysseus.
 
 ## Engineering and evidence
 
+- Before framework work, load `${CLAUDE_PLUGIN_ROOT}/references/TEMPLATE-CONTRACT.md`.
+  Run `argus-assets template detect`, then `template select` with the user's explicit
+  runtime choice. Persist the selection. `action=adapt` means extend the detected suite,
+  paths, package manager, runner, and CI entry point in place; never scaffold a competitor.
+  `action=build` may run `template scaffold` only from a compatible selection. The
+  selection's `testRoot` and `harnessRoot` override every illustrative `tests/` or `src/`
+  path in role prompts and templates. Unsupported capabilities are named adaptation
+  requirements, never silent omissions.
 - Adopt a healthy existing suite before building. If building or extending, use the
   target's conventions, shared factories/harnesses, exact dependency pins and lockfiles,
   deterministic data/time, stable selectors, independent tests, and one top-level runner.
   Every funded lane must be wired into the runner and aggregated report with truthful exit
   status. Final verification runs from a clean install/state.
+- TypeScript, Java, and Python runners honor `argus/template-contract@1`: four modes,
+  `argus/runner-result@1`, shared evidence/event/category semantics, framework-adapted
+  lane/regression/quarantine tags, one attempt, and an expiring quarantine ledger. Use
+  template-specific extension points for a new package manager or runner; do not copy
+  this doctrine into runtime-specific prompts or files.
 - Evidence must make a stranger able to reproduce the outcome: exact target identity,
   preconditions, actor, commands/actions, request/response or UI proof, expected oracle,
   actual result, timestamps where relevant, and immutable artifact references. Separate

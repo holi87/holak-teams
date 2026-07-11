@@ -90,6 +90,11 @@ phase:
    Load `${CLAUDE_PLUGIN_ROOT}/references/COVERAGE-CONTRACT.md` before discovery. Kalchas
    must merge `argus/surface-inventory@1` before execution owners contribute
    `argus/coverage-observations@1`; calculate `argus/coverage-result@1` before reporting.
+   Before any framework write, load `${CLAUDE_PLUGIN_ROOT}/references/TEMPLATE-CONTRACT.md`,
+   run `argus-assets template detect`, and obtain the user's explicit runtime choice via
+   `template select`. Persist its output. `action=adapt` forbids scaffold creation;
+   `action=build` requires `template scaffold` and the selection's exact test/harness
+   roots. Include every unsupported capability and extension-point decision in dispatch.
    Universal case counts, defect quotas, predicted bug counts, and silently removed
    inaccessible/untestable surfaces are invalid engagement inputs.
    Use `baseline`, `defect-evidence`, `candidate-regression`, and `full-suite` only for

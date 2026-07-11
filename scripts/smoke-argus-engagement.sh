@@ -187,6 +187,10 @@ guard_shell "argus-assets copy-browser-driver $TARGET" allow
 guard_shell "argus-assets copy-browser-driver $WORK/outside-target" GUARD-TARGET-IMMUTABLE
 atlas_tmp="$(jq -r .temporaryDirectory "$ALLOCATIONS/atlas.json")"
 guard_shell "argus-assets copy-template typescript $atlas_tmp/template" allow
+guard_shell "argus-assets template detect --target $TARGET" allow
+guard_shell "argus-assets template select --target $TARGET --runtime typescript --package-manager npm --test-root tests --harness-root qa-support --output ai_agents_internal/reports/template-selection.json" allow
+guard_shell "argus-assets template scaffold --selection ai_agents_internal/reports/template-selection.json --destination $atlas_tmp/scaffold" allow
+guard_shell "argus-assets template scaffold --selection ai_agents_internal/reports/template-selection.json --destination $WORK/outside-target" GUARD-TARGET-IMMUTABLE
 
 # An exact operator bypass works only with its secret token and is audited without raw commands.
 BYPASS_TOKEN='operator-approved-phase0-bypass'

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/template-capabilities.schema.json",
+  "title": "Argus detected target capabilities",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "targetRoot", "languages", "frameworks", "testRunners", "packageManagers", "sourceRoots", "testRoots", "ci", "existingSuite", "runtimeCandidates", "signals", "unsupported"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "targetRoot": { "type": "string", "minLength": 1 },
+    "languages": { "$ref": "#/$defs/list" },
+    "frameworks": { "$ref": "#/$defs/list" },
+    "testRunners": { "$ref": "#/$defs/list" },
+    "packageManagers": { "$ref": "#/$defs/list" },
+    "sourceRoots": { "$ref": "#/$defs/list" },
+    "testRoots": { "$ref": "#/$defs/list" },
+    "ci": { "$ref": "#/$defs/list" },
+    "existingSuite": { "type": "boolean" },
+    "runtimeCandidates": { "type": "array", "uniqueItems": true, "items": { "enum": ["typescript", "java", "python"] } },
+    "signals": { "type": "array", "items": { "type": "object", "required": ["capability", "source"], "properties": { "capability": { "type": "string" }, "source": { "type": "string" } } } },
+    "unsupported": { "$ref": "#/$defs/list" }
+  },
+  "$defs": { "list": { "type": "array", "uniqueItems": true, "items": { "type": "string" } } }
+}

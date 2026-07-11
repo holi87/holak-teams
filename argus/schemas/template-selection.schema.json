@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/template-selection.schema.json",
+  "title": "Argus explicit template selection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "contractId", "targetRoot", "runtime", "packageManager", "framework", "testRunner", "testRoot", "harnessRoot", "ci", "action", "choiceSource", "capabilitiesSha256", "unsupported", "extensionPoints"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "argus/template-selection@1" },
+    "targetRoot": { "type": "string", "minLength": 1 },
+    "runtime": { "enum": ["typescript", "java", "python"] },
+    "packageManager": { "type": "string", "minLength": 1 },
+    "framework": { "type": "string", "minLength": 1 },
+    "testRunner": { "type": "string", "minLength": 1 },
+    "testRoot": { "type": "string", "minLength": 1 },
+    "harnessRoot": { "type": "string", "minLength": 1 },
+    "ci": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+    "action": { "enum": ["build", "adapt"] },
+    "choiceSource": { "const": "explicit-user" },
+    "capabilitiesSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "unsupported": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+    "extensionPoints": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+  }
+}

@@ -11,7 +11,8 @@ if [ "${1:-}" = -- ]; then shift; fi
 case "$MODE" in baseline|defect-evidence|candidate-regression|full-suite) ;; *) echo "INVALID RUNNER MODE: $MODE" >&2; exit 14 ;; esac
 EVENTS="${ARGUS_OUTCOME_FILE:-reports/outcomes.raw.tsv}"
 RESULT="reports/argus-runner-result.json"
-mkdir -p reports
+TEST_ROOT="${ARGUS_TEST_ROOT:-tests}"
+mkdir -p reports reports/evidence
 rm -f "$EVENTS"
 
 emit_event() { printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >>"$EVENTS"; }
@@ -30,11 +31,21 @@ unexpected_error() {
 }
 trap unexpected_error ERR
 
+SELECTION="ai_agents_internal/template-selection.json"
+if [ ! -f "$SELECTION" ] || ! grep -Fq '"runtime": "typescript"' "$SELECTION" || ! grep -Fq '"packageManager": "npm"' "$SELECTION" || ! grep -Fq '"choiceSource": "explicit-user"' "$SELECTION"; then
+  emit_event template-selection policy denied false n/a - template-selection-missing-or-incompatible
+  finish_contract 1
+fi
+
 MODE_ARGS=()
 case "$MODE" in
-  baseline) MODE_ARGS=(--grep-invert '@bug:BUG-[0-9]{4}') ;;
-  defect-evidence|candidate-regression) MODE_ARGS=(--grep '@bug:BUG-[0-9]{4}') ;;
+  baseline) MODE_ARGS=(--grep-invert '@bug:BUG-[0-9]{4}|@quarantine') ;;
+  defect-evidence|candidate-regression) MODE_ARGS=(--grep '@bug:BUG-[0-9]{4}' --grep-invert '@quarantine') ;;
+  full-suite) MODE_ARGS=(--grep-invert '@quarantine') ;;
 esac
+
+tagged_count="$({ grep -Roh '@quarantine' "$TEST_ROOT" --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' || true; } | wc -l | tr -d ' ')"
+if ! scripts/quarantine-contract.sh --events "$EVENTS" --tagged-count "$tagged_count"; then finish_contract 1; fi
 
 : "${API_URL:=http://localhost:3001}"
 : "${UI_URL:=http://localhost:3000}"
@@ -58,11 +69,11 @@ if [ ! -d node_modules ]; then
     emit_event install infrastructure fail false n/a - npm-ci-failed
     finish_contract 1
   fi
-  npx playwright install --with-deps chromium
+  if [ "${PLAYWRIGHT_INSTALL:-1}" = "1" ]; then npx playwright install --with-deps chromium; fi
 fi
 
 # Environment readiness — fail fast with a distinct message instead of a wall of misleading red.
-for url in "$API_URL" "$UI_URL"; do
+for url in $([ "${ARGUS_CONTRACT_SMOKE:-0}" = "1" ] && printf '' || printf '%s %s' "$API_URL" "$UI_URL"); do
   ok=""
   for _ in $(seq 1 10); do
     if curl -sf --max-time 3 -o /dev/null "$url"; then ok=1; break; fi
@@ -89,14 +100,14 @@ npx playwright test "${MODE_ARGS[@]}" "$@"
 pw_code=$?
 
 bug_gate_code=0
-if [ "$MODE" != baseline ]; then
+if [ "${ARGUS_CONTRACT_SMOKE:-0}" != "1" ] && [ "$MODE" != baseline ]; then
   node scripts/bug-coverage.mjs
   bug_gate_code=$?
   [ "$bug_gate_code" -eq 0 ] || emit_event bug-coverage automation fail false n/a - bug-coverage-gate-failed
 fi
 
 baseline_gate_code=0
-if [ "$MODE" = baseline ] || [ "$MODE" = full-suite ]; then
+if [ "${ARGUS_CONTRACT_SMOKE:-0}" != "1" ] && { [ "$MODE" = baseline ] || [ "$MODE" = full-suite ]; }; then
   node scripts/baseline-coverage.mjs
   baseline_gate_code=$?
   [ "$baseline_gate_code" -eq 0 ] || emit_event baseline-coverage automation fail false n/a - baseline-coverage-gate-failed

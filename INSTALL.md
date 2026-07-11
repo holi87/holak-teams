@@ -103,18 +103,26 @@ are exclusive. Pass both the allocated `ARGUS_BROWSER_PROFILE` and
 cookies, downloads, traces, videos, screenshots, temp state, and locks must be absent at sign-off. See the installed
 `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 
-On a greenfield BUILD engagement, Atlas can seed a framework without access to this
-repository checkout:
+Before framework work, detect capabilities and persist an explicit operator selection:
 
 ```bash
-argus-assets copy-template typescript /tmp/argus-ts
-argus-assets copy-template java /tmp/argus-java
-argus-assets copy-template python /tmp/argus-python
+argus-assets template detect --target /path/to/target-repo \
+  --output /tmp/template-capabilities.json
+argus-assets template select --target /path/to/target-repo \
+  --runtime typescript --package-manager npm \
+  --test-root quality/specs --harness-root quality/support \
+  --output /tmp/template-selection.json
+argus-assets template scaffold --selection /tmp/template-selection.json \
+  --destination /tmp/argus-framework
 argus-assets copy-browser-driver /path/to/target-repo
 ```
 
-Template copy refuses a non-empty destination. For ADAPT mode, copy to a temporary
-directory, diff against the existing harness, and merge explicitly.
+Selection records language, framework, runner, package manager, source/test layout, CI,
+and unsupported adapters. Existing suites produce `action=adapt`; scaffold refuses them,
+so Atlas extends their existing paths and runner. Greenfield `action=build` requires an
+explicit compatible runtime/package manager and disjoint test/harness roots. Scaffold
+refuses a non-empty destination and relocates all internal placeholders to those roots.
+`copy-template` remains a low-level maintainer command, not the engagement workflow.
 
 ## Claude Code — manual symlink / copy (alternative)
 

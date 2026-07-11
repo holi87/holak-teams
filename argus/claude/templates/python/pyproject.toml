@@ -40,6 +40,8 @@ markers = [
   "security: access-control lane — gated on SECURITY_ENABLED=1 (self-skips if unset)",
   "db: direct-DB integrity lane — gated on DB_URL, read-only (self-skips if unset)",
   "regression: bug-linked RED tests (red = evidence the suite catches the defect)",
+  "quarantine: temporarily excluded test with a valid solution/quarantine.tsv entry",
+  "contract_smoke: target-independent clean-room scaffold contract",
 ]
 
 # Determinism is a feature: NO retries, NO rerun plugin. Flakiness is fixed at the

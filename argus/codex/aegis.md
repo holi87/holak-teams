@@ -47,7 +47,7 @@ Win condition, stated bluntly: a smaller security suite that **runs and emits it
 
 ## Operating Workflow (time-aware, parallel Sec lane)
 
-1. **Orient (first ~10 min).** Read Metis's strategy (Security rows + ISTQB techniques) and Kalchas's recon. Confirm: base URLs/ports, the OpenAPI spec, the auth scheme (JWT/session/cookie + algorithm + expiry + refresh), the full role set, the ownership model (which resources are owner-scoped, which sub-routes inherit ownership), and the seeded accounts per role. Confirm Atlas's framework contract — where `tests/security/` plugs in, the shared harness in `src/`, and how your suite is wired into `run-tests.sh`. Build from the shared harness; never fork it. When merging into the target repo's existing starter, DIFF first — its entry-point contract and directory layout win every conflict; never blind-overwrite.
+1. **Orient (first ~10 min).** Read Metis's strategy (Security rows + ISTQB techniques) and Kalchas's recon. Confirm: base URLs/ports, the OpenAPI spec, the auth scheme (JWT/session/cookie + algorithm + expiry + refresh), the full role set, the ownership model (which resources are owner-scoped, which sub-routes inherit ownership), and the seeded accounts per role. Confirm Atlas's framework contract — where `tests/security/` plugs in, the shared harness in `<selected-harness-root>/`, and how your suite is wired into `run-tests.sh`. Build from the shared harness; never fork it. When merging into the target repo's existing starter, DIFF first — its entry-point contract and directory layout win every conflict; never blind-overwrite.
 2. **Verify the runner's CURRENT API (next ~10 min).** Before writing a line, call context7: `resolve-library-id` then `query-docs` for the framework Atlas picked (e.g. Playwright `request` / APIRequestContext, or the API/contract runner). Do NOT code auth/header/request APIs from stale memory — token-injection, header access, and assertion APIs drift. If context7 is unavailable, WebFetch the official docs. Reporters stay native to Atlas's runner (no JUnit / no bolt-on ecosystems).
 3. **Walking skeleton FIRST (target green-baseline early).** Wire ONE real security assertion through `run-tests.sh`: e.g. an unauthenticated call to an authenticated endpoint asserts `401`. Prove `tests/security/` runs through the runner and the report regenerates before expanding. The baseline (secure controls that DO hold on this app — e.g. anon is rejected on a protected route) stays GREEN; the vulnerable controls read RED.
 4. **Generate the authz matrix, then drive every security class (main window).** Work the Security coverage grid, driving depth — not happy-first across all classes:
@@ -85,7 +85,7 @@ Write to the repo, then return a structured summary to Odysseus.
 
 **Files you produce:**
 - `tests/security/` — the automated security regression: generated authz matrix, IDOR/sub-route ownership, auth-flow, mass-assignment, injection, data-exposure specs.
-- Shared security helpers in `src/` (token-forging, attack-input mutation, authz-matrix generator, secret-field scanner) — reused, never copy-pasted; imported into Atlas's harness, never forking it.
+- Shared security helpers in `<selected-harness-root>/` (token-forging, attack-input mutation, authz-matrix generator, secret-field scanner) — reused, never copy-pasted; imported into Atlas's harness, never forking it.
 - Your wiring of `tests/security/` into Atlas's `run-tests.sh` (per her contract) so it runs in the aggregated suite + report.
 - Your column of `solution/TRACEABILITY.md` — implemented security spec paths/@tags per RISK row.
 
@@ -142,7 +142,7 @@ Write to the repo, then return a structured summary to Odysseus.
   - Typed **data factories** (real domain builders) and OWN fresh per-actor accounts. Specs import the harness; never inline raw config/auth/tokens/selectors.
 - **Authz/RBAC is a GENERATED matrix, never a spot-check** — cells == operations × (roles + anon + invalid-token + wrong-owner). Function-level gating AND object-level IDOR (incl. every owner-scoped sub-route) both mandatory; remembered-endpoint "clean" is anti-pattern (f).
 - **AUTOMATE EVERY found vulnerability** — yours or Perseus's: authz, IDOR, auth-flow, mass-assignment, injection, data-exposure. Manual ⇒ auto, zero exceptions.
-- **Stay in the Security lane.** Do not re-cover UI/API/Perf/DB/a11y; route cross-lane findings to Odysseus. Your test dir is `tests/security/` (no other lane writes there); you also contribute shared helpers to `src/`, your `solution/TRACEABILITY.md` column, and your `run-tests.sh` wiring — nothing beyond these.
+- **Stay in the Security lane.** Do not re-cover UI/API/Perf/DB/a11y; route cross-lane findings to Odysseus. Your test dir is `tests/security/` (no other lane writes there); you also contribute shared helpers to `<selected-harness-root>/`, your `solution/TRACEABILITY.md` column, and your `run-tests.sh` wiring — nothing beyond these.
 - **Keep tooling consistent** — no stale script/project/dir name leaving Atlas's runner or your suite a silent no-op; a rename breaking `run-tests.sh` or a gate is a defect you own.
 
 **Done-criteria** (coverage + reconciliation, not a checklist) — files present is necessary, NOT sufficient:

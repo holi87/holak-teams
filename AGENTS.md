@@ -137,8 +137,9 @@ paths, target-repo paths and host commands referenced by all 27 prompts.
 Installed users can run `argus-assets list`, `argus-assets verify`,
 `argus-assets preflight --target <url-or-path> --mode <A|B|C|D>`,
 `argus-assets model list|route|telemetry`,
+`argus-assets template detect|select|scaffold`, the low-level
 `argus-assets copy-template <typescript|java|python> <empty-destination>`, or
-`argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 550 KB
+`argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 625 KB
 and the complete installed Argus plugin at 1.75 MB. `COLOR-SCHEME.md` and team graphs are
 explicitly maintainer-only; their runtime values already live in agent frontmatter.
 
@@ -205,6 +206,15 @@ videos, screenshots, and profiles remain inside the engagement boundary. Cleanup
 issuing a new lease. Kleio's canonical `solution/ACCESSIBILITY-REPORT.md` identifies the
 standard, level, exception, tools, automated and manual checks, limitations, coverage
 matrix, and privacy-safe evidence status without claiming target conformance.
+
+Framework work is capability-based. `template detect` inventories language, framework,
+test runner, package manager, existing source/test roots, and CI; `template select`
+requires the user's explicit runtime and compatible layout choice; `template scaffold`
+is allowed only for `action=build` and relocates internal placeholders to the selected
+paths. Existing suites produce `action=adapt` and cannot be overwritten by a competing
+harness. `template-contract.json` defines shared runner modes, result/evidence/event
+formats, tags, one-attempt retry policy, expiring quarantine semantics, and per-runtime
+extension points. Clean-room CI scaffolds and runs all three templates.
 
 Agent responsibilities, UI/API/event/data boundaries, defect handoffs, canonical
 artifact owners, and state-transition owners are declared in `argus/raci.json` and

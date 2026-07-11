@@ -1,11 +1,21 @@
 # Argus QA Test Framework — Playwright + TS (API + UI)
 
-Prepped scaffold for an **Argus QA engagement**. Copy into the target repo (or run standalone) and adapt to the app under test at engagement start. One command, one report, a real layered framework — not loose spec files.
+Prepped scaffold for an **Argus QA engagement**. Do not copy it directly. Run
+`argus-assets template detect`, make an explicit `template select` choice, then use
+`template scaffold` only for `action=build`. The adapter relocates the internal `tests/`
+and `src/` placeholders to the selected test/harness roots and records npm as the verified
+build adapter. `action=adapt` preserves the target's existing layout and runner. One
+command, one report, a real layered framework — not loose spec files.
 
 ## Why this stack
 One tool covers **API** (`request` context) and **UI** (browser) → one runner, one report, built-in trace/screenshot/video for bug evidence. Playwright-native everything (fixtures, projects, storageState auth, html/json reporters). Fast to stand up, deterministic, AI-friendly.
 
 ## Run
+
+Shared contract: four runner modes, `argus/runner-result@1`, outcome TSV, retained
+redacted evidence under `reports/evidence/`, lane/regression/contract-smoke tags, zero
+automatic retries, and expiring `solution/quarantine.tsv` records. `@quarantine` without
+one valid ledger row is a policy failure, not a silent skip.
 ```bash
 ./run-tests.sh --mode baseline             # strict green, excludes @bug:BUG-NNNN
 ./run-tests.sh --mode defect-evidence      # known RED only; requires adapter events

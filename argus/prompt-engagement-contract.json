@@ -24,7 +24,9 @@
       { "id": "browser-isolation", "source": "qa-doctrine", "markers": ["isolated", "hunt-driver", "single-shot public recon"] },
       { "id": "oracle-honesty", "source": "qa-doctrine", "markers": ["RED on the faulty target", "Never green-encode", "falsifiable"] },
       { "id": "artifact-language", "source": "qa-doctrine", "markers": ["100% English", "commit messages"] },
-      { "id": "event-progress", "source": "qa-doctrine", "markers": ["event-driven", "Do not run timer-based heartbeat loops", "final RESULT envelope"] }
+      { "id": "event-progress", "source": "qa-doctrine", "markers": ["event-driven", "Do not run timer-based heartbeat loops", "final RESULT envelope"] },
+      { "id": "capability-template-selection", "source": "qa-doctrine", "markers": ["template detect", "runtime choice", "action=adapt", "Unsupported capabilities"] },
+      { "id": "shared-template-semantics", "source": "qa-doctrine", "markers": ["argus/template-contract@1", "four modes", "expiring quarantine ledger"] }
     ]
   }
 }
