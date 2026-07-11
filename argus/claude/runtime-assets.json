@@ -84,8 +84,8 @@
       "source": "argus/RACI-CONTRACT.md",
       "destination": "references/RACI-CONTRACT.md",
       "files": 1,
-      "bytes": 8143,
-      "sha256": "0137538ce8c25874f3cd8c2e8fdb90936becd06fd205c59ca5cae69759dff69f"
+      "bytes": 8208,
+      "sha256": "a2d7765cec3a670729de052a1c40c439ff8fdef952a31201999fdca3ca0516bf"
     },
     {
       "id": "raci-matrix",
@@ -120,8 +120,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 31,
-      "bytes": 75952,
-      "sha256": "32b99a6f6abfa2c5ae21fc9da080877377e619f579c2b240d369878b87bc0f7c"
+      "bytes": 75796,
+      "sha256": "ab50bbf226cf2496cf13aaff3e8bd183ac6b33fee255ad209c769f9d4f5dc302"
     },
     {
       "id": "capability-matrix",

@@ -20,6 +20,7 @@ claude plugin validate --strict hephaestus/claude >/dev/null
 scripts/sync-argus-runtime-assets.mjs --check
 node scripts/sync-argus-raci.mjs --check
 node scripts/sync-argus-model-policy.mjs --check
+scripts/smoke-argus-generator-ownership.sh
 scripts/smoke-agent-runtime-parity.sh
 node scripts/benchmark-argus-model-policy.mjs --check
 scripts/verify-agents.sh

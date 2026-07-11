@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const mode = process.argv[2] ?? '--check';
-if (!['--bootstrap', '--write', '--check'].includes(mode)) {
-  fail('usage: scripts/sync-argus-role-variants.mjs [--bootstrap|--write|--check]');
+if (!['--write', '--check'].includes(mode)) {
+  fail('usage: scripts/sync-argus-role-variants.mjs [--write|--check]');
 }
 
 const ROLE_ROOT = join(ROOT, 'argus', 'roles');
@@ -16,8 +16,6 @@ const MANIFEST_PATH = join(ROLE_ROOT, 'manifest.json');
 const ADAPTERS_PATH = join(ROLE_ROOT, 'runtime-adapters.json');
 const CLAUDE_ROOT = join(ROOT, 'argus', 'claude', 'agents');
 const CODEX_ROOT = join(ROOT, 'argus', 'codex');
-
-if (mode === '--bootstrap') bootstrap();
 
 const manifest = readJson(MANIFEST_PATH);
 const adapters = readJson(ADAPTERS_PATH);
@@ -30,7 +28,7 @@ const rolesByModel = bySlug(modelPolicy.roles, 'model policy');
 const rolesByRaci = bySlug(raci.agents, 'RACI');
 const rolesByCapability = bySlug(capabilities.agents, 'capability matrix');
 
-assert(manifest.schemaVersion === 1, 'role manifest schemaVersion must be 1');
+assert(manifest.schemaVersion === 2, 'role manifest schemaVersion must be 2');
 assert(adapters.schemaVersion === 2, 'runtime adapter schemaVersion must be 2');
 assert(adapters.support.claude.level === 'plugin-native', 'Claude support level must be plugin-native');
 assert(adapters.support.codex.level === 'parent-runtime-dependent', 'Codex support level must be parent-runtime-dependent');
@@ -47,15 +45,20 @@ for (const role of [...manifest.roles].sort((left, right) => left.slug.localeCom
   const policyRole = rolesByModel.get(role.slug);
   const ownership = rolesByRaci.get(role.slug);
   const capability = rolesByCapability.get(role.slug);
+  const resolvedRole = {
+    ...role,
+    displayName: titleCase(role.slug),
+    description: ownership.description,
+  };
   const tier = modelPolicy.tiers[policyRole.tier];
   const sourcePath = join(ROLE_ROOT, role.source);
   const sourceBody = readFileSync(sourcePath, 'utf8');
   const body = renderCanonicalBody(sourceBody, policyRole, ownership);
-  const claude = renderClaude(role, tier.claude, policyRole, body);
-  const semanticContract = renderSemanticContract(role, policyRole, ownership, capability, tier);
-  const codexInstructions = renderCodexInstructions(role, semanticContract, doctrine, body);
-  const codexToml = renderCodexToml(role, tier.codex, capability, codexInstructions);
-  const codexMarkdown = renderCodexMarkdown(role, policyRole, tier, capability, codexInstructions);
+  const claude = renderClaude(resolvedRole, tier.claude, policyRole, body);
+  const semanticContract = renderSemanticContract(resolvedRole, policyRole, ownership, capability, tier);
+  const codexInstructions = renderCodexInstructions(resolvedRole, semanticContract, doctrine, body);
+  const codexToml = renderCodexToml(resolvedRole, tier.codex, capability, codexInstructions);
+  const codexMarkdown = renderCodexMarkdown(resolvedRole, policyRole, tier, capability, codexInstructions);
 
   sync(join(CLAUDE_ROOT, `${role.slug}.md`), claude);
   sync(join(CODEX_ROOT, `${role.slug}.toml`), codexToml);
@@ -68,97 +71,10 @@ const actualCodex = readdirSync(CODEX_ROOT).filter((file) => /\.(?:md|toml)$/.te
 assert(equal(actualCodex, [...expectedFiles].sort()), 'Codex output contains missing or orphan role files');
 console.log(`PASS  Argus role variants: ${manifest.roles.length} canonical sources -> 27 Claude agents + 27 Codex TOML/Markdown pairs (${mode.slice(2)})`);
 
-function bootstrap() {
-  assert(!existsSync(MANIFEST_PATH), 'canonical role manifest already exists; bootstrap is one-time only');
-  mkdirSync(ROLE_ROOT, { recursive: true });
-  const model = readJson(join(ROOT, 'argus/model-policy.json'));
-  const raciData = readJson(join(ROOT, 'argus/raci.json'));
-  const capabilityData = readJson(join(ROOT, 'argus/capabilities/capability-matrix.json'));
-  const raciBySlug = bySlug(raciData.agents, 'RACI');
-  const capabilityBySlug = bySlug(capabilityData.agents, 'capability matrix');
-  const roles = [];
-  for (const policyRole of [...model.roles].sort((left, right) => left.slug.localeCompare(right.slug))) {
-    const path = join(CLAUDE_ROOT, `${policyRole.slug}.md`);
-    const parsed = splitMarkdown(readFileSync(path, 'utf8'));
-    const metadata = parseClaudeFrontmatter(parsed.frontmatter);
-    const ownership = raciBySlug.get(policyRole.slug);
-    const capability = capabilityBySlug.get(policyRole.slug);
-    assert(metadata.description === ownership.description, `${policyRole.slug}: Claude description differs from RACI`);
-    for (const tool of capability.requiredTools) {
-      assert(metadata.tools.includes(tool), `${policyRole.slug}: Claude tools omit required capability ${tool}`);
-    }
-    let source = parsed.body.trimStart();
-    source = source.replace(/<!-- MODEL_POLICY_START -->[\s\S]*?<!-- MODEL_POLICY_END -->/, '{{ARGUS_MODEL_POLICY_BLOCK}}');
-    source = source.replace(/<!-- RACI_CONTRACT_START -->[\s\S]*?<!-- RACI_CONTRACT_END -->/, '{{ARGUS_RACI_CONTRACT_BLOCK}}');
-    assert(source.includes('{{ARGUS_MODEL_POLICY_BLOCK}}'), `${policyRole.slug}: model policy block missing during bootstrap`);
-    assert(source.includes('{{ARGUS_RACI_CONTRACT_BLOCK}}'), `${policyRole.slug}: RACI block missing during bootstrap`);
-    writeFileSync(join(ROLE_ROOT, `${policyRole.slug}.md`), source.endsWith('\n') ? source : `${source}\n`);
-    roles.push({
-      slug: policyRole.slug,
-      source: `${policyRole.slug}.md`,
-      displayName: titleCase(policyRole.slug),
-      description: metadata.description,
-      color: metadata.color,
-      claudeTools: metadata.tools,
-    });
-  }
-  writeJson(MANIFEST_PATH, {
-    $schema: '../schemas/role-manifest.schema.json',
-    schemaVersion: 1,
-    contracts: {
-      modelPolicy: 'argus/model-policy.json',
-      ownership: 'argus/raci.json',
-      capabilities: 'argus/capabilities/capability-matrix.json',
-      doctrine: 'argus/shared-skills/qa-doctrine/SKILL.md',
-      adapters: 'argus/roles/runtime-adapters.json',
-    },
-    roles,
-  });
-  writeJson(ADAPTERS_PATH, {
-    $schema: '../schemas/runtime-adapters.schema.json',
-    schemaVersion: 2,
-    support: {
-      claude: {
-        level: 'plugin-native',
-        parentRuntimeRequired: false,
-      },
-      codex: {
-        level: 'parent-runtime-dependent',
-        parentRuntimeRequired: true,
-        requiredParentCapabilities: ['orchestration', 'packaged-assets', 'tool-equivalence'],
-        missingCapabilityOutcome: 'CAPABILITY_GAP',
-      },
-    },
-    configurationParity: {
-      status: 'validated',
-      scope: ['role-inventory', 'generated-instructions', 'model-and-effort', 'sandbox-policy', 'native-config-load'],
-      doesNotClaim: ['behavioral-equivalence', 'tool-availability', 'packaged-asset-availability', 'delegation-execution', 'target-outcomes'],
-    },
-    claude: {
-      preloadedSkill: 'qa-doctrine',
-      toolSource: 'role-manifest',
-      modelSource: 'model-policy',
-    },
-    codex: {
-      modelSource: 'model-policy',
-      sandboxPolicy: 'read-only when the capability contract has no Write tool; workspace-write otherwise',
-      doctrinePolicy: 'embed the canonical doctrine because Codex custom-agent configuration cannot preload Claude plugin skills',
-      toolPolicy: 'record Claude tools as provenance and require available Codex equivalents at runtime',
-    },
-    explicitDifferences: [
-      { field: 'tools', claude: 'native frontmatter tool allowlist', codex: 'runtime-provided tools with provenance and fail-closed fallback', reason: 'Claude and Codex expose different tool vocabularies' },
-      { field: 'orchestration', claude: 'Agent plus Task lifecycle tools', codex: 'Codex collaboration tools when provided, otherwise an executable parent-session plan', reason: 'delegation APIs are runtime-specific' },
-      { field: 'model', claude: 'opus/sonnet/haiku plus effort', codex: 'sol/terra/luna plus model_reasoning_effort', reason: 'native model identifiers differ' },
-      { field: 'shared-doctrine', claude: 'preloaded qa-doctrine plugin skill', codex: 'doctrine embedded into developer_instructions', reason: 'standalone Codex custom agents do not load Claude plugin skills' },
-      { field: 'packaged-assets', claude: 'CLAUDE_PLUGIN_ROOT and argus-assets are installed with the plugin', codex: 'use them only when the parent supplies the installed plugin; otherwise return CAPABILITY_GAP', reason: 'Codex agents are installed as standalone TOML files' },
-    ],
-  });
-}
-
 function validateRole(role) {
-  for (const field of ['slug', 'source', 'displayName', 'description', 'color']) assert(role[field], `${role.slug ?? '(unknown)'}: missing ${field}`);
+  for (const field of ['slug', 'source', 'color']) assert(role[field], `${role.slug ?? '(unknown)'}: missing ${field}`);
   assert(role.source === `${role.slug}.md`, `${role.slug}: source must be its same-slug Markdown file`);
-  assert(role.description === rolesByRaci.get(role.slug)?.description, `${role.slug}: description differs from canonical RACI`);
+  assert(rolesByRaci.has(role.slug), `${role.slug}: missing RACI role`);
   assert(rolesByModel.has(role.slug), `${role.slug}: missing model policy role`);
   assert(rolesByCapability.has(role.slug), `${role.slug}: missing capability role`);
   assert(Array.isArray(role.claudeTools) && role.claudeTools.length > 0, `${role.slug}: Claude tool list is empty`);
@@ -223,18 +139,9 @@ function splitMarkdown(raw) {
   return { frontmatter: match[1], body: match[2] };
 }
 
-function parseClaudeFrontmatter(raw) {
-  const scalar = Object.fromEntries([...raw.matchAll(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.+)$/gm)].map((match) => [match[1], match[2].trim()]));
-  return {
-    description: scalar.description,
-    color: scalar.color,
-    tools: scalar.tools.split(',').map((tool) => tool.trim()).filter(Boolean),
-  };
-}
-
 function sync(path, expected) {
   const normalized = expected.endsWith('\n') ? expected : `${expected}\n`;
-  if (mode === '--write' || mode === '--bootstrap') {
+  if (mode === '--write') {
     if (!existsSync(path) || readFileSync(path, 'utf8') !== normalized) writeFileSync(path, normalized);
     return;
   }
@@ -249,7 +156,7 @@ function bySlug(items, label) {
 }
 
 function titleCase(value) {
-  return `${value[0].toUpperCase()}${value.slice(1)}`;
+  return value.split('-').map((part) => `${part[0].toUpperCase()}${part.slice(1)}`).join(' ');
 }
 
 function sha256(value) {
@@ -258,10 +165,6 @@ function sha256(value) {
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
-}
-
-function writeJson(path, value) {
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function equal(left, right) {

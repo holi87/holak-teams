@@ -156,8 +156,7 @@ release ships a deterministic migration.
 
 The ownership source of truth is `raci.json`, rendered as `RACI-CONTRACT.md`. Use
 `argus-assets raci route` for defect activities, surfaces, artifacts, and state
-transitions. The RACI sync gate validates all 27 prompt descriptions and generated
-contract blocks against the same source used for the roster below.
+transitions. The sole role-variant generator renders all 27 prompt descriptions and contract blocks from this source. The RACI sync gate validates ownership, roster, and transition consistency.
 
 The model source of truth is `model-policy.json`, rendered as
 [`MODEL-POLICY.md`](MODEL-POLICY.md). It defines 10 frontier and 17 standard roles, native
@@ -169,8 +168,9 @@ compares Opus and Sonnet without storing prompts, completions, or target data.
 
 ## Roster (`claude/` + `codex/`)
 
-Runtime-neutral role content lives in `roles/*.md`, with metadata and contract pointers in
-`roles/manifest.json`. `roles/runtime-adapters.json` is the reviewed list of intentional
+Runtime-neutral role content lives in `roles/*.md`, with source, color, tool metadata, and
+contract pointers in `roles/manifest.json`. Display names derive from slugs and descriptions
+come from `raci.json`, so neither is duplicated in the manifest. `roles/runtime-adapters.json` is the reviewed list of intentional
 Claude/Codex differences and machine-readable support levels. Run
 `scripts/sync-argus-role-variants.mjs --write` to regenerate all runtime files and
 `--check` to reject drift.
@@ -218,7 +218,7 @@ not behavioral equivalence or target outcomes.
 | **tyche** | Resilience hunter | `resilience-hunt` | `candidate-file` |
 <!-- RACI_ROSTER_END -->
 
-The generated roster and every prompt description come from `argus/raci.json`; detailed ownership is in [`RACI-CONTRACT.md`](RACI-CONTRACT.md).
+The generated roster comes from `argus/raci.json`; the sole role-variant generator reads descriptions from the same source. Detailed ownership is in [`RACI-CONTRACT.md`](RACI-CONTRACT.md).
 
 `roles/` — canonical runtime-neutral role sources and adapters. `codex/` — generated Codex
 variant of the roster (27 `*.toml` + readable `*.md` pairs). `framework-template/`

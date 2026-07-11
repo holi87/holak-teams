@@ -1,6 +1,6 @@
 # Argus RACI Contract
 
-This generated document is the human view of `argus/raci.json`. The JSON source is authoritative. `scripts/sync-argus-raci.mjs --check` rejects ownership, prompt, description, roster, or transition drift. Runtime routing uses `argus-assets raci route`.
+This generated document is the human view of `argus/raci.json`. The JSON source is authoritative. `scripts/sync-argus-raci.mjs --check` rejects ownership, roster, or transition drift. Runtime routing uses `argus-assets raci route`; `scripts/sync-argus-role-variants.mjs` renders role descriptions and contract blocks.
 
 R = responsible, A = exactly one accountable owner, C = consulted, I = informed.
 

@@ -7,7 +7,7 @@
   "required": ["$schema", "schemaVersion", "contracts", "roles"],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "contracts": {
       "type": "object",
       "additionalProperties": false,
@@ -27,12 +27,10 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slug", "source", "displayName", "description", "color", "claudeTools"],
+        "required": ["slug", "source", "color", "claudeTools"],
         "properties": {
           "slug": { "type": "string", "pattern": "^[a-z]+(?:-[a-z]+)*$" },
           "source": { "type": "string", "pattern": "^[a-z]+(?:-[a-z]+)*\\.md$" },
-          "displayName": { "type": "string", "minLength": 1 },
-          "description": { "type": "string", "minLength": 1 },
           "color": { "enum": ["cyan", "red", "green", "yellow", "purple"] },
           "claudeTools": {
             "type": "array",

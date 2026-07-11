@@ -1,6 +1,6 @@
 {
   "$schema": "../schemas/role-manifest.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "contracts": {
     "modelPolicy": "argus/model-policy.json",
     "ownership": "argus/raci.json",
@@ -12,8 +12,6 @@
     {
       "slug": "aegis",
       "source": "aegis.md",
-      "displayName": "Aegis",
-      "description": "Security automation engineer. Owns tests/security/ and automates Minos-confirmed security defects; does not discover, validate, deduplicate, or persist canonical defects.",
       "color": "green",
       "claudeTools": [
         "Read",
@@ -31,8 +29,6 @@
     {
       "slug": "antigone",
       "source": "antigone.md",
-      "displayName": "Antigone",
-      "description": "Accessibility hunter. Discovers WCAG candidates and persists ANG candidate reports; Minos validates, deduplicates, and promotes canonical defects, while Daidalos owns automation.",
       "color": "red",
       "claudeTools": [
         "Read",
@@ -63,8 +59,6 @@
     {
       "slug": "ariadne",
       "source": "ariadne.md",
-      "displayName": "Ariadne",
-      "description": "Journey hunter. Owns cross-feature business invariants and STATE_MODEL; persists ARI candidates, while Minos validates and Talos or Daidalos automates by the failing surface.",
       "color": "red",
       "claudeTools": [
         "Read",
@@ -93,8 +87,6 @@
     {
       "slug": "aristarchus",
       "source": "aristarchus.md",
-      "displayName": "Aristarchus",
-      "description": "Read-only automation judge. Runs after implementation, evaluates determinism and oracle honesty, and returns BLOCKER/WARNING; does not validate product defects or edit tests.",
       "color": "purple",
       "claudeTools": [
         "Read",
@@ -106,8 +98,6 @@
     {
       "slug": "asklepios",
       "source": "asklepios.md",
-      "displayName": "Asklepios",
-      "description": "Existing-suite sanitation specialist. Owns TEST-HEALTH and approved test repairs, persists ASK product candidates for Minos, and leaves final automation judgment to Aristarchus.",
       "color": "purple",
       "claudeTools": [
         "Read",
@@ -125,8 +115,6 @@
     {
       "slug": "atalanta",
       "source": "atalanta.md",
-      "displayName": "Atalanta",
-      "description": "REST API hunter. Persists ATA candidates for API and public-data behavior; non-REST events belong to Proteus, canonical validation to Minos, and automation to Talos.",
       "color": "red",
       "claudeTools": [
         "Read",
@@ -143,8 +131,6 @@
     {
       "slug": "atlas",
       "source": "atlas.md",
-      "displayName": "Atlas",
-      "description": "Automation architect. Owns the shared harness, ten oracle helpers, run-tests.sh, automation status, and coverage observations; delegates lane tests and never validates product defects.",
       "color": "purple",
       "claudeTools": [
         "Read",
@@ -162,8 +148,6 @@
     {
       "slug": "charon",
       "source": "charon.md",
-      "displayName": "Charon",
-      "description": "Gated direct-database hunter. Persists CHA candidates from read-only DB analysis when db-access is ready; public-data behavior belongs to Atalanta and canonical validation to Minos.",
       "color": "red",
       "claudeTools": [
         "Read",
@@ -182,8 +166,6 @@
     {
       "slug": "daidalos",
       "source": "daidalos.md",
-      "displayName": "Daidalos",
-      "description": "UI automation engineer. Owns tests/ui/, implements Penelope baselines, and automates Minos-confirmed ORI, LYN, and ANG defects; does not hunt or validate them.",
       "color": "green",
       "claudeTools": [
         "Read",
@@ -206,8 +188,6 @@
     {
       "slug": "hermes",
       "source": "hermes.md",
-      "displayName": "Hermes",
-      "description": "Performance hunter. Owns PERF-REPORT and persists HER candidates from structural and characterized latency evidence; Minos validates and Nike automates.",
       "color": "red",
       "claudeTools": [
         "Read",
@@ -223,8 +203,6 @@
     {
       "slug": "kalchas",
       "source": "kalchas.md",
-      "displayName": "Kalchas",
-      "description": "Recon analyst. Maps target surfaces, roles, states, and access gates and owns surface-inventory; does not hunt, validate, or persist defects.",
       "color": "cyan",
       "claudeTools": [
         "Read",
@@ -244,8 +222,6 @@
     {
       "slug": "kleio",
       "source": "kleio.md",
-      "displayName": "Kleio",
-      "description": "Final reporter. Owns evidence, coverage result, final summary, README, findings, implementation report, and traceability; reports Minos and Atlas outcomes without re-validating them.",
       "color": "cyan",
       "claudeTools": [
         "Read",
@@ -259,8 +235,6 @@
     {
       "slug": "lynceus",
       "source": "lynceus.md",
-      "displayName": "Lynceus",
-      "description": "UI presentation hunter. Persists LYN candidates for layout, format, locale, and rendering; functional behavior belongs to Orion, accessibility to Antigone, and validation to Minos.",
       "color": "red",
       "claudeTools": [
         "Read",
@@ -281,8 +255,6 @@
     {
       "slug": "metis",
       "source": "metis.md",
-      "displayName": "Metis",
-      "description": "Test strategist. Owns TEST-STRATEGY and ORACLES from Kalchas inventory; plans risk-weighted coverage but does not execute tests, validate defects, or report final outcomes.",
       "color": "cyan",
       "claudeTools": [
         "Read",
@@ -296,8 +268,6 @@
     {
       "slug": "minos",
       "source": "minos.md",
-      "displayName": "Minos",
-      "description": "Defect authority. Independently validates, deduplicates, ranks, and persists canonical bugs, BUG-LEDGER, and WHITEBOX-LEADS; does not discover candidates or implement regression tests.",
       "color": "cyan",
       "claudeTools": [
         "Read",
@@ -311,8 +281,6 @@
     {
       "slug": "mnemosyne",
       "source": "mnemosyne.md",
-      "displayName": "Mnemosyne",
-      "description": "Gated database automation engineer. Owns tests/db/ for confirmed DB invariants when db-access is ready; Charon discovers and Minos validates defects.",
       "color": "green",
       "claudeTools": [
         "Read",
@@ -330,8 +298,6 @@
     {
       "slug": "nike",
       "source": "nike.md",
-      "displayName": "Nike",
-      "description": "Performance and resilience automation engineer. Owns tests/perf/ and tests/resilience/ as separate scheduled work units; fault automation requires the exclusive fault window.",
       "color": "green",
       "claudeTools": [
         "Read",
@@ -349,8 +315,6 @@
     {
       "slug": "odysseus",
       "source": "odysseus.md",
-      "displayName": "Odysseus",
-      "description": "Main-thread orchestration policy. Selects mode, routes work from the RACI contract, advances barriers, and owns lane-plan when Agent is available; otherwise returns an explicit preflight error.",
       "color": "cyan",
       "claudeTools": [
         "Read",
@@ -368,8 +332,6 @@
     {
       "slug": "orion",
       "source": "orion.md",
-      "displayName": "Orion",
-      "description": "Functional UI hunter. Persists ORI candidates for behavior, forms, and client state; presentation belongs to Lynceus, accessibility to Antigone, and validation to Minos.",
       "color": "red",
       "claudeTools": [
         "Read",
@@ -391,8 +353,6 @@
     {
       "slug": "penelope",
       "source": "penelope.md",
-      "displayName": "Penelope",
-      "description": "UI baseline analyst. Owns solution/paths/ui-* specifications and submits incidental PEN leads; Orion confirms functional defects and Daidalos automates the baseline.",
       "color": "yellow",
       "claudeTools": [
         "Read",
@@ -423,8 +383,6 @@
     {
       "slug": "perseus",
       "source": "perseus.md",
-      "displayName": "Perseus",
-      "description": "Security hunter. Persists PER candidates from authorized STRIDE and OWASP probes; Minos validates and Aegis automates canonical security defects.",
       "color": "red",
       "claudeTools": [
         "Read",
@@ -442,8 +400,6 @@
     {
       "slug": "pistis",
       "source": "pistis.md",
-      "displayName": "Pistis",
-      "description": "Gated consumer-contract analyst. Owns contract path specifications for confirmed multi-service targets; Proteus or Atalanta discovers defects, Minos validates, and Talos automates.",
       "color": "yellow",
       "claudeTools": [
         "Read",
@@ -457,8 +413,6 @@
     {
       "slug": "proteus",
       "source": "proteus.md",
-      "displayName": "Proteus",
-      "description": "Event and non-REST hunter. Persists PRO candidates for GraphQL, gRPC, WebSocket, SSE, messaging, and webhooks; REST belongs to Atalanta and validation to Minos.",
       "color": "red",
       "claudeTools": [
         "Read",
@@ -481,8 +435,6 @@
     {
       "slug": "talos",
       "source": "talos.md",
-      "displayName": "Talos",
-      "description": "API automation engineer. Owns tests/api/, implements Theseus and Pistis baselines, and automates Minos-confirmed ATA and PRO defects using Atlas's shared harness.",
       "color": "green",
       "claudeTools": [
         "Read",
@@ -500,8 +452,6 @@
     {
       "slug": "theseus",
       "source": "theseus.md",
-      "displayName": "Theseus",
-      "description": "REST API baseline analyst. Owns solution/paths/api-* specifications from the discovered contract; Atalanta discovers defects, Minos validates, and Talos automates.",
       "color": "yellow",
       "claudeTools": [
         "Read",
@@ -515,8 +465,6 @@
     {
       "slug": "tiresias",
       "source": "tiresias.md",
-      "displayName": "Tiresias",
-      "description": "Gated read-only source analyst. Returns TIR candidates and source leads as immutable fragments; Minos validates and persists canonical bug files and WHITEBOX-LEADS.",
       "color": "purple",
       "claudeTools": [
         "Read",
@@ -528,8 +476,6 @@
     {
       "slug": "tyche",
       "source": "tyche.md",
-      "displayName": "Tyche",
-      "description": "Authorized resilience hunter. Owns RESILIENCE-REPORT and persists TYC candidates from reversible fault evidence; Minos validates and Nike automates under the exclusive fault window.",
       "color": "red",
       "claudeTools": [
         "Read",

@@ -263,7 +263,7 @@ else
 fi
 
 if "$ROOT/scripts/smoke-argus-raci.sh"; then
-  pass "[argus] (n) 27-agent RACI, single-owner artifacts/transitions, prompt descriptions, and runtime routing"
+  pass "[argus] (n) 27-agent RACI, single-owner artifacts/transitions, roster synchronization, and runtime routing"
 else
   fail "[argus] (n) RACI ownership and routing contract"
 fi
