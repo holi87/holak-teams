@@ -65,10 +65,19 @@ with this contract, stop and return `DOCTRINE_CONFLICT` to Odysseus.
   skips, broad catches, serial/order dependencies, early returns, `.only`, vacuous
   assertions, dead fixtures, or no-op runner wiring.
 - UI is first-class. Authed or multi-step browser work uses the worker's isolated
-  hunt-driver profile. The shared MCP browser is only for single-shot public recon when
+  managed hunt-driver profile and browser-artifact directory. Different lanes never share
+  a profile unless the engagement manifest contains an explicit, unexpired shared-session
+  authorization naming every lane. The shared MCP browser is only for single-shot public recon when
   no peer can collide. Assert identity before stateful work; preserve console, network,
   snapshot, and screenshot evidence only when authorized and redacted. The full installed
   browser contract is `${CLAUDE_PLUGIN_ROOT}/references/BROWSER-ISOLATION.md`.
+- Treat the engagement manifest's risk-derived browser/device/viewport matrix as the UI
+  coverage contract. Execute every entry or report the exact omission and residual risk;
+  never substitute a fixed browser quota. New engagements use WCAG 2.2 AA. An older
+  standard/level is valid only when the manifest records the project requirement source,
+  reason, and approver. Accessibility evidence combines automated rules with manual
+  keyboard, focus, semantics, reflow, target-size, dragging, and assistive-technology
+  judgment; the report names standard, level, tools, manual checks, and limitations.
 - API/data probes are CLI-first. Performance includes structural single-request oracles,
   not latency alone. Security includes function- and object-level access control.
   Accessibility combines automated and manual judgment. Test data is deterministic,
@@ -88,6 +97,10 @@ with this contract, stop and return `DOCTRINE_CONFLICT` to Odysseus.
   preconditions, actor, commands/actions, request/response or UI proof, expected oracle,
   actual result, timestamps where relevant, and immutable artifact references. Separate
   product failures, test failures, environment failures, and unsupported hypotheses.
+- Keep cookies, tokens, downloads, traces, videos, screenshots, and profiles inside the
+  allocated engagement boundary. Only reviewed and redacted derivatives may move to
+  durable output. Always clean with outcome `success`, `failure`, or `interrupted` and
+  verify sensitive browser state is absent before sign-off.
 - Do not expose implementation internals to black-box roles. Source-access roles return
   leads or candidates through their declared persistence path; they do not silently turn
   white-box observations into confirmed black-box defects.

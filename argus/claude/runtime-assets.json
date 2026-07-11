@@ -12,8 +12,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 7424,
-      "sha256": "571cdf7d32090a15bda4b9b5d8e7e0cc2bfb7fd34f6267a6cacfb2de55b7c979"
+      "bytes": 9569,
+      "sha256": "557da5f1632d01ca37603cbd4c67569c5a74832e23c23a6f79dca7044d623611"
     },
     {
       "id": "shared-doctrine",
@@ -39,8 +39,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 7890,
-      "sha256": "b614e62e154f52658ae445c49a2b1a01ee97850f675fd57eec5ce3ce5c8e8a34"
+      "bytes": 9003,
+      "sha256": "9c2f8115a001418f82c749ab220ad00edfd5ff45f0aa73787e1426948f89c41b"
     },
     {
       "id": "canonical-contracts",
@@ -75,8 +75,8 @@
       "source": "argus/RACI-CONTRACT.md",
       "destination": "references/RACI-CONTRACT.md",
       "files": 1,
-      "bytes": 8060,
-      "sha256": "3932ffbe1469b12f6c9ac569329f4dc7ed1e8298db2e31273ed4a5417bd3aa94"
+      "bytes": 8143,
+      "sha256": "0137538ce8c25874f3cd8c2e8fdb90936becd06fd205c59ca5cae69759dff69f"
     },
     {
       "id": "raci-matrix",
@@ -84,8 +84,8 @@
       "source": "argus/raci.json",
       "destination": "references/raci.json",
       "files": 1,
-      "bytes": 20398,
-      "sha256": "22b70a2c8170d38c244f4023a16be274419f21ec92129c0266b3e2acd49abc9b"
+      "bytes": 20510,
+      "sha256": "41cf36cad3d8df2f3dafb6ad51274f870e5dfc5882bb3c6d80d6023ad0e6d2cb"
     },
     {
       "id": "qa-doctrine-skill",
@@ -93,8 +93,8 @@
       "source": "argus/shared-skills/qa-doctrine",
       "destination": "skills/qa-doctrine",
       "files": 1,
-      "bytes": 7669,
-      "sha256": "a1c8eedde49657a6478abfdeb512d0b9ff5ae25a2afba7909955142f9e4be500"
+      "bytes": 8785,
+      "sha256": "926719ead01e8a5e597a762506f595e881de84c4f49cb4b3f110d6cbb03a9607"
     },
     {
       "id": "competition-profile-skill",
@@ -111,8 +111,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 26,
-      "bytes": 60249,
-      "sha256": "6b073bf0aacd20df6c594e99daf05b90cda8d9f6d379cf1275247616f963d728"
+      "bytes": 64822,
+      "sha256": "0c9c44494880b02d8a370539a2692807f618ad10ef828d4b806d5f332c1d5f67"
     },
     {
       "id": "capability-matrix",
@@ -147,8 +147,8 @@
       "source": "argus/policies",
       "destination": "policies",
       "files": 4,
-      "bytes": 10018,
-      "sha256": "424b272e8179ecebc14e619129ccab765c063a315dffdc6421fdef668e553dfb"
+      "bytes": 11368,
+      "sha256": "949bac29df49f1b8bf37179a47a50aaf72f7dc1d71a8d0089f185c0d9ef58f7a"
     },
     {
       "id": "runtime-library",
@@ -156,35 +156,35 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 5,
-      "bytes": 80342,
-      "sha256": "63b7aec3da9dd11ac57beca6ea33c7315559a8480af075e236229450c65f2261"
+      "bytes": 89173,
+      "sha256": "08dfa0b1f61ecadef776df6ccfb9259ac3846e195f00d1caeb4b7ab4209189ce"
     },
     {
       "id": "typescript-template",
       "kind": "template",
       "source": "argus/framework-template",
       "destination": "templates/typescript",
-      "files": 48,
-      "bytes": 136381,
-      "sha256": "3a1face7cf9ddb89d4cf681a76cd1ec0ca0abd58eb9755ec3c1ab5d39e6292cd"
+      "files": 49,
+      "bytes": 140020,
+      "sha256": "55dbf62c27753f01fc4112aea5fc9b48bae5007715877e6ae0dcc592b7780e74"
     },
     {
       "id": "java-template",
       "kind": "template",
       "source": "argus/framework-template-java",
       "destination": "templates/java",
-      "files": 23,
-      "bytes": 72902,
-      "sha256": "3e3a4b77190d117056c00d51837a7654057fd51e77bb03d6cb9dbb9503b00f0a"
+      "files": 24,
+      "bytes": 74671,
+      "sha256": "4aee92e39441986d37d8bddfa259bef24a258172b63e064667303b6e1fc74535"
     },
     {
       "id": "python-template",
       "kind": "template",
       "source": "argus/framework-template-python",
       "destination": "templates/python",
-      "files": 28,
-      "bytes": 54818,
-      "sha256": "7be6c67c11fabfcab715d76c50dccdf6e95bf26bdf2270b21ae4258a747d6e4a"
+      "files": 29,
+      "bytes": 56576,
+      "sha256": "419a7818b3a295a0cd8a3ed5f248f0668cfd628e110c246fe4f1f61479d5aef0"
     }
   ],
   "maintainerOnly": [

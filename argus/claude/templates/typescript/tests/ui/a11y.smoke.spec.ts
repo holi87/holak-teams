@@ -12,7 +12,7 @@ for (const path of CRITICAL_PAGES) {
   test(`a11y smoke: ${path} has no serious/critical violations`, async ({ page }) => {
     await page.goto(path);
     const results = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa'])
       .analyze();
     const serious = results.violations.filter((v) =>
       ['serious', 'critical'].includes(v.impact ?? ''),

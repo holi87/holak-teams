@@ -194,6 +194,18 @@ TypeScript, Java, and Python runners share baseline/evidence/candidate/full mode
 standardized exit codes, and explicit product/automation/infrastructure/skip/policy
 outcomes. Denials append redacted `GUARD-*` events without raw commands.
 
+New engagements default to WCAG 2.2 AA; an older accessibility target requires an
+explicit project-requirement source, reason, and approver in the manifest. Browser,
+device, and viewport coverage is derived from declared target support and risk rather
+than a fixed quota and is persisted in `browserPolicy.coverage`. Every browser lane gets
+a unique managed profile and browser-artifact directory unless an explicit, bounded
+shared-session authorization names every sharing lane. Cookies, auth, downloads, traces,
+videos, screenshots, and profiles remain inside the engagement boundary. Cleanup accepts
+`success`, `failure`, or `interrupted`; crash recovery clears stale sensitive state before
+issuing a new lease. Kleio's canonical `solution/ACCESSIBILITY-REPORT.md` identifies the
+standard, level, exception, tools, automated and manual checks, limitations, coverage
+matrix, and privacy-safe evidence status without claiming target conformance.
+
 Agent responsibilities, UI/API/event/data boundaries, defect handoffs, canonical
 artifact owners, and state-transition owners are declared in `argus/raci.json` and
 rendered to `argus/RACI-CONTRACT.md`. `argus-assets raci route` is the runtime routing

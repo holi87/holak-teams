@@ -9,6 +9,30 @@
   },
   "artifactRoot": "<ARTIFACT_ROOT>",
   "selectedAgents": ["odysseus"],
+  "accessibilityPolicy": {
+    "standard": "WCAG",
+    "version": "2.2",
+    "level": "AA",
+    "exception": null
+  },
+  "browserPolicy": {
+    "sessionMode": "isolated-managed",
+    "sharedSessionAuthorization": null,
+    "profileReuse": "same-lane-within-engagement",
+    "profileStorage": "engagement-worker-root",
+    "sensitiveArtifacts": ["auth", "cookies", "downloads", "traces", "videos", "screenshots"],
+    "coverage": {
+      "derivation": "target-support-and-risk",
+      "supportSource": "conservative-unknown",
+      "riskSignals": ["accessibility", "unknown-browser-support", "responsive-layout"],
+      "rationale": "Target browser support is unknown, so representative engine and responsive risks remain in scope.",
+      "matrix": [
+        { "browser": "chromium", "device": "desktop", "viewport": { "width": 1280, "height": 800 }, "reasons": ["primary-desktop", "accessibility"] },
+        { "browser": "firefox", "device": "desktop", "viewport": { "width": 1280, "height": 800 }, "reasons": ["unknown-browser-support"] },
+        { "browser": "webkit", "device": "mobile", "viewport": { "width": 390, "height": 844 }, "reasons": ["unknown-browser-support", "responsive-layout", "touch-input"] }
+      ]
+    }
+  },
   "phasePlan": [
     { "id": "preflight", "participants": ["odysseus"] },
     { "id": "discovery", "participants": ["kalchas"] },
@@ -57,6 +81,7 @@
       { "path": "solution/coverage-result.json", "owner": "kleio", "format": "json-document", "schema": "coverage-result" },
       { "path": "solution/final-summary.json", "owner": "kleio", "format": "json-document", "schema": "final-summary" },
       { "path": "solution/FINDINGS.md", "owner": "kleio", "format": "markdown" },
+      { "path": "solution/ACCESSIBILITY-REPORT.md", "owner": "kleio", "format": "markdown" },
       { "path": "solution/IMPLEMENTATION-REPORT.md", "owner": "kleio", "format": "markdown" },
       { "path": "solution/ORACLES.md", "owner": "metis", "format": "markdown" },
       { "path": "solution/PERF-REPORT.md", "owner": "hermes", "format": "markdown" },
@@ -87,7 +112,7 @@
     "bug": { "owner": "minos", "prefix": "BUG", "width": 4 }
   },
   "cleanup": {
-    "removeOnRelease": ["browser-profile", "auth", "tmp", "locks"]
+    "removeOnRelease": ["browser-profile", "browser-artifacts", "auth", "tmp", "locks"]
   },
   "statePath": "ai_agents_internal/engagement-state.json"
 }

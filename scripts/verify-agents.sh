@@ -231,6 +231,12 @@ else
   fail "[argus] (j) engagement immutability and concurrency contract"
 fi
 
+if "$ROOT/scripts/smoke-argus-browser-policy.sh"; then
+  pass "[argus] (j2) WCAG 2.2 defaults, risk-derived browser coverage, managed sessions, and privacy-safe evidence"
+else
+  fail "[argus] (j2) accessibility and managed browser-session policy"
+fi
+
 if "$ROOT/scripts/smoke-argus-schemas.sh"; then
   pass "[argus] (k) canonical schemas, fixtures, fragment compatibility, and source-versioned summary"
 else

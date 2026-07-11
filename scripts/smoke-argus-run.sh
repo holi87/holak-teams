@@ -36,7 +36,7 @@ require_text 'ai_agents_internal/engagement.json' "$SKILL" "run skill does not c
 require_text 'argus-assets authorization check' "$SKILL" "run skill does not enforce authorization decisions"
 require_text 'argus-assets redact' "$SKILL" "run skill does not enforce output redaction"
 require_text 'argus-assets engagement allocate' "$SKILL" "run skill does not allocate isolated worker leases"
-require_text 'engagement cleanup --outcome success|failure' "$SKILL" "run skill does not guarantee cleanup on both outcomes"
+require_text 'engagement cleanup --outcome success|failure|interrupted' "$SKILL" "run skill does not guarantee cleanup on every terminal outcome"
 require_text 'argus-assets raci route' "$SKILL" "run skill does not route from the packaged RACI contract"
 require_text 'argus-assets model route' "$SKILL" "run skill does not route from the packaged model policy"
 require_text 'argus-assets model telemetry' "$SKILL" "run skill does not record sanitized model telemetry"

@@ -16,6 +16,7 @@ Determinism: NO retries, NO rerun plugin. Flakiness is fixed at the source.
 from __future__ import annotations
 
 import sys
+import os
 import warnings
 from pathlib import Path
 from typing import Callable, Iterator
@@ -30,7 +31,7 @@ sys.path.insert(0, str(_ROOT / "src"))
 from qa.api_client import login, make_client  # noqa: E402
 from qa.config import ENV  # noqa: E402
 
-AUTH_DIR = _ROOT / ".auth"
+AUTH_DIR = Path(os.environ.get("ARGUS_AUTH_DIRECTORY", _ROOT / ".auth"))
 USER_STATE = AUTH_DIR / "user.json"
 
 
