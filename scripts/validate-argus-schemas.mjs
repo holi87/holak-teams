@@ -5,6 +5,7 @@ import addFormats from 'ajv-formats';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CONTRACT_KINDS, validateCanonicalDocument } from '../argus/runtime/contracts.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCHEMAS = join(ROOT, 'argus', 'schemas');
@@ -12,11 +13,13 @@ const schemaFiles = readdirSync(SCHEMAS).filter((name) => name.endsWith('.schema
 const schemas = new Map(schemaFiles.map((name) => [name, readJson(join(SCHEMAS, name))]));
 const ajv = new Ajv2020({ allErrors: true, strict: false, validateFormats: true });
 addFormats(ajv);
+const validators = new Map();
 
 for (const schema of schemas.values()) ajv.addSchema(schema);
 for (const [name, schema] of schemas) {
   const validate = ajv.compile(schema);
   assert(!validate({}), `${name}: representative empty invalid fixture unexpectedly passed`);
+  validators.set(name, validate);
 }
 
 const documents = walk(join(ROOT, 'argus'))
@@ -33,14 +36,44 @@ for (const path of documents) {
   if (!schemaName) continue;
   const schema = schemas.get(schemaName);
   assert(schema, `${path}: declared schema is not canonical: ${document.$schema}`);
-  const validate = ajv.compile(schema);
+  const validate = validators.get(schemaName);
   assert(validate(document), `${path}: ${schemaName} rejected document: ${ajv.errorsText(validate.errors)}`);
   validatedDocuments += 1;
   coveredSchemas.add(schemaName);
 }
 
+const fixtures = join(ROOT, 'scripts', 'fixtures', 'argus-schemas');
+let differentialFixtures = 0;
+for (const kind of CONTRACT_KINDS) {
+  const schemaName = `${kind}.schema.json`;
+  const validate = validators.get(schemaName);
+  assert(validate, `${kind}: canonical JSON Schema is missing`);
+
+  const validPath = join(fixtures, 'valid', `${kind}.json`);
+  const validDocument = readJson(validPath);
+  const ajvAccepted = validate(validDocument);
+  const runtimeErrors = validateCanonicalDocument(kind, validDocument);
+  assert(ajvAccepted, `${validPath}: canonical JSON Schema rejected valid fixture: ${ajv.errorsText(validate.errors)}`);
+  assert(runtimeErrors.length === 0, `${validPath}: packaged runtime rejected valid fixture: ${runtimeErrors.join('; ')}`);
+  differentialFixtures += 1;
+
+  const invalidNames = readdirSync(join(fixtures, 'invalid'))
+    .filter((name) => name === `${kind}.json` || name.startsWith(`${kind}-`))
+    .sort();
+  assert(invalidNames.length > 0, `${kind}: no invalid differential fixture exists`);
+  for (const name of invalidNames) {
+    const path = join(fixtures, 'invalid', name);
+    const document = readJson(path);
+    const schemaAccepted = validate(document);
+    const errors = validateCanonicalDocument(kind, document);
+    assert(!schemaAccepted, `${path}: canonical JSON Schema unexpectedly accepted invalid fixture`);
+    assert(errors.length > 0, `${path}: packaged runtime unexpectedly accepted invalid fixture`);
+    differentialFixtures += 1;
+  }
+}
+
 assert(validatedDocuments >= 10, `only ${validatedDocuments} schema-declaring canonical documents were validated`);
-console.log(`PASS  Canonical JSON Schemas: ${schemaFiles.length} compiled, ${schemaFiles.length} invalid fixtures rejected, ${validatedDocuments} source documents validated across ${coveredSchemas.size} schemas`);
+console.log(`PASS  Canonical JSON Schemas: ${schemaFiles.length} compiled, ${differentialFixtures} runtime/Ajv differential fixtures aligned, ${validatedDocuments} source documents validated across ${coveredSchemas.size} schemas`);
 
 function declaredSchemaName(value) {
   if (value === 'https://json-schema.org/draft/2020-12/schema') return null;

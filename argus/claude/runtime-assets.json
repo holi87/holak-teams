@@ -173,9 +173,9 @@
       "kind": "runtime",
       "source": "argus/runtime",
       "destination": "lib",
-      "files": 6,
-      "bytes": 113698,
-      "sha256": "27c989f4aa0e7a42743bb775a29d3636f12699cbe7cd0109caf620d8a1589348"
+      "files": 7,
+      "bytes": 116558,
+      "sha256": "6315bb8a3bf9373a3e70fb55a22ba40f4e8781c5b45fcab02f14fc7f96baf4b3"
     },
     {
       "id": "typescript-template",

@@ -16,9 +16,15 @@ node "$ROOT/scripts/validate-argus-schemas.mjs"
 
 for kind in bug-ledger lane-plan evidence-reference automation-status surface-inventory coverage-observations coverage-result final-summary; do
   "$CLI" schema validate --kind "$kind" --input "$FIXTURES/valid/$kind.json" >/dev/null
-  if "$CLI" schema validate --kind "$kind" --input "$FIXTURES/invalid/$kind.json" >/dev/null 2>&1; then
-    fail "invalid $kind fixture unexpectedly passed"
-  fi
+  invalid_count=0
+  for invalid in "$FIXTURES/invalid/$kind.json" "$FIXTURES/invalid/$kind-"*.json; do
+    [ -f "$invalid" ] || continue
+    invalid_count=$((invalid_count + 1))
+    if "$CLI" schema validate --kind "$kind" --input "$invalid" >/dev/null 2>&1; then
+      fail "invalid $(basename "$invalid") fixture unexpectedly passed"
+    fi
+  done
+  [ "$invalid_count" -gt 0 ] || fail "$kind has no invalid fixture"
 done
 
 TARGET="$WORK/target"
@@ -28,9 +34,13 @@ MANIFEST="$TARGET/ai_agents_internal/engagement.json"
 KLEIO="$("$CLI" engagement allocate --manifest "$MANIFEST" --lane kleio | jq -r .token)"
 MINOS="$("$CLI" engagement allocate --manifest "$MANIFEST" --lane minos | jq -r .token)"
 
-if "$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$MINOS" --canonical solution/bug-ledger.json --id invalid --input "$FIXTURES/invalid/bug-ledger.json" >/dev/null 2>&1; then
-  fail "invalid canonical fragment unexpectedly passed"
-fi
+for invalid in "$FIXTURES/invalid/bug-ledger.json" "$FIXTURES/invalid/bug-ledger-"*.json; do
+  [ -f "$invalid" ] || continue
+  fragment_id="invalid-$(basename "$invalid" .json)"
+  if "$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$MINOS" --canonical solution/bug-ledger.json --id "$fragment_id" --input "$invalid" >/dev/null 2>&1; then
+    fail "invalid canonical fragment $(basename "$invalid") unexpectedly passed"
+  fi
+done
 if "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/final-summary.json --id foreign --input "$FIXTURES/valid/final-summary.json" >/dev/null 2>&1; then
   fail "cross-engagement canonical fragment unexpectedly passed"
 fi
