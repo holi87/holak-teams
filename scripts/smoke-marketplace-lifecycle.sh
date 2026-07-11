@@ -6,13 +6,17 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CURRENT="$(jq -r '.version' "$ROOT/argus/claude/.claude-plugin/plugin.json")"
-TRACKED_CURRENT="$(git -C "$ROOT" show HEAD:argus/claude/.claude-plugin/plugin.json 2>/dev/null | jq -r '.version' || true)"
 if [ -n "${ARGUS_PREVIOUS_VERSION:-}" ]; then
   PREVIOUS="$ARGUS_PREVIOUS_VERSION"
-elif [ "$TRACKED_CURRENT" != "$CURRENT" ]; then
-  PREVIOUS="$TRACKED_CURRENT"
 else
-  PREVIOUS="$(git -C "$ROOT" show HEAD^:argus/claude/.claude-plugin/plugin.json 2>/dev/null | jq -r '.version' || true)"
+  PREVIOUS=""
+  while read -r revision; do
+    candidate="$(git -C "$ROOT" show "$revision:argus/claude/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version' || true)"
+    if [ -n "$candidate" ] && [ "$candidate" != null ] && [ "$candidate" != "$CURRENT" ]; then
+      PREVIOUS="$candidate"
+      break
+    fi
+  done < <(git -C "$ROOT" rev-list --first-parent HEAD)
 fi
 WORK="$(mktemp -d)"
 SOURCE="$WORK/marketplace"

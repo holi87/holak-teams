@@ -280,10 +280,10 @@ else
   fail "[argus] (p) runtime model policy contract"
 fi
 
-if node "$ROOT/scripts/sync-argus-role-variants.mjs" --check; then
-  pass "[argus] (q) canonical role sources and deterministic Claude/Codex semantic parity"
+if node "$ROOT/scripts/verify-agent-runtime-parity.mjs"; then
+  pass "[agents] (q) 49-agent Claude/Codex generation, model mapping, semantic parity, and roster alignment"
 else
-  fail "[argus] (q) generated Claude/Codex role parity contract"
+  fail "[agents] (q) full Claude/Codex runtime parity contract"
 fi
 
 echo ""
