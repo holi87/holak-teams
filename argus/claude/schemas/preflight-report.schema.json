@@ -101,24 +101,29 @@
           "model": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["schema", "policyId", "agent", "runtime", "signal", "status", "baselineTier", "selectedTier", "model", "effort", "maxTurns", "escalationProfile", "fallbackPolicy", "fallbackUsed", "operatorEscalation", "weakerFallbackAllowed", "reason"],
+            "required": ["schema", "policyId", "agent", "runtime", "status", "baselineConfig", "requiredOverrides", "requiredEnforcements", "adapterId", "adapterSnapshotSha256", "missingCapabilities", "reason"],
             "properties": {
-              "schema": { "const": "argus/model-decision@1" },
+              "schema": { "const": "argus/model-routing-preview@1" },
               "policyId": { "const": "argus/model-policy@1" },
               "agent": { "type": "string" },
               "runtime": { "const": "claude" },
-              "signal": { "const": "normal" },
-              "status": { "enum": ["selected", "blocked"] },
-              "baselineTier": { "enum": ["frontier", "standard"] },
-              "selectedTier": { "enum": ["frontier", "standard", "mechanical"] },
-              "model": { "enum": ["opus", "sonnet", "haiku"] },
-              "effort": { "enum": ["low", "medium", "high", "max"] },
-              "maxTurns": { "type": "integer", "minimum": 1 },
-              "escalationProfile": { "type": "string" },
-              "fallbackPolicy": { "enum": ["frontier-fail-closed", "upward-only"] },
-              "fallbackUsed": { "type": "boolean" },
-              "operatorEscalation": { "type": "boolean" },
-              "weakerFallbackAllowed": { "const": false },
+              "status": { "enum": ["ready", "blocked"] },
+              "baselineConfig": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["tier", "model", "effort", "maxTurns"],
+                "properties": {
+                  "tier": { "enum": ["frontier", "standard"] },
+                  "model": { "enum": ["opus", "sonnet"] },
+                  "effort": { "enum": ["medium", "max"] },
+                  "maxTurns": { "type": "integer", "minimum": 1 }
+                }
+              },
+              "requiredOverrides": { "type": "array", "items": { "enum": ["model", "effort"] }, "uniqueItems": true },
+              "requiredEnforcements": { "type": "array", "minItems": 3, "items": { "enum": ["model", "effort", "maxTurns"] }, "uniqueItems": true },
+              "adapterId": { "const": "claude-plugin-agent@1" },
+              "adapterSnapshotSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "missingCapabilities": { "type": "array", "items": { "enum": ["model", "effort", "maxTurns"] }, "uniqueItems": true },
               "reason": { "type": "string" }
             }
           },

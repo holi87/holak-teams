@@ -13,7 +13,7 @@ if (!['--write', '--check'].includes(mode)) {
 
 const ROLE_ROOT = join(ROOT, 'argus', 'roles');
 const MANIFEST_PATH = join(ROLE_ROOT, 'manifest.json');
-const ADAPTERS_PATH = join(ROLE_ROOT, 'runtime-adapters.json');
+const ADAPTERS_PATH = join(ROOT, 'argus', 'runtime-adapters.json');
 const CLAUDE_ROOT = join(ROOT, 'argus', 'claude', 'agents');
 const CODEX_ROOT = join(ROOT, 'argus', 'codex');
 
@@ -29,7 +29,7 @@ const rolesByRaci = bySlug(raci.agents, 'RACI');
 const rolesByCapability = bySlug(capabilities.agents, 'capability matrix');
 
 assert(manifest.schemaVersion === 2, 'role manifest schemaVersion must be 2');
-assert(adapters.schemaVersion === 2, 'runtime adapter schemaVersion must be 2');
+assert(adapters.schemaVersion === 3, 'runtime adapter schemaVersion must be 3');
 assert(adapters.support.claude.level === 'plugin-native', 'Claude support level must be plugin-native');
 assert(adapters.support.codex.level === 'parent-runtime-dependent', 'Codex support level must be parent-runtime-dependent');
 assert(adapters.support.codex.parentRuntimeRequired === true, 'Codex support must require a parent runtime');

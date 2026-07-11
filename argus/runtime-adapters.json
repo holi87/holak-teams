@@ -1,6 +1,7 @@
 {
-  "$schema": "../schemas/runtime-adapters.schema.json",
-  "schemaVersion": 2,
+  "$schema": "./schemas/runtime-adapters.schema.json",
+  "schemaVersion": 3,
+  "contractId": "argus/runtime-adapters@3",
   "support": {
     "claude": {
       "level": "plugin-native",
@@ -35,15 +36,43 @@
     ]
   },
   "claude": {
+    "adapterId": "claude-plugin-agent@1",
     "preloadedSkill": "qa-doctrine",
     "toolSource": "role-manifest",
-    "modelSource": "model-policy"
+    "modelSource": "model-policy",
+    "routingCapabilities": {
+      "baseline": {
+        "model": true,
+        "effort": true,
+        "maxTurns": true
+      },
+      "escalation": {
+        "model": true,
+        "effort": false,
+        "maxTurns": true
+      },
+      "evidence": "Claude agent frontmatter enforces the reviewed baseline. Agent dispatch can select a model and enforce a turn cap, but exposes no verified per-dispatch effort override."
+    }
   },
   "codex": {
+    "adapterId": "codex-custom-agent@1",
     "modelSource": "model-policy",
     "sandboxPolicy": "read-only when the capability contract has no Write tool; workspace-write otherwise",
     "doctrinePolicy": "embed the canonical doctrine because Codex custom-agent configuration cannot preload Claude plugin skills",
-    "toolPolicy": "record Claude tools as provenance and require available Codex equivalents at runtime"
+    "toolPolicy": "record Claude tools as provenance and require available Codex equivalents at runtime",
+    "routingCapabilities": {
+      "baseline": {
+        "model": true,
+        "effort": true,
+        "maxTurns": false
+      },
+      "escalation": {
+        "model": false,
+        "effort": false,
+        "maxTurns": false
+      },
+      "evidence": "Codex TOML enforces the reviewed baseline model and reasoning effort, but has no native max-turn field and the collaboration API exposes no verified per-dispatch model, effort, or turn-cap override."
+    }
   },
   "explicitDifferences": [
     {

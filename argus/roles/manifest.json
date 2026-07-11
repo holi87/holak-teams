@@ -6,7 +6,7 @@
     "ownership": "argus/raci.json",
     "capabilities": "argus/capabilities/capability-matrix.json",
     "doctrine": "argus/shared-skills/qa-doctrine/SKILL.md",
-    "adapters": "argus/roles/runtime-adapters.json"
+    "adapters": "argus/runtime-adapters.json"
   },
   "roles": [
     {

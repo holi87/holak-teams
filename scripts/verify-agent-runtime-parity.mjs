@@ -16,7 +16,7 @@ const expectedCounts = { hephaestus: 22, argus: 27 };
 const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const roster = readFileSync(join(ROOT, 'agents-roster.html'), 'utf8');
 const parityReport = readFileSync(join(ROOT, 'AGENT-RUNTIME-PARITY.md'), 'utf8');
-const adapters = JSON.parse(readFileSync(join(ROOT, 'argus', 'roles', 'runtime-adapters.json'), 'utf8'));
+const adapters = JSON.parse(readFileSync(join(ROOT, 'argus', 'runtime-adapters.json'), 'utf8'));
 const odysseusSource = readFileSync(join(ROOT, 'argus', 'roles', 'odysseus.md'), 'utf8');
 const allSlugs = new Set();
 const totals = { opus: 0, sonnet: 0, haiku: 0, sol: 0, terra: 0, luna: 0 };
@@ -24,7 +24,7 @@ const totals = { opus: 0, sonnet: 0, haiku: 0, sol: 0, terra: 0, luna: 0 };
 execFileSync('node', [join(ROOT, 'scripts/sync-hephaestus-codex-variants.mjs'), '--check'], { stdio: 'inherit' });
 execFileSync('node', [join(ROOT, 'scripts/sync-argus-role-variants.mjs'), '--check'], { stdio: 'inherit' });
 
-assert(adapters.schemaVersion === 2, 'Argus runtime support contract must use schema v2');
+assert(adapters.schemaVersion === 3, 'Argus runtime support contract must use schema v3');
 assert(adapters.support?.claude?.level === 'plugin-native', 'Claude support must be plugin-native');
 assert(adapters.support?.codex?.level === 'parent-runtime-dependent', 'Codex support must be parent-runtime-dependent');
 assert(adapters.support?.codex?.parentRuntimeRequired === true, 'Codex support must require a parent runtime');

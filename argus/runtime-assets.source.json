@@ -97,6 +97,12 @@
       "destination": "capabilities/model-policy.json"
     },
     {
+      "id": "runtime-adapters",
+      "kind": "capabilities",
+      "source": "argus/runtime-adapters.json",
+      "destination": "capabilities/runtime-adapters.json"
+    },
+    {
       "id": "template-policy",
       "kind": "capabilities",
       "source": "argus/template-contract.json",

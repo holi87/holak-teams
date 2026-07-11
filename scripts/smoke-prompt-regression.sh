@@ -8,7 +8,13 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 cp -R "$ROOT/argus" "$WORK/argus"
-printf '\nUnapproved regression marker.\n' >>"$WORK/argus/claude/agents/aegis.md"
+approved="$(jq -r '.approvedCorpus.agents.aegis' "$WORK/argus/prompt-budgets.json")"
+current="$(wc -w <"$WORK/argus/claude/agents/aegis.md" | tr -d ' ')"
+extra=$((approved - current + 1))
+((extra > 0)) || extra=1
+printf '\n' >>"$WORK/argus/claude/agents/aegis.md"
+for ((index = 0; index < extra; index += 1)); do printf 'unapproved-regression ' >>"$WORK/argus/claude/agents/aegis.md"; done
+printf '\n' >>"$WORK/argus/claude/agents/aegis.md"
 if node "$ROOT/scripts/check-argus-prompts.mjs" --root "$WORK" >"$WORK/output.log" 2>&1; then
   printf 'FAIL  unapproved prompt regression unexpectedly passed\n' >&2
   exit 1

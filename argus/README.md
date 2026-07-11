@@ -170,7 +170,7 @@ compares Opus and Sonnet without storing prompts, completions, or target data.
 
 Runtime-neutral role content lives in `roles/*.md`, with source, color, tool metadata, and
 contract pointers in `roles/manifest.json`. Display names derive from slugs and descriptions
-come from `raci.json`, so neither is duplicated in the manifest. `roles/runtime-adapters.json` is the reviewed list of intentional
+come from `raci.json`, so neither is duplicated in the manifest. `runtime-adapters.json` is the reviewed list of intentional
 Claude/Codex differences and machine-readable support levels. Run
 `scripts/sync-argus-role-variants.mjs --write` to regenerate all runtime files and
 `--check` to reject drift.

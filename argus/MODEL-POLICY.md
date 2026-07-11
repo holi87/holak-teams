@@ -38,9 +38,9 @@ The adopted baseline assigns 10 high-consequence roles to frontier reasoning and
 
 - Standard roles escalate upward to frontier on their declared ambiguity, safety, cross-lane, evidence, failure, or turn-limit signals.
 - Frontier roles never fall back to a weaker model. Unavailability blocks the dispatch and escalates to the operator.
-- Claude enforces baseline effort and turns in native agent frontmatter. Codex carries the same turn budget in its generated policy block for parent-orchestrator enforcement. An escalation runs only when the runtime can honor model, effort, and turn cap together; otherwise it blocks as capability drift.
+- Claude enforces the complete reviewed baseline in native agent frontmatter. Its current dispatch adapter blocks an escalation because no verified per-dispatch effort override exists. Codex native config enforces model and effort but blocks until the parent can also enforce max turns. Every runtime fails closed when model, effort, and turn cap cannot be honored together.
 - Haiku/Luna is reserved for a future bounded subrole with no quality judgment, a deterministic output schema, and a validator that passes before merge.
-- `argus-assets model route` is the installed decision interface. `argus-assets model telemetry` writes only sanitized usage metrics.
+- `argus-assets model route` validates the engagement and trusted adapter snapshot, then atomically persists a selected or blocked immutable decision under `ai_agents_internal/model-decisions/`. `argus-assets model telemetry` accepts only that exact decision and writes sanitized usage metrics bound to its ID and hashes.
 
 ## Benchmark
 

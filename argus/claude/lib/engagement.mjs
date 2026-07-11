@@ -642,6 +642,17 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     if (['list', 'validate'].includes(operation)) return allow('packaged schema command is read-only');
     return deny('unknown schema operation');
   }
+  if (primary === 'model') {
+    if (operation === 'list') return allow('packaged model policy listing is read-only');
+    if (!['route', 'telemetry'].includes(operation)) return deny('unknown model policy operation');
+    const requestedManifest = optionValue(tokens, '--manifest');
+    const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
+    if (!requestedManifest || resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
+      return deny('model operation must bind to the active engagement manifest');
+    }
+    if (operation === 'telemetry' && !optionValue(tokens, '--decision')) return deny('model telemetry requires an immutable decision file');
+    return allow('packaged model controller owns the bounded decision or telemetry mutation');
+  }
   if (primary === 'template') {
     if (operation === 'detect') {
       const output = optionValue(tokens, '--output') ?? '-';

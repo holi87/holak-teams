@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 
 export const MODEL_SIGNALS = [
   'normal',
@@ -14,6 +15,8 @@ export const MODEL_SIGNALS = [
   'schema-validated-mechanical',
 ];
 
+const REQUIRED_ENFORCEMENTS = ['effort', 'maxTurns', 'model'];
+
 export function validateModelPolicy(policy, expectedSlugs = []) {
   const errors = [];
   if (policy?.schemaVersion !== 1 || policy?.policyId !== 'argus/model-policy@1') errors.push('policy identity must be argus/model-policy@1');
@@ -24,6 +27,11 @@ export function validateModelPolicy(policy, expectedSlugs = []) {
   if (expectedSlugs.length && JSON.stringify([...slugs].sort()) !== JSON.stringify([...expectedSlugs].sort())) errors.push('policy role inventory differs from the canonical roster');
   const counts = Object.groupBy ? Object.groupBy(roles, (role) => role.tier) : roles.reduce((result, role) => ((result[role.tier] ??= []).push(role), result), {});
   if ((counts.frontier ?? []).length !== 10 || (counts.standard ?? []).length !== 17) errors.push('baseline split must be 10 frontier and 17 standard roles');
+  if (policy?.routing?.decisionDirectory !== 'ai_agents_internal/model-decisions' || policy?.routing?.decisionSchema !== 'argus/model-decision@2') {
+    errors.push('routing must persist argus/model-decision@2 under ai_agents_internal/model-decisions');
+  }
+  if (!sameStrings(policy?.routing?.requiredEnforcements, REQUIRED_ENFORCEMENTS)) errors.push('routing must require model, effort, and maxTurns together');
+  if (policy?.telemetry?.schema !== 'argus/model-telemetry-event@2') errors.push('telemetry schema must be argus/model-telemetry-event@2');
   for (const role of roles) {
     if (!policy?.tiers?.[role.tier]) errors.push(`${role.slug}: unknown tier ${role.tier}`);
     if (!Number.isInteger(role.maxTurns) || role.maxTurns < 1) errors.push(`${role.slug}: maxTurns must be a positive integer`);
@@ -37,68 +45,238 @@ export function validateModelPolicy(policy, expectedSlugs = []) {
   return errors;
 }
 
-export function resolveModelDecision(policy, { slug, runtime = 'claude', signal = 'normal', schemaValidated = false, boundedSubrole = false } = {}) {
+export function adapterSnapshotSha256(adapters) {
+  return sha256(stableJson(adapters));
+}
+
+export function modelPolicySha256(policy) {
+  return sha256(stableJson(policy));
+}
+
+export function resolveModelDecision(policy, adapters, {
+  slug,
+  runtime,
+  signal,
+  engagementId,
+  engagementManifestSha256,
+  dispatchId,
+  attempt,
+  createdAt = new Date().toISOString(),
+} = {}) {
   if (!['claude', 'codex'].includes(runtime)) throw new Error('runtime must be claude or codex');
-  if (!MODEL_SIGNALS.includes(signal)) throw new Error(`unknown model signal: ${signal}`);
+  requireStableId(engagementId, 'engagementId');
+  requireSha256(engagementManifestSha256, 'engagementManifestSha256');
+  requireStableId(dispatchId, 'dispatchId');
+  if (!Number.isInteger(attempt) || attempt < 1) throw new Error('attempt must be a positive integer');
+  if (typeof createdAt !== 'string' || Number.isNaN(Date.parse(createdAt))) throw new Error('createdAt must be an ISO date-time');
+  if (typeof signal !== 'string' || signal.length === 0) throw new Error('signal is required');
   const role = policy.roles.find((item) => item.slug === slug);
   if (!role) throw new Error(`unknown model-policy role: ${slug}`);
-  let selectedTier = role.tier;
-  let status = 'selected';
-  let fallbackUsed = false;
-  let operatorEscalation = false;
-  let reason = 'role baseline';
-  const triggers = policy.escalationProfiles[role.escalationProfile];
-
-  if (signal === 'schema-validated-mechanical') {
-    const allowed = role.mechanicalDowngrade === true && schemaValidated && boundedSubrole;
-    if (allowed) {
-      selectedTier = 'mechanical';
-      reason = 'bounded subrole with deterministic schema validation';
-    } else {
-      reason = 'mechanical downgrade denied for a full role or missing validation evidence';
-    }
-  } else if (signal === 'model-unavailable') {
-    if (role.tier === 'standard') {
-      selectedTier = 'frontier';
-      fallbackUsed = true;
-      reason = 'standard model unavailable; upward-only fallback';
-    } else {
-      status = 'blocked';
-      operatorEscalation = true;
-      reason = 'frontier model unavailable; weaker fallback forbidden';
-    }
-  } else if (triggers.includes(signal)) {
-    if (role.tier === 'standard') {
-      selectedTier = 'frontier';
-      fallbackUsed = true;
-      reason = `${signal} trigger requires frontier reasoning`;
-    } else {
-      operatorEscalation = true;
-      reason = `${signal} trigger retains frontier and escalates the decision`;
-    }
+  const runtimeAdapter = adapters?.[runtime];
+  if (adapters?.schemaVersion !== 3 || adapters?.contractId !== 'argus/runtime-adapters@3' || !runtimeAdapter?.adapterId) {
+    throw new Error('trusted runtime adapter snapshot is not argus/runtime-adapters@3');
   }
 
-  const tier = policy.tiers[selectedTier];
-  const runtimePolicy = tier[runtime];
-  return {
-    schema: 'argus/model-decision@1',
+  const baselineConfig = modelConfig(policy, role.tier, runtime, role.maxTurns);
+  let selectedConfig = baselineConfig;
+  let status = 'selected';
+  let reasonCode = 'BASELINE_SELECTED';
+  let reason = 'reviewed role baseline selected';
+  let fallbackUsed = false;
+  let operatorEscalation = false;
+  const triggers = policy.escalationProfiles[role.escalationProfile];
+
+  if (signal === 'normal') {
+    // The reviewed baseline is the only non-escalation route.
+  } else if (signal === 'schema-validated-mechanical') {
+    status = 'blocked';
+    reasonCode = 'MECHANICAL_FULL_ROLE_FORBIDDEN';
+    reason = 'full-role mechanical downgrade is forbidden; no validated bounded-subrole contract was supplied by the trusted policy';
+  } else if (signal === 'model-unavailable') {
+    if (role.tier === 'frontier') {
+      status = 'blocked';
+      reasonCode = 'FRONTIER_UNAVAILABLE';
+      reason = 'frontier model unavailable; weaker fallback is forbidden';
+      operatorEscalation = true;
+    } else {
+      selectedConfig = modelConfig(policy, 'frontier', runtime, role.maxTurns);
+      reasonCode = 'ESCALATION_SELECTED';
+      reason = 'standard model unavailable; upward-only frontier route requested';
+      fallbackUsed = true;
+    }
+  } else if (!MODEL_SIGNALS.includes(signal) || !triggers.includes(signal)) {
+    status = 'blocked';
+    reasonCode = 'SIGNAL_NOT_ALLOWED';
+    reason = `signal ${signal} is not allowed by escalation profile ${role.escalationProfile}`;
+  } else if (role.tier === 'standard') {
+    selectedConfig = modelConfig(policy, 'frontier', runtime, role.maxTurns);
+    reasonCode = 'ESCALATION_SELECTED';
+    reason = `${signal} requires an upward-only frontier route`;
+    fallbackUsed = true;
+  } else {
+    reasonCode = 'ESCALATION_SELECTED';
+    reason = `${signal} retains the frontier baseline and escalates the decision`;
+    operatorEscalation = true;
+  }
+
+  const adapterMode = selectedConfig.tier === baselineConfig.tier ? 'baseline' : 'escalation';
+  const capabilities = structuredClone(runtimeAdapter.routingCapabilities[adapterMode]);
+  const requiredOverrides = ['effort', 'model'].filter((field) => selectedConfig[field] !== baselineConfig[field]);
+  const missingCapabilities = REQUIRED_ENFORCEMENTS.filter((field) => capabilities[field] !== true);
+  if (status === 'selected' && missingCapabilities.length > 0) {
+    status = 'blocked';
+    reasonCode = 'CAPABILITY_DRIFT';
+    reason = `${runtimeAdapter.adapterId} cannot enforce ${missingCapabilities.join(', ')} for the ${adapterMode} route`;
+  }
+
+  const snapshotSha256 = adapterSnapshotSha256(adapters);
+  const policySha256 = modelPolicySha256(policy);
+  const semantic = {
+    schema: policy.routing.decisionSchema,
     policyId: policy.policyId,
+    policySha256,
+    engagementId,
+    engagementManifestSha256,
+    dispatchId,
+    attempt,
     agent: slug,
     runtime,
     signal,
+    adapterContractId: adapters.contractId,
+    adapterId: runtimeAdapter.adapterId,
+    adapterSnapshotSha256: snapshotSha256,
     status,
-    baselineTier: role.tier,
-    selectedTier,
-    model: runtimePolicy.model,
-    effort: runtime === 'claude' ? runtimePolicy.effort : runtimePolicy.reasoningEffort,
-    maxTurns: role.maxTurns,
-    escalationProfile: role.escalationProfile,
-    fallbackPolicy: role.fallbackPolicy,
+    reasonCode,
+    baselineConfig,
+    selectedConfig,
+    requiredOverrides,
+    requiredEnforcements: [...REQUIRED_ENFORCEMENTS],
+    adapterMode,
+    adapterCapabilities: capabilities,
+    missingCapabilities,
     fallbackUsed,
     operatorEscalation,
     weakerFallbackAllowed: false,
     reason,
   };
+  const decisionId = `MDR-${sha256(stableJson(semantic)).slice(0, 24)}`;
+  const decision = {
+    schema: policy.routing.decisionSchema,
+    decisionId,
+    integritySha256: '',
+    relativePath: `${policy.routing.decisionDirectory}/${decisionId}.json`,
+    createdAt,
+    policyId: policy.policyId,
+    policySha256,
+    engagementId,
+    engagementManifestSha256,
+    dispatchId,
+    attempt,
+    agent: slug,
+    runtime,
+    signal,
+    status,
+    reasonCode,
+    baselineConfig,
+    selectedConfig,
+    requiredOverrides,
+    requiredEnforcements: [...REQUIRED_ENFORCEMENTS],
+    adapter: {
+      contractId: adapters.contractId,
+      adapterId: runtimeAdapter.adapterId,
+      snapshotSha256,
+      runtime,
+      mode: adapterMode,
+      capabilities,
+    },
+    missingCapabilities,
+    fallbackUsed,
+    operatorEscalation,
+    weakerFallbackAllowed: false,
+    reason,
+  };
+  decision.integritySha256 = modelDecisionIntegritySha256(decision);
+  return decision;
+}
+
+export function buildModelRoutingPreview(policy, adapters, { slug, runtime = 'claude' } = {}) {
+  const role = policy.roles.find((item) => item.slug === slug);
+  if (!role) throw new Error(`unknown model-policy role: ${slug}`);
+  const runtimeAdapter = adapters?.[runtime];
+  if (!runtimeAdapter?.routingCapabilities?.baseline) throw new Error(`runtime adapter is missing baseline capabilities: ${runtime}`);
+  const missingCapabilities = REQUIRED_ENFORCEMENTS.filter((field) => runtimeAdapter.routingCapabilities.baseline[field] !== true);
+  return {
+    schema: 'argus/model-routing-preview@1',
+    policyId: policy.policyId,
+    agent: slug,
+    runtime,
+    status: missingCapabilities.length ? 'blocked' : 'ready',
+    baselineConfig: modelConfig(policy, role.tier, runtime, role.maxTurns),
+    requiredOverrides: [],
+    requiredEnforcements: [...REQUIRED_ENFORCEMENTS],
+    adapterId: runtimeAdapter.adapterId,
+    adapterSnapshotSha256: adapterSnapshotSha256(adapters),
+    missingCapabilities,
+    reason: missingCapabilities.length
+      ? `${runtimeAdapter.adapterId} cannot enforce ${missingCapabilities.join(', ')} for the baseline route`
+      : `${runtimeAdapter.adapterId} can enforce the complete reviewed baseline`,
+  };
+}
+
+export function modelDecisionIntegritySha256(decision) {
+  const copy = structuredClone(decision);
+  copy.integritySha256 = '';
+  return sha256(stableJson(copy));
+}
+
+export function validateModelDecisionBinding(policy, adapters, decision, {
+  engagementId,
+  engagementManifestSha256,
+  decisionPath,
+  artifactRoot,
+} = {}) {
+  const errors = [];
+  if (decision?.schema !== policy?.routing?.decisionSchema) errors.push(`decision schema must be ${policy?.routing?.decisionSchema}`);
+  if (decision?.policyId !== policy?.policyId) errors.push('decision policyId differs from the packaged policy');
+  if (decision?.engagementId !== engagementId) errors.push('decision engagementId differs from the validated engagement');
+  if (decision?.engagementManifestSha256 !== engagementManifestSha256) errors.push('decision engagement manifest hash differs from the validated engagement');
+  const snapshotSha256 = adapterSnapshotSha256(adapters);
+  if (decision?.adapter?.contractId !== adapters?.contractId) errors.push('decision adapter contract differs from the packaged adapter');
+  if (decision?.adapter?.adapterId !== adapters?.[decision?.runtime]?.adapterId) errors.push('decision adapterId differs from the packaged runtime adapter');
+  if (decision?.adapter?.snapshotSha256 !== snapshotSha256) errors.push('decision adapter snapshot hash differs from the packaged adapter');
+  if (decision?.adapter?.runtime !== decision?.runtime) errors.push('decision adapter runtime differs from decision runtime');
+  const expectedCapabilities = adapters?.[decision?.runtime]?.routingCapabilities?.[decision?.adapter?.mode];
+  if (stableJson(decision?.adapter?.capabilities) !== stableJson(expectedCapabilities)) errors.push('decision adapter capabilities differ from the packaged snapshot');
+  if (!sameStrings(decision?.requiredEnforcements, REQUIRED_ENFORCEMENTS)) errors.push('decision requiredEnforcements are incomplete');
+  if (decision?.policySha256 !== modelPolicySha256(policy)) errors.push('decision policy hash differs from the packaged policy');
+  if (decision?.integritySha256 !== modelDecisionIntegritySha256(decision)) errors.push('decision integrity hash is invalid');
+  let expected;
+  try {
+    expected = resolveModelDecision(policy, adapters, {
+      slug: decision?.agent,
+      runtime: decision?.runtime,
+      signal: decision?.signal,
+      engagementId: decision?.engagementId,
+      engagementManifestSha256: decision?.engagementManifestSha256,
+      dispatchId: decision?.dispatchId,
+      attempt: decision?.attempt,
+      createdAt: decision?.createdAt,
+    });
+  } catch (error) {
+    errors.push(`decision routing inputs are invalid: ${error.message}`);
+  }
+  if (expected) {
+    const actualSemantic = withoutDecisionPersistence(decision);
+    const expectedSemantic = withoutDecisionPersistence(expected);
+    if (stableJson(actualSemantic) !== stableJson(expectedSemantic)) errors.push('decision semantics differ from the packaged policy and adapter');
+    if (decision?.decisionId !== expected.decisionId) errors.push('decisionId is not deterministic for its immutable routing inputs and semantics');
+    if (decision?.relativePath !== expected.relativePath) errors.push('decision relativePath does not match decisionId');
+  }
+  if (decisionPath !== undefined && artifactRoot !== undefined) {
+    const expectedPath = resolve(artifactRoot, decision.relativePath);
+    if (resolve(decisionPath) !== expectedPath) errors.push('decision path is not the exact persisted path under the engagement artifact root');
+  }
+  return [...new Set(errors)];
 }
 
 export function buildModelTelemetryEvent(policy, decision, metrics, timestamp = new Date().toISOString()) {
@@ -111,13 +289,21 @@ export function buildModelTelemetryEvent(policy, decision, metrics, timestamp = 
     schema: policy.telemetry.schema,
     timestamp,
     eventId: '',
+    decisionId: decision.decisionId,
+    decisionIntegritySha256: decision.integritySha256,
+    adapterId: decision.adapter.adapterId,
+    adapterSnapshotSha256: decision.adapter.snapshotSha256,
+    engagementId: decision.engagementId,
+    dispatchId: decision.dispatchId,
+    attempt: decision.attempt,
     agent: decision.agent,
     runtime: decision.runtime,
-    tier: decision.selectedTier,
-    model: decision.model,
-    effort: decision.effort,
-    maxTurns: decision.maxTurns,
+    tier: decision.selectedConfig.tier,
+    model: decision.selectedConfig.model,
+    effort: decision.selectedConfig.effort,
+    maxTurns: decision.selectedConfig.maxTurns,
     signal: decision.signal,
+    reasonCode: decision.reasonCode,
     fallbackUsed: decision.fallbackUsed,
     success: metrics.success,
     inputTokens: metrics.inputTokens,
@@ -126,9 +312,46 @@ export function buildModelTelemetryEvent(policy, decision, metrics, timestamp = 
     durationMs: metrics.durationMs,
   };
   if (metrics.reportedCostUsd !== undefined) event.reportedCostUsd = metrics.reportedCostUsd;
-  const identity = JSON.stringify({ ...event, eventId: undefined });
-  event.eventId = `MDL-${createHash('sha256').update(identity).digest('hex').slice(0, 16)}`;
+  event.eventId = `MDL-${sha256(stableJson(event)).slice(0, 24)}`;
   const unexpected = Object.keys(event).filter((field) => !policy.telemetry.allowedFields.includes(field));
   if (unexpected.length) throw new Error(`telemetry emitted forbidden fields: ${unexpected.join(', ')}`);
   return event;
+}
+
+function modelConfig(policy, tierName, runtime, maxTurns) {
+  const runtimePolicy = policy.tiers[tierName][runtime];
+  return {
+    tier: tierName,
+    model: runtimePolicy.model,
+    effort: runtime === 'claude' ? runtimePolicy.effort : runtimePolicy.reasoningEffort,
+    maxTurns,
+  };
+}
+
+function requireStableId(value, label) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value)) throw new Error(`${label} must be a stable identifier`);
+}
+
+function requireSha256(value, label) {
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) throw new Error(`${label} must be a SHA-256 digest`);
+}
+
+function sameStrings(left, right) {
+  return Array.isArray(left) && JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
+}
+
+function withoutDecisionPersistence(decision) {
+  if (!decision || typeof decision !== 'object') return decision;
+  const { createdAt, decisionId, integritySha256, relativePath, ...semantic } = decision;
+  return semantic;
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
 }

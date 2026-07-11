@@ -57,7 +57,7 @@ cp "$ROOT/README.md" "$ROOT/agents-roster.html" "$CASE/"
 cp "$ROOT/scripts/sync-argus-role-variants.mjs" "$ROOT/scripts/sync-argus-model-policy.mjs" "$ROOT/scripts/sync-argus-raci.mjs" "$ROOT/scripts/refactor-argus-prompts.mjs" "$CASE/scripts/"
 cp -R "$ROOT/argus/roles" "$ROOT/argus/capabilities" "$ROOT/argus/policies" "$ROOT/argus/runtime" "$ROOT/argus/shared-skills" "$ROOT/argus/codex" "$CASE/argus/"
 cp -R "$ROOT/argus/claude/agents" "$CASE/argus/claude/"
-cp "$ROOT/argus/model-policy.json" "$ROOT/argus/raci.json" "$ROOT/argus/MODEL-POLICY.md" "$ROOT/argus/RACI-CONTRACT.md" "$ROOT/argus/README.md" "$CASE/argus/"
+cp "$ROOT/argus/model-policy.json" "$ROOT/argus/runtime-adapters.json" "$ROOT/argus/raci.json" "$ROOT/argus/MODEL-POLICY.md" "$ROOT/argus/RACI-CONTRACT.md" "$ROOT/argus/README.md" "$CASE/argus/"
 
 node "$CASE/scripts/sync-argus-role-variants.mjs" --write >/dev/null
 snapshot_variants "$CASE" "$WORK/case-canonical"

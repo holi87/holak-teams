@@ -32,6 +32,8 @@
     "raci-contract",
     "raci-matrix",
     "engagement-policy",
+    "model-policy",
+    "runtime-adapters",
     "runtime-library",
     "runner-contract",
     "runtime-schemas"
@@ -42,6 +44,8 @@
       "ai_agents_internal/engagement.json",
       "ai_agents_internal/engagement-state.json",
       "ai_agents_internal/immutability-audit.jsonl",
+      "ai_agents_internal/model-decisions/*.json",
+      "ai_agents_internal/model-telemetry.jsonl",
       "ai_agents_internal/preflight.json",
       "solution/",
       "bugs/"
@@ -246,7 +250,7 @@
       "lane": "orchestration",
       "modes": ["A", "B", "C", "D"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "Agent"],
-      "artifactPaths": ["ai_agents_internal/preflight.json", "ai_agents_internal/dispatch-plan.md", "solution/lane-plan.json"]
+      "artifactPaths": ["ai_agents_internal/preflight.json", "ai_agents_internal/dispatch-plan.md", "ai_agents_internal/model-decisions/*.json", "ai_agents_internal/model-telemetry.jsonl", "solution/lane-plan.json"]
     },
     {
       "slug": "orion",

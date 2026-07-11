@@ -17,7 +17,7 @@
         "ownership": { "const": "argus/raci.json" },
         "capabilities": { "const": "argus/capabilities/capability-matrix.json" },
         "doctrine": { "const": "argus/shared-skills/qa-doctrine/SKILL.md" },
-        "adapters": { "const": "argus/roles/runtime-adapters.json" }
+        "adapters": { "const": "argus/runtime-adapters.json" }
       }
     },
     "roles": {

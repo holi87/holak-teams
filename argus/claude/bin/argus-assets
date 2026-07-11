@@ -10,9 +10,13 @@ import {
   cpSync,
   constants,
   existsSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -52,7 +56,14 @@ import {
 } from '../lib/engagement.mjs';
 import { CONTRACT_KINDS, schemaId, validateCanonicalDocument } from '../lib/contracts.mjs';
 import { calculateCoverage, validateCoverageObservations, validateSurfaceInventory } from '../lib/coverage.mjs';
-import { buildModelTelemetryEvent, resolveModelDecision, validateModelPolicy } from '../lib/model-policy.mjs';
+import { compileJsonSchema } from '../lib/json-schema.mjs';
+import {
+  buildModelRoutingPreview,
+  buildModelTelemetryEvent,
+  resolveModelDecision,
+  validateModelDecisionBinding,
+  validateModelPolicy,
+} from '../lib/model-policy.mjs';
 import {
   detectTemplateCapabilities,
   materializeTemplateLayout,
@@ -69,6 +80,10 @@ const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
 const CAPABILITY_MATRIX_PATH = join(ROOT, 'capabilities', 'capability-matrix.json');
 const RACI_PATH = join(ROOT, 'references', 'raci.json');
 const MODEL_POLICY_PATH = join(ROOT, 'capabilities', 'model-policy.json');
+const RUNTIME_ADAPTERS_PATH = join(ROOT, 'capabilities', 'runtime-adapters.json');
+const RUNTIME_ADAPTERS_SCHEMA_PATH = join(ROOT, 'schemas', 'runtime-adapters.schema.json');
+const MODEL_DECISION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-decision.schema.json');
+const MODEL_TELEMETRY_SCHEMA_PATH = join(ROOT, 'schemas', 'model-telemetry-event.schema.json');
 const TEMPLATE_CONTRACT_PATH = join(ROOT, 'capabilities', 'template-contract.json');
 const AUTHORIZATION_TEMPLATE_PATH = join(ROOT, 'policies', 'authorization.template.json');
 const ENGAGEMENT_TEMPLATE_PATH = join(ROOT, 'policies', 'engagement.template.json');
@@ -79,6 +94,12 @@ const matrix = readJson(CAPABILITY_MATRIX_PATH);
 const modelPolicy = readJson(MODEL_POLICY_PATH);
 const modelPolicyErrors = validateModelPolicy(modelPolicy, matrix.agents.map((agent) => agent.slug));
 if (modelPolicyErrors.length) fail(`model policy invalid: ${modelPolicyErrors.join('; ')}`);
+const runtimeAdapters = readJson(RUNTIME_ADAPTERS_PATH);
+const validateRuntimeAdapters = compileJsonSchema(readJson(RUNTIME_ADAPTERS_SCHEMA_PATH));
+const runtimeAdapterErrors = validateRuntimeAdapters(runtimeAdapters);
+if (runtimeAdapterErrors.length) fail(`runtime adapter snapshot invalid: ${formatSchemaErrors(runtimeAdapterErrors)}`);
+const validateModelDecisionSchema = compileJsonSchema(readJson(MODEL_DECISION_SCHEMA_PATH));
+const validateModelTelemetrySchema = compileJsonSchema(readJson(MODEL_TELEMETRY_SCHEMA_PATH));
 const templateContract = readJson(TEMPLATE_CONTRACT_PATH);
 const templateContractErrors = validateTemplateContract(templateContract);
 if (templateContractErrors.length) fail(`template contract invalid: ${templateContractErrors.join('; ')}`);
@@ -159,7 +180,9 @@ Usage:
   argus-assets schema <list|validate> [options]
   argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]
   argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
-  argus-assets model <list|route|telemetry> [options]
+  argus-assets model list
+  argus-assets model route --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n>
+  argus-assets model telemetry --manifest <engagement.json> --decision <model-decision.json> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false> [options]
   argus-assets template <detect|select|scaffold> [options]
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
@@ -282,50 +305,169 @@ function modelCommand(args) {
     return 0;
   }
   if (operation === 'route') {
-    const options = parseNamedOptions(rest, new Set(['--agent', '--runtime', '--signal', '--schema-validated', '--bounded-subrole']));
-    requireOptions(options, ['agent'], 'model route');
-    const decision = resolveModelDecision(policy, {
+    const options = parseNamedOptions(rest, new Set(['--manifest', '--agent', '--runtime', '--signal', '--dispatch-id', '--attempt']));
+    requireOptions(options, ['manifest', 'agent', 'runtime', 'signal', 'dispatchId', 'attempt'], 'model route');
+    assertTrustedRuntimeAdapterAsset();
+    const engagementContext = loadModelEngagement(options.manifest, options.agent);
+    const attempt = positiveInteger(options.attempt, '--attempt');
+    const candidate = resolveModelDecision(policy, runtimeAdapters, {
       slug: options.agent,
-      runtime: options.runtime ?? 'claude',
-      signal: options.signal ?? 'normal',
-      schemaValidated: parseBooleanOption(options.schemaValidated, '--schema-validated') ?? false,
-      boundedSubrole: parseBooleanOption(options.boundedSubrole, '--bounded-subrole') ?? false,
+      runtime: options.runtime,
+      signal: options.signal,
+      engagementId: engagementContext.engagement.engagementId,
+      engagementManifestSha256: engagementContext.sha256,
+      dispatchId: options.dispatchId,
+      attempt,
     });
+    assertSchemaDocument(validateModelDecisionSchema, candidate, 'model decision');
+    const decision = persistModelDecision(policy, candidate, engagementContext);
     console.log(JSON.stringify(decision));
     return decision.status === 'blocked' ? 2 : 0;
   }
   if (operation === 'telemetry') {
     const options = parseNamedOptions(rest, new Set([
-      '--agent', '--runtime', '--signal', '--input-tokens', '--output-tokens', '--duration-ms',
-      '--reported-cost-usd', '--success', '--output', '--at',
+      '--manifest', '--decision', '--input-tokens', '--output-tokens', '--duration-ms',
+      '--reported-cost-usd', '--success',
     ]));
-    requireOptions(options, ['agent', 'inputTokens', 'outputTokens', 'durationMs', 'success'], 'model telemetry');
-    const decision = resolveModelDecision(policy, { slug: options.agent, runtime: options.runtime ?? 'claude', signal: options.signal ?? 'normal' });
+    requireOptions(options, ['manifest', 'decision', 'inputTokens', 'outputTokens', 'durationMs', 'success'], 'model telemetry');
+    assertTrustedRuntimeAdapterAsset();
+    const engagementContext = loadModelEngagement(options.manifest);
+    const decisionPath = resolve(engagementContext.artifactRoot, options.decision);
+    const decisionDirectory = resolve(engagementContext.artifactRoot, policy.routing.decisionDirectory);
+    if (!isWithin(engagementContext.artifactRoot, decisionPath) || dirname(decisionPath) !== decisionDirectory) {
+      fail('model telemetry decision must be an exact file under ai_agents_internal/model-decisions');
+    }
+    assertPhysicalWithin(engagementContext.artifactRoot, decisionPath, 'model telemetry decision');
+    if (existsSync(decisionPath) && lstatSync(decisionPath).isSymbolicLink()) fail('model telemetry decision cannot be a symbolic link');
+    if (!existsSync(decisionPath) || !statSync(decisionPath).isFile()) fail(`model telemetry decision is missing: ${decisionPath}`);
+    const decision = readJson(decisionPath);
+    assertSchemaDocument(validateModelDecisionSchema, decision, 'model telemetry decision');
+    const bindingErrors = validateModelDecisionBinding(policy, runtimeAdapters, decision, {
+      engagementId: engagementContext.engagement.engagementId,
+      engagementManifestSha256: engagementContext.sha256,
+      decisionPath,
+      artifactRoot: engagementContext.artifactRoot,
+    });
+    if (bindingErrors.length) fail(`model telemetry decision binding invalid: ${bindingErrors.join('; ')}`);
+    if (!engagementContext.engagement.selectedAgents.includes(decision.agent)) fail(`model telemetry decision agent ${decision.agent} is not selected for the engagement`);
     if (decision.status === 'blocked') fail('model telemetry cannot record a blocked model decision');
-    const metric = (value, label) => {
-      const parsed = Number(value);
-      if (!Number.isFinite(parsed) || parsed < 0) fail(`${label} must be a non-negative number`);
-      return parsed;
-    };
     const event = buildModelTelemetryEvent(policy, decision, {
-      inputTokens: metric(options.inputTokens, '--input-tokens'),
-      outputTokens: metric(options.outputTokens, '--output-tokens'),
-      durationMs: metric(options.durationMs, '--duration-ms'),
-      reportedCostUsd: options.reportedCostUsd === undefined ? undefined : metric(options.reportedCostUsd, '--reported-cost-usd'),
+      inputTokens: nonNegativeNumber(options.inputTokens, '--input-tokens'),
+      outputTokens: nonNegativeNumber(options.outputTokens, '--output-tokens'),
+      durationMs: nonNegativeNumber(options.durationMs, '--duration-ms'),
+      reportedCostUsd: options.reportedCostUsd === undefined ? undefined : nonNegativeNumber(options.reportedCostUsd, '--reported-cost-usd'),
       success: parseBooleanOption(options.success, '--success'),
-    }, options.at ?? new Date().toISOString());
-    const relativeOutput = options.output ?? policy.telemetry.defaultPath;
+    });
+    assertSchemaDocument(validateModelTelemetrySchema, event, 'model telemetry event');
+    const relativeOutput = policy.telemetry.defaultPath;
     if (relativeOutput.startsWith('/') || relativeOutput.split('/').includes('..') || !relativeOutput.startsWith('ai_agents_internal/')) {
       fail('model telemetry output must stay under ai_agents_internal/');
     }
-    const output = resolve(relativeOutput);
+    const output = resolve(engagementContext.artifactRoot, relativeOutput);
+    if (!isWithin(engagementContext.artifactRoot, output)) fail('model telemetry output escapes the engagement artifact root');
     mkdirSync(dirname(output), { recursive: true });
+    assertPhysicalWithin(engagementContext.artifactRoot, output, 'model telemetry output');
+    if (existsSync(output) && lstatSync(output).isSymbolicLink()) fail('model telemetry output cannot be a symbolic link');
     appendFileSync(output, `${JSON.stringify(event)}\n`, { mode: 0o600 });
     chmodSync(output, 0o600);
     console.log(`MODEL_TELEMETRY  recorded output=${output} event=${event.eventId}`);
     return 0;
   }
   fail('usage: argus-assets model <list|route|telemetry> [options]');
+}
+
+function loadModelEngagement(explicitPath, requiredAgent) {
+  const manifestPath = locateEngagementManifest(process.cwd(), explicitPath);
+  if (!manifestPath) fail(`model routing engagement manifest is missing: ${resolve(explicitPath)}`);
+  const engagement = readJson(manifestPath);
+  const errors = validateEngagementManifest(engagement);
+  if (errors.length) fail(`model routing engagement manifest invalid: ${errors.join('; ')}`);
+  const artifactRoot = resolve(engagement.artifactRoot);
+  if (!isWithin(artifactRoot, manifestPath)) fail('model routing engagement manifest must stay under its artifactRoot');
+  assertPhysicalWithin(artifactRoot, manifestPath, 'model routing engagement manifest');
+  if (requiredAgent && !engagement.selectedAgents.includes(requiredAgent)) fail(`${requiredAgent} is not selected for engagement ${engagement.engagementId}`);
+  return { engagement, manifestPath, artifactRoot, sha256: manifestSha256(engagement) };
+}
+
+function assertTrustedRuntimeAdapterAsset() {
+  const asset = requireAsset('runtime-adapters');
+  const path = assetPath(asset);
+  const stats = treeStats(path);
+  if (stats.files !== asset.files || stats.bytes !== asset.bytes || stats.sha256 !== asset.sha256) {
+    fail('trusted runtime adapter snapshot differs from the packaged asset manifest');
+  }
+  assertSchemaDocument(validateRuntimeAdapters, runtimeAdapters, 'runtime adapter snapshot');
+}
+
+function persistModelDecision(policy, candidate, context) {
+  const output = resolve(context.artifactRoot, candidate.relativePath);
+  if (!isWithin(context.artifactRoot, output)) fail('model decision path escapes the engagement artifact root');
+  mkdirSync(dirname(output), { recursive: true });
+  assertPhysicalWithin(context.artifactRoot, output, 'model decision output');
+  if (existsSync(output) && lstatSync(output).isSymbolicLink()) fail('model decision output cannot be a symbolic link');
+  if (existsSync(output)) {
+    const existing = readJson(output);
+    assertSchemaDocument(validateModelDecisionSchema, existing, 'persisted model decision');
+    const errors = validateModelDecisionBinding(policy, runtimeAdapters, existing, {
+      engagementId: context.engagement.engagementId,
+      engagementManifestSha256: context.sha256,
+      decisionPath: output,
+      artifactRoot: context.artifactRoot,
+    });
+    if (errors.length) fail(`persisted model decision binding invalid: ${errors.join('; ')}`);
+    if (existing.decisionId !== candidate.decisionId) fail('model decision identity collision');
+    return existing;
+  }
+  const serialized = `${JSON.stringify(candidate, null, 2)}\n`;
+  const temporary = `${output}.${process.pid}.${createHash('sha256').update(`${candidate.decisionId}:${Date.now()}`).digest('hex').slice(0, 12)}.tmp`;
+  writeFileSync(temporary, serialized, { flag: 'wx', mode: 0o600 });
+  try {
+    linkSync(temporary, output);
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const existing = readJson(output);
+    if (existing.decisionId !== candidate.decisionId) fail('concurrent model decision identity collision');
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+  chmodSync(output, 0o600);
+  const persisted = readJson(output);
+  const errors = validateModelDecisionBinding(policy, runtimeAdapters, persisted, {
+    engagementId: context.engagement.engagementId,
+    engagementManifestSha256: context.sha256,
+    decisionPath: output,
+    artifactRoot: context.artifactRoot,
+  });
+  if (errors.length) fail(`persisted model decision binding invalid: ${errors.join('; ')}`);
+  return persisted;
+}
+
+function assertSchemaDocument(validate, document, label) {
+  const errors = validate(document);
+  if (errors.length) fail(`${label} does not satisfy its schema: ${formatSchemaErrors(errors)}`);
+}
+
+function formatSchemaErrors(errors) {
+  return errors.map((error) => `${error.instancePath || '/'} ${error.message}`).join('; ');
+}
+
+function positiveInteger(value, label) {
+  if (!/^[1-9][0-9]*$/.test(String(value))) fail(`${label} must be a positive integer`);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) fail(`${label} must be a safe positive integer`);
+  return parsed;
+}
+
+function nonNegativeNumber(value, label) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) fail(`${label} must be a non-negative number`);
+  return parsed;
+}
+
+function assertPhysicalWithin(root, path, label) {
+  const physicalRoot = realpathSync(root);
+  const physicalParent = realpathSync(dirname(path));
+  if (!isWithin(physicalRoot, physicalParent)) fail(`${label} escapes the physical engagement artifact root`);
 }
 
 function raciCommand(args) {
@@ -774,6 +916,7 @@ function verifyRuntimeAssets() {
 }
 
 async function preflight(argv) {
+  assertTrustedRuntimeAdapterAsset();
   const options = parsePreflightOptions(argv);
   const inventory = readJson(INVENTORY_PATH);
   const profile = options.profile ? readJson(resolve(options.profile)) : {};
@@ -1124,7 +1267,7 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
 }
 
 function agentResult(contract, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths, authorization) {
-  const model = resolveModelDecision(modelPolicy, { slug: contract.slug, runtime: 'claude', signal: 'normal' });
+  const model = buildModelRoutingPreview(modelPolicy, runtimeAdapters, { slug: contract.slug, runtime: 'claude' });
   return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed, model, missingTools, missingCapabilities, actions, artifactPaths, authorization };
 }
 

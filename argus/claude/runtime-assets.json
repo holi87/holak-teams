@@ -93,8 +93,8 @@
       "source": "argus/raci.json",
       "destination": "references/raci.json",
       "files": 1,
-      "bytes": 20510,
-      "sha256": "41cf36cad3d8df2f3dafb6ad51274f870e5dfc5882bb3c6d80d6023ad0e6d2cb"
+      "bytes": 20611,
+      "sha256": "2b0dd8e6da78c86003e6c2c7ad924b29f99a656eb0ceddc01d3093fc571a03ca"
     },
     {
       "id": "qa-doctrine-skill",
@@ -119,9 +119,9 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 31,
-      "bytes": 75796,
-      "sha256": "ab50bbf226cf2496cf13aaff3e8bd183ac6b33fee255ad209c769f9d4f5dc302"
+      "files": 32,
+      "bytes": 82879,
+      "sha256": "341421966a4d3cfa89553e1dfc4dd9617c4ae41b0d598f95f2e8161614e606c3"
     },
     {
       "id": "capability-matrix",
@@ -129,8 +129,8 @@
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
-      "bytes": 12252,
-      "sha256": "fd2b5df75a91b27f2f29243113dcea6f8f5611d6927dd15a3b56b2d1e9c9d8b6"
+      "bytes": 12486,
+      "sha256": "b4fa5da82f970f41bb65a4f46fa00b46d1e1dc7fbe26867631251a46f7f1fdf5"
     },
     {
       "id": "model-policy",
@@ -138,8 +138,17 @@
       "source": "argus/model-policy.json",
       "destination": "capabilities/model-policy.json",
       "files": 1,
-      "bytes": 7079,
-      "sha256": "873252292b48f6a91da34db156d85d1f95490c00614d91a7d4e72b7846c7a66b"
+      "bytes": 7416,
+      "sha256": "cb38a537f59c56b50ddd459cf106ec8c868c910aaf6bfaeaaf38f0b701d41d6d"
+    },
+    {
+      "id": "runtime-adapters",
+      "kind": "capabilities",
+      "source": "argus/runtime-adapters.json",
+      "destination": "capabilities/runtime-adapters.json",
+      "files": 1,
+      "bytes": 3688,
+      "sha256": "cacccae028a19625586d62df2326759945e02975419894dc090f24275dc182f6"
     },
     {
       "id": "template-policy",
@@ -174,8 +183,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 7,
-      "bytes": 116747,
-      "sha256": "0bbb3721b9d5dbe365fe57c9251a3a7539b2e1e6c7469460010bd3380358c39e"
+      "bytes": 128059,
+      "sha256": "035cfbaefad701ddefe3cbcf0a04db72b0535389ca11cb57ee9a3c4cf4052128"
     },
     {
       "id": "typescript-template",

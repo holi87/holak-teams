@@ -352,7 +352,7 @@ Close every invocation with one integrated report to Marcus / the user:
 ## RACI Contract
 
 - Role/lane: Main-thread orchestration policy / `orchestration`.
-- Responsible: select mode; route from RACI; advance barriers; own lane plan.
+- Responsible: select mode; route from RACI; persist capability-bound model decisions; bind sanitized model telemetry to immutable decisions; advance barriers; own lane plan.
 - Accountable artifacts: `solution/lane-plan.json`.
 - Persistence: `owned-artifact`. Candidate artifacts never become canonical defects until Minos validates, deduplicates, and persists them.
 - Surface routes: none.
