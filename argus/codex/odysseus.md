@@ -71,7 +71,7 @@ Exact paths are the contract; a wrong path or off-template file does not count. 
 - **`solution/TEST-STRATEGY.md`** — risk register, what/why/in-what-order, oracles, out-of-scope, traceability RISK→test→BUG, "how I used AI". Owner: Metis.
 - **`solution/ARCHITECTURE.md`** — strategy digest + top risks (Metis), HOW the framework is built (Atlas), How-we-used-AI + Summary (Kleio).
 - **`solution/ORACLES.md`** — the single source of expected behaviour; every oracle `ORC-<lane>-NNN`. Owner: Metis, seeded from Kalchas's recon. Every ACCEPTED bug carries an `oracle_id`; an unsourced rule is a NAMED residual risk, never an invented value.
-- **`tests/`** (+ `src/` shared harness) — runnable per-lane suites. Structure: Atlas. Lane suites: each lane's automation engineer.
+- **`tests/`** (+ `<selected-harness-root>/` shared harness) — runnable per-lane suites. Structure: Atlas. Lane suites: each lane's automation engineer.
 - **`run-tests.sh`** — SINGLE top-level command invoking every lane suite, emitting ONE aggregated report (`reports/html/` + `reports/results.json`). Owner: Atlas. In Mode D this is the repo's EXISTING runner, extended — not a new one.
 - **`bugs/`** — one file per bug, template verbatim (incl. Detected-by), distinct per-hunter prefixes (`ATA-/PRO-/ORI-/LYN-/ANG-/HER-/TYC-/PER-/CHA-/ARI-/TIR-/ASK-`). The lane is metadata (the `lane` field + `Detected-by`), never the filename prefix. Minos assigns canonical `BUG-NNNN` at triage, keeping the agent-initial id as an origin alias.
 - **`solution/findings/`** — path-analyst LEADS (`THE-/PEN-/PIS-` prefixes), never in `bugs/`: the lane's hunter confirms and files the counted bug, and Minos dedups the lead + its promoted bug as ONE defect.
@@ -248,7 +248,7 @@ The top-level assistant executes the plan and returns results to you for synthes
 |-----------|------|------|------|----------------------|-----------|------|
 | kalchas | Kalchas | Core | Recon: name domain, map endpoints/roles/data, enumerate modules, rank risks, run DB-access + source + Adopt-or-Build probes | `solution/discovery/` + access flags | — | W0 |
 | metis | Metis | Core | Risk-based strategy on ISO-25010 spine, lane assignments, ISTQB techniques, framework-separation, ORACLES, AI-use | `solution/TEST-STRATEGY.md`, `solution/ORACLES.md` | Kalchas | W0 |
-| atlas | Atlas | Cross | Adapt-or-build the harness + single aggregating `run-tests.sh` + green skeleton; document framework | `src/` harness, `run-tests.sh`, `reports/`, `ARCHITECTURE.md` framework section | Kalchas, Metis | W0 |
+| atlas | Atlas | Cross | Adapt-or-build the harness + single aggregating `run-tests.sh` + green skeleton; document framework | `<selected-harness-root>/` harness, `run-tests.sh`, `reports/`, `ARCHITECTURE.md` framework section | Kalchas, Metis | W0 |
 | penelope | Penelope | UI | UI regression baseline (happy-path screens × states) | `solution/paths/ui-*.md` paths spec | skeleton green | W1 |
 | theseus | Theseus | API | API regression baseline (every operation, nominal contract) | `solution/paths/api-*.md` paths spec | skeleton green | W1 |
 | pistis | Pistis | API | Consumer-driven contract baseline — pact expectations + provider verification + backward-compat matrix (multi-service targets) | `solution/paths/contract-*.md`, `solution/contracts/` (specs only — Talos implements `tests/api/contract/`) | Kalchas | W1 |

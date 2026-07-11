@@ -107,6 +107,38 @@
       ]
     },
     {
+      "value": "references/TEMPLATE-CONTRACT.md",
+      "consumers": [
+        "aegis",
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "kleio",
+        "lynceus",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
+      ]
+    },
+    {
       "value": "schemas/bug-ledger.schema.json",
       "consumers": [
         "minos"
@@ -838,82 +870,64 @@
       "value": "src/",
       "consumers": [
         "aegis",
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
         "atlas",
-        "odysseus",
-        "talos"
-      ]
-    },
-    {
-      "value": "src/api",
-      "consumers": [
-        "atlas",
-        "daidalos"
-      ]
-    },
-    {
-      "value": "src/api/auth.ts",
-      "consumers": [
-        "atlas",
+        "charon",
+        "daidalos",
         "hermes",
+        "kalchas",
+        "kleio",
+        "lynceus",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
         "tyche"
-      ]
-    },
-    {
-      "value": "src/config",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
-      "value": "src/config/env.ts",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
-      "value": "src/data",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
-      "value": "src/data/",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
-      "value": "src/fixtures",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
-      "value": "src/fixtures/",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
-      "value": "src/pages",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
-      "value": "src/pages/",
-      "consumers": [
-        "atlas"
       ]
     },
     {
       "value": "tests/",
       "consumers": [
+        "aegis",
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
         "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
         "kleio",
+        "lynceus",
+        "metis",
         "minos",
+        "mnemosyne",
+        "nike",
         "odysseus",
-        "pistis"
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
       ]
     },
     {

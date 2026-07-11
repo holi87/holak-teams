@@ -2,7 +2,7 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 550000,
+    "generatedAssetsBytes": 625000,
     "installedPluginBytes": 1750000
   },
   "assets": [
@@ -57,8 +57,17 @@
       "source": "argus/RUNNER-CONTRACT.md",
       "destination": "references/RUNNER-CONTRACT.md",
       "files": 1,
-      "bytes": 4137,
-      "sha256": "ce30e3c0297b1e711d542bcf3b888f93e43dc7a3b652b1bc2568bce6ff51210f"
+      "bytes": 5226,
+      "sha256": "6a2f7d6ecc0a5eb32a16f8fe2619d04a73c38f52525f9e837568dd5d1eec4f16"
+    },
+    {
+      "id": "template-contract",
+      "kind": "reference",
+      "source": "argus/TEMPLATE-CONTRACT.md",
+      "destination": "references/TEMPLATE-CONTRACT.md",
+      "files": 1,
+      "bytes": 2699,
+      "sha256": "fc1364327affbbe7a20ad6cc9acc8ca6605759045aa9c0d26b0e426d10056128"
     },
     {
       "id": "coverage-contract",
@@ -93,8 +102,8 @@
       "source": "argus/shared-skills/qa-doctrine",
       "destination": "skills/qa-doctrine",
       "files": 1,
-      "bytes": 8785,
-      "sha256": "926719ead01e8a5e597a762506f595e881de84c4f49cb4b3f110d6cbb03a9607"
+      "bytes": 9838,
+      "sha256": "9f9b945631b5e4b607789ed7ab3ed41591f1a4af203202d9423a427094b87b73"
     },
     {
       "id": "competition-profile-skill",
@@ -110,9 +119,9 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 26,
-      "bytes": 64822,
-      "sha256": "0c9c44494880b02d8a370539a2692807f618ad10ef828d4b806d5f332c1d5f67"
+      "files": 29,
+      "bytes": 69303,
+      "sha256": "dd9dd47e65c05261f393c1587f977a779e5c2b3c01c82357f534cc35f5c31d15"
     },
     {
       "id": "capability-matrix",
@@ -131,6 +140,15 @@
       "files": 1,
       "bytes": 7079,
       "sha256": "873252292b48f6a91da34db156d85d1f95490c00614d91a7d4e72b7846c7a66b"
+    },
+    {
+      "id": "template-policy",
+      "kind": "capabilities",
+      "source": "argus/template-contract.json",
+      "destination": "capabilities/template-contract.json",
+      "files": 1,
+      "bytes": 1918,
+      "sha256": "fe294b8ef61b7ac0b7778cf4f386587ed45efc61aa2dcdf666be51573d639132"
     },
     {
       "id": "model-policy-benchmark",
@@ -155,36 +173,36 @@
       "kind": "runtime",
       "source": "argus/runtime",
       "destination": "lib",
-      "files": 5,
-      "bytes": 89173,
-      "sha256": "08dfa0b1f61ecadef776df6ccfb9259ac3846e195f00d1caeb4b7ab4209189ce"
+      "files": 6,
+      "bytes": 113698,
+      "sha256": "27c989f4aa0e7a42743bb775a29d3636f12699cbe7cd0109caf620d8a1589348"
     },
     {
       "id": "typescript-template",
       "kind": "template",
       "source": "argus/framework-template",
       "destination": "templates/typescript",
-      "files": 49,
-      "bytes": 140020,
-      "sha256": "55dbf62c27753f01fc4112aea5fc9b48bae5007715877e6ae0dcc592b7780e74"
+      "files": 53,
+      "bytes": 144139,
+      "sha256": "f507edab6e2c815f38065ddadc7e6939e2512d9237e93c6c282dfe8aef85a177"
     },
     {
       "id": "java-template",
       "kind": "template",
       "source": "argus/framework-template-java",
       "destination": "templates/java",
-      "files": 24,
-      "bytes": 74671,
-      "sha256": "4aee92e39441986d37d8bddfa259bef24a258172b63e064667303b6e1fc74535"
+      "files": 28,
+      "bytes": 78686,
+      "sha256": "6c411d87801c195cb8522f104646f50b973f0626d8d1f7b3a691ebeec236fdb7"
     },
     {
       "id": "python-template",
       "kind": "template",
       "source": "argus/framework-template-python",
       "destination": "templates/python",
-      "files": 29,
-      "bytes": 56576,
-      "sha256": "419a7818b3a295a0cd8a3ed5f248f0668cfd628e110c246fe4f1f61479d5aef0"
+      "files": 33,
+      "bytes": 60764,
+      "sha256": "01b1f078f3d47a20255c4148ef26aefb963b42278897fd3ba1df72bfcaa0c840"
     }
   ],
   "maintainerOnly": [

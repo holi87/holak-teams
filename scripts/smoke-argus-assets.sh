@@ -18,6 +18,8 @@ node "$PLUGIN/templates/typescript/scripts/hunt-driver.mjs" --help >/dev/null
 test -f "$PLUGIN/hooks/hooks.json" || fail "plugin does not package hooks/hooks.json"
 jq -e '.assets[] | select(.id == "runtime-schemas")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits canonical schemas"
 jq -e '.assets[] | select(.id == "runner-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits runner contract"
+jq -e '.assets[] | select(.id == "template-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits template contract"
+jq -e '.assets[] | select(.id == "template-policy")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits template policy"
 jq -e '.assets[] | select(.id == "coverage-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits coverage contract"
 jq -e '.assets[] | select(.id == "raci-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits RACI contract"
 jq -e '.assets[] | select(.id == "raci-matrix")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits RACI matrix"
@@ -66,6 +68,14 @@ fi
 mkdir "$WORK_DIR/driver-target"
 (cd "$WORK_DIR" && "$INSTALLED_PLUGIN/bin/argus-assets" copy-browser-driver "$WORK_DIR/driver-target")
 mkdir "$WORK_DIR/preflight-target"
+mkdir "$WORK_DIR/template-target"
+"$INSTALLED_PLUGIN/bin/argus-assets" template detect --target "$WORK_DIR/template-target" --output "$WORK_DIR/template-capabilities.json" >/dev/null
+"$INSTALLED_PLUGIN/bin/argus-assets" template select --target "$WORK_DIR/template-target" \
+  --runtime typescript --package-manager npm --test-root qa/specs --harness-root qa/support \
+  --output "$WORK_DIR/template-selection.json" >/dev/null
+"$INSTALLED_PLUGIN/bin/argus-assets" template scaffold --selection "$WORK_DIR/template-selection.json" \
+  --destination "$WORK_DIR/selected-typescript" >/dev/null
+jq -e '.action == "build" and .choiceSource == "explicit-user"' "$WORK_DIR/selected-typescript/ai_agents_internal/template-selection.json" >/dev/null
 mkdir "$WORK_DIR/preflight-target/ai_agents_internal"
 cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-target/ai_agents_internal/authorization.json"
 (

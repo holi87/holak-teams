@@ -1,0 +1,51 @@
+{
+  "$schema": "./schemas/template-contract.schema.json",
+  "schemaVersion": 1,
+  "contractId": "argus/template-contract@1",
+  "runner": {
+    "modes": ["baseline", "defect-evidence", "candidate-regression", "full-suite"],
+    "result": "reports/argus-runner-result.json",
+    "resultSchema": "argus/runner-result@1",
+    "events": "reports/outcomes.raw.tsv",
+    "evidenceRoot": "reports/evidence",
+    "categories": ["product", "automation", "infrastructure", "skip", "policy"],
+    "exitCodes": [0, 10, 11, 12, 13, 14, 15]
+  },
+  "tags": {
+    "lanes": ["api", "ui", "perf", "security", "db"],
+    "bugLinked": "regression",
+    "quarantine": "quarantine",
+    "contractSmoke": "contract-smoke"
+  },
+  "retryPolicy": {
+    "maximumAttempts": 1,
+    "automaticRetries": false,
+    "rule": "Fix nondeterminism at its source; never hide it with retry or rerun configuration."
+  },
+  "quarantine": {
+    "ledger": "solution/quarantine.tsv",
+    "columns": ["case_id", "owner", "reason", "expires_on", "issue"],
+    "selection": "Excluded from native execution in every mode and emitted as an approved skip only while the ledger entry is valid.",
+    "missingOrExpired": "Policy failure; never a silent omission."
+  },
+  "templates": {
+    "typescript": {
+      "framework": "playwright",
+      "runner": "playwright-test",
+      "packageManagers": ["npm"],
+      "extensionPoints": ["package-manager-adapter", "test-root", "harness-root", "ci-command"]
+    },
+    "java": {
+      "framework": "junit-playwright-restassured",
+      "runner": "junit5",
+      "packageManagers": ["maven"],
+      "extensionPoints": ["build-tool-adapter", "test-root", "harness-root", "ci-command"]
+    },
+    "python": {
+      "framework": "pytest-playwright-httpx",
+      "runner": "pytest",
+      "packageManagers": ["pip"],
+      "extensionPoints": ["environment-manager-adapter", "test-root", "harness-root", "ci-command"]
+    }
+  }
+}

@@ -32,6 +32,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
+    { name: 'contract-smoke', testDir: './tests/contract' },
     // UI auth once, persisted as storageState — the canonical Playwright pattern.
     {
       name: 'setup',

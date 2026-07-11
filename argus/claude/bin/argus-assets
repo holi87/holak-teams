@@ -53,6 +53,15 @@ import {
 import { CONTRACT_KINDS, schemaId, validateCanonicalDocument } from '../lib/contracts.mjs';
 import { calculateCoverage, validateCoverageObservations, validateSurfaceInventory } from '../lib/coverage.mjs';
 import { buildModelTelemetryEvent, resolveModelDecision, validateModelPolicy } from '../lib/model-policy.mjs';
+import {
+  detectTemplateCapabilities,
+  materializeTemplateLayout,
+  resolveDetectedPackageManager,
+  selectTemplate,
+  stable as stableTemplateJson,
+  validateTemplateContract,
+  validateTemplateSelection,
+} from '../lib/template-policy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
@@ -60,6 +69,7 @@ const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
 const CAPABILITY_MATRIX_PATH = join(ROOT, 'capabilities', 'capability-matrix.json');
 const RACI_PATH = join(ROOT, 'references', 'raci.json');
 const MODEL_POLICY_PATH = join(ROOT, 'capabilities', 'model-policy.json');
+const TEMPLATE_CONTRACT_PATH = join(ROOT, 'capabilities', 'template-contract.json');
 const AUTHORIZATION_TEMPLATE_PATH = join(ROOT, 'policies', 'authorization.template.json');
 const ENGAGEMENT_TEMPLATE_PATH = join(ROOT, 'policies', 'engagement.template.json');
 const REDACTION_PATTERNS_PATH = join(ROOT, 'policies', 'redaction-patterns.json');
@@ -69,6 +79,9 @@ const matrix = readJson(CAPABILITY_MATRIX_PATH);
 const modelPolicy = readJson(MODEL_POLICY_PATH);
 const modelPolicyErrors = validateModelPolicy(modelPolicy, matrix.agents.map((agent) => agent.slug));
 if (modelPolicyErrors.length) fail(`model policy invalid: ${modelPolicyErrors.join('; ')}`);
+const templateContract = readJson(TEMPLATE_CONTRACT_PATH);
+const templateContractErrors = validateTemplateContract(templateContract);
+if (templateContractErrors.length) fail(`template contract invalid: ${templateContractErrors.join('; ')}`);
 const [command = 'help', ...args] = process.argv.slice(2);
 
 switch (command) {
@@ -112,6 +125,9 @@ switch (command) {
   case 'model':
     process.exitCode = modelCommand(args);
     break;
+  case 'template':
+    process.exitCode = templateCommand(args);
+    break;
   case 'guard':
     process.exitCode = guardCommand(args);
     break;
@@ -144,6 +160,7 @@ Usage:
   argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]
   argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
   argus-assets model <list|route|telemetry> [options]
+  argus-assets template <detect|select|scaffold> [options]
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
   argus-assets copy-template <typescript|java|python> <empty-destination>
@@ -184,8 +201,74 @@ Engagement coordination:
   barrier arrive|status|advance --manifest <path> [lease options]
   cleanup --manifest <path> --lane <slug> --token <lease> --outcome <success|failure|interrupted>
 
+Capability-based templates:
+  detect --target <repo> [--output <json|->]
+  select --target <repo> --runtime <typescript|java|python> [--package-manager <name>] --test-root <path> --harness-root <path> --output <json>
+  scaffold --selection <json> --destination <empty-directory>
+
 Templates are copied only to a new or empty directory. In ADAPT mode, copy to a
 temporary directory, diff against the target's existing harness, and merge explicitly.`);
+}
+
+function templateCommand(args) {
+  const [operation, ...rest] = args;
+  if (operation === 'detect') {
+    const options = parseNamedOptions(rest, new Set(['--target', '--output']));
+    requireOptions(options, ['target'], 'template detect');
+    const detected = detectTemplateCapabilities(options.target);
+    writeTemplateOutput(detected, options.output ?? '-');
+    return 0;
+  }
+  if (operation === 'select') {
+    const options = parseNamedOptions(rest, new Set(['--target', '--runtime', '--package-manager', '--test-root', '--harness-root', '--ci', '--output']));
+    requireOptions(options, ['target', 'runtime', 'testRoot', 'harnessRoot', 'output'], 'template select');
+    const capabilities = detectTemplateCapabilities(options.target);
+    const packageManager = options.packageManager ?? resolveDetectedPackageManager(capabilities, options.runtime, templateContract);
+    const selection = selectTemplate({
+      capabilities,
+      contract: templateContract,
+      runtime: options.runtime,
+      packageManager,
+      testRoot: options.testRoot,
+      harnessRoot: options.harnessRoot,
+      ci: options.ci ? options.ci.split(',').map((value) => value.trim()).filter(Boolean) : undefined,
+    });
+    writeTemplateOutput(selection, options.output);
+    return 0;
+  }
+  if (operation === 'scaffold') {
+    const options = parseNamedOptions(rest, new Set(['--selection', '--destination']));
+    requireOptions(options, ['selection', 'destination'], 'template scaffold');
+    const selection = readJson(resolve(options.selection));
+    const selectionErrors = validateTemplateSelection(selection, templateContract);
+    if (selectionErrors.length) fail(`template scaffold selection invalid: ${selectionErrors.join('; ')}`);
+    if (selection.action !== 'build') fail('template scaffold refuses action=adapt; extend the detected suite and its existing runner in place');
+    const current = detectTemplateCapabilities(selection.targetRoot);
+    const digest = createHash('sha256').update(stableTemplateJson(current)).digest('hex');
+    if (digest !== selection.capabilitiesSha256) fail('target capabilities changed after selection; detect and select again');
+    if (selection.unsupported?.length) fail(`template scaffold has unsupported capabilities: ${selection.unsupported.join(', ')}`);
+    copyTemplate(selection.runtime, options.destination);
+    materializeTemplateLayout(options.destination, selection);
+    const record = resolve(options.destination, 'ai_agents_internal', 'template-selection.json');
+    mkdirSync(dirname(record), { recursive: true });
+    writeFileSync(record, stableTemplateJson(selection), { mode: 0o600 });
+    chmodSync(record, 0o600);
+    console.log(`SCAFFOLDED  ${selection.runtime}/${selection.packageManager} testRoot=${selection.testRoot} harnessRoot=${selection.harnessRoot} -> ${resolve(options.destination)}`);
+    return 0;
+  }
+  fail('usage: argus-assets template <detect|select|scaffold> [options]');
+}
+
+function writeTemplateOutput(document, output) {
+  const serialized = stableTemplateJson(document);
+  if (output === '-') process.stdout.write(serialized);
+  else {
+    const path = resolve(output);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, serialized, { mode: 0o600 });
+    chmodSync(path, 0o600);
+    console.log(`WROTE  ${path}`);
+  }
 }
 
 function modelCommand(args) {

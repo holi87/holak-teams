@@ -1,9 +1,12 @@
 # Argus QA Test Framework — Java (REST Assured + Playwright)
 
-Prepped scaffold for an **Argus QA engagement**, in Java. Copy into the target repo (or run
-standalone) and adapt to the app under test at engagement start. One command, one report, a
-real layered framework — not loose test classes. Same doctrine and lane layout as the
-TypeScript template, ported to the JVM. **No Selenium** — UI is Playwright only.
+Prepped scaffold for an **Argus QA engagement**, in Java. Do not copy it directly. Run
+`argus-assets template detect`, make an explicit `template select` choice, and use
+`template scaffold` only for `action=build`. The adapter relocates Java test/support roots
+to the selected paths and records Maven as the verified build adapter. Gradle/TestNG are
+explicit extension requirements; `action=adapt` preserves the target's existing build and
+layout. Same doctrine and lane layout as the TypeScript template, ported to the JVM.
+**No Selenium** — UI is Playwright only.
 
 ## Why this stack
 
@@ -21,6 +24,11 @@ by construction: **no Surefire rerun, no retries** — flakiness is fixed at the
 hidden behind a retry.
 
 ## Run
+
+Shared contract: four runner modes, `argus/runner-result@1`, outcome TSV, retained
+redacted evidence under `reports/evidence/`, JUnit lane/regression/contract-smoke tags,
+zero Surefire reruns, and expiring `solution/quarantine.tsv` records. `@Tag("quarantine")`
+without one valid ledger row is a policy failure, not a silent skip.
 
 ```bash
 ./run-tests.sh --mode baseline          # strict green, excludes @Tag("regression")

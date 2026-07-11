@@ -60,7 +60,7 @@ Maintainers edit the canonical sources under `argus/` and run
 byte-for-byte by `--check`; the generated prompt inventory covers all 27 agents.
 `node scripts/check-argus-prompts.mjs` enforces corpus, per-agent, description, and exact
 duplication budgets; verifies every doctrine preload and the default-off optional profile;
-and checks a representative Mode A output/quality contract. The budget is 550 KB for
+and checks a representative Mode A output/quality contract. The budget is 625 KB for
 generated runtime assets and 1.75 MB for the complete installed
 plugin. `COLOR-SCHEME.md` and team graphs are intentionally maintainer-only.
 
@@ -135,6 +135,13 @@ only as explicit defect evidence; it cannot make candidate/full green gates pass
 complete inputs, outputs, lifecycle, adapter format, and exit behavior are in
 `RUNNER-CONTRACT.md`; installed path:
 `${CLAUDE_PLUGIN_ROOT}/references/RUNNER-CONTRACT.md`.
+
+Framework selection is machine-driven and operator-confirmed. Run `argus-assets template
+detect`, then `template select` with an explicit runtime and paths. Existing suites return
+`action=adapt` and cannot be scaffolded; greenfield selections can be materialized with
+`template scaffold`, which relocates internal test/harness placeholders. The shared
+`argus/template-contract@1` also standardizes evidence roots, lane/regression/quarantine
+tags, one-attempt execution, expiring quarantine records, and runtime extension points.
 
 ## Canonical QA contracts
 

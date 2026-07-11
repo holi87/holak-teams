@@ -17,7 +17,8 @@ if [ "${1:-}" = -- ]; then shift; fi
 case "$MODE" in baseline|defect-evidence|candidate-regression|full-suite) ;; *) echo "INVALID RUNNER MODE: $MODE" >&2; exit 14 ;; esac
 EVENTS="${ARGUS_OUTCOME_FILE:-reports/outcomes.raw.tsv}"
 RESULT="reports/argus-runner-result.json"
-mkdir -p reports
+TEST_ROOT="${ARGUS_TEST_ROOT:-src/test/java}"
+mkdir -p reports reports/evidence
 rm -f "$EVENTS"
 emit_event() { printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >>"$EVENTS"; }
 finish_contract() {
@@ -35,11 +36,21 @@ unexpected_error() {
 }
 trap unexpected_error ERR
 
+SELECTION="ai_agents_internal/template-selection.json"
+if [ ! -f "$SELECTION" ] || ! grep -Fq '"runtime": "java"' "$SELECTION" || ! grep -Fq '"packageManager": "maven"' "$SELECTION" || ! grep -Fq '"choiceSource": "explicit-user"' "$SELECTION"; then
+  emit_event template-selection policy denied false n/a - template-selection-missing-or-incompatible
+  finish_contract 1
+fi
+
 MODE_ARGS=()
 case "$MODE" in
-  baseline) MODE_ARGS=(-DexcludedGroups=regression) ;;
-  defect-evidence|candidate-regression) MODE_ARGS=(-Dgroups=regression) ;;
+  baseline) MODE_ARGS=(-DexcludedGroups=regression,quarantine) ;;
+  defect-evidence|candidate-regression) MODE_ARGS=(-Dgroups=regression -DexcludedGroups=quarantine) ;;
+  full-suite) MODE_ARGS=(-DexcludedGroups=quarantine) ;;
 esac
+
+tagged_count="$({ grep -Roh '@Tag("quarantine")' "$TEST_ROOT" --include='*.java' || true; } | wc -l | tr -d ' ')"
+if ! scripts/quarantine-contract.sh --events "$EVENTS" --tagged-count "$tagged_count"; then finish_contract 1; fi
 
 : "${API_URL:=http://localhost:3001}"
 : "${UI_URL:=http://localhost:3000}"
@@ -75,7 +86,7 @@ if [ "${PLAYWRIGHT_INSTALL:-1}" = "1" ]; then
 fi
 
 # Environment readiness — fail fast with a distinct message instead of a wall of red.
-for url in "$API_URL" "$UI_URL"; do
+for url in $([ "${ARGUS_CONTRACT_SMOKE:-0}" = "1" ] && printf '' || printf '%s %s' "$API_URL" "$UI_URL"); do
   ok=""
   for _ in $(seq 1 10); do
     if curl -sf --max-time 3 -o /dev/null "$url"; then ok=1; break; fi

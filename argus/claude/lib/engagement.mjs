@@ -642,6 +642,21 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     if (['list', 'validate'].includes(operation)) return allow('packaged schema command is read-only');
     return deny('unknown schema operation');
   }
+  if (primary === 'template') {
+    if (operation === 'detect') {
+      const output = optionValue(tokens, '--output') ?? '-';
+      return output === '-' ? allow('template capability detection is read-only') : { paths: [output] };
+    }
+    if (operation === 'select') {
+      const output = optionValue(tokens, '--output');
+      return output ? { paths: [output] } : deny('template selection output is missing');
+    }
+    if (operation === 'scaffold') {
+      const destination = optionValue(tokens, '--destination');
+      return destination ? { paths: [destination] } : deny('template scaffold destination is missing');
+    }
+    return deny('unknown template operation');
+  }
   if (primary === 'preflight') {
     const root = optionValue(tokens, '--artifact-root') ?? manifest.artifactRoot;
     const output = optionValue(tokens, '--output') ?? 'ai_agents_internal/preflight.json';

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "runtime": "typescript",
+  "sharedContract": "argus/template-contract@1",
+  "framework": "playwright",
+  "runner": "playwright-test",
+  "packageManagers": ["npm"],
+  "layoutPlaceholders": { "testRoot": "tests", "harnessRoot": "src" },
+  "tagAdapter": { "contract-smoke": "@contract-smoke", "quarantine": "@quarantine", "regression": "@bug:BUG-NNNN" },
+  "extensionPoints": ["package-manager-adapter", "test-root", "harness-root", "ci-command"],
+  "unsupportedByDefault": ["pnpm", "yarn", "bun", "jest", "vitest"]
+}

@@ -1,6 +1,12 @@
 # Argus QA Test Framework — pytest + Playwright + httpx (API + UI)
 
-Prepped scaffold for an **Argus QA engagement** in Python. Copy into the target repo (or run standalone) and adapt to the app under test at engagement start. One command, one aggregated report, a real layered framework — not loose test files.
+Prepped scaffold for an **Argus QA engagement** in Python. Do not copy it directly. Run
+`argus-assets template detect`, make an explicit `template select` choice, and use
+`template scaffold` only for `action=build`. The adapter relocates test/harness roots to
+the selected paths and records pip/venv as the verified environment adapter. uv, Poetry,
+and unittest are explicit extension requirements; `action=adapt` preserves the target's
+existing environment, runner, and layout. One command, one aggregated report, a real
+layered framework — not loose test files.
 
 This is the Python sibling of the TypeScript template (`../framework-template/`): same doctrine, same lane layout, ported to pytest. **No Selenium — UI is Playwright only.**
 
@@ -15,6 +21,11 @@ This is the Python sibling of the TypeScript template (`../framework-template/`)
 Determinism is a feature: **no retries, no rerun plugin**. Flakiness is fixed at the source, never hidden.
 
 ## Run
+
+Shared contract: four runner modes, `argus/runner-result@1`, outcome TSV, retained
+redacted evidence under `reports/evidence/`, pytest lane/regression/contract-smoke markers,
+zero reruns, and expiring `solution/quarantine.tsv` records. `pytest.mark.quarantine`
+without one valid ledger row is a policy failure, not a silent skip.
 ```bash
 ./run-tests.sh --mode baseline             # strict green, excludes regression
 ./run-tests.sh --mode defect-evidence      # known RED only; requires adapter events

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/template-contract.schema.json",
+  "title": "Argus shared template contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "contractId", "runner", "tags", "retryPolicy", "quarantine", "templates"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "argus/template-contract@1" },
+    "runner": { "type": "object" },
+    "tags": { "type": "object" },
+    "retryPolicy": { "type": "object" },
+    "quarantine": { "type": "object" },
+    "templates": {
+      "type": "object",
+      "required": ["typescript", "java", "python"],
+      "additionalProperties": false,
+      "properties": {
+        "typescript": { "$ref": "#/$defs/template" },
+        "java": { "$ref": "#/$defs/template" },
+        "python": { "$ref": "#/$defs/template" }
+      }
+    }
+  },
+  "$defs": {
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["framework", "runner", "packageManagers", "extensionPoints"],
+      "properties": {
+        "framework": { "type": "string", "minLength": 1 },
+        "runner": { "type": "string", "minLength": 1 },
+        "packageManagers": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+        "extensionPoints": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } }
+      }
+    }
+  }
+}

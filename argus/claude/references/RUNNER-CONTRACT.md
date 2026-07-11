@@ -32,6 +32,24 @@ case_id  category  status  expected  lifecycle  bug_id  reason
 - bug ID: `BUG-NNNN` for defect lifecycle events, otherwise `-`;
 - every field is a safe machine token; detailed/redacted evidence stays in referenced reports.
 
+Every runtime stores retained, redacted evidence below `reports/evidence/` and links it
+through the canonical evidence-reference contract. Lane semantics are `api`, `ui`,
+`perf`, `security`, and `db`; bug-linked tests use `regression`; target-independent
+scaffold validation uses `contract-smoke` (framework-native spelling may be adapted).
+
+## Retry and quarantine semantics
+
+Automatic retries and reruns are disabled in every template (`maximumAttempts: 1`). A
+failure is evidence to diagnose, not noise to hide.
+
+Quarantine is an expiring, auditable exception. A quarantined test carries the runtime's
+quarantine tag and has exactly one row in `solution/quarantine.tsv`:
+`case_id`, `owner`, safe reason token, `expires_on`, and issue token. All modes exclude
+that tag from native execution, while `scripts/quarantine-contract.sh` emits an approved
+skip for each valid row. A tag/ledger count mismatch, malformed row, or expired entry is
+a policy failure (exit 13), never a silent skip. The portable quarantine evaluator is
+byte-identical across TypeScript, Java, and Python templates.
+
 If the underlying runner fails without adapter events, the wrapper emits an unexpected
 `infrastructure` outcome. In `defect-evidence`, an absent/empty adapter file is a contract
 failure rather than inferred success. This prevents an unrelated crash from being

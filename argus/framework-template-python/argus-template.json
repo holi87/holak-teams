@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "runtime": "python",
+  "sharedContract": "argus/template-contract@1",
+  "framework": "pytest-playwright-httpx",
+  "runner": "pytest",
+  "packageManagers": ["pip"],
+  "layoutPlaceholders": { "testRoot": "tests", "harnessRoot": "src" },
+  "tagAdapter": { "contract-smoke": "pytest.mark.contract_smoke", "quarantine": "pytest.mark.quarantine", "regression": "pytest.mark.regression" },
+  "extensionPoints": ["environment-manager-adapter", "test-root", "harness-root", "ci-command"],
+  "unsupportedByDefault": ["uv", "poetry", "unittest"]
+}
