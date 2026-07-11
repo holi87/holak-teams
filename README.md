@@ -13,7 +13,7 @@
 > ```
 > Start Argus from the current main thread with
 > `/argus:run <target and QA scope>`.
-> Canonical repo + marketplace doc: **[AGENTS.md](AGENTS.md)** (mirrored as `CLAUDE.md`). Manual / Codex install: **[INSTALL.md](INSTALL.md)**.
+> Canonical repo + marketplace doc: **[AGENTS.md](AGENTS.md)** (mirrored as `CLAUDE.md`). Manual / Codex install: **[INSTALL.md](INSTALL.md)**. Release gate: **[RELEASE.md](RELEASE.md)**.
 
 You tell **Marcus** what you want — he picks people from the roster, names them, splits up the work, merges results. For a direct QA / testing / bug-hunt engagement, `/argus:run` keeps orchestration in the current main Claude Code conversation, applies **Odysseus** as the policy, dispatches the Argus lanes, and collects their results. Claude Code agent defs live under each team's `claude/agents/` (the plugin root is `claude/`); Codex-compatible variants live under each team's `codex/` with the same names and slugs.
 

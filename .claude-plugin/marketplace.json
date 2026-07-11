@@ -6,7 +6,7 @@
     "email": "holi87@gmail.com"
   },
   "description": "Two themed Claude Code sub-agent teams: Hephaestus (software delivery, Roman names) and Argus (QA, Greek names). Each is a single-entry-point, hub-and-spoke crew of specialist sub-agents.",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "plugins": [
     {
       "name": "hephaestus",
@@ -15,16 +15,35 @@
       "description": "Roman-named software-delivery team. One entry point (marcus) decomposes the goal, designs a named team, dispatches BA / dev / management / QA specialists, and synthesises the result. 22 sub-agents, hub-and-spoke.",
       "version": "1.1.0",
       "category": "Development",
-      "keywords": ["agents", "team", "orchestration", "delivery", "backend", "frontend", "devops", "qa"]
+      "keywords": [
+        "agents",
+        "team",
+        "orchestration",
+        "delivery",
+        "backend",
+        "frontend",
+        "devops",
+        "qa"
+      ]
     },
     {
       "name": "argus",
       "source": "./argus/claude",
       "displayName": "Argus — QA Team",
       "description": "Self-contained Greek-named QA team with explicit runner modes, versioned QA contracts, capability preflight, deny-by-default authorization, and deterministic parallel coordination.",
-      "version": "1.16.0",
+      "version": "1.17.0",
       "category": "Testing",
-      "keywords": ["agents", "qa", "testing", "bug-hunting", "playwright", "security", "accessibility", "performance", "automation"]
+      "keywords": [
+        "agents",
+        "qa",
+        "testing",
+        "bug-hunting",
+        "playwright",
+        "security",
+        "accessibility",
+        "performance",
+        "automation"
+      ]
     }
   ]
 }

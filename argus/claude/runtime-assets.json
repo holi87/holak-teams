@@ -120,8 +120,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 29,
-      "bytes": 69303,
-      "sha256": "dd9dd47e65c05261f393c1587f977a779e5c2b3c01c82357f534cc35f5c31d15"
+      "bytes": 70490,
+      "sha256": "7f7d610bbc4a33afe9c6523d4cf4785f4f27f8f1525a549247b91a772078c53b"
     },
     {
       "id": "capability-matrix",

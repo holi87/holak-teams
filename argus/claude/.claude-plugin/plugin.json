@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "argus",
   "displayName": "Argus — QA Team",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "description": "Self-contained Greek-named QA team with explicit runner modes, versioned QA contracts, capability preflight, deny-by-default authorization, and deterministic parallel coordination.",
   "author": {
     "name": "Grzegorz Holak",
@@ -10,5 +10,16 @@
   },
   "homepage": "https://github.com/holi87/holak-teams",
   "repository": "https://github.com/holi87/holak-teams",
-  "keywords": ["agents", "qa", "testing", "bug-hunting", "quality", "playwright", "security", "accessibility", "performance", "automation"]
+  "keywords": [
+    "agents",
+    "qa",
+    "testing",
+    "bug-hunting",
+    "quality",
+    "playwright",
+    "security",
+    "accessibility",
+    "performance",
+    "automation"
+  ]
 }

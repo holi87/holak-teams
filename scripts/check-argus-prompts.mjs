@@ -4,7 +4,9 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const rootIndex = process.argv.indexOf('--root');
+const ROOT = rootIndex >= 0 ? resolve(process.argv[rootIndex + 1] ?? '') : defaultRoot;
 const AGENTS = join(ROOT, 'argus/claude/agents');
 const budget = readJson('argus/prompt-budgets.json');
 const comparison = readJson('argus/prompt-engagement-contract.json');
@@ -20,13 +22,17 @@ assert(competition === packagedCompetition, 'packaged competition-profile differ
 assert(/disable-model-invocation:\s*true/.test(competition), 'competition-profile must require explicit invocation');
 
 const agents = new Map();
+const agentWords = {};
 let totalWords = 0;
+const corpusHash = createHash('sha256');
 for (const file of files) {
   const slug = file.slice(0, -3);
   const content = readFileSync(join(AGENTS, file), 'utf8');
   agents.set(slug, content);
   const count = words(content);
+  agentWords[slug] = count;
   totalWords += count;
+  corpusHash.update(`${file}\0${content}`);
   assert(count <= budget.budgets.maxAgentWords, `${slug}: ${count} words exceeds ${budget.budgets.maxAgentWords}`);
   const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
   const description = frontmatter.match(/^description:\s*(.+)$/m)?.[1] ?? '';
@@ -34,6 +40,23 @@ for (const file of files) {
   assert(words(description) <= budget.budgets.maxDescriptionWords, `${slug}: description exceeds ${budget.budgets.maxDescriptionWords} words`);
   assert(/^skills:\s*\n(?:\s+-\s+[^\n]+\n)*\s+-\s+qa-doctrine\s*$/m.test(frontmatter), `${slug}: qa-doctrine is not preloaded`);
   assert(!/^\s+-\s+competition-profile\s*$/m.test(frontmatter), `${slug}: optional competition-profile is preloaded`);
+}
+
+const corpusSha256 = corpusHash.digest('hex');
+const approvedAgents = budget.approvedCorpus.agents;
+assert(Object.keys(approvedAgents).sort().join(',') === [...agents.keys()].sort().join(','),
+  'approved prompt corpus roster differs from the current 27-agent roster');
+const increases = Object.fromEntries(Object.entries(agentWords)
+  .filter(([slug, count]) => count > approvedAgents[slug])
+  .map(([slug, count]) => [slug, count - approvedAgents[slug]]));
+if (Object.keys(increases).length > 0 || totalWords > budget.approvedCorpus.words) {
+  const approval = budget.regressionApproval;
+  assert(approval, `prompt regression requires explicit regressionApproval: ${JSON.stringify(increases)}`);
+  assert(approval.corpusSha256 === corpusSha256, 'regressionApproval does not match the current prompt corpus SHA-256');
+  assert(/^#[0-9]+$/.test(approval.issue) && approval.approvedBy && approval.reason,
+    'regressionApproval requires an issue, approver, and reason');
+  assert(JSON.stringify(approval.allowedAgentIncreases) === JSON.stringify(increases),
+    `regressionApproval must exactly enumerate agent increases: ${JSON.stringify(increases)}`);
 }
 
 const reduction = 1 - totalWords / budget.baseline.claudeAgentWords;
@@ -68,6 +91,7 @@ for (const requirement of comparison.representativeEngagement.requirements) {
 }
 
 console.log(`PASS  Argus prompt budget: ${totalWords}/${budget.budgets.maxClaudeAgentWords} words (${(reduction * 100).toFixed(2)}% reduction from ${budget.baseline.claudeAgentWords})`);
+console.log(`PASS  Prompt regression gate: ${Object.keys(increases).length} agent increases, corpus ${corpusSha256.slice(0, 12)}, explicit approval ${Object.keys(increases).length ? 'verified' : 'not required'}`);
 console.log(`PASS  Shared doctrine: ${files.length} preloads, ${duplicates.length} duplicated doctrine paragraphs, competition profile opt-in`);
 console.log(`PASS  Representative Mode ${comparison.representativeEngagement.mode} engagement: ${comparison.representativeEngagement.requirements.length} output and quality requirements preserved`);
 

@@ -9,62 +9,22 @@ permissions:
   contents: read
 
 jobs:
-  capability-preflight:
-    name: Capability preflight environments
+  release-contracts:
+    name: Full marketplace release gate
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Use Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Verify full, partial, insufficient, and unsafe-path environments
-        run: scripts/smoke-argus-preflight.sh
+      - name: Install Claude Code CLI
+        run: npm install --global @anthropic-ai/claude-code
 
-      - name: Verify authorization, production safety, untrusted content, and redaction
-        run: scripts/smoke-argus-authorization.sh
-
-      - name: Verify target immutability and parallel engagement coordination
-        run: scripts/smoke-argus-engagement.sh
-
-      - name: Verify accessibility and managed browser-session policy
-        run: scripts/smoke-argus-browser-policy.sh
-
-      - name: Verify versioned canonical QA contracts and fixtures
-        run: scripts/smoke-argus-schemas.sh
-
-      - name: Verify runner modes, lifecycle, categories, and exit codes
-        run: scripts/smoke-argus-runner-contract.sh
-
-      - name: Verify capability-based templates in clean representative projects
-        run: scripts/smoke-argus-templates.sh
-
-      - name: Verify surface-derived coverage and defect-neutral quality metrics
-        run: scripts/smoke-argus-coverage.sh
-
-      - name: Verify RACI ownership, descriptions, roster, and runtime routing
-        run: scripts/smoke-argus-raci.sh
-
-      - name: Verify prompt budgets, doctrine preload, duplication, and engagement parity
-        run: node scripts/check-argus-prompts.mjs
-
-      - name: Verify model tiers, effort, turns, escalation, telemetry, and benchmark
-        run: scripts/smoke-argus-model-policy.sh && node scripts/benchmark-argus-model-policy.mjs --check
-
-  agent-contracts:
-    name: Agent and packaged-runtime contracts
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Use Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Verify agent, entry-point, asset, and capability contracts
-        run: scripts/verify-agents.sh
+      - name: Run the documented full release validation
+        run: scripts/validate-release.sh

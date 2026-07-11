@@ -12,6 +12,8 @@ trap 'rm -rf "$WORK"' EXIT
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 
+node "$ROOT/scripts/validate-argus-schemas.mjs"
+
 for kind in bug-ledger lane-plan evidence-reference automation-status surface-inventory coverage-observations coverage-result final-summary; do
   "$CLI" schema validate --kind "$kind" --input "$FIXTURES/valid/$kind.json" >/dev/null
   if "$CLI" schema validate --kind "$kind" --input "$FIXTURES/invalid/$kind.json" >/dev/null 2>&1; then
