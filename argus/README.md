@@ -48,7 +48,7 @@ Marketplace installs are self-contained. The plugin ships:
 - `${CLAUDE_PLUGIN_ROOT}/skills/qa-doctrine/` — the canonical contract preloaded into all 27 specialists exactly once;
 - `${CLAUDE_PLUGIN_ROOT}/skills/competition-profile/` — an explicit opt-in adapter that is disabled and never preloaded by default;
 - `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, RACI/canonical ownership, and shared doctrine;
-- `${CLAUDE_PLUGIN_ROOT}/capabilities/` — the mode-aware capability matrix for all 27 roles;
+- `${CLAUDE_PLUGIN_ROOT}/capabilities/` — the mode-aware capability matrix plus generated model policy and sanitized benchmark;
 - `${CLAUDE_PLUGIN_ROOT}/policies/` + `lib/` — authorization/engagement templates, redaction patterns, guards, and atomic controllers;
 - `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` — active `PreToolUse` target-immutability guard;
 - `${CLAUDE_PLUGIN_ROOT}/schemas/` — runtime, engagement, canonical QA-contract, and browser-driver schemas;
@@ -147,9 +147,17 @@ The ownership source of truth is `raci.json`, rendered as `RACI-CONTRACT.md`. Us
 transitions. The RACI sync gate validates all 27 prompt descriptions and generated
 contract blocks against the same source used for the roster below.
 
+The model source of truth is `model-policy.json`, rendered as
+[`MODEL-POLICY.md`](MODEL-POLICY.md). It defines 10 frontier and 17 standard roles, native
+Claude/Codex models and effort, maximum turns, upward-only or fail-closed fallback, and
+dynamic escalation signals. No full role may use the mechanical Haiku/Luna tier.
+`argus-assets model route` resolves dispatches and `argus-assets model telemetry` records
+only sanitized token/latency/provider-cost metrics. The committed synthetic benchmark
+compares Opus and Sonnet without storing prompts, completions, or target data.
+
 ## Roster (`claude/` + `codex/`)
 
-The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 27 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. Codex model mapping: source roles `sonnet` use `terra` + `medium`, and source roles `opus` use `sol` + `xhigh`.
+The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 27 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. The generated policy maps source roles `sonnet` to `terra` + `medium`, and `opus` to `sol` + `xhigh`; see `MODEL-POLICY.md` for the 10/17 roster and turn budgets.
 
 <!-- RACI_ROSTER_START -->
 | Agent | Role | Lane | Persistence |

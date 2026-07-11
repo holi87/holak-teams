@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holak-teams.local/argus/model-policy.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "policyId", "baseline", "tiers", "fallbackPolicies", "escalationProfiles", "mechanicalDowngrade", "telemetry", "roles"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "policyId": { "const": "argus/model-policy@1" },
+    "baseline": { "type": "object" },
+    "tiers": { "type": "object", "required": ["frontier", "standard", "mechanical"] },
+    "fallbackPolicies": { "type": "object", "required": ["frontier-fail-closed", "upward-only"] },
+    "escalationProfiles": { "type": "object" },
+    "mechanicalDowngrade": { "type": "object" },
+    "telemetry": { "type": "object" },
+    "roles": {
+      "type": "array",
+      "minItems": 27,
+      "maxItems": 27,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slug", "tier", "maxTurns", "escalationProfile", "fallbackPolicy", "mechanicalDowngrade"],
+        "properties": {
+          "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "tier": { "enum": ["frontier", "standard"] },
+          "maxTurns": { "type": "integer", "minimum": 1, "maximum": 200 },
+          "escalationProfile": { "type": "string" },
+          "fallbackPolicy": { "enum": ["frontier-fail-closed", "upward-only"] },
+          "mechanicalDowngrade": { "const": false }
+        }
+      }
+    }
+  }
+}

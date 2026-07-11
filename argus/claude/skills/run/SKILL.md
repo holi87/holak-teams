@@ -93,6 +93,19 @@ phase:
    inaccessible/untestable surfaces are invalid engagement inputs.
    Use `baseline`, `defect-evidence`, `candidate-regression`, and `full-suite` only for
    their documented purpose; never interpret a known RED as a green regression gate.
+10. Resolve every selected role through
+    `argus-assets model route --agent <slug> --runtime claude --signal normal` and pass
+    its model, effort, and maximum-turn decision into dispatch. Rerun routing with the
+    exact signal when ambiguity, safety, cross-lane conflict, conflicting evidence,
+    oracle ambiguity, schema-validation failure, repeated failure, turn limit, or model
+    unavailability occurs. Standard roles may escalate only upward to frontier. A blocked
+    frontier decision stops that dispatch and escalates to the operator; never silently
+    choose a weaker model. Verify that the current `Agent` runtime can honor the returned
+    model, effort, and maximum turns together; if any field cannot be applied, block that
+    escalation as capability drift rather than approximating it. Full roles never downgrade to mechanical. After each result,
+    append sanitized token/latency/provider-cost metrics with
+    `argus-assets model telemetry`; never record prompts, completions, targets, accounts,
+    paths, tokens, or evidence.
 
 Do not replace a failed preflight with a delegation plan. Never claim that agents ran
 unless their `Agent` calls completed and their returned results were collected.
@@ -119,7 +132,8 @@ remains active, return exactly `ARGUS_SMOKE_OK: argus:kleio,argus:theseus`, and 
 2. Build the mode-scoped dispatch table from Odysseus's contract and the persisted
    preflight agent records. No report record means no dispatch.
 3. Dispatch independent specialists concurrently in bounded waves. Use the exact
-   plugin-namespaced type `argus:<slug>` for every Argus specialist.
+   plugin-namespaced type `argus:<slug>` for every Argus specialist and the current
+   selected model decision from `argus-assets model route`.
 4. Enforce the manifest phase barriers: discovery, hunting, automation, verification,
    then reporting. A worker records a monotonic checkpoint and `barrier arrive`; Odysseus
    advances only when `barrier status` has no missing participant. Never dispatch the next

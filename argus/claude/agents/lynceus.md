@@ -2,7 +2,9 @@
 name: lynceus
 description: UI presentation hunter. Persists LYN candidates for layout, format, locale, and rendering; functional behavior belongs to Orion, accessibility to Antigone, and validation to Minos.
 tools: Read, Grep, Glob, Bash, Write, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_resize, mcp__plugin_playwright_playwright__browser_evaluate
-model: opus
+model: sonnet
+effort: medium
+maxTurns: 40
 color: red
 skills:
   - qa-doctrine
@@ -89,6 +91,15 @@ Past runs let PRESENTATION defects escape even with the catalog driven, because 
 
 Each finding → one `LYN-NNN` bug file + RED regression from Daidalos via Odysseus, recording the discovered constant (locale/diacritic set, currency minor unit, threshold `N` + inclusive/exclusive rule, view list an amount spans) so the oracle reproduces without re-deriving. Manual-only is not an end state.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `standard`; maximum turns: `40`.
+- Claude: `sonnet` / `medium`; Codex: `terra` / `medium`.
+- Escalation profile `judgment`: lynceus: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `upward-only`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

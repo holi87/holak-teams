@@ -3,6 +3,8 @@ name: pistis
 description: Gated consumer-contract analyst. Owns contract path specifications for confirmed multi-service targets; Proteus or Atalanta discovers defects, Minos validates, and Talos automates.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
 model: sonnet
+effort: medium
+maxTurns: 40
 color: yellow
 skills:
   - qa-doctrine
@@ -76,6 +78,15 @@ Past runs let cross-service drift escape because no one owned the contract BETWE
 - **Backward-compatibility diff (additive-only).** For each evolving provider, spec the per-field/enum/status additive-only check: removal / type-narrowing / enum-shrink / response-`required` tightening / consumer-relied status change without a new version = RED. Additive deltas (new optional field, new endpoint, widened input enum) = GREEN-compatible. Drives Talos's contract-diff check.
 - Hand these tightened specs to Talos as the 100%-green provider-verification + consumer-pact suite; cross-service drift then surfaces as RED at the exact pact and field, not a silent pass on both sides.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `standard`; maximum turns: `40`.
+- Claude: `sonnet` / `medium`; Codex: `terra` / `medium`.
+- Escalation profile `schema-bound`: pistis: schema-validation-failure, ambiguity, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `upward-only`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

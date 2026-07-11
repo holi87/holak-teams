@@ -88,13 +88,37 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slug", "lane", "selected", "status", "dispatchAllowed", "missingTools", "missingCapabilities", "actions", "artifactPaths", "authorization"],
+        "required": ["slug", "lane", "selected", "status", "dispatchAllowed", "model", "missingTools", "missingCapabilities", "actions", "artifactPaths", "authorization"],
         "properties": {
           "slug": { "type": "string", "minLength": 1 },
           "lane": { "type": "string", "minLength": 1 },
           "selected": { "type": "boolean" },
           "status": { "enum": ["not-selected", "ready", "degraded", "deferred", "skipped", "blocked"] },
           "dispatchAllowed": { "type": "boolean" },
+          "model": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["schema", "policyId", "agent", "runtime", "signal", "status", "baselineTier", "selectedTier", "model", "effort", "maxTurns", "escalationProfile", "fallbackPolicy", "fallbackUsed", "operatorEscalation", "weakerFallbackAllowed", "reason"],
+            "properties": {
+              "schema": { "const": "argus/model-decision@1" },
+              "policyId": { "const": "argus/model-policy@1" },
+              "agent": { "type": "string" },
+              "runtime": { "const": "claude" },
+              "signal": { "const": "normal" },
+              "status": { "enum": ["selected", "blocked"] },
+              "baselineTier": { "enum": ["frontier", "standard"] },
+              "selectedTier": { "enum": ["frontier", "standard", "mechanical"] },
+              "model": { "enum": ["opus", "sonnet", "haiku"] },
+              "effort": { "enum": ["low", "medium", "high", "max"] },
+              "maxTurns": { "type": "integer", "minimum": 1 },
+              "escalationProfile": { "type": "string" },
+              "fallbackPolicy": { "enum": ["frontier-fail-closed", "upward-only"] },
+              "fallbackUsed": { "type": "boolean" },
+              "operatorEscalation": { "type": "boolean" },
+              "weakerFallbackAllowed": { "const": false },
+              "reason": { "type": "string" }
+            }
+          },
           "missingTools": { "$ref": "#/$defs/stringList" },
           "missingCapabilities": { "$ref": "#/$defs/stringList" },
           "actions": { "$ref": "#/$defs/stringList" },

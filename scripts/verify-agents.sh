@@ -19,6 +19,8 @@
 #   l) all framework templates share explicit runner modes, lifecycle, categories, and exits
 #   m) coverage is derived from discovered target surfaces and defects cannot improve it
 #   n) all agent, artifact, transition, and routing ownership comes from one RACI source
+#   o) shared doctrine is preloaded once and prompt size/duplication budgets hold
+#   p) one model source controls Claude/Codex tiers, effort, turns, escalation, and telemetry
 #
 # Exit code: 0 when every check passes, 1 otherwise.
 
@@ -257,6 +259,12 @@ if node "$ROOT/scripts/check-argus-prompts.mjs"; then
   pass "[argus] (o) preloaded doctrine, prompt budgets, duplicate detection, and engagement regression contract"
 else
   fail "[argus] (o) compact prompt and shared-doctrine contract"
+fi
+
+if "$ROOT/scripts/smoke-argus-model-policy.sh" && node "$ROOT/scripts/benchmark-argus-model-policy.mjs" --check; then
+  pass "[argus] (p) 10/17 model tiers, effort/turns, escalation/fallback, sanitized telemetry, and benchmark"
+else
+  fail "[argus] (p) runtime model policy contract"
 fi
 
 echo ""

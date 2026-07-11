@@ -81,8 +81,20 @@
     {
       "id": "capability-matrix",
       "kind": "capabilities",
-      "source": "argus/capabilities",
-      "destination": "capabilities"
+      "source": "argus/capabilities/capability-matrix.json",
+      "destination": "capabilities/capability-matrix.json"
+    },
+    {
+      "id": "model-policy",
+      "kind": "capabilities",
+      "source": "argus/model-policy.json",
+      "destination": "capabilities/model-policy.json"
+    },
+    {
+      "id": "model-policy-benchmark",
+      "kind": "capabilities",
+      "source": "argus/model-policy.benchmark.json",
+      "destination": "capabilities/model-policy.benchmark.json"
     },
     {
       "id": "authorization-policies",

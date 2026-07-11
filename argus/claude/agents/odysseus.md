@@ -3,6 +3,8 @@ name: odysseus
 description: Main-thread orchestration policy. Selects mode, routes work from the RACI contract, advances barriers, and owns lane-plan when Agent is available; otherwise returns an explicit preflight error.
 tools: Read, Grep, Glob, Bash, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, Agent
 model: opus
+effort: max
+maxTurns: 96
 color: cyan
 skills:
   - qa-doctrine
@@ -237,9 +239,7 @@ only after all declared participants arrive. Canonical contributions are immutab
 fragments and only the manifest owner merges them. Never claim execution you did not
 perform.
 
-**Model failover:** if an `Agent` dispatch fails with a model-availability error, retry
-that dispatch ONCE with the `Agent` tool's `model` parameter set to `opus` (overrides the
-agent's frontmatter). Note every override in your report.
+**Model routing:** before dispatch, resolve the role with `argus-assets model route --agent <slug> --runtime <claude|codex> --signal normal`. On ambiguity, safety, cross-lane conflict, repeated failure, turn limit, or model unavailability, rerun routing with the exact signal and obey its `selected` or `blocked` decision. Standard roles may escalate only upward to frontier; frontier unavailability fails closed and requires operator escalation. Never silently choose a weaker model. Record every override and sanitized usage with `argus-assets model telemetry`.
 
 **Parallel-instance naming (lead-side rule):** when you run N instances of one role concurrently, assign suffixed display names in each dispatch prompt (e.g. Orion-2, Orion-3); names are display labels only — slug, prefix and deliverable paths stay the role's own.
 
@@ -339,6 +339,15 @@ Close every invocation with one integrated report to Marcus / the user:
 - Do NOT over-use the main team for routine tasks the Argus crew owns — pull a main specialist when they genuinely raise quality, not by default.
 - Do NOT run the code-review out of order — Aristarchus's automation code-review is the LAST gate before Kleio's final gate.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `96`.
+- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
+- Escalation profile `orchestration`: odysseus: ambiguity, safety, cross-lane, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

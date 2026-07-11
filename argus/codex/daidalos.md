@@ -192,6 +192,15 @@ Emit a line: (1) on start, (2) at every phase boundary, (3) after each discrete 
 ## Token Economy
 Communication is overhead; artifacts are the product. Keep status updates, summaries and RESULT envelopes terse: facts in fragments over prose, no restated context, no process narration, no praise. Reference paths + line ranges (or a <=3-line excerpt) instead of pasting files or logs. Never echo your dispatch prompt or upstream results back — point at them. Full quality stays in the deliverables themselves (docs, bug reports, code, tests, READMEs); economy applies to communication, never to submitted artifacts. Status + RESULT envelopes may use caveman-terse style (drop articles/filler/pleasantries, fragments OK); this applies to inter-agent communication ONLY — every submitted artifact stays full, correct, complete prose.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `standard`; maximum turns: `56`.
+- Claude: `sonnet` / `medium`; Codex: `terra` / `medium`.
+- Escalation profile `execution`: daidalos: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `upward-only`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

@@ -72,6 +72,8 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   ├── framework-template-python/ # pytest + Playwright + httpx (shared reference)
 │   ├── AUTHORIZATION-POLICY.md   # canonical authorization and redaction contract
 │   ├── ENGAGEMENT-POLICY.md      # canonical concurrency and ownership contract
+│   ├── MODEL-POLICY.md           # generated model/effort/turn/escalation table
+│   ├── model-policy*.json        # canonical source + synthetic benchmark evidence
 │   ├── policies/ + runtime/      # canonical policy data + evaluator sources
 │   ├── COLOR-SCHEME.md          # colors by role type
 │   ├── shared-skills/           # canonical doctrine + optional profile sources
@@ -137,7 +139,7 @@ Example pools (Marcus extends freely, keep the team's theme):
 - **Sonnet + escalation to Opus** (12): Varro, Fabricius, Maximus, Lucius, Tiberius, Fabius, Boethius, Mercury, Cato, Appius, Janus, Cicero — daily work; flag hard/risky decisions for review by Marcus.
 - **Haiku** (3): Numa, Regulus, Tacitus — fast, narrow, cheap tasks.
 
-The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with mixed model tiers from the frontmatter (19 opus + 8 sonnet; details below).
+The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 10 frontier / 17 standard policy from `argus/model-policy.json`.
 
 **Codex runtime mapping for both teams:** Claude `opus` source roles run on `sol` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles run on `terra` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles run on `luna` with `model_reasoning_effort = "medium"`.
 
@@ -186,27 +188,27 @@ Every agent runs on an **Anthropic** model under Claude Code and on a **mapped O
 | Theseus | `theseus` | API test-path analyst | sonnet | terra · medium |
 | Penelope | `penelope` | UI test-path analyst | sonnet | terra · medium |
 | Pistis | `pistis` | Consumer-driven contract analyst (Pact) | sonnet | terra · medium |
-| Atalanta | `atalanta` | API / data-integrity hunter | opus | sol · xhigh |
-| Proteus | `proteus` | Multi-protocol API hunter (GraphQL/gRPC/WS/async) | opus | sol · xhigh |
-| Orion | `orion` | UI functional hunter | opus | sol · xhigh |
-| Lynceus | `lynceus` | UI presentation / i18n hunter | opus | sol · xhigh |
+| Atalanta | `atalanta` | API / data-integrity hunter | sonnet | terra · medium |
+| Proteus | `proteus` | Multi-protocol API hunter (GraphQL/gRPC/WS/async) | sonnet | terra · medium |
+| Orion | `orion` | UI functional hunter | sonnet | terra · medium |
+| Lynceus | `lynceus` | UI presentation / i18n hunter | sonnet | terra · medium |
 | Ariadne | `ariadne` | Deep-journey / business-rule hunter | opus | sol · xhigh |
-| Hermes | `hermes` | Performance hunter (structural oracles) | opus | sol · xhigh |
+| Hermes | `hermes` | Performance hunter (structural oracles) | sonnet | terra · medium |
 | Tyche | `tyche` | Resilience / chaos hunter (fault injection) | opus | sol · xhigh |
 | Perseus | `perseus` | Security hunter (STRIDE/OWASP) | opus | sol · xhigh |
-| Antigone | `antigone` | Accessibility hunter (WCAG 2.1 AA) | opus | sol · xhigh |
-| Charon | `charon` | Database hunter *(gated: DB access)* | opus | sol · xhigh |
+| Antigone | `antigone` | Accessibility hunter (WCAG 2.1 AA) | sonnet | terra · medium |
+| Charon | `charon` | Database hunter *(gated: DB access)* | sonnet | terra · medium |
 | Tiresias | `tiresias` | White-box source analyst *(gated: source)* | opus | sol · xhigh |
 | Atlas | `atlas` | Automation Architect (harness, run-tests.sh) | opus | sol · xhigh |
 | Aristarchus | `aristarchus` | Automation code reviewer (runs LAST) | opus | sol · xhigh |
-| Asklepios | `asklepios` | Test-suite sanitation / deflaking (brownfield) | opus | sol · xhigh |
+| Asklepios | `asklepios` | Test-suite sanitation / deflaking (brownfield) | sonnet | terra · medium |
 | Talos | `talos` | API regression automation | sonnet | terra · medium |
 | Daidalos | `daidalos` | UI E2E + a11y automation | sonnet | terra · medium |
-| Aegis | `aegis` | Security regression automation | opus | sol · xhigh |
+| Aegis | `aegis` | Security regression automation | sonnet | terra · medium |
 | Nike | `nike` | Perf regression automation | sonnet | terra · medium |
 | Mnemosyne | `mnemosyne` | DB invariants automation *(gated)* | sonnet | terra · medium |
 
-**Tiers:** 19 opus · 8 sonnet.
+**Tiers:** 10 opus · 17 sonnet · 0 haiku full roles.
 
 ## Preflight and escalation to Codex
 
@@ -267,7 +269,7 @@ A second, **separate**, **permanent** QA team (**27 agents**) you point at any t
 
 **Cross-cutting / deep journey (5):** **Ariadne** — deep lifecycle & business-rule journey hunter · **Atlas** — Automation Architect, owner of the SINGLE aggregating `run-tests.sh` + the shared oracle helpers · **Aristarchus** — Code Reviewer of the automation, runs **LAST** (determinism, oracle-honesty, blocklist) · **Tiresias** — White-box Source Analyst *(gated: source access)*, code→surface leads to the lanes · **Asklepios** — Test-Suite Sanitation / deflaking, heals a sick existing suite (brownfield Mode D), fixes flakiness at the source.
 
-Current Argus QA frontmatter models: **19 opus** + **8 sonnet** (`kleio`, `talos`, `daidalos`, `mnemosyne`, `theseus`, `penelope`, `nike`, `pistis`; `aegis` is opus — its security-regression deny-side authz encoding is the suite's worst silent-failure mode). Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) — `argus/COLOR-SCHEME.md`. The same 27 Argus agents are also available for Codex in `argus/codex/` as paired `*.toml` + `*.md` custom-agent files.
+Current Argus QA policy: **10 opus / 17 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) records Claude/Codex models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`. The same source updates all 27 Codex `*.toml` + `*.md` variants.
 
 **Separation:** a separate lead (Odysseus = the Argus QA hub), baked-in QA doctrine (modes/deliverables/paths/rules), a separate `argus/` directory. **Collaboration:** the crew resolves within its own lanes (it has dedicated UI/API/Perf/DB/Sec/a11y) — the main team is pulled in only for a real gap and only via Odysseus→Marcus (e.g. Cassius=deep security, Maximus/Fabricius=wiring in the framework, Seneca=strategy sanity). **The hard rule baked into everyone:** NEVER modify the application under test.
 

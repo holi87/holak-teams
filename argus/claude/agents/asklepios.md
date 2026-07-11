@@ -2,7 +2,9 @@
 name: asklepios
 description: Existing-suite sanitation specialist. Owns TEST-HEALTH and approved test repairs, persists ASK product candidates for Minos, and leaves final automation judgment to Aristarchus.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: opus
+model: sonnet
+effort: medium
+maxTurns: 40
 color: purple
 skills:
   - qa-doctrine
@@ -137,6 +139,15 @@ Write to the repo, then return a structured summary to Odysseus.
 - **The final clean-code / oracle-honesty review verdict (APPROVE/BLOCK)** → **Aristarchus** (Code Reviewer, runs LAST). You **feed** him a healed suite; you do not render his verdict.
 - **Adopt-vs-Build detection** (does the repo already have a usable harness?) → **Kalchas** (recon). You **consume** his call and conform to it; you do not re-derive it.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `standard`; maximum turns: `40`.
+- Claude: `sonnet` / `medium`; Codex: `terra` / `medium`.
+- Escalation profile `judgment`: asklepios: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `upward-only`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

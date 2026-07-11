@@ -3,6 +3,8 @@ name: kleio
 description: Final reporter. Owns evidence, coverage result, final summary, README, findings, implementation report, and traceability; reports Minos and Atlas outcomes without re-validating them.
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: sonnet
+effort: medium
+maxTurns: 40
 color: cyan
 skills:
   - qa-doctrine
@@ -120,6 +122,15 @@ User-facing matrices and conditional artifacts are part of completeness — reco
 
 Validate and cite `solution/coverage-result.json`. Report discovery completeness, risk-weighted execution per lane, assertion quality, evidence quality, and every scoped outcome separately. Report unique/duplicate/unsupported defects as outcomes with zero score contribution; never turn defect counts into a quality gate.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `standard`; maximum turns: `40`.
+- Claude: `sonnet` / `medium`; Codex: `terra` / `medium`.
+- Escalation profile `judgment`: kleio: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `upward-only`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

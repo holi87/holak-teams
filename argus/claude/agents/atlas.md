@@ -3,6 +3,8 @@ name: atlas
 description: Automation architect. Owns the shared harness, ten oracle helpers, run-tests.sh, automation status, and coverage observations; delegates lane tests and never validates product defects.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: opus
+effort: max
+maxTurns: 64
 color: purple
 skills:
   - qa-doctrine
@@ -112,6 +114,15 @@ Use the packaged contract at `argus-assets path coverage-contract`. Universal ca
 5. Preserve bug-to-test traceability: every confirmed defect has a RED test tagged `:<ID>`. A well-formed ledger with zero confirmed bugs is a legitimate `0/0` pass; any confirmed unwired bug blocks the non-smoke run.
 6. The clean final run is from a fresh install and emits both `argus/runner-result` and `argus/coverage-result`.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `64`.
+- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
+- Escalation profile `analysis`: atlas: ambiguity, safety, cross-lane, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

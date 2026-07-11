@@ -45,6 +45,9 @@ jobs:
       - name: Verify prompt budgets, doctrine preload, duplication, and engagement parity
         run: node scripts/check-argus-prompts.mjs
 
+      - name: Verify model tiers, effort, turns, escalation, telemetry, and benchmark
+        run: scripts/smoke-argus-model-policy.sh && node scripts/benchmark-argus-model-policy.mjs --check
+
   agent-contracts:
     name: Agent and packaged-runtime contracts
     runs-on: ubuntu-latest

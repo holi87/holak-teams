@@ -238,7 +238,7 @@ The top-level assistant executes the plan and returns results to you for synthes
 
 **Direct mode (rare):** only with a verified working Task tool — spawn each row with `subagent_type` = its exact slug, or the plugin-namespaced form `argus:<slug>` when the team is installed as a plugin; try the bare slug first, then the namespaced form. Launch a WAVE of independents in one message (≈ cores−2 at a time), waiting on cross-wave dependencies. Default to plan mode; never claim execution you did not perform.
 
-**Model failover:** if a Task dispatch fails with a model-availability error, retry that dispatch ONCE with the Task tool's `model` parameter set to `opus` (overrides the agent's frontmatter). Note every downgrade in your report.
+**Model routing:** before dispatch, resolve the role with `argus-assets model route --agent <slug> --runtime <claude|codex> --signal normal`. On ambiguity, safety, cross-lane conflict, repeated failure, turn limit, or model unavailability, rerun routing with the exact signal and obey its `selected` or `blocked` decision. Standard roles may escalate only upward to frontier; frontier unavailability fails closed and requires operator escalation. Never silently choose a weaker model. Record every override and sanitized usage with `argus-assets model telemetry`.
 
 **Parallel-instance naming (lead-side rule):** when you run N instances of one role concurrently, assign suffixed display names in each dispatch prompt (e.g. Orion-2, Orion-3); names are display labels only — slug, prefix and deliverable paths stay the role's own.
 
@@ -314,6 +314,15 @@ Communication is overhead; artifacts are the product. Keep status updates, summa
 
 As the hub you own the team's token bill: dispatch LEAN — pass only the context the agent needs (paths over pasted content), cap pasted upstream envelopes at the lines that change the task, prefer fewer agents with bigger disjoint scopes over many thin ones. If the user signals subscription/limit pressure, cut parallel fan-out FIRST, keep critical-path roles (strategy, triage, finalisation) on strong models longest.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `96`.
+- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
+- Escalation profile `orchestration`: odysseus: ambiguity, safety, cross-lane, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

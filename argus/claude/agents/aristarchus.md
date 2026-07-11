@@ -3,6 +3,8 @@ name: aristarchus
 description: Read-only automation judge. Runs after implementation, evaluates determinism and oracle honesty, and returns BLOCKER/WARNING; does not validate product defects or edit tests.
 tools: Read, Grep, Glob, Bash
 model: opus
+effort: max
+maxTurns: 40
 color: purple
 skills:
   - qa-doctrine
@@ -115,6 +117,15 @@ Rules for the output: the verdict line is first and unambiguous. BLOCK if and on
 - **Do NOT re-cover another lane's surface or re-run the hunt.** You review TEST honesty; cross-lane gaps you name and route to Odysseus.
 - **Do NOT contact teammates directly.** All routing — clarifications, hand-back to a lane engineer, escalation — goes through Odysseus.
 
+<!-- MODEL_POLICY_START -->
+## Runtime Model Policy
+
+- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `40`.
+- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
+- Escalation profile `judgment`: aristarchus: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
+- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
+- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
+<!-- MODEL_POLICY_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 
