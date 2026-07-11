@@ -156,6 +156,8 @@
   "forbiddenPromptReferences": [
     "argus/BROWSER-ISOLATION.md",
     "argus/framework-template",
+    "agents/argus-template",
+    "argus-template/",
     "repo doc — not shipped with the installed plugin",
     "not shipped with the installed plugin"
   ]

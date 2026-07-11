@@ -67,6 +67,10 @@ for runtime in typescript java python; do
   "$CLI" schema validate --kind bug-ledger --input "$WORK/$runtime/solution/bug-ledger.example.json" >/dev/null || fail "$runtime bug-ledger example is schema-invalid"
 done
 jq -e '.tagAdapter.regression == "@regression" and .tagAdapter["bug-provenance"] == "@bug:<canonical-or-origin>"' "$WORK/typescript/argus-template.json" >/dev/null || fail "TypeScript regression selection still depends on the bug provenance tag"
+grep -Fq 'funded, risk-derived UI lane' "$WORK/typescript/solution/ARCHITECTURE.md" || fail 'TypeScript architecture still underfunds the UI lane'
+if rg -qi 'thin (UI |e2e )?smoke' "$WORK/typescript/solution/ARCHITECTURE.md"; then
+  fail 'TypeScript architecture still prescribes a thin UI smoke lane'
+fi
 cmp "$WORK/typescript/solution/bug-ledger.example.json" "$WORK/java/solution/bug-ledger.example.json" >/dev/null || fail "Java bug-ledger example drifted from TypeScript"
 cmp "$WORK/typescript/solution/bug-ledger.example.json" "$WORK/python/solution/bug-ledger.example.json" >/dev/null || fail "Python bug-ledger example drifted from TypeScript"
 test -d "$WORK/typescript/quality/specs" && test -d "$WORK/typescript/quality/support" && test ! -e "$WORK/typescript/tests" && test ! -e "$WORK/typescript/src" || fail "TypeScript scaffold retained fixed layout assumptions"

@@ -15,11 +15,26 @@ const mapping = {
 const expectedCounts = { hephaestus: 22, argus: 27 };
 const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const roster = readFileSync(join(ROOT, 'agents-roster.html'), 'utf8');
+const parityReport = readFileSync(join(ROOT, 'AGENT-RUNTIME-PARITY.md'), 'utf8');
+const adapters = JSON.parse(readFileSync(join(ROOT, 'argus', 'roles', 'runtime-adapters.json'), 'utf8'));
+const odysseusSource = readFileSync(join(ROOT, 'argus', 'roles', 'odysseus.md'), 'utf8');
 const allSlugs = new Set();
 const totals = { opus: 0, sonnet: 0, haiku: 0, sol: 0, terra: 0, luna: 0 };
 
 execFileSync('node', [join(ROOT, 'scripts/sync-hephaestus-codex-variants.mjs'), '--check'], { stdio: 'inherit' });
 execFileSync('node', [join(ROOT, 'scripts/sync-argus-role-variants.mjs'), '--check'], { stdio: 'inherit' });
+
+assert(adapters.schemaVersion === 2, 'Argus runtime support contract must use schema v2');
+assert(adapters.support?.claude?.level === 'plugin-native', 'Claude support must be plugin-native');
+assert(adapters.support?.codex?.level === 'parent-runtime-dependent', 'Codex support must be parent-runtime-dependent');
+assert(adapters.support?.codex?.parentRuntimeRequired === true, 'Codex support must require a parent runtime');
+assert(adapters.support?.codex?.missingCapabilityOutcome === 'CAPABILITY_GAP', 'Codex missing capabilities must return CAPABILITY_GAP');
+assert(adapters.configurationParity?.status === 'validated', 'generated configuration parity must be validated');
+assert(adapters.configurationParity?.doesNotClaim?.includes('behavioral-equivalence'), 'configuration parity must explicitly exclude behavioral equivalence');
+const staticRoster = odysseusSource.match(/## The Argus QA Team[\s\S]*?\*\*Lane map/)?.[0] ?? '';
+assert(staticRoster && !/\|\s*Model\s*\|/.test(staticRoster), 'Odysseus static roster must not duplicate model assignments');
+assert(!/\|\s*(?:opus|sonnet|haiku|sol|terra|luna)\s*\|/i.test(staticRoster), 'Odysseus static roster contains a provider model token');
+assert(/Configuration parity is not behavioral parity/.test(parityReport), 'parity report must bound the native config-load claim');
 
 for (const team of Object.keys(expectedCounts)) {
   const claudeRoot = join(ROOT, team, 'claude', 'agents');
@@ -80,7 +95,7 @@ for (const team of Object.keys(expectedCounts)) {
 }
 
 assert(/opus.*sol.*xhigh/.test(readme) && /sonnet.*terra.*medium/.test(readme) && /haiku.*luna.*medium/.test(readme), 'README mapping summary is incomplete');
-console.log(`PASS  Full runtime parity: 49 Claude agents = 49 Codex pairs; models opus/sonnet/haiku ${totals.opus}/${totals.sonnet}/${totals.haiku} -> sol/terra/luna ${totals.sol}/${totals.terra}/${totals.luna}; README + HTML roster aligned`);
+console.log(`PASS  Generated configuration parity: 49 Claude agents = 49 Codex pairs; models opus/sonnet/haiku ${totals.opus}/${totals.sonnet}/${totals.haiku} -> sol/terra/luna ${totals.sol}/${totals.terra}/${totals.luna}; support levels, README, and HTML roster aligned; behavioral equivalence not claimed`);
 
 function parseClaude(raw) {
   const parsed = parseMarkdown(raw);

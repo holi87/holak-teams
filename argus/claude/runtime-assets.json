@@ -120,8 +120,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 31,
-      "bytes": 73984,
-      "sha256": "0d72cc90e6d186424dc2f4fde0d727f42acb5b720e4580c67469e3672050526e"
+      "bytes": 75952,
+      "sha256": "32b99a6f6abfa2c5ae21fc9da080877377e619f579c2b240d369878b87bc0f7c"
     },
     {
       "id": "capability-matrix",
@@ -183,8 +183,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 53,
-      "bytes": 145059,
-      "sha256": "07b37a1c0be97394cf4f21f62cbdaa2b40b5b9f2bf00c7597dbd13a17738157e"
+      "bytes": 144793,
+      "sha256": "3d53d38e02fef21cf951c94a97e768b7bc1c3f2594f10c0fb8b51e21c51983e5"
     },
     {
       "id": "java-template",
@@ -222,6 +222,8 @@
   "forbiddenPromptReferences": [
     "argus/BROWSER-ISOLATION.md",
     "argus/framework-template",
+    "agents/argus-template",
+    "argus-template/",
     "repo doc — not shipped with the installed plugin",
     "not shipped with the installed plugin"
   ],

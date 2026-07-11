@@ -21,6 +21,21 @@ const PLUGIN_ROOT = join(ROOT, 'argus', 'claude');
 const GENERATED_MANIFEST_PATH = join(PLUGIN_ROOT, 'runtime-assets.json');
 const GENERATED_INVENTORY_PATH = join(PLUGIN_ROOT, 'runtime-reference-inventory.json');
 const AGENTS_DIR = join(PLUGIN_ROOT, 'agents');
+const ENTRYPOINTS = [
+  { id: '/argus:run', path: 'skills/run/SKILL.md' },
+];
+const HOST_COMMANDS = [
+  'autocannon', 'bash', 'chmod', 'claude', 'cp', 'curl', 'date', 'docker-compose',
+  'docker', 'find', 'gh', 'git', 'gradle', 'grep', 'grpc_cli', 'grpcurl', 'java',
+  'javac', 'jq', 'k6', 'kafka-console-consumer', 'kafka-console-producer', 'kcat',
+  'lsof', 'make', 'mkdir', 'mv', 'mvn', 'mysql', 'netstat', 'node', 'npm', 'npx',
+  'pip', 'pip3', 'playwright', 'printf', 'psql', 'pytest', 'python', 'python3',
+  'rabbitmqadmin', 'rg', 'rm', 'sed', 'sh', 'sqlite3', 'ss', 'tail', 'tsc',
+  'websocat', 'wget', 'wscat',
+];
+// Short command names are too ambiguous to scan in prose. Count them only in
+// Markdown code, where they are executable references rather than English text.
+const CODE_CONTEXT_HOST_COMMANDS = ['buf', 'nc'];
 const mode = process.argv[2] ?? '--check';
 
 if (!['--write', '--check'].includes(mode)) {
@@ -58,6 +73,8 @@ console.log(
 );
 console.log(
   `PASS  Prompt inventory: ${generatedInventory.agentsScanned} agents, ` +
+  `${generatedInventory.skillsScanned} preloaded skills, ` +
+  `${generatedInventory.entrypointsScanned} entrypoints, ` +
   `${generatedInventory.pluginAssetReferences.length} plugin refs, ` +
   `${generatedInventory.targetFileReferences.length} target refs, ` +
   `${generatedInventory.commandReferences.length} commands`,
@@ -155,41 +172,35 @@ function buildReferenceInventory() {
   const pluginRefs = new Map();
   const targetRefs = new Map();
   const commandRefs = new Map();
-  const commands = [
-    'autocannon', 'bash', 'chmod', 'claude', 'cp', 'curl', 'date', 'docker-compose',
-    'docker', 'find', 'gh', 'git', 'gradle', 'grep', 'java', 'javac', 'jq', 'k6',
-    'lsof', 'make', 'mkdir', 'mv', 'mvn', 'mysql', 'netstat', 'node', 'npm', 'npx',
-    'pip', 'pip3', 'playwright', 'printf', 'psql', 'pytest', 'python', 'python3', 'rg',
-    'rm', 'sed', 'sh', 'sqlite3', 'ss', 'tail', 'tsc', 'wget',
-  ];
-  const commandPattern = new RegExp(`(?<![A-Za-z0-9_.-])(${commands.map(escapeRegex).join('|')})(?![A-Za-z0-9_.-])`, 'g');
+  const skillPaths = new Set();
 
   for (const name of agentFiles) {
     const slug = name.slice(0, -3);
     const agentText = readFileSync(join(AGENTS_DIR, name), 'utf8');
+    scanReferenceText(agentText, slug, pluginRefs, targetRefs, commandRefs);
     const skills = preloadedSkills(agentText);
-    let text = agentText;
     for (const skill of skills) {
       const skillPath = `skills/${skill}/SKILL.md`;
       const absolute = safePluginPath(skillPath);
       if (!existsSync(absolute)) fail(`${name} preloads missing plugin skill: ${skill}`);
+      skillPaths.add(skillPath);
       addConsumer(pluginRefs, skillPath, slug);
-      text += `\n${readFileSync(absolute, 'utf8')}`;
+      scanReferenceText(readFileSync(absolute, 'utf8'), slug, pluginRefs, targetRefs, commandRefs);
     }
-    for (const match of text.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([A-Za-z0-9._/-]+)/g)) {
-      addConsumer(pluginRefs, match[1], slug);
-    }
-    for (const match of text.matchAll(/`([^`\n]+)`/g)) {
-      const value = match[1].trim();
-      if (isTargetFileReference(value)) addConsumer(targetRefs, value, slug);
-    }
-    for (const match of text.matchAll(commandPattern)) addConsumer(commandRefs, match[1], slug);
+  }
+
+  for (const entrypoint of ENTRYPOINTS) {
+    const absolute = safePluginPath(entrypoint.path);
+    if (!existsSync(absolute)) fail(`runtime entrypoint is missing: ${entrypoint.path}`);
+    scanReferenceText(readFileSync(absolute, 'utf8'), entrypoint.id, pluginRefs, targetRefs, commandRefs);
   }
 
   return {
     schemaVersion: 1,
-    generatedFrom: 'effective argus/claude/agents/*.md plus preloaded skills',
+    generatedFrom: 'effective argus/claude/agents/*.md plus preloaded skills and /argus:run',
     agentsScanned: agentFiles.length,
+    skillsScanned: skillPaths.size,
+    entrypointsScanned: ENTRYPOINTS.length,
     pluginAssetReferences: mapToInventory(pluginRefs),
     targetFileReferences: mapToInventory(targetRefs),
     commandReferences: mapToInventory(commandRefs),
@@ -198,10 +209,23 @@ function buildReferenceInventory() {
 
 function validatePromptReferences(manifest, inventory) {
   const agentFiles = readdirSync(AGENTS_DIR).filter((name) => name.endsWith('.md')).sort();
+  const promptSources = agentFiles.map((name) => ({
+    label: `agents/${name}`,
+    path: join(AGENTS_DIR, name),
+  }));
+  const skillPaths = new Set();
   for (const name of agentFiles) {
     const text = readFileSync(join(AGENTS_DIR, name), 'utf8');
+    for (const skill of preloadedSkills(text)) skillPaths.add(`skills/${skill}/SKILL.md`);
+  }
+  for (const path of skillPaths) promptSources.push({ label: path, path: safePluginPath(path) });
+  for (const entrypoint of ENTRYPOINTS) {
+    promptSources.push({ label: entrypoint.path, path: safePluginPath(entrypoint.path) });
+  }
+  for (const source of promptSources) {
+    const text = readFileSync(source.path, 'utf8');
     for (const forbidden of manifest.forbiddenPromptReferences) {
-      if (text.includes(forbidden)) fail(`${name} points outside the installed plugin: ${forbidden}`);
+      if (text.includes(forbidden)) fail(`${source.label} points outside the installed plugin: ${forbidden}`);
     }
   }
   for (const reference of inventory.pluginAssetReferences) {
@@ -209,6 +233,59 @@ function validatePromptReferences(manifest, inventory) {
     if (!existsSync(path)) fail(`prompt plugin reference is missing: \${CLAUDE_PLUGIN_ROOT}/${reference.value}`);
   }
   if (inventory.agentsScanned !== 27) fail(`prompt inventory scanned ${inventory.agentsScanned} agents; expected 27`);
+  if (inventory.skillsScanned === 0) fail('prompt inventory scanned no preloaded skills');
+  if (inventory.entrypointsScanned !== 1) {
+    fail(`prompt inventory scanned ${inventory.entrypointsScanned} entrypoints; expected 1`);
+  }
+  const odysseusConsumers = inventory.pluginAssetReferences
+    .find((reference) => reference.value === 'agents/odysseus.md')?.consumers ?? [];
+  if (!odysseusConsumers.includes('/argus:run')) {
+    fail('prompt inventory did not record /argus:run as a consumer of agents/odysseus.md');
+  }
+}
+
+function scanReferenceText(text, consumer, pluginRefs, targetRefs, commandRefs) {
+  for (const match of text.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([A-Za-z0-9._/-]+)/g)) {
+    addConsumer(pluginRefs, match[1], consumer);
+  }
+  for (const match of text.matchAll(/`([^`\n]+)`/g)) {
+    const value = match[1].trim();
+    if (isTargetFileReference(value)) addConsumer(targetRefs, value, consumer);
+  }
+  for (const command of extractCommandReferences(text)) addConsumer(commandRefs, command, consumer);
+}
+
+function extractCommandReferences(text) {
+  const references = new Set();
+  const commandPattern = commandRegex(HOST_COMMANDS);
+  for (const match of text.matchAll(commandPattern)) references.add(match[1]);
+
+  const codeCommandPattern = commandRegex(CODE_CONTEXT_HOST_COMMANDS);
+  for (const segment of markdownCodeSegments(text)) {
+    for (const match of segment.matchAll(codeCommandPattern)) references.add(match[1]);
+  }
+
+  // Proteus uses this common compact notation to name both Kafka utilities.
+  // Expand it deterministically so preflight checks the producer and consumer.
+  if (/(?<![A-Za-z0-9_.-])kafka-console-producer\|consumer(?![A-Za-z0-9_.-])/.test(text)) {
+    references.add('kafka-console-producer');
+    references.add('kafka-console-consumer');
+  }
+  return references;
+}
+
+function commandRegex(commands) {
+  return new RegExp(
+    `(?<![A-Za-z0-9_.-])(${commands.map(escapeRegex).join('|')})(?![A-Za-z0-9_.-])`,
+    'g',
+  );
+}
+
+function markdownCodeSegments(text) {
+  return [
+    ...[...text.matchAll(/```[^\n]*\n([\s\S]*?)```/g)].map((match) => match[1]),
+    ...[...text.matchAll(/(?<!`)`([^`\n]+)`(?!`)/g)].map((match) => match[1]),
+  ];
 }
 
 function preloadedSkills(text) {

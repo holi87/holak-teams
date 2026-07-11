@@ -1,10 +1,9 @@
 # Solution Architecture — test strategy & framework
 
-> **Primary owner: Talos (Test Automation Engineer); strategy digest: Metis; AI-use + Summary: Kleio.**
+> **Canonical owner and merge authority: Atlas (Automation Architect).**
 > The agreed brief names THIS file as the strategy deliverable ("what you test and why, risks, approach and technology, how you used AI") plus the run-documentation summary section. This file must therefore stand alone for a reviewer. Full planning detail lives in `TEST-STRATEGY.md`; delivered-vs-designed lives in `IMPLEMENTATION-REPORT.md` — link, don't duplicate.
 
-> **Section ownership — edit ONLY your sections; never delete another owner's section or placeholder. Concurrent writers keep to disjoint sections; a genuine conflict is routed via Odysseus, never resolved by overwriting.**
-> §1–2 **Metis** (strategy digest + risk register) · §3 Approach/stack — **Talos** (API-framework specifics) with **Atlas** (shared-harness + per-lane framework choice) · §4 Layers + §6 How-to-run — **Atlas** (owns the runner/aggregation) · §5, §7–9 conventions/extension/decisions/trace — **Talos** · §10 How-we-used-AI + §11 Summary — **Kleio** (finalisation).
+> **Single-writer rule.** Contributors submit stable immutable fragments through Odysseus; only Atlas runs the deterministic canonical merge. Fragment sources: §1–2 Metis · §3 Talos/Atlas · §4 and §6 Atlas · §5 and §7–9 Talos · §10–11 Kleio.
 
 ## 1. What we test & why (owner: Metis)
 <5–10 line digest of the strategy: domain in one sentence, the prioritised areas and the risk reasoning behind them. Full strategy: [`TEST-STRATEGY.md`](./TEST-STRATEGY.md).>
@@ -17,7 +16,7 @@ Top of the risk register — full register with scoring in [`TEST-STRATEGY.md`](
 | RISK-001 | <e.g. broken access control / IDOR> | P1 | `tests/api/...` @tags |
 
 ## 3. Approach, stack & rationale (owner: Talos)
-Playwright + TypeScript, single tool for API (`request` context) and UI (browser): one runner, one report, built-in trace/screenshot/video as bug evidence. API-first + thin UI e2e smoke. <Adjust/justify per target app.>
+Playwright + TypeScript, single tool for API (`request` context) and UI (browser): one runner, one report, built-in trace/screenshot/video as bug evidence. API-first plus a funded, risk-derived UI lane covering each primary screen's validation, client state, visual baseline, and accessibility matrix. <Adjust and justify per target app.>
 
 ## 4. Layers
 Coverage denominators live in `solution/surface-inventory.json`; execution, assertion,

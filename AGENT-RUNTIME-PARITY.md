@@ -1,4 +1,4 @@
-# Claude and Codex agent parity
+# Claude and Codex generated-configuration parity
 
 This report records the full-roster audit completed on 2026-07-11. The authoritative
 regression command is:
@@ -9,7 +9,8 @@ scripts/smoke-agent-runtime-parity.sh
 
 ## Scope and result
 
-The audit compared every Claude role with its Codex TOML and readable Markdown variant:
+The audit compared every Claude role definition with its generated Codex TOML and
+readable Markdown variant:
 
 | Team | Claude roles | Codex TOML | Codex Markdown | Result |
 |---|---:|---:|---:|---|
@@ -17,10 +18,16 @@ The audit compared every Claude role with its Codex TOML and readable Markdown v
 | Argus | 27 | 27 | 27 | aligned |
 | Total | 49 | 49 | 49 | aligned |
 
-For each role, validation covers the slug, description, complete role instructions,
+For each role, configuration validation covers the slug, description, complete role instructions,
 canonical-source path and SHA-256, sandbox mode, artifact-language contract, model, and
 reasoning effort. Argus additionally validates generated inputs, outputs, ownership,
 safety doctrine, and runtime-adapter differences against its canonical contracts.
+
+Configuration parity is not behavioral parity. Claude Argus is `plugin-native`: its
+main-thread entry point, packaged assets, skills, hooks, and specialist dispatch are
+installed together. Codex Argus is `parent-runtime-dependent`: its TOML can load and its
+role contract can align while orchestration, packaged assets, and equivalent tools still
+must be supplied by the parent session. A missing requirement returns `CAPABILITY_GAP`.
 
 ## Model mapping
 
@@ -46,13 +53,19 @@ Remediation:
 - `scripts/sync-hephaestus-codex-variants.mjs --write` now generates all 22 Codex pairs
   from the flat Claude sources and records valid source paths plus SHA-256 values.
 - `scripts/sync-argus-role-variants.mjs --check` continues to enforce all 27 Argus pairs.
-- `scripts/verify-agent-runtime-parity.mjs` verifies the complete 49-role inventory,
+- `scripts/verify-agent-runtime-parity.mjs` verifies the complete 49-role generated
+  configuration inventory,
   exact model mapping, role-body parity, source provenance, sandbox policy, README model
-  rows, and HTML roster.
+  rows, HTML roster, and machine-readable runtime support levels.
 - The release gate loads both Claude plugins with `claude plugin validate --strict` and
   all 49 TOML files with an isolated native `codex doctor` config load.
 
+The native checks prove that the plugin manifests and TOML configuration parse and load
+without warnings. They do not execute representative engagements and therefore do not
+prove tool availability, delegation, packaged-asset access, or equivalent target outcomes.
+
 Runtime API names remain intentionally different. Claude tool frontmatter is provenance
 for Codex; Codex uses equivalent tools actually supplied by its runtime and reports a
-capability gap instead of claiming unavailable functionality. These adapter differences
-do not change role mission, ownership, deliverables, quality gates, or safety rules.
+capability gap instead of claiming unavailable functionality. The generated contracts
+preserve the intended mission, ownership, deliverables, quality gates, and safety rules;
+behavioral support remains conditional on the declared parent-runtime capabilities.

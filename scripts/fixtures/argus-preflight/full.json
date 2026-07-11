@@ -13,8 +13,10 @@
     "non-rest-surface", "source-access"
   ],
   "commands": [
-    "autocannon", "claude", "curl", "date", "docker", "find", "git",
-    "gradle", "grep", "java", "k6", "make", "node", "npm", "playwright",
-    "printf", "psql", "pytest", "python", "rm", "tail", "tsc"
+    "autocannon", "buf", "claude", "curl", "date", "docker", "find", "git",
+    "gradle", "grep", "grpc_cli", "grpcurl", "java", "k6",
+    "kafka-console-consumer", "kafka-console-producer", "kcat", "make", "nc",
+    "node", "npm", "playwright", "printf", "psql", "pytest", "python",
+    "rabbitmqadmin", "rm", "tail", "tsc", "websocat", "wscat"
   ]
 }

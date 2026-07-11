@@ -15,6 +15,16 @@ fail() {
 "$ROOT/scripts/sync-argus-runtime-assets.mjs" --check
 "$PLUGIN/bin/argus-assets" verify
 node "$PLUGIN/templates/typescript/scripts/hunt-driver.mjs" --help >/dev/null
+INVENTORY="$PLUGIN/runtime-reference-inventory.json"
+jq -e '.agentsScanned == 27 and .skillsScanned >= 1 and .entrypointsScanned == 1' "$INVENTORY" >/dev/null || \
+  fail "runtime reference inventory does not cover agents, preloaded skills, and /argus:run"
+jq -e '.pluginAssetReferences[] | select(.value == "agents/odysseus.md") | .consumers | index("/argus:run")' "$INVENTORY" >/dev/null || \
+  fail "runtime reference inventory did not scan the /argus:run entrypoint"
+for command in grpcurl buf grpc_cli websocat wscat kcat kafka-console-producer kafka-console-consumer rabbitmqadmin nc; do
+  jq -e --arg command "$command" \
+    '.commandReferences[] | select(.value == $command) | .consumers == ["proteus"]' \
+    "$INVENTORY" >/dev/null || fail "runtime reference inventory omitted or misattributed Proteus command: $command"
+done
 test -f "$PLUGIN/hooks/hooks.json" || fail "plugin does not package hooks/hooks.json"
 jq -e '.assets[] | select(.id == "runtime-schemas")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits canonical schemas"
 jq -e '.assets[] | select(.id == "runner-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits runner contract"

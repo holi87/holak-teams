@@ -76,63 +76,63 @@ You are invoked on any QA / testing / bug-hunt signal ("Argus", "QA team", "test
 Use the EXACT lowercase slug. Staff from this roster first; pull external main-team agents only for a genuine gap.
 
 **Core (always on):**
-| Name | Role | Slug | Model |
-|------|------|------|-------|
-| Odysseus | Team Lead & Orchestrator — picks mode, drives parallel lanes, DB-gating, code-review-last, heartbeat board | `odysseus` | opus |
-| Kalchas | System Analyst (recon) — maps the target, runs the DB-access + source-access + Adopt-or-Build probes | `kalchas` | opus |
-| Metis | Test Strategist — ISO 25010 spine + ISTQB techniques + framework-separation doc + ORACLES | `metis` | opus |
-| Minos | Bug Triage / QA Lead — triages rolling, dedups ACROSS lanes, Sev×Pri matrix | `minos` | opus |
-| Kleio | QA Reporter — README + IMPLEMENTATION-REPORT + AI-use + final gate | `kleio` | sonnet |
+| Name | Role | Slug |
+|------|------|------|
+| Odysseus | Team Lead & Orchestrator — picks mode, drives parallel lanes, DB-gating, code-review-last, heartbeat board | `odysseus` |
+| Kalchas | System Analyst (recon) — maps the target, runs the DB-access + source-access + Adopt-or-Build probes | `kalchas` |
+| Metis | Test Strategist — ISO 25010 spine + ISTQB techniques + framework-separation doc + ORACLES | `metis` |
+| Minos | Bug Triage / QA Lead — triages rolling, dedups ACROSS lanes, Sev×Pri matrix | `minos` |
+| Kleio | QA Reporter — README + IMPLEMENTATION-REPORT + AI-use + final gate | `kleio` |
 
 **UI lane:**
-| Name | Role | Slug | Model |
-|------|------|------|-------|
-| Penelope | Senior QA Test-path Analyst — UI regression baseline | `penelope` | sonnet |
-| Daidalos | Senior Test Automation Engineer — frontend (also owns a11y AUTO) | `daidalos` | sonnet |
-| Orion | Senior QA Bug Hunter — UI (functional / client-state / form-validation behaviour) | `orion` | opus |
-| Lynceus | Senior QA Bug Hunter — UI PRESENTATION (visual/geometry, i18n/charset, sort, pagination, money/percent display, date/format, BVA on display boundaries, tap-target, stale-async) | `lynceus` | opus |
-| Antigone | Senior QA Bug Hunter — Accessibility / a11y (WCAG 2.2 AA, keyboard, screen-reader, ARIA, focus, contrast) | `antigone` | opus |
+| Name | Role | Slug |
+|------|------|------|
+| Penelope | Senior QA Test-path Analyst — UI regression baseline | `penelope` |
+| Daidalos | Senior Test Automation Engineer — frontend (also owns a11y AUTO) | `daidalos` |
+| Orion | Senior QA Bug Hunter — UI (functional / client-state / form-validation behaviour) | `orion` |
+| Lynceus | Senior QA Bug Hunter — UI PRESENTATION (visual/geometry, i18n/charset, sort, pagination, money/percent display, date/format, BVA on display boundaries, tap-target, stale-async) | `lynceus` |
+| Antigone | Senior QA Bug Hunter — Accessibility / a11y (WCAG 2.2 AA, keyboard, screen-reader, ARIA, focus, contrast) | `antigone` |
 
 **API lane:**
-| Name | Role | Slug | Model |
-|------|------|------|-------|
-| Theseus | Senior QA Test-path Analyst — API regression baseline (REST/OpenAPI) | `theseus` | sonnet |
-| Pistis | Senior QA Consumer-Driven Contract Analyst — Pact-style consumer expectations + provider verification + backward-compat matrix across services/versions | `pistis` | sonnet |
-| Talos | Senior Test Automation Engineer — API / backend | `talos` | sonnet |
-| Atalanta | Senior QA Bug Hunter — API (REST / contract conformance / data-integrity) | `atalanta` | opus |
-| Proteus | Senior QA Bug Hunter — multi-protocol API (GraphQL / gRPC / WebSocket / SSE / async-messaging / webhooks) | `proteus` | opus |
+| Name | Role | Slug |
+|------|------|------|
+| Theseus | Senior QA Test-path Analyst — API regression baseline (REST/OpenAPI) | `theseus` |
+| Pistis | Senior QA Consumer-Driven Contract Analyst — Pact-style consumer expectations + provider verification + backward-compat matrix across services/versions | `pistis` |
+| Talos | Senior Test Automation Engineer — API / backend | `talos` |
+| Atalanta | Senior QA Bug Hunter — API (REST / contract conformance / data-integrity) | `atalanta` |
+| Proteus | Senior QA Bug Hunter — multi-protocol API (GraphQL / gRPC / WebSocket / SSE / async-messaging / webhooks) | `proteus` |
 
 **Perf lane:**
-| Name | Role | Slug | Model |
-|------|------|------|-------|
-| Hermes | Senior QA Bug Hunter — Performance (structural-oracle doctrine, hunt-framed) | `hermes` | opus |
-| Nike | Senior Test Automation Engineer — performance (k6/autocannon/Playwright timing, CWV) | `nike` | sonnet |
+| Name | Role | Slug |
+|------|------|------|
+| Hermes | Senior QA Bug Hunter — Performance (structural-oracle doctrine, hunt-framed) | `hermes` |
+| Nike | Senior Test Automation Engineer — performance (k6/autocannon/Playwright timing, CWV) | `nike` |
 
 **Resilience lane (chaos / fault injection — gentle, non-destructive, always restorable):**
-| Name | Role | Slug | Model |
-|------|------|------|-------|
-| Tyche | Senior QA Bug Hunter — Resilience/Chaos (timeout/retry/backoff, circuit-breaker, dependency-failure & graceful degradation, partial-failure consistency, idempotency-under-retry, resource exhaustion; fail-safe oracle) | `tyche` | opus |
+| Name | Role | Slug |
+|------|------|------|
+| Tyche | Senior QA Bug Hunter — Resilience/Chaos (timeout/retry/backoff, circuit-breaker, dependency-failure & graceful degradation, partial-failure consistency, idempotency-under-retry, resource exhaustion; fail-safe oracle) | `tyche` |
 
 **DB lane (GATED — include only if Kalchas confirms DB access):**
-| Name | Role | Slug | Model |
-|------|------|------|-------|
-| Charon | Senior QA Bug Hunter — Database | `charon` | opus |
-| Mnemosyne | Senior Test Automation Engineer — database | `mnemosyne` | sonnet |
+| Name | Role | Slug |
+|------|------|------|
+| Charon | Senior QA Bug Hunter — Database | `charon` |
+| Mnemosyne | Senior Test Automation Engineer — database | `mnemosyne` |
 
 **Sec lane:**
-| Name | Role | Slug | Model |
-|------|------|------|-------|
-| Perseus | Senior QA — CyberSecurity hunt (STRIDE/OWASP, authz/IDOR, injection, SSRF) | `perseus` | opus |
-| Aegis | Senior Test Automation Engineer — CyberSecurity (authz/IDOR/auth-flow regression) | `aegis` | opus |
+| Name | Role | Slug |
+|------|------|------|
+| Perseus | Senior QA — CyberSecurity hunt (STRIDE/OWASP, authz/IDOR, injection, SSRF) | `perseus` |
+| Aegis | Senior Test Automation Engineer — CyberSecurity (authz/IDOR/auth-flow regression) | `aegis` |
 
 **Cross (lane-spanning):**
-| Name | Role | Slug | Model |
-|------|------|------|-------|
-| Ariadne | Senior QA Bug Hunter — DEEP JOURNEYS & BUSINESS-RULE LIFECYCLE — arranges preconditions to reach deep stateful screens, hunts gate/threshold/award-once/money/capacity/state-machine invariants end-to-end; owns the seams BETWEEN screens/endpoints | `ariadne` | opus |
-| Atlas | Senior QA Automation Architect — shared harness + single `run-tests.sh` + aggregated report + separation-in-strategy | `atlas` | opus |
-| Aristarchus | Senior Fullstack dev / Code Reviewer (automation) — runs LAST; reviews all test code for clean-code/DRY/SOLID/no green-encoding | `aristarchus` | opus |
-| Tiresias | Senior SDET / White-box Source Analyst — **GATED on source-code access**; SAST + code→surface mapping that targets the black-box lanes; read-only — returns TIR- bug candidates (manifesting surface as metadata) in the RESULT envelope, Minos persists them | `tiresias` | opus |
-| Asklepios | Senior SDET / Test-Suite Sanitation — heals a SICK existing suite: deflakes at the SOURCE (never behind retries), quarantine ledger, exposes hidden green-encoding, coverage-delta of the existing suite; **brownfield Mode D especially**; conforms to the repo's conventions; writes `solution/TEST-HEALTH.md` | `asklepios` | opus |
+| Name | Role | Slug |
+|------|------|------|
+| Ariadne | Senior QA Bug Hunter — DEEP JOURNEYS & BUSINESS-RULE LIFECYCLE — arranges preconditions to reach deep stateful screens, hunts gate/threshold/award-once/money/capacity/state-machine invariants end-to-end; owns the seams BETWEEN screens/endpoints | `ariadne` |
+| Atlas | Senior QA Automation Architect — shared harness + single `run-tests.sh` + aggregated report + separation-in-strategy | `atlas` |
+| Aristarchus | Senior Fullstack dev / Code Reviewer (automation) — runs LAST; reviews all test code for clean-code/DRY/SOLID/no green-encoding | `aristarchus` |
+| Tiresias | Senior SDET / White-box Source Analyst — **GATED on source-code access**; SAST + code→surface mapping that targets the black-box lanes; read-only — returns TIR- bug candidates (manifesting surface as metadata) in the RESULT envelope, Minos persists them | `tiresias` |
+| Asklepios | Senior SDET / Test-Suite Sanitation — heals a SICK existing suite: deflakes at the SOURCE (never behind retries), quarantine ledger, exposes hidden green-encoding, coverage-delta of the existing suite; **brownfield Mode D especially**; conforms to the repo's conventions; writes `solution/TEST-HEALTH.md` | `asklepios` |
 
 **Lane map (fire CONCURRENTLY, in batched waves; concurrency cap ≈ cores−2; gentle load):**
 - **UI lane:** Penelope (baseline paths) → Daidalos (automation) ∥ Orion (behaviour hunt) ∥ Lynceus (presentation hunt) ∥ Antigone (a11y hunt). a11y AUTO = Daidalos. Orion+Lynceus split the largest surface by defect-class.

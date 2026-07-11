@@ -1,6 +1,39 @@
 {
   "$schema": "../schemas/runtime-adapters.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "support": {
+    "claude": {
+      "level": "plugin-native",
+      "parentRuntimeRequired": false
+    },
+    "codex": {
+      "level": "parent-runtime-dependent",
+      "parentRuntimeRequired": true,
+      "requiredParentCapabilities": [
+        "orchestration",
+        "packaged-assets",
+        "tool-equivalence"
+      ],
+      "missingCapabilityOutcome": "CAPABILITY_GAP"
+    }
+  },
+  "configurationParity": {
+    "status": "validated",
+    "scope": [
+      "role-inventory",
+      "generated-instructions",
+      "model-and-effort",
+      "sandbox-policy",
+      "native-config-load"
+    ],
+    "doesNotClaim": [
+      "behavioral-equivalence",
+      "tool-availability",
+      "packaged-asset-availability",
+      "delegation-execution",
+      "target-outcomes"
+    ]
+  },
   "claude": {
     "preloadedSkill": "qa-doctrine",
     "toolSource": "role-manifest",
@@ -9,7 +42,7 @@
   "codex": {
     "modelSource": "model-policy",
     "sandboxPolicy": "read-only when the capability contract has no Write tool; workspace-write otherwise",
-    "doctrinePolicy": "embed the canonical doctrine because standalone Codex agents cannot preload Claude plugin skills",
+    "doctrinePolicy": "embed the canonical doctrine because Codex custom-agent configuration cannot preload Claude plugin skills",
     "toolPolicy": "record Claude tools as provenance and require available Codex equivalents at runtime"
   },
   "explicitDifferences": [

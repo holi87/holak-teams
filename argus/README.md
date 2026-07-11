@@ -171,16 +171,20 @@ compares Opus and Sonnet without storing prompts, completions, or target data.
 
 Runtime-neutral role content lives in `roles/*.md`, with metadata and contract pointers in
 `roles/manifest.json`. `roles/runtime-adapters.json` is the reviewed list of intentional
-Claude/Codex differences. Run `scripts/sync-argus-role-variants.mjs --write` to regenerate
-all runtime files and `--check` to reject drift.
+Claude/Codex differences and machine-readable support levels. Run
+`scripts/sync-argus-role-variants.mjs --write` to regenerate all runtime files and
+`--check` to reject drift.
 
 The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same
 27 agents with the same slugs and names, each as a `*.toml` + readable `*.md` companion.
 The generator reads native model names and effort from `model-policy.json`, ownership and
 outputs from `raci.json`, inputs from the capability matrix, and safety/artifact-language
-rules from `qa-doctrine`. Codex standalone agents embed the shared doctrine because they
-cannot preload Claude plugin skills. Native validation uses `claude plugin validate
---strict` and an isolated `codex doctor` load.
+rules from `qa-doctrine`. Codex custom-agent configuration embeds the shared doctrine
+because it cannot preload Claude plugin skills. Claude support is `plugin-native`; Codex
+support is `parent-runtime-dependent` and requires parent-provided orchestration,
+packaged assets, and equivalent tools. Native validation uses `claude plugin validate
+--strict` and an isolated `codex doctor` load; those checks prove configuration loading,
+not behavioral equivalence or target outcomes.
 
 <!-- RACI_ROSTER_START -->
 | Agent | Role | Lane | Persistence |

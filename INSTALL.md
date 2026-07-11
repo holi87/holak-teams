@@ -14,6 +14,11 @@ Hephaestus Codex files are generated from the flat Claude sources with
 `argus/roles/` sources. CI rejects body, metadata, provenance, sandbox, or model drift
 across the complete 49-agent roster.
 
+For Argus, this is generated-configuration parity, not a claim of standalone behavioral
+parity. Claude support is `plugin-native`; Codex support is
+`parent-runtime-dependent`. A Codex parent session must provide orchestration, packaged
+Argus assets, and contract-equivalent tools, or the role returns `CAPABILITY_GAP`.
+
 Codex model mapping for both teams: Claude `opus` source roles use `model = "sol"` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles use `model = "terra"` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles use `model = "luna"` with `model_reasoning_effort = "medium"`.
 
 Argus does not infer tiers from that mapping. `argus/model-policy.json` explicitly assigns
@@ -191,7 +196,7 @@ Then in any session:
 
 ## Codex Install — Hephaestus + Argus
 
-A Codex subagent is a **single standalone `*.toml`** (the persona prompt lives inside it,
+A Codex subagent is configured by a **single self-contained `*.toml`** (the persona prompt lives inside it,
 in `developer_instructions`). The matching `*.md` is a readable generated companion and is
 **not read by Codex**, so install only the `*.toml`. Argus variants are generated from
 `argus/roles/manifest.json` + `argus/roles/*.md`; direct edits under `argus/codex/` are
@@ -199,6 +204,11 @@ rejected by CI. Codex has no marketplace/git install for subagents (Codex plugin
 skills / MCP / apps / hooks, not subagents), so installation is a copy or symlink into
 `~/.codex/agents/`. Slugs stay the bare first names (`marcus`, `fabricius`, `odysseus`,
 `talos`, ...).
+
+Loading these TOML files validates configuration only. In particular, Codex does not
+install the Claude `/argus:run` skill or the Argus plugin runtime. Odysseus can execute
+the full contract only when the parent session supplies the required orchestration and
+packaged assets; otherwise it must report `CAPABILITY_GAP` rather than simulate work.
 
 ### Option A — symlink (recommended, auto-update)
 

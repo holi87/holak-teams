@@ -281,9 +281,9 @@ else
 fi
 
 if node "$ROOT/scripts/verify-agent-runtime-parity.mjs"; then
-  pass "[agents] (q) 49-agent Claude/Codex generation, model mapping, semantic parity, and roster alignment"
+  pass "[agents] (q) 49-agent generated configuration, model mapping, support levels, and roster alignment"
 else
-  fail "[agents] (q) full Claude/Codex runtime parity contract"
+  fail "[agents] (q) Claude/Codex generated-configuration parity contract"
 fi
 
 echo ""

@@ -1,8 +1,16 @@
 {
   "schemaVersion": 1,
-  "generatedFrom": "effective argus/claude/agents/*.md plus preloaded skills",
+  "generatedFrom": "effective argus/claude/agents/*.md plus preloaded skills and /argus:run",
   "agentsScanned": 27,
+  "skillsScanned": 1,
+  "entrypointsScanned": 1,
   "pluginAssetReferences": [
+    {
+      "value": "agents/odysseus.md",
+      "consumers": [
+        "/argus:run"
+      ]
+    },
     {
       "value": "references/AUTHORIZATION-POLICY.md",
       "consumers": [
@@ -68,8 +76,21 @@
       ]
     },
     {
+      "value": "references/CANONICAL-CONTRACTS.md",
+      "consumers": [
+        "/argus:run"
+      ]
+    },
+    {
+      "value": "references/COVERAGE-CONTRACT.md",
+      "consumers": [
+        "/argus:run"
+      ]
+    },
+    {
       "value": "references/ENGAGEMENT-POLICY.md",
       "consumers": [
+        "/argus:run",
         "aegis",
         "antigone",
         "ariadne",
@@ -100,8 +121,15 @@
       ]
     },
     {
+      "value": "references/RACI-CONTRACT.md",
+      "consumers": [
+        "/argus:run"
+      ]
+    },
+    {
       "value": "references/RUNNER-CONTRACT.md",
       "consumers": [
+        "/argus:run",
         "atlas",
         "kleio"
       ]
@@ -109,6 +137,7 @@
     {
       "value": "references/TEMPLATE-CONTRACT.md",
       "consumers": [
+        "/argus:run",
         "aegis",
         "antigone",
         "ariadne",
@@ -222,9 +251,21 @@
       ]
     },
     {
+      "value": "ai_agents_internal/authorization.json",
+      "consumers": [
+        "/argus:run"
+      ]
+    },
+    {
       "value": "ai_agents_internal/dispatch-plan.md",
       "consumers": [
         "odysseus"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/engagement.json",
+      "consumers": [
+        "/argus:run"
       ]
     },
     {
@@ -242,6 +283,7 @@
     {
       "value": "ai_agents_internal/preflight.json",
       "consumers": [
+        "/argus:run",
         "odysseus"
       ]
     },
@@ -594,6 +636,7 @@
     {
       "value": "solution/ACCESSIBILITY-REPORT.md",
       "consumers": [
+        "/argus:run",
         "antigone",
         "daidalos",
         "kleio"
@@ -1036,8 +1079,15 @@
       ]
     },
     {
+      "value": "buf",
+      "consumers": [
+        "proteus"
+      ]
+    },
+    {
       "value": "claude",
       "consumers": [
+        "/argus:run",
         "odysseus"
       ]
     },
@@ -1111,6 +1161,18 @@
       ]
     },
     {
+      "value": "grpc_cli",
+      "consumers": [
+        "proteus"
+      ]
+    },
+    {
+      "value": "grpcurl",
+      "consumers": [
+        "proteus"
+      ]
+    },
+    {
       "value": "java",
       "consumers": [
         "atlas"
@@ -1125,6 +1187,24 @@
         "metis",
         "nike",
         "odysseus"
+      ]
+    },
+    {
+      "value": "kafka-console-consumer",
+      "consumers": [
+        "proteus"
+      ]
+    },
+    {
+      "value": "kafka-console-producer",
+      "consumers": [
+        "proteus"
+      ]
+    },
+    {
+      "value": "kcat",
+      "consumers": [
+        "proteus"
       ]
     },
     {
@@ -1157,6 +1237,12 @@
         "theseus",
         "tiresias",
         "tyche"
+      ]
+    },
+    {
+      "value": "nc",
+      "consumers": [
+        "proteus"
       ]
     },
     {
@@ -1209,6 +1295,12 @@
       ]
     },
     {
+      "value": "rabbitmqadmin",
+      "consumers": [
+        "proteus"
+      ]
+    },
+    {
       "value": "rm",
       "consumers": [
         "tyche"
@@ -1226,6 +1318,18 @@
       "consumers": [
         "atlas",
         "daidalos"
+      ]
+    },
+    {
+      "value": "websocat",
+      "consumers": [
+        "proteus"
+      ]
+    },
+    {
+      "value": "wscat",
+      "consumers": [
+        "proteus"
       ]
     }
   ]
