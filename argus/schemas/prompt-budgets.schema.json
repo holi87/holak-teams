@@ -2,8 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://holak-teams.local/argus/prompt-budgets.schema.json",
   "type": "object",
-  "required": ["schemaVersion", "baseline", "budgets", "requiredPreloadedSkill", "optionalProfiles"],
+  "required": ["schemaVersion", "baseline", "approvedCorpus", "budgets", "requiredPreloadedSkill", "optionalProfiles"],
   "properties": {
+    "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
     "baseline": {
       "type": "object",
@@ -12,6 +13,36 @@
         "claudeAgentWords": { "type": "integer", "minimum": 1 },
         "capturedAt": { "type": "string", "format": "date" },
         "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" }
+      },
+      "additionalProperties": false
+    },
+    "approvedCorpus": {
+      "type": "object",
+      "required": ["words", "sha256", "agents"],
+      "properties": {
+        "words": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "agents": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
+    "regressionApproval": {
+      "type": "object",
+      "required": ["corpusSha256", "issue", "approvedBy", "reason", "allowedAgentIncreases"],
+      "properties": {
+        "corpusSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "issue": { "type": "string", "pattern": "^#[0-9]+$" },
+        "approvedBy": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "allowedAgentIncreases": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        }
       },
       "additionalProperties": false
     },

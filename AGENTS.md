@@ -257,6 +257,10 @@ stay equal:
 5. Commit and push. Installed users pick it up via `/plugin marketplace update holak-teams`
    (or automatically when `autoUpdate` is on).
 
+Use `node scripts/release-plugin.mjs --plugin <team> --bump <patch|minor|major> --write`
+to update all release declarations atomically. Before commit, run the complete local gate
+documented in `RELEASE.md`: `scripts/validate-release.sh`.
+
 ---
 
 ## Adding or changing an agent
