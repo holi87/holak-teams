@@ -129,8 +129,8 @@
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
-      "bytes": 11870,
-      "sha256": "3fed16b4d614a838465100d3932f0b61b31e1a995fbcbbf07b98a57b66d6b5fc"
+      "bytes": 12252,
+      "sha256": "fd2b5df75a91b27f2f29243113dcea6f8f5611d6927dd15a3b56b2d1e9c9d8b6"
     },
     {
       "id": "model-policy",

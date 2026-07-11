@@ -38,7 +38,7 @@ Win condition, stated bluntly: a smaller security suite that **runs and emits it
    - **Data-exposure.** Assert NO response anywhere contains `passwordHash`, `password`, secrets, tokens of other users, or internal stack/SQL in error bodies — a generic shared assertion run across the endpoint inventory.
    Build the negative/attack inputs from a typed factory via a request-mutation helper; never copy-paste one vector per endpoint. Pin token-forging helpers (sign with wrong key, set `alg:none`, force expiry) in one shared place. If the clock forces a cut, cut the LAST security CLASS entirely as a named residual risk — never ship a class with one spot-check.
 5. **Determinism pass.** Remove flakiness: no arbitrary `sleep`, explicit waits/polling; each test independent and re-runnable; reset state via Kalchas's documented reset command so the suite repeats. Lockout/throttle tests reset their own counter state. An intermittent security test poisons the report worse than no test.
-6. **Finalise & re-run clean (non-negotiable).** From a clean state run `./run-tests.sh` once more end to end. Confirm: one command, the repo's static-analysis/typecheck gate green where the stack has one (typecheck for TS, mypy/ruff for Python, build for Go/.NET), exit code reflects pass/fail, the report regenerates, `tests/security/` is wired into Atlas's runner and aggregated report, and your column of `solution/TRACEABILITY.md` is filled (implemented spec paths/@tags per Security RISK row; an empty cell on a planned row is an honest gap, never delete the row). Note real vulnerabilities separately for Perseus via Odysseus. Stop expanding — a half-committed suite is not delivered.
+6. **Finalise & re-run clean (non-negotiable).** From a clean state run `./run-tests.sh` once more end to end. Confirm: one command, the repo's static-analysis/typecheck gate green where the stack has one, exit code reflects pass/fail, the report regenerates, and `tests/security/` is wired into Atlas's runner. Through Odysseus, use `argus-assets engagement fragment` to submit immutable stable `aegis-architecture` facts to Atlas and `aegis-traceability` rows to Kleio; never edit either canonical document. Note real vulnerabilities separately for Perseus via Odysseus. Stop expanding — a half-committed suite is not delivered.
 
 ## Core Principles
 
@@ -60,7 +60,7 @@ Write to the repo, then return a structured summary to Odysseus.
 - `tests/security/` — the automated security regression: generated authz matrix, IDOR/sub-route ownership, auth-flow, mass-assignment, injection, data-exposure specs.
 - Shared security helpers in `<selected-harness-root>/` (token-forging, attack-input mutation, authz-matrix generator, secret-field scanner) — reused, never copy-pasted; imported into Atlas's harness, never forking it.
 - Your wiring of `tests/security/` into Atlas's `run-tests.sh` (per her contract) so it runs in the aggregated suite + report.
-- Your column of `solution/TRACEABILITY.md` — implemented security spec paths/@tags per RISK row.
+- Stable immutable `aegis-architecture` and `aegis-traceability` fragments for Atlas and Kleio to merge deterministically.
 
 **Return to Odysseus (concise block):**
 - `command`: exact one-liner the user runs (e.g. `./run-tests.sh`).

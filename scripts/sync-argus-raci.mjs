@@ -12,6 +12,7 @@ const capability = readJson('argus/capabilities/capability-matrix.json');
 const engagement = readJson('argus/policies/engagement.template.json');
 const agents = new Map(source.agents.map((agent) => [agent.slug, agent]));
 const slugs = [...agents.keys()].sort();
+const canonicalOwners = new Map(source.artifacts.map((artifact) => [artifact.path, artifact.accountable]));
 
 assert(source.schemaVersion === 1, 'RACI schemaVersion must be 1');
 assert(source.agents.length === 27 && agents.size === 27, 'RACI must define exactly 27 unique agents');
@@ -25,6 +26,10 @@ for (const contract of capability.agents) {
   if (agent.persistence === 'tests-only') assert(/owns tests\//i.test(agent.description), `${agent.slug}: test ownership is missing from description`);
   if (agent.persistence === 'candidate-file') assert(contract.requiredTools.includes('Write'), `${agent.slug}: candidate-file role has no Write tool`);
   if (agent.persistence === 'fragment-only' || agent.persistence === 'result-envelope') assert(!contract.requiredTools.includes('Write'), `${agent.slug}: envelope-only role unexpectedly has Write`);
+  for (const path of agent.accountableArtifacts) assert(contract.artifactPaths.includes(path), `${agent.slug}: capability paths omit accountable artifact ${path}`);
+  for (const path of contract.artifactPaths) {
+    if (canonicalOwners.has(path)) assert(canonicalOwners.get(path) === agent.slug, `${agent.slug}: capability path claims canonical artifact owned by ${canonicalOwners.get(path)}: ${path}`);
+  }
 }
 
 const expectedActivities = ['automate', 'deduplicate', 'discover', 'judge', 'persist', 'report', 'validate'];

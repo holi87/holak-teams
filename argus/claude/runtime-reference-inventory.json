@@ -222,6 +222,12 @@
       ]
     },
     {
+      "value": "ai_agents_internal/dispatch-plan.md",
+      "consumers": [
+        "odysseus"
+      ]
+    },
+    {
       "value": "ai_agents_internal/heartbeat/<slug>.log",
       "consumers": [
         "odysseus"
@@ -237,6 +243,12 @@
       "value": "ai_agents_internal/preflight.json",
       "consumers": [
         "odysseus"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/recon/",
+      "consumers": [
+        "kalchas"
       ]
     },
     {
@@ -271,7 +283,6 @@
         "atalanta",
         "charon",
         "kalchas",
-        "odysseus",
         "orion",
         "perseus",
         "pistis",
@@ -481,8 +492,7 @@
       "value": "reports/",
       "consumers": [
         "atlas",
-        "kleio",
-        "odysseus"
+        "kleio"
       ]
     },
     {
@@ -647,12 +657,6 @@
       ]
     },
     {
-      "value": "solution/CODE-REVIEW.md",
-      "consumers": [
-        "aristarchus"
-      ]
-    },
-    {
       "value": "solution/contracts/",
       "consumers": [
         "odysseus",
@@ -671,19 +675,6 @@
         "atlas",
         "kleio",
         "minos"
-      ]
-    },
-    {
-      "value": "solution/discovery/",
-      "consumers": [
-        "odysseus",
-        "orion"
-      ]
-    },
-    {
-      "value": "solution/discovery/system-map.md",
-      "consumers": [
-        "kalchas"
       ]
     },
     {
@@ -737,6 +728,7 @@
     {
       "value": "solution/IMPLEMENTATION-REPORT.md",
       "consumers": [
+        "aristarchus",
         "kleio",
         "metis",
         "odysseus"
@@ -838,7 +830,9 @@
       "value": "solution/surface-inventory.json",
       "consumers": [
         "atlas",
-        "kalchas"
+        "kalchas",
+        "odysseus",
+        "orion"
       ]
     },
     {
@@ -857,7 +851,6 @@
         "kalchas",
         "kleio",
         "metis",
-        "mnemosyne",
         "nike",
         "odysseus",
         "talos"
@@ -866,15 +859,10 @@
     {
       "value": "solution/TRACEABILITY.md",
       "consumers": [
-        "aegis",
-        "daidalos",
         "hermes",
         "kleio",
         "metis",
-        "mnemosyne",
-        "nike",
         "odysseus",
-        "talos",
         "tyche"
       ]
     },

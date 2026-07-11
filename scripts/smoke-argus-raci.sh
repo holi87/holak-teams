@@ -29,4 +29,28 @@ grep -Fq 'Minos persists' "$ROOT/argus/claude/agents/tiresias.md" || fail 'Tires
 grep -Fq 'execute it unless the user explicitly requested planning only' "$ROOT/argus/claude/agents/odysseus.md" || fail 'Odysseus plan-versus-execute behavior is ambiguous'
 grep -Fq '<!-- RACI_ROSTER_START -->' "$ROOT/argus/README.md" || fail 'README roster is not generated from RACI'
 
+role_corpus=("$ROOT/argus/roles" "$ROOT/argus/claude/agents" "$ROOT/argus/codex")
+for legacy in 'solution/discovery/system-map.md' 'solution/CODE-REVIEW.md'; do
+  if rg -Fq "$legacy" "${role_corpus[@]}" "$ROOT/argus/claude/runtime-reference-inventory.json"; then
+    fail "legacy non-RACI artifact path remains: $legacy"
+  fi
+done
+
+arch_nonowners=(metis talos daidalos aegis mnemosyne nike kleio)
+trace_nonowners=(metis talos daidalos aegis mnemosyne nike hermes tyche)
+for slug in "${arch_nonowners[@]}"; do
+  file="$ROOT/argus/roles/$slug.md"
+  grep -Fq 'engagement fragment' "$file" || fail "$slug lacks Architecture fragment handoff"
+  grep -Fq 'Atlas' "$file" || fail "$slug lacks Architecture owner route"
+done
+for slug in "${trace_nonowners[@]}"; do
+  file="$ROOT/argus/roles/$slug.md"
+  grep -Fq 'traceability' "$file" || fail "$slug lacks stable Traceability fragment"
+  grep -Fq 'Kleio' "$file" || fail "$slug lacks Traceability owner route"
+done
+grep -Fq 'engagement merge --canonical solution/ARCHITECTURE.md' "$ROOT/argus/roles/atlas.md" || fail 'Atlas lacks deterministic Architecture owner merge'
+grep -Fq 'engagement merge --canonical solution/TRACEABILITY.md' "$ROOT/argus/roles/kleio.md" || fail 'Kleio lacks deterministic Traceability owner merge'
+grep -Fq 'solution/surface-inventory.json' "$ROOT/argus/roles/orion.md" || fail 'Orion does not consume Kalchas surface inventory'
+grep -Fq 'result envelope' "$ROOT/argus/roles/aristarchus.md" || fail 'Aristarchus review is not a result envelope'
+
 printf 'PASS  Argus RACI: runtime routing, single-owner artifacts/transitions, 27 descriptions, roster, and known contradiction regressions\n'

@@ -8,7 +8,7 @@ role: Aristarchus
 team: Argus QA
 slug: aristarchus
 source: argus/roles/aristarchus.md
-source_sha256: f700c8935388c9efc1e95f544d8150862daf025e9b0f9ccc808474f9e3618be0
+source_sha256: 80e7797ec5cc094c30b443c77ea957b931be0ae93d66ad6f5f0b4632d260cb56
 tier: frontier
 model: sol
 model_reasoning_effort: xhigh
@@ -278,7 +278,7 @@ Return to Odysseus exactly this structure:
 - [ ] <one item per BLOCKER, phrased as a verifiable condition>
 ```
 
-Rules for the output: the verdict line is first and unambiguous. BLOCK if and only if at least one BLOCKER stands. If zero BLOCKERS, APPROVE even with open WARNINGS (note them). **APPROVE | BLOCK is the only verdict vocabulary** — where a dispatch or roster table asks for a "go/no-go on automation", APPROVE = go and BLOCK = no-go; emit no other token. You persist nothing to disk yourself (strictly read-only): this envelope is the deliverable, and Odysseus persists your verdict verbatim as `solution/CODE-REVIEW.md` so Kleio can attest the code-review result in `IMPLEMENTATION-REPORT.md`. Keep it scannable — Odysseus routes from this, so each item must be self-contained, name the owning lane, and be actionable.
+Rules for the output: the verdict line is first and unambiguous. BLOCK if and only if at least one BLOCKER stands. If zero BLOCKERS, APPROVE even with open WARNINGS (note them). **APPROVE | BLOCK is the only verdict vocabulary** — where a dispatch or roster table asks for a "go/no-go on automation", APPROVE = go and BLOCK = no-go; emit no other token. You persist nothing to disk yourself (strictly read-only): this result envelope is the complete review record. Odysseus routes it unchanged to Kleio, who attests the verdict, blockers, warnings, evidence commands, and reviewed commit in `solution/IMPLEMENTATION-REPORT.md`. Keep it scannable and self-contained so no separate review artifact is needed.
 
 ## Anti-Patterns
 

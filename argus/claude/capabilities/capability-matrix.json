@@ -151,7 +151,7 @@
       "modes": ["A", "C", "D"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
       "optionalCapabilities": ["context7"],
-      "artifactPaths": ["solution/ARCHITECTURE.md", "run-tests.sh"]
+      "artifactPaths": ["run-tests.sh", "solution/ARCHITECTURE.md", "solution/automation-status.json", "solution/coverage-observations.json"]
     },
     {
       "slug": "charon",
@@ -189,14 +189,14 @@
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
       "riskActions": ["browser-read", "browser-state-change", "binary-evidence"],
       "optionalCapabilities": ["browser-runtime", "playwright-mcp"],
-      "artifactPaths": ["ai_agents_internal/recon/"]
+      "artifactPaths": ["ai_agents_internal/recon/", "solution/surface-inventory.json"]
     },
     {
       "slug": "kleio",
       "lane": "reporting",
       "modes": ["A", "B", "C", "D"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "artifactPaths": ["README.md", "solution/IMPLEMENTATION-REPORT.md"]
+      "artifactPaths": ["README.md", "solution/evidence-reference.json", "solution/coverage-result.json", "solution/final-summary.json", "solution/FINDINGS.md", "solution/ACCESSIBILITY-REPORT.md", "solution/IMPLEMENTATION-REPORT.md", "solution/TRACEABILITY.md"]
     },
     {
       "slug": "lynceus",
@@ -220,7 +220,7 @@
       "lane": "triage",
       "modes": ["A", "B"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "artifactPaths": ["solution/BUG-LEDGER.md"]
+      "artifactPaths": ["solution/BUG-LEDGER.md", "solution/bug-ledger.json", "solution/WHITEBOX-LEADS.md"]
     },
     {
       "slug": "mnemosyne",
@@ -246,7 +246,7 @@
       "lane": "orchestration",
       "modes": ["A", "B", "C", "D"],
       "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "Agent"],
-      "artifactPaths": ["ai_agents_internal/preflight.json", "ai_agents_internal/dispatch-plan.md"]
+      "artifactPaths": ["ai_agents_internal/preflight.json", "ai_agents_internal/dispatch-plan.md", "solution/lane-plan.json"]
     },
     {
       "slug": "orion",
