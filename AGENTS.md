@@ -247,8 +247,8 @@ stay equal:
 **To bump a plugin** (e.g. after editing its agents):
 
 1. For Argus, edit `argus/roles/<slug>.md` and canonical metadata/contracts, then run
-   `scripts/sync-argus-role-variants.mjs --write`. For Hephaestus, edit the Claude agent
-   and its matching Codex variant directly.
+   `scripts/sync-argus-role-variants.mjs --write`. For Hephaestus, edit the flat Claude
+   source and run `scripts/sync-hephaestus-codex-variants.mjs --write`.
 2. For Argus runtime sources, regenerate and check `argus/claude/` with
    `scripts/sync-argus-runtime-assets.mjs --write` and `--check`.
 3. Raise `"version"` in **both** files above — same number — following semver:
@@ -271,8 +271,9 @@ documented in `RELEASE.md`: `scripts/validate-release.sh`.
   `argus/roles/manifest.json`. Do not edit generated `argus/claude/agents/*` or
   `argus/codex/*` files directly. Run `scripts/sync-argus-role-variants.mjs --write` and
   commit the canonical and generated files together.
-- Hephaestus keeps one flat `*.md` file in `hephaestus/claude/agents/`, with the same
-  kebab-case slug as its manually maintained Codex variant.
+- Hephaestus keeps one flat canonical `*.md` file in `hephaestus/claude/agents/`. Do not
+  edit `hephaestus/codex/*` directly; regenerate the same-slug TOML/Markdown pair with
+  `scripts/sync-hephaestus-codex-variants.mjs --write`.
 - Frontmatter: `name`, `description`, `tools`, `model`, `color`, and optional preloaded
   `skills`. **Not supported in plugin
   agent frontmatter:** `hooks`, `mcpServers`, `permissionMode` (Claude Code strips/ignores

@@ -21,7 +21,12 @@ A single entry point — `marcus`. You don't call specialists yourself; the lead
 
 ## Roster (`claude/` + `codex/`)
 
-The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 22 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. Codex model mapping: `opus` → `sol` + `xhigh`, `sonnet` → `terra` + `medium`, `haiku` → `luna` + `medium`.
+The flat files in `claude/agents/` are canonical. The Codex version lives in `codex/` as
+the same 22 agents with the same slugs, descriptions, and complete role bodies, each as a
+generated `*.toml` + readable `*.md` pair. Run
+`scripts/sync-hephaestus-codex-variants.mjs --write` after changing a Claude role and
+`--check` to reject drift. Codex model mapping is generated as `opus` → `sol` + `xhigh`,
+`sonnet` → `terra` + `medium`, and `haiku` → `luna` + `medium`.
 
 **Leader:** `marcus`
 
@@ -54,4 +59,4 @@ The Claude Code version lives in `claude/`. The Codex version lives in `codex/` 
 | catiline | exploratory — adversarial user, repro bugs |
 | mercury | performance testing — k6, response time, CWV |
 
-`codex/` — Codex variant of the roster (22 `*.toml` + `*.md` pairs).
+`codex/` — generated Codex variant of the roster (22 `*.toml` + readable `*.md` pairs).

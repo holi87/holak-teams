@@ -9,6 +9,11 @@ The agents live in this repo (`~/Desktop/GenAI/my_agents/`), split into two team
 - **Hephaestus for Codex** — `hephaestus/codex/` — the same 22 agents as paired `*.toml` + `*.md` files, entry point `marcus`
 - **Argus for Codex** — `argus/codex/` — the same 27 agents as paired `*.toml` + `*.md` files, entry point `odysseus`
 
+Hephaestus Codex files are generated from the flat Claude sources with
+`scripts/sync-hephaestus-codex-variants.mjs --write`. Argus uses its canonical
+`argus/roles/` sources. CI rejects body, metadata, provenance, sandbox, or model drift
+across the complete 49-agent roster.
+
 Codex model mapping for both teams: Claude `opus` source roles use `model = "sol"` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles use `model = "terra"` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles use `model = "luna"` with `model_reasoning_effort = "medium"`.
 
 Argus does not infer tiers from that mapping. `argus/model-policy.json` explicitly assigns

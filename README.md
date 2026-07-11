@@ -144,6 +144,12 @@ The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent 
 
 **Codex runtime mapping for both teams:** Claude `opus` source roles run on `sol` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles run on `terra` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles run on `luna` with `model_reasoning_effort = "medium"`.
 
+The mapping and full role-body parity are enforced for all 49 agents. Hephaestus Codex
+files are generated from `hephaestus/claude/agents/*.md`; Argus runtime variants are
+generated from `argus/roles/`. `scripts/smoke-agent-runtime-parity.sh` checks both native
+loaders plus this roster and the HTML roster. See
+[`AGENT-RUNTIME-PARITY.md`](AGENT-RUNTIME-PARITY.md) for the latest audit result.
+
 ## Full roster — model per runtime
 
 Every agent runs on an **Anthropic** model under Claude Code and on a **mapped OpenAI** model under Codex — **Codex never uses Anthropic models.** The mapping is fixed by source tier: `opus → sol · xhigh`, `sonnet → terra · medium`, `haiku → luna · medium`. The `· value` after the Codex model is `model_reasoning_effort`.

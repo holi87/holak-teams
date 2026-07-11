@@ -22,6 +22,15 @@ scripts/sync-argus-role-variants.mjs --write
 CI runs the same command in check mode and loads the generated files through both Claude
 Code's strict plugin validator and Codex's native config loader.
 
+For Hephaestus role changes, regenerate Codex from the flat Claude sources:
+
+```bash
+scripts/sync-hephaestus-codex-variants.mjs --write
+```
+
+The release gate validates exact model mapping, descriptions, source hashes, full role
+bodies, sandbox policy, README rows, and the HTML roster for all 49 agents.
+
 ## Reproducible version bump
 
 Prepare a semver release with the repository helper:
