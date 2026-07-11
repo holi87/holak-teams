@@ -246,7 +246,9 @@ stay equal:
 
 **To bump a plugin** (e.g. after editing its agents):
 
-1. Edit the agent files under `<team>/claude/agents/` (and the matching `<team>/codex/` variant).
+1. For Argus, edit `argus/roles/<slug>.md` and canonical metadata/contracts, then run
+   `scripts/sync-argus-role-variants.mjs --write`. For Hephaestus, edit the Claude agent
+   and its matching Codex variant directly.
 2. For Argus runtime sources, regenerate and check `argus/claude/` with
    `scripts/sync-argus-runtime-assets.mjs --write` and `--check`.
 3. Raise `"version"` in **both** files above — same number — following semver:
@@ -265,8 +267,12 @@ documented in `RELEASE.md`: `scripts/validate-release.sh`.
 
 ## Adding or changing an agent
 
-- One agent = one flat `*.md` file in `<team>/claude/agents/`, **same kebab-case slug** as
-  the Codex variant in `<team>/codex/`.
+- Argus role content lives in `argus/roles/<slug>.md`; role metadata lives in
+  `argus/roles/manifest.json`. Do not edit generated `argus/claude/agents/*` or
+  `argus/codex/*` files directly. Run `scripts/sync-argus-role-variants.mjs --write` and
+  commit the canonical and generated files together.
+- Hephaestus keeps one flat `*.md` file in `hephaestus/claude/agents/`, with the same
+  kebab-case slug as its manually maintained Codex variant.
 - Frontmatter: `name`, `description`, `tools`, `model`, `color`, and optional preloaded
   `skills`. **Not supported in plugin
   agent frontmatter:** `hooks`, `mcpServers`, `permissionMode` (Claude Code strips/ignores

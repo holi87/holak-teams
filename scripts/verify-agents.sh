@@ -21,6 +21,7 @@
 #   n) all agent, artifact, transition, and routing ownership comes from one RACI source
 #   o) shared doctrine is preloaded once and prompt size/duplication budgets hold
 #   p) one model source controls Claude/Codex tiers, effort, turns, escalation, and telemetry
+#   q) canonical role sources deterministically generate semantically paired runtime variants
 #
 # Exit code: 0 when every check passes, 1 otherwise.
 
@@ -277,6 +278,12 @@ if "$ROOT/scripts/smoke-argus-model-policy.sh" && node "$ROOT/scripts/benchmark-
   pass "[argus] (p) 10/17 model tiers, effort/turns, escalation/fallback, sanitized telemetry, and benchmark"
 else
   fail "[argus] (p) runtime model policy contract"
+fi
+
+if node "$ROOT/scripts/sync-argus-role-variants.mjs" --check; then
+  pass "[argus] (q) canonical role sources and deterministic Claude/Codex semantic parity"
+else
+  fail "[argus] (q) generated Claude/Codex role parity contract"
 fi
 
 echo ""

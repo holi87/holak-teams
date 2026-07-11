@@ -67,6 +67,7 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   │   ├── references/ + schemas/
 │   │   └── templates/           # installed TS / Java / Python framework copies
 │   ├── codex/                   # 27 Codex-format agents (*.toml + *.md) — separate
+│   ├── roles/                   # canonical Argus role content, metadata, runtime adapters
 │   ├── framework-template/      # prepped Playwright+TS framework (shared reference)
 │   ├── framework-template-java/   # RestAssured + JUnit5 + Playwright-Java (shared reference)
 │   ├── framework-template-python/ # pytest + Playwright + httpx (shared reference)

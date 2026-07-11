@@ -8,7 +8,7 @@
   },
   "approvedCorpus": {
     "words": 88407,
-    "sha256": "9ec90c592b6297d5c56cc016d6f2d179d435c5fc9e13c98a7e249643a68a1d9e",
+    "sha256": "32ffc9566443bf24c7e50402525ce8cf87581bfb8e0653bc3ef916e1b539fe0a",
     "agents": {
       "aegis": 2389,
       "antigone": 3493,

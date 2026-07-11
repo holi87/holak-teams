@@ -13,6 +13,15 @@ then clean-installs the previous Argus release and updates it to the current rel
 The installed smoke exercises two specialist leases without depending on third-party
 services. A release is not ready until this command passes.
 
+For Argus role changes, regenerate both runtimes before the release gate:
+
+```bash
+scripts/sync-argus-role-variants.mjs --write
+```
+
+CI runs the same command in check mode and loads the generated files through both Claude
+Code's strict plugin validator and Codex's native config loader.
+
 ## Reproducible version bump
 
 Prepare a semver release with the repository helper:

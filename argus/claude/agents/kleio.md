@@ -82,7 +82,7 @@ Verdict: THOROUGH / PARTIAL-WITH-NAMED-GAPS  (PARTIAL whenever any layer OR UI s
 - Anti-pattern scan (MECHANICAL — paste the grep output; a blank line FAILS the gate): <pasted output of `grep -rnE 'test\.fail\(|\.only\(|test\.skip\(|xfail|describe\.configure\(\{ *mode: *.serial' tests/ <selected-harness-root>/` AND `grep -rn "project.name ===" <selected-harness-root>/ tests/`; verdict none / list with file:line: green-encoded bugs, serial-hidden siblings, stray .only/.skip, project-name-gated dead fixtures, API-only, manual-only items, vacuous green gates, stale/no-op tooling>. Adapt the grep patterns to the lane frameworks actually present in `tests/` (e.g. `xfail`/`skipif` for pytest, `@Disabled`/`@EnabledIf` for JUnit); an unadapted JS-only scan over a non-JS suite is a blank-but-executed scan that proves nothing and FAILS the gate.
 
 ### Acceptance-Criteria Alignment (vs agreed criteria)
-- AI-collaboration: <strength + where documented> 
+- AI-collaboration: <strength + where documented>
 - Per-criterion mapping: <item → artifact → status>
 
 ### Gap List (ranked: fix highest-impact, cheapest first)
