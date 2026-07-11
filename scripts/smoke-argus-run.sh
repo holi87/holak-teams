@@ -86,12 +86,15 @@ trap 'rm -f "$OUTPUT" "$NO_TARGET_OUTPUT" "$NO_AGENT_OUTPUT" "$ODYSSEUS_OUTPUT" 
 CLAUDE_CONFIG_DIR="$CONFIG_DIR" claude plugin marketplace add "$ROOT" >/dev/null
 CLAUDE_CONFIG_DIR="$CONFIG_DIR" claude plugin install argus@holak-teams --scope user >/dev/null
 CLAUDE_CONFIG_DIR="$CONFIG_DIR" claude plugin details argus@holak-teams >"$DETAILS_OUTPUT"
-require_text 'Skills (1)  run' "$DETAILS_OUTPUT" "clean marketplace install does not expose the run skill"
+require_text 'Skills (3)' "$DETAILS_OUTPUT" "clean marketplace install does not expose all three Argus skills"
+require_text 'run' "$DETAILS_OUTPUT" "clean marketplace install does not expose the run skill"
+require_text 'qa-doctrine' "$DETAILS_OUTPUT" "clean marketplace install does not expose the preloaded doctrine skill"
+require_text 'competition-profile' "$DETAILS_OUTPUT" "clean marketplace install does not expose the optional competition profile"
 require_text 'Agents (27)' "$DETAILS_OUTPUT" "clean marketplace install does not expose all 27 agents"
 require_text 'Hooks (1)  PreToolUse' "$DETAILS_OUTPUT" "clean marketplace install does not activate the PreToolUse guard"
 INSTALLED_PLUGIN="$(find "$CONFIG_DIR/plugins/cache/holak-teams/argus" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 [ -n "$INSTALLED_PLUGIN" ] && [ -d "$INSTALLED_PLUGIN" ] || fail "clean marketplace install did not create an Argus plugin cache"
-printf 'PASS  clean marketplace install exposes /argus:run, 27 agents, and the PreToolUse guard\n'
+printf 'PASS  clean marketplace install exposes /argus:run, doctrine/profile skills, 27 agents, and the PreToolUse guard\n'
 
 (
   cd "$WORKDIR"

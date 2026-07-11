@@ -21,8 +21,8 @@
       "source": "argus/SHARED-DOCTRINE.md",
       "destination": "references/SHARED-DOCTRINE.md",
       "files": 1,
-      "bytes": 7458,
-      "sha256": "e765e39fadabc400ba6a24c57633d9f6e49ba23e53c19f1e622e89de3d0a9a0d"
+      "bytes": 750,
+      "sha256": "0ac1f415cc8853fd725bce0bb02c211efe43ca64df804aa5508139ca453ecb0f"
     },
     {
       "id": "authorization-policy",
@@ -88,13 +88,31 @@
       "sha256": "22b70a2c8170d38c244f4023a16be274419f21ec92129c0266b3e2acd49abc9b"
     },
     {
+      "id": "qa-doctrine-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/qa-doctrine",
+      "destination": "skills/qa-doctrine",
+      "files": 1,
+      "bytes": 7669,
+      "sha256": "a1c8eedde49657a6478abfdeb512d0b9ff5ae25a2afba7909955142f9e4be500"
+    },
+    {
+      "id": "competition-profile-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/competition-profile",
+      "destination": "skills/competition-profile",
+      "files": 1,
+      "bytes": 1101,
+      "sha256": "2d8e8480f6600dc074ec8cdf273f29853251d39ad17b47242cff757ce3b529a5"
+    },
+    {
       "id": "runtime-schemas",
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 21,
-      "bytes": 50896,
-      "sha256": "123603fe8f1d582f0f122f887a82bfe18afe9c9a8e8470bca91448699dfcc96f"
+      "files": 23,
+      "bytes": 53570,
+      "sha256": "d45a9539b42051eeca8763b1a28b9ecbbc2de9dc3484ebcb39bd49f031eb2d51"
     },
     {
       "id": "capability-matrix",

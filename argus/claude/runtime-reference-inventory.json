@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedFrom": "argus/claude/agents/*.md",
+  "generatedFrom": "effective argus/claude/agents/*.md plus preloaded skills",
   "agentsScanned": 27,
   "pluginAssetReferences": [
     {
@@ -38,26 +38,33 @@
     {
       "value": "references/BROWSER-ISOLATION.md",
       "consumers": [
+        "aegis",
         "antigone",
         "ariadne",
+        "aristarchus",
+        "asklepios",
         "atalanta",
+        "atlas",
         "charon",
         "daidalos",
         "hermes",
         "kalchas",
+        "kleio",
         "lynceus",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
         "odysseus",
         "orion",
         "penelope",
         "perseus",
+        "pistis",
         "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
         "tyche"
-      ]
-    },
-    {
-      "value": "references/CANONICAL-CONTRACTS.md",
-      "consumers": [
-        "odysseus"
       ]
     },
     {
@@ -96,14 +103,45 @@
       "value": "references/RUNNER-CONTRACT.md",
       "consumers": [
         "atlas",
-        "kleio",
-        "odysseus"
+        "kleio"
       ]
     },
     {
       "value": "schemas/bug-ledger.schema.json",
       "consumers": [
         "minos"
+      ]
+    },
+    {
+      "value": "skills/qa-doctrine/SKILL.md",
+      "consumers": [
+        "aegis",
+        "antigone",
+        "ariadne",
+        "aristarchus",
+        "asklepios",
+        "atalanta",
+        "atlas",
+        "charon",
+        "daidalos",
+        "hermes",
+        "kalchas",
+        "kleio",
+        "lynceus",
+        "metis",
+        "minos",
+        "mnemosyne",
+        "nike",
+        "odysseus",
+        "orion",
+        "penelope",
+        "perseus",
+        "pistis",
+        "proteus",
+        "talos",
+        "theseus",
+        "tiresias",
+        "tyche"
       ]
     },
     {
@@ -141,17 +179,13 @@
     {
       "value": "AGENTS.md",
       "consumers": [
-        "aristarchus",
-        "asklepios",
         "kleio"
       ]
     },
     {
       "value": "ai_agents_internal/",
       "consumers": [
-        "antigone",
         "kleio",
-        "lynceus",
         "odysseus"
       ]
     },
@@ -162,177 +196,15 @@
       ]
     },
     {
-      "value": "ai_agents_internal/heartbeat/aegis.log",
-      "consumers": [
-        "aegis"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/antigone.log",
-      "consumers": [
-        "antigone"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/ariadne.log",
-      "consumers": [
-        "ariadne"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/aristarchus.log",
-      "consumers": [
-        "aristarchus"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/asklepios.log",
-      "consumers": [
-        "asklepios"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/atalanta.log",
-      "consumers": [
-        "atalanta"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/atlas.log",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/charon.log",
-      "consumers": [
-        "charon"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/daidalos.log",
-      "consumers": [
-        "daidalos"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/hermes.log",
-      "consumers": [
-        "hermes"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/kalchas.log",
-      "consumers": [
-        "kalchas"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/kleio.log",
-      "consumers": [
-        "kleio"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/lynceus.log",
-      "consumers": [
-        "lynceus"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/metis.log",
-      "consumers": [
-        "metis"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/minos.log",
-      "consumers": [
-        "minos"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/mnemosyne.log",
-      "consumers": [
-        "mnemosyne"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/nike.log",
-      "consumers": [
-        "nike"
-      ]
-    },
-    {
       "value": "ai_agents_internal/heartbeat/odysseus.log",
       "consumers": [
         "odysseus"
       ]
     },
     {
-      "value": "ai_agents_internal/heartbeat/orion.log",
-      "consumers": [
-        "orion"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/penelope.log",
-      "consumers": [
-        "penelope"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/perseus.log",
-      "consumers": [
-        "perseus"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/pistis.log",
-      "consumers": [
-        "pistis"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/proteus.log",
-      "consumers": [
-        "proteus"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/talos.log",
-      "consumers": [
-        "talos"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/theseus.log",
-      "consumers": [
-        "theseus"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/tiresias.log",
-      "consumers": [
-        "tiresias"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/heartbeat/tyche.log",
-      "consumers": [
-        "tyche"
-      ]
-    },
-    {
       "value": "ai_agents_internal/preflight.json",
       "consumers": [
         "odysseus"
-      ]
-    },
-    {
-      "value": "ai_agents_internal/REPORT_RUN1/RUN2/LAST.html",
-      "consumers": [
-        "kleio"
       ]
     },
     {
@@ -392,7 +264,6 @@
     {
       "value": "bugs/ANG-*",
       "consumers": [
-        "daidalos",
         "odysseus"
       ]
     },
@@ -405,7 +276,6 @@
     {
       "value": "bugs/ARI-*",
       "consumers": [
-        "daidalos",
         "odysseus"
       ]
     },
@@ -418,7 +288,6 @@
     {
       "value": "bugs/ASK-*",
       "consumers": [
-        "asklepios",
         "odysseus"
       ]
     },
@@ -468,7 +337,6 @@
     {
       "value": "bugs/LYN-*",
       "consumers": [
-        "daidalos",
         "odysseus"
       ]
     },
@@ -481,7 +349,6 @@
     {
       "value": "bugs/ORI-*",
       "consumers": [
-        "daidalos",
         "odysseus"
       ]
     },
@@ -543,18 +410,13 @@
     {
       "value": "CLAUDE.md",
       "consumers": [
-        "aristarchus",
-        "asklepios",
         "kleio"
       ]
     },
     {
       "value": "package-lock.json",
       "consumers": [
-        "aegis",
-        "atlas",
-        "daidalos",
-        "nike"
+        "atlas"
       ]
     },
     {
@@ -603,14 +465,7 @@
       "consumers": [
         "atlas",
         "daidalos",
-        "nike",
         "odysseus"
-      ]
-    },
-    {
-      "value": "reports/html/index.html",
-      "consumers": [
-        "kleio"
       ]
     },
     {
@@ -636,8 +491,6 @@
       "consumers": [
         "atlas",
         "daidalos",
-        "kleio",
-        "nike",
         "odysseus"
       ]
     },
@@ -651,32 +504,19 @@
       "value": "run-tests.sh",
       "consumers": [
         "aegis",
-        "antigone",
         "ariadne",
         "aristarchus",
         "asklepios",
-        "atalanta",
         "atlas",
-        "charon",
         "daidalos",
-        "hermes",
         "kalchas",
         "kleio",
-        "lynceus",
         "metis",
         "minos",
         "mnemosyne",
         "nike",
         "odysseus",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
+        "talos"
       ]
     },
     {
@@ -688,18 +528,10 @@
     {
       "value": "scripts/hunt-driver.mjs",
       "consumers": [
-        "antigone",
-        "ariadne",
-        "atalanta",
         "charon",
         "daidalos",
-        "hermes",
-        "lynceus",
-        "orion",
         "penelope",
-        "perseus",
-        "proteus",
-        "tyche"
+        "proteus"
       ]
     },
     {
@@ -724,7 +556,6 @@
         "atlas",
         "kleio",
         "metis",
-        "mnemosyne",
         "odysseus",
         "talos"
       ]
@@ -951,12 +782,6 @@
       ]
     },
     {
-      "value": "solution/TEST-HEALTH-<scope>.md",
-      "consumers": [
-        "asklepios"
-      ]
-    },
-    {
       "value": "solution/TEST-HEALTH.md",
       "consumers": [
         "asklepios",
@@ -966,33 +791,16 @@
     {
       "value": "solution/TEST-STRATEGY.md",
       "consumers": [
-        "aegis",
-        "antigone",
-        "ariadne",
         "aristarchus",
         "asklepios",
-        "atalanta",
         "atlas",
-        "charon",
-        "daidalos",
-        "hermes",
         "kalchas",
         "kleio",
-        "lynceus",
         "metis",
-        "minos",
         "mnemosyne",
         "nike",
         "odysseus",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
+        "talos"
       ]
     },
     {
@@ -1023,7 +831,6 @@
       "consumers": [
         "aegis",
         "atlas",
-        "daidalos",
         "odysseus",
         "talos"
       ]
@@ -1041,12 +848,6 @@
         "atlas",
         "hermes",
         "tyche"
-      ]
-    },
-    {
-      "value": "src/api/schema.ts",
-      "consumers": [
-        "atlas"
       ]
     },
     {
@@ -1197,31 +998,11 @@
     {
       "value": "autocannon",
       "consumers": [
-        "aegis",
-        "antigone",
-        "aristarchus",
-        "asklepios",
-        "atalanta",
         "atlas",
-        "charon",
-        "daidalos",
         "hermes",
-        "kalchas",
-        "kleio",
         "metis",
-        "minos",
-        "mnemosyne",
         "nike",
-        "odysseus",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
+        "odysseus"
       ]
     },
     {
@@ -1238,7 +1019,6 @@
         "charon",
         "hermes",
         "kalchas",
-        "odysseus",
         "perseus",
         "proteus",
         "tyche"
@@ -1247,33 +1027,15 @@
     {
       "value": "date",
       "consumers": [
-        "aegis",
         "antigone",
-        "ariadne",
-        "aristarchus",
-        "asklepios",
         "atalanta",
-        "atlas",
         "charon",
-        "daidalos",
-        "hermes",
-        "kalchas",
-        "kleio",
         "lynceus",
-        "metis",
-        "minos",
-        "mnemosyne",
-        "nike",
         "odysseus",
         "orion",
-        "penelope",
         "perseus",
-        "pistis",
         "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
+        "tiresias"
       ]
     },
     {
@@ -1293,14 +1055,11 @@
         "aegis",
         "aristarchus",
         "asklepios",
-        "hermes",
         "kleio",
         "metis",
         "minos",
-        "nike",
         "odysseus",
-        "tiresias",
-        "tyche"
+        "tiresias"
       ]
     },
     {
@@ -1313,20 +1072,12 @@
       ]
     },
     {
-      "value": "gradle",
-      "consumers": [
-        "talos"
-      ]
-    },
-    {
       "value": "grep",
       "consumers": [
         "aristarchus",
         "asklepios",
-        "atlas",
         "kleio",
-        "odysseus",
-        "tiresias"
+        "odysseus"
       ]
     },
     {
@@ -1338,8 +1089,20 @@
     {
       "value": "k6",
       "consumers": [
+        "aristarchus",
+        "atlas",
+        "hermes",
+        "metis",
+        "nike",
+        "odysseus"
+      ]
+    },
+    {
+      "value": "make",
+      "consumers": [
         "aegis",
         "antigone",
+        "ariadne",
         "aristarchus",
         "asklepios",
         "atalanta",
@@ -1349,6 +1112,7 @@
         "hermes",
         "kalchas",
         "kleio",
+        "lynceus",
         "metis",
         "minos",
         "mnemosyne",
@@ -1366,58 +1130,24 @@
       ]
     },
     {
-      "value": "make",
-      "consumers": [
-        "aegis",
-        "antigone",
-        "asklepios",
-        "atalanta",
-        "atlas",
-        "daidalos",
-        "kleio",
-        "nike",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias"
-      ]
-    },
-    {
       "value": "node",
       "consumers": [
         "antigone",
         "ariadne",
         "atalanta",
         "charon",
-        "daidalos",
         "hermes",
-        "kalchas",
-        "lynceus",
-        "odysseus",
         "orion",
         "penelope",
         "perseus",
-        "proteus",
-        "tyche"
+        "proteus"
       ]
     },
     {
       "value": "npm",
       "consumers": [
-        "aegis",
-        "atlas",
-        "daidalos",
         "hermes",
-        "kalchas",
         "metis",
-        "mnemosyne",
-        "nike",
-        "pistis",
-        "talos",
         "tiresias"
       ]
     },
@@ -1428,50 +1158,17 @@
       ]
     },
     {
-      "value": "printf",
-      "consumers": [
-        "aegis",
-        "antigone",
-        "ariadne",
-        "aristarchus",
-        "asklepios",
-        "atalanta",
-        "atlas",
-        "charon",
-        "daidalos",
-        "hermes",
-        "kalchas",
-        "kleio",
-        "lynceus",
-        "metis",
-        "minos",
-        "mnemosyne",
-        "nike",
-        "orion",
-        "penelope",
-        "perseus",
-        "pistis",
-        "proteus",
-        "talos",
-        "theseus",
-        "tiresias",
-        "tyche"
-      ]
-    },
-    {
       "value": "psql",
       "consumers": [
         "charon",
-        "kalchas",
-        "odysseus"
+        "kalchas"
       ]
     },
     {
       "value": "pytest",
       "consumers": [
         "kleio",
-        "metis",
-        "talos"
+        "metis"
       ]
     },
     {

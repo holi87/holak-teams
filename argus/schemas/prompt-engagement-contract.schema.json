@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holak-teams.local/argus/prompt-engagement-contract.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "baseline", "representativeEngagement"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "baseline": {
+      "type": "object",
+      "required": ["sourceCommit", "inlineSharedSectionsPerAgent", "claudeAgentWords"]
+    },
+    "representativeEngagement": {
+      "type": "object",
+      "required": ["mode", "description", "requirements"],
+      "properties": {
+        "mode": { "type": "string" },
+        "description": { "type": "string" },
+        "requirements": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "source", "markers"],
+            "properties": {
+              "id": { "type": "string" },
+              "source": { "type": "string" },
+              "markers": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  }
+}
