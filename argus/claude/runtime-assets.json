@@ -119,9 +119,9 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 29,
-      "bytes": 70490,
-      "sha256": "7f7d610bbc4a33afe9c6523d4cf4785f4f27f8f1525a549247b91a772078c53b"
+      "files": 31,
+      "bytes": 73984,
+      "sha256": "0d72cc90e6d186424dc2f4fde0d727f42acb5b720e4580c67469e3672050526e"
     },
     {
       "id": "capability-matrix",

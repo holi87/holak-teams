@@ -169,7 +169,18 @@ compares Opus and Sonnet without storing prompts, completions, or target data.
 
 ## Roster (`claude/` + `codex/`)
 
-The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same 27 agents with the same slugs and names, each as a `*.toml` + `*.md` pair. The generated policy maps source roles `sonnet` to `terra` + `medium`, and `opus` to `sol` + `xhigh`; see `MODEL-POLICY.md` for the 10/17 roster and turn budgets.
+Runtime-neutral role content lives in `roles/*.md`, with metadata and contract pointers in
+`roles/manifest.json`. `roles/runtime-adapters.json` is the reviewed list of intentional
+Claude/Codex differences. Run `scripts/sync-argus-role-variants.mjs --write` to regenerate
+all runtime files and `--check` to reject drift.
+
+The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same
+27 agents with the same slugs and names, each as a `*.toml` + readable `*.md` companion.
+The generator reads native model names and effort from `model-policy.json`, ownership and
+outputs from `raci.json`, inputs from the capability matrix, and safety/artifact-language
+rules from `qa-doctrine`. Codex standalone agents embed the shared doctrine because they
+cannot preload Claude plugin skills. Native validation uses `claude plugin validate
+--strict` and an isolated `codex doctor` load.
 
 <!-- RACI_ROSTER_START -->
 | Agent | Role | Lane | Persistence |
@@ -205,4 +216,10 @@ The Claude Code version lives in `claude/`. The Codex version lives in `codex/` 
 
 The generated roster and every prompt description come from `argus/raci.json`; detailed ownership is in [`RACI-CONTRACT.md`](RACI-CONTRACT.md).
 
-`codex/` — Codex variant of the roster (27 `*.toml` + `*.md` pairs). `framework-template/` (Playwright + TS), `framework-template-java/` (RestAssured + JUnit5 + Playwright-Java), `framework-template-python/` (pytest + Playwright + httpx) — project skeletons, all no-Selenium. `shared-skills/qa-doctrine/SKILL.md` is the single canonical Claude doctrine; `competition-profile` is explicit opt-in. `COLOR-SCHEME.md`, `SHARED-DOCTRINE.md`, and `BROWSER-ISOLATION.md` are maintainer docs.
+`roles/` — canonical runtime-neutral role sources and adapters. `codex/` — generated Codex
+variant of the roster (27 `*.toml` + readable `*.md` pairs). `framework-template/`
+(Playwright + TS), `framework-template-java/` (RestAssured + JUnit5 + Playwright-Java),
+`framework-template-python/` (pytest + Playwright + httpx) — project skeletons, all
+no-Selenium. `shared-skills/qa-doctrine/SKILL.md` is the single canonical doctrine;
+`competition-profile` is explicit opt-in. `COLOR-SCHEME.md`, `SHARED-DOCTRINE.md`, and
+`BROWSER-ISOLATION.md` are maintainer docs.

@@ -186,7 +186,14 @@ Then in any session:
 
 ## Codex Install — Hephaestus + Argus
 
-A Codex subagent is a **single standalone `*.toml`** (the persona prompt lives inside it, in `developer_instructions`). The matching `*.md` next to each `.toml` is the Claude-format companion — same content, **not read by Codex** — so for Codex you install only the `*.toml`. Codex has no marketplace/git install for subagents (Codex plugins ship skills / MCP / apps / hooks, not subagents), so the install is a copy or symlink of the `*.toml` files into `~/.codex/agents/`. Slugs stay the bare first names (`marcus`, `fabricius`, `odysseus`, `talos`, ...).
+A Codex subagent is a **single standalone `*.toml`** (the persona prompt lives inside it,
+in `developer_instructions`). The matching `*.md` is a readable generated companion and is
+**not read by Codex**, so install only the `*.toml`. Argus variants are generated from
+`argus/roles/manifest.json` + `argus/roles/*.md`; direct edits under `argus/codex/` are
+rejected by CI. Codex has no marketplace/git install for subagents (Codex plugins ship
+skills / MCP / apps / hooks, not subagents), so installation is a copy or symlink into
+`~/.codex/agents/`. Slugs stay the bare first names (`marcus`, `fabricius`, `odysseus`,
+`talos`, ...).
 
 ### Option A — symlink (recommended, auto-update)
 

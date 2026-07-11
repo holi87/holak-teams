@@ -24,7 +24,7 @@ jobs:
           node-version: 22
 
       - name: Install Claude Code CLI
-        run: npm install --global @anthropic-ai/claude-code
+        run: npm install --global @anthropic-ai/claude-code @openai/codex
 
       - name: Run the documented full release validation
         run: scripts/validate-release.sh
