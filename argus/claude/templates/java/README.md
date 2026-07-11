@@ -41,6 +41,10 @@ matches the run Surefire just executed. The wrapper also writes
 `reports/argus-runner-result.json`; outcome adapters append the shared seven-field TSV
 events to `reports/outcomes.raw.tsv`. Exit codes are 0 or 10-15 per
 `RUNNER-CONTRACT.md`, and known RED is successful only in `defect-evidence` mode.
+
+Kleio completes `solution/ACCESSIBILITY-REPORT.md` from Antigone's manual checks and
+Daidalos's automated results. It records the manifest's WCAG version/level/exception,
+tools, limitations, risk-derived browser/device/viewport matrix, and privacy-safe evidence.
 JUnit extensions/listeners record outcomes through `scripts/outcome-event.sh <case>
 <category> <status> <expected> <lifecycle> <BUG-NNNN|-> <reason-token>`; parallel appends
 are lock-safe.
@@ -129,7 +133,7 @@ omissions to hide. The high-value `consoleGuard` (console-error + 5xx auto-guard
 test) **is** ported, in `support/PlaywrightFixture` (`afterEach` fails the test on any
 collected console error / 5xx). The deliberate reductions:
 
-- **Accessibility (a11y) lane.** The TS template ships an axe-core/Playwright WCAG 2.1 AA smoke
+- **Accessibility (a11y) lane.** The TS template ships an axe-core/Playwright WCAG 2.2 AA smoke
   on critical pages. Not built here. *Adapt-in:* inject axe via Playwright-Java —
   `page.addScriptTag(new Page.AddScriptTagOptions().setUrl("https://unpkg.com/axe-core/axe.min.js"))`
   (or `.setPath(...)` for a vendored copy), then `page.evaluate("() => axe.run()")` and assert

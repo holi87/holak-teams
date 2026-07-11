@@ -48,7 +48,8 @@ import java.util.regex.Pattern;
 public class PlaywrightFixture
         implements BeforeAllCallback, AfterAllCallback, BeforeEachCallback, AfterEachCallback, ParameterResolver {
 
-    private static final Path STORAGE_STATE = Paths.get(".auth", "user.json");
+    private static final Path STORAGE_STATE = Paths.get(
+            System.getenv().getOrDefault("ARGUS_AUTH_DIRECTORY", ".auth"), "user.json");
     private static final int CASE_I = Pattern.CASE_INSENSITIVE;
 
     private Playwright playwright;

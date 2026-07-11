@@ -111,8 +111,13 @@ The default generated-test allowlist is intentionally narrow and does not broadl
 `src/`, `scripts/`, or root build configuration. Recon must prove a repository's actual
 test layout before the operator adds any additional root to the manifest.
 
-Each selected worker receives a unique lease with deterministic browser profile, account,
-namespace, port, temp, and output coordinates. Workers write immutable fragments;
+Each selected worker receives a unique lease with deterministic managed browser profile,
+browser-artifact directory, account, namespace, port, temp, and output coordinates.
+Cross-lane profile reuse requires an explicit, bounded shared-session authorization.
+Browser/device/viewport coverage comes from target support and risk in the engagement
+manifest, and new accessibility work defaults to WCAG 2.2 AA. Kleio publishes
+`solution/ACCESSIBILITY-REPORT.md` with the exact standard, level, tools, manual checks,
+limitations, and privacy-safe evidence status. Workers write immutable fragments;
 canonical owners merge them in stable order under an atomic lock. The controller also
 enforces discovery/hunting/automation/verification/reporting barriers, exclusive
 reset/fault windows, identity-deduplicated `BUG-NNNN` allocation, monotonic resumable

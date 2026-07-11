@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schemaVersion", "engagementId", "mode", "target", "artifactRoot",
-    "selectedAgents", "phasePlan", "writePolicy", "resourcePolicy",
+    "selectedAgents", "accessibilityPolicy", "browserPolicy", "phasePlan", "writePolicy", "resourcePolicy",
     "idAllocators", "cleanup", "statePath"
   ],
   "properties": {
@@ -29,6 +29,101 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/slug" }
+    },
+    "accessibilityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["standard", "version", "level", "exception"],
+      "properties": {
+        "standard": { "const": "WCAG" },
+        "version": { "type": "string", "pattern": "^2\\.[0-2]$" },
+        "level": { "enum": ["A", "AA", "AAA"] },
+        "exception": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["requiredVersion", "requiredLevel", "reason", "requirementSource", "approvedBy"],
+              "properties": {
+                "requiredVersion": { "type": "string", "pattern": "^2\\.[0-2]$" },
+                "requiredLevel": { "enum": ["A", "AA", "AAA"] },
+                "reason": { "type": "string", "minLength": 1 },
+                "requirementSource": { "type": "string", "minLength": 1 },
+                "approvedBy": { "type": "string", "minLength": 1 }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "browserPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionMode", "sharedSessionAuthorization", "profileReuse", "profileStorage", "sensitiveArtifacts", "coverage"],
+      "properties": {
+        "sessionMode": { "enum": ["isolated-managed", "shared-authorized"] },
+        "sharedSessionAuthorization": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "lanes", "accountAlias", "approvedBy", "reason", "authorizationRuleId", "expiresAt"],
+              "properties": {
+                "id": { "$ref": "#/$defs/slug" },
+                "lanes": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+                "accountAlias": { "type": "string", "minLength": 1 },
+                "approvedBy": { "type": "string", "minLength": 1 },
+                "reason": { "type": "string", "minLength": 1 },
+                "authorizationRuleId": { "type": "string", "minLength": 1 },
+                "expiresAt": { "type": "string", "format": "date-time" }
+              }
+            }
+          ]
+        },
+        "profileReuse": { "const": "same-lane-within-engagement" },
+        "profileStorage": { "const": "engagement-worker-root" },
+        "sensitiveArtifacts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["auth", "cookies", "downloads", "traces", "videos", "screenshots"] }
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["derivation", "supportSource", "riskSignals", "rationale", "matrix"],
+          "properties": {
+            "derivation": { "const": "target-support-and-risk" },
+            "supportSource": { "type": "string", "minLength": 1 },
+            "riskSignals": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+            "rationale": { "type": "string", "minLength": 1 },
+            "matrix": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["browser", "device", "viewport", "reasons"],
+                "properties": {
+                  "browser": { "enum": ["chromium", "firefox", "webkit"] },
+                  "device": { "type": "string", "minLength": 1 },
+                  "viewport": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["width", "height"],
+                    "properties": {
+                      "width": { "type": "integer", "minimum": 240, "maximum": 10000 },
+                      "height": { "type": "integer", "minimum": 240, "maximum": 10000 }
+                    }
+                  },
+                  "reasons": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "phasePlan": {
       "type": "array",
@@ -139,7 +234,7 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "enum": ["browser-profile", "auth", "tmp", "locks"] }
+          "items": { "enum": ["browser-profile", "browser-artifacts", "auth", "tmp", "locks"] }
         }
       }
     },

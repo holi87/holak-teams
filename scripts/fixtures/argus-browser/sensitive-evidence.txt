@@ -1,0 +1,5 @@
+Authorization: Bearer eyJaaaaaa.bbbbbb.cccccc
+Cookie: session=raw-browser-cookie
+Email: person@example.com
+Password: super-secret-password
+Screenshot note: account person@example.com used token eyJaaaaaa.bbbbbb.cccccc

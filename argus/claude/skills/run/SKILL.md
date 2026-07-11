@@ -74,8 +74,9 @@ phase:
    reviewed.
 9. Allocate or resume one engagement lease for `odysseus` and one for every dispatchable
    specialist with `argus-assets engagement allocate`. Pass each worker only its own
-   token, browser profile, account alias, data namespace, port, temporary directory, and
-   output directory. Never persist lease tokens in reports or canonical artifacts. Full
+   token, browser profile, browser-artifact directory, account alias, data namespace, port,
+   temporary directory, and output directory. Pass `ARGUS_BROWSER_PROFILE` and
+   `ARGUS_BROWSER_ARTIFACTS` to browser workers. Never persist lease tokens in reports or canonical artifacts. Full
    installed coordination contract:
    `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
    Load `${CLAUDE_PLUGIN_ROOT}/references/CANONICAL-CONTRACTS.md` before structured
@@ -146,9 +147,11 @@ remains active, return exactly `ARGUS_SMOKE_OK: argus:kleio,argus:theseus`, and 
    mode's contract.
 7. Workers never write canonical artifacts directly. They submit immutable fragments;
    the manifest owner merges them deterministically. Reset and fault work additionally
-   requires an exclusive controller claim plus authorization. After every worker result
-   or failure, run `engagement cleanup --outcome success|failure`; verify browser profile,
-   auth/token, temporary state, lease, and held locks are gone while durable output,
+   requires an exclusive controller claim plus authorization. After every worker result,
+   whether success, failure, or interruption, run
+   `engagement cleanup --outcome success|failure|interrupted`; verify browser profile,
+   auth/token/cookies, downloads, traces, videos, screenshots, temporary state, lease, and
+   held locks are gone while durable output,
    checkpoints, and fragments remain.
    Reject a malformed, wrong-schema, or cross-engagement structured fragment; never
    repair it by guessing fields or silently converting a legacy shape.
@@ -169,6 +172,9 @@ remains active, return exactly `ARGUS_SMOKE_OK: argus:kleio,argus:theseus`, and 
    Include discovery completeness, per-lane risk-weighted execution coverage, assertion
    quality, evidence quality, and explicit scoped outcomes from `coverage-result.json`.
    Defect outcomes stay separate and have zero score contribution.
+   Include the manifest's accessibility standard/level/exception and risk-derived browser
+   coverage matrix. `solution/ACCESSIBILITY-REPORT.md` must name the standard, level,
+   tools, automated scope, manual checks, limitations, and privacy-safe evidence status.
 
 The user may invoke the alternate main-session form
 `claude --agent argus:odysseus`, but `/argus:run` is the marketplace default because it

@@ -19,7 +19,7 @@ const AUTOMATION = new Set(['aegis', 'asklepios', 'atlas', 'daidalos', 'mnemosyn
 const VERIFIERS = new Set(['aristarchus', 'minos']);
 const REPORTERS = new Set(['kleio', 'metis', 'minos']);
 
-export function createDefaultEngagement({ template, target, targetRoot, artifactRoot, mode, engagementId, selectedAgents }) {
+export function createDefaultEngagement({ template, target, targetRoot, artifactRoot, mode, engagementId, selectedAgents, browserSupport, accessibilityRequirement }) {
   const manifest = structuredClone(template);
   const agents = [...new Set(selectedAgents)].sort();
   manifest.$schema = 'https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/engagement-manifest.schema.json';
@@ -28,8 +28,36 @@ export function createDefaultEngagement({ template, target, targetRoot, artifact
   manifest.target = { identifier: target, root: targetRoot };
   manifest.artifactRoot = artifactRoot;
   manifest.selectedAgents = agents;
+  manifest.accessibilityPolicy = accessibilityPolicy(manifest.accessibilityPolicy, accessibilityRequirement);
+  manifest.browserPolicy.coverage = deriveBrowserCoverage(manifest.browserPolicy.coverage, browserSupport);
   manifest.phasePlan = PHASES.map((id) => ({ id, participants: phaseParticipants(id, agents) }));
   return manifest;
+}
+
+export function deriveBrowserCoverage(fallback, support) {
+  if (!plainObject(support)) return structuredClone(fallback);
+  const browsers = [...new Set(support.browsers ?? [])];
+  const viewports = support.viewports ?? [];
+  const riskSignals = [...new Set(['accessibility', ...(support.riskSignals ?? [])])];
+  if (!nonEmpty(support.source) || !browsers.length || !browsers.every((item) => ['chromium', 'firefox', 'webkit'].includes(item))) {
+    throw new Error('browserSupport requires source and supported browsers');
+  }
+  if (!viewports.length || !viewports.every((item) => nonEmpty(item?.device) && Number.isInteger(item?.width) && Number.isInteger(item?.height) && item.width >= 240 && item.height >= 240)) {
+    throw new Error('browserSupport requires named viewports with integer width/height >= 240');
+  }
+  if (!riskSignals.every(nonEmpty)) throw new Error('browserSupport riskSignals must be non-empty strings');
+  return {
+    derivation: 'target-support-and-risk',
+    supportSource: support.source,
+    riskSignals,
+    rationale: support.rationale ?? `Coverage includes every declared browser and viewport because target support and ${riskSignals.join(', ')} risks require them.`,
+    matrix: browsers.flatMap((browser) => viewports.map((viewport) => ({
+      browser,
+      device: viewport.device,
+      viewport: { width: viewport.width, height: viewport.height },
+      reasons: [...new Set([`target-support:${browser}`, `target-support:${viewport.device}`, ...riskSignals])],
+    }))),
+  };
 }
 
 export function validateEngagementManifest(manifest) {
@@ -43,6 +71,8 @@ export function validateEngagementManifest(manifest) {
   }
   if (!nonEmpty(manifest.artifactRoot) || !isAbsolute(manifest.artifactRoot)) errors.push('artifactRoot must be absolute');
   if (!stringList(manifest.selectedAgents, true) || !manifest.selectedAgents.every(validSlug)) errors.push('selectedAgents must contain unique slugs');
+  validateAccessibilityPolicy(manifest.accessibilityPolicy, errors);
+  validateBrowserPolicy(manifest.browserPolicy, manifest.selectedAgents, errors);
   if (!Array.isArray(manifest.phasePlan) || manifest.phasePlan.length !== PHASES.length) {
     errors.push(`phasePlan must contain ${PHASES.join(', ')}`);
   } else {
@@ -90,6 +120,10 @@ export function validateEngagementManifest(manifest) {
   else for (const [kind, allocator] of Object.entries(manifest.idAllocators)) {
     if (!validSlug(allocator?.owner) || !/^[A-Z][A-Z0-9-]*$/.test(allocator?.prefix ?? '') || !Number.isInteger(allocator?.width) || allocator.width < 1) errors.push(`idAllocators.${kind} is invalid`);
   }
+  const cleanupKeys = ['browser-profile', 'browser-artifacts', 'auth', 'tmp', 'locks'];
+  if (!plainObject(manifest.cleanup) || !stringList(manifest.cleanup.removeOnRelease, true) || !cleanupKeys.every((key) => manifest.cleanup.removeOnRelease.includes(key))) {
+    errors.push(`cleanup.removeOnRelease must include ${cleanupKeys.join(', ')}`);
+  }
   if (!safeRelative(manifest.statePath)) errors.push('statePath must be a safe relative path');
   return [...new Set(errors)];
 }
@@ -134,24 +168,33 @@ export function allocateWorker(manifest, lane) {
     if (existing?.status === 'active' && existsSync(leasePath)) {
       return { result: { ...publicAllocation(existing), token: readFileSync(leasePath, 'utf8').trim(), resumed: true }, changed: false };
     }
+    const recoveredFromCrash = existing?.status === 'active';
+    if (recoveredFromCrash) recoverInterruptedAllocation(manifest, state, lane, existing);
     const token = randomBytes(32).toString('hex');
     const index = [...manifest.selectedAgents].sort().indexOf(lane);
+    const shared = sharedSessionForLane(manifest, lane);
+    const sharedRoot = shared ? engagementPath(manifest, join(manifest.writePolicy.workerRoot, 'shared-sessions', shared.id)) : null;
     const allocation = {
       lane,
       status: 'active',
-      browserProfile: join(workerRoot, 'browser-profile'),
-      authDirectory: join(workerRoot, 'auth'),
+      browserSessionMode: shared ? 'shared-authorized' : 'isolated-managed',
+      browserProfileOwner: shared ? `shared-session:${shared.id}` : lane,
+      browserProfile: shared ? join(sharedRoot, 'browser-profile') : join(workerRoot, 'browser-profile'),
+      browserArtifactsDirectory: join(workerRoot, 'browser-artifacts'),
+      authDirectory: shared ? join(sharedRoot, 'auth') : join(workerRoot, 'auth'),
       temporaryDirectory: join(workerRoot, 'tmp'),
       outputDirectory: join(workerRoot, 'output'),
-      accountAlias: `argus-${lane}`,
+      accountAlias: shared ? shared.accountAlias : `argus-${lane}`,
       dataNamespace: `argus_${lane.replace(/-/g, '_')}`,
       port: manifest.resourcePolicy.portRange.start + index,
       leaseTokenSha256: sha256(token),
       allocatedAt: new Date().toISOString(),
       releasedAt: null,
       outcome: null,
+      recoveredFromCrash,
     };
-    for (const path of [allocation.browserProfile, allocation.authDirectory, allocation.temporaryDirectory, allocation.outputDirectory]) mkdirSync(path, { recursive: true });
+    for (const path of [allocation.browserProfile, allocation.authDirectory, allocation.temporaryDirectory, allocation.outputDirectory, allocation.browserArtifactsDirectory]) mkdirSync(path, { recursive: true });
+    for (const name of ['downloads', 'traces', 'videos', 'screenshots']) mkdirSync(join(allocation.browserArtifactsDirectory, name), { recursive: true });
     writeFileSync(leasePath, `${token}\n`, { mode: 0o600 });
     chmodSync(leasePath, 0o600);
     state.allocations[lane] = allocation;
@@ -327,7 +370,7 @@ export function getBarrierStatus(manifest, phase) {
 }
 
 export function cleanupWorker(manifest, lane, token, outcome) {
-  if (!['success', 'failure'].includes(outcome)) throw new Error('cleanup outcome must be success or failure');
+  if (!['success', 'failure', 'interrupted'].includes(outcome)) throw new Error('cleanup outcome must be success, failure, or interrupted');
   return mutateState(manifest, (state) => {
     const allocation = state.allocations[lane];
     if (!allocation) throw new Error(`no allocation exists for ${lane}`);
@@ -337,13 +380,19 @@ export function cleanupWorker(manifest, lane, token, outcome) {
       return { result: { lane, outcome, released: true, idempotent: true }, changed: false };
     }
     const workerRoot = engagementPath(manifest, join(manifest.writePolicy.workerRoot, lane));
+    const shared = allocation.browserSessionMode === 'shared-authorized';
+    const activeSharedPeers = shared && Object.values(state.allocations).some((item) => item.lane !== lane && item.status === 'active' && item.browserProfile === allocation.browserProfile);
     const targets = {
       'browser-profile': allocation.browserProfile,
+      'browser-artifacts': allocation.browserArtifactsDirectory,
       auth: allocation.authDirectory,
       tmp: allocation.temporaryDirectory,
       locks: join(workerRoot, 'locks'),
     };
-    for (const key of manifest.cleanup.removeOnRelease) rmSync(targets[key], { recursive: true, force: true });
+    for (const key of manifest.cleanup.removeOnRelease) {
+      if (activeSharedPeers && ['browser-profile', 'auth'].includes(key)) continue;
+      rmSync(targets[key], { recursive: true, force: true });
+    }
     rmSync(join(workerRoot, '.lease'), { force: true });
     for (const [resource, held] of Object.entries(state.exclusiveLocks)) if (held.lane === lane) delete state.exclusiveLocks[resource];
     allocation.status = 'released';
@@ -528,6 +577,27 @@ function publicAllocation(allocation) {
   return safe;
 }
 
+function sharedSessionForLane(manifest, lane) {
+  const shared = manifest.browserPolicy?.sessionMode === 'shared-authorized'
+    ? manifest.browserPolicy.sharedSessionAuthorization
+    : null;
+  return shared?.lanes?.includes(lane) ? shared : null;
+}
+
+function recoverInterruptedAllocation(manifest, state, lane, allocation) {
+  const workerRoot = engagementPath(manifest, join(manifest.writePolicy.workerRoot, lane));
+  const shared = allocation.browserSessionMode === 'shared-authorized';
+  const activeSharedPeers = shared && Object.values(state.allocations).some((item) => item.lane !== lane && item.status === 'active' && item.browserProfile === allocation.browserProfile);
+  if (!activeSharedPeers) {
+    rmSync(allocation.browserProfile, { recursive: true, force: true });
+    rmSync(allocation.authDirectory, { recursive: true, force: true });
+  }
+  rmSync(allocation.browserArtifactsDirectory ?? join(workerRoot, 'browser-artifacts'), { recursive: true, force: true });
+  rmSync(allocation.temporaryDirectory, { recursive: true, force: true });
+  rmSync(join(workerRoot, 'locks'), { recursive: true, force: true });
+  for (const [resource, held] of Object.entries(state.exclusiveLocks)) if (held.lane === lane) delete state.exclusiveLocks[resource];
+}
+
 function collectDirectPaths(value, output = []) {
   if (!value || typeof value !== 'object') return output;
   for (const [key, child] of Object.entries(value)) {
@@ -677,6 +747,67 @@ function atomicWrite(path, content) {
   writeFileSync(temporary, content, { mode: 0o600 });
   renameSync(temporary, path);
   chmodSync(path, 0o600);
+}
+
+function accessibilityPolicy(fallback, requirement) {
+  const policy = structuredClone(fallback);
+  if (!plainObject(requirement)) return policy;
+  policy.version = requirement.version;
+  policy.level = requirement.level;
+  policy.exception = {
+    requiredVersion: requirement.version,
+    requiredLevel: requirement.level,
+    reason: requirement.reason,
+    requirementSource: requirement.requirementSource,
+    approvedBy: requirement.approvedBy,
+  };
+  return policy;
+}
+
+function validateAccessibilityPolicy(policy, errors) {
+  if (!plainObject(policy) || policy.standard !== 'WCAG' || !['2.0', '2.1', '2.2'].includes(policy.version) || !['A', 'AA', 'AAA'].includes(policy.level)) {
+    errors.push('accessibilityPolicy must name a supported WCAG version and level');
+    return;
+  }
+  if (policy.version === '2.2' && policy.level === 'AA') {
+    if (policy.exception !== null) errors.push('WCAG 2.2 AA default must not carry an exception');
+    return;
+  }
+  const exception = policy.exception;
+  if (!plainObject(exception) || exception.requiredVersion !== policy.version || exception.requiredLevel !== policy.level || !['2.0', '2.1'].includes(exception.requiredVersion) || !nonEmpty(exception.reason) || !nonEmpty(exception.requirementSource) || !nonEmpty(exception.approvedBy)) {
+    errors.push('older accessibility targets require an explicit project requirement exception');
+  }
+}
+
+function validateBrowserPolicy(policy, selectedAgents, errors) {
+  if (!plainObject(policy) || !['isolated-managed', 'shared-authorized'].includes(policy.sessionMode) || policy.profileReuse !== 'same-lane-within-engagement' || policy.profileStorage !== 'engagement-worker-root') {
+    errors.push('browserPolicy session, reuse, or storage policy is invalid');
+    return;
+  }
+  const mandatoryArtifacts = ['auth', 'cookies', 'downloads', 'traces', 'videos', 'screenshots'];
+  if (!stringList(policy.sensitiveArtifacts, true) || !mandatoryArtifacts.every((item) => policy.sensitiveArtifacts.includes(item))) errors.push('browserPolicy.sensitiveArtifacts is incomplete');
+  const shared = policy.sharedSessionAuthorization;
+  if (policy.sessionMode === 'isolated-managed' && shared !== null) errors.push('isolated-managed sessions cannot carry shared authorization');
+  if (policy.sessionMode === 'shared-authorized') {
+    if (!plainObject(shared) || !validSlug(shared.id) || !stringList(shared.lanes, true) || shared.lanes.length < 2 || !shared.lanes.every((lane) => selectedAgents.includes(lane)) || !nonEmpty(shared.accountAlias) || !nonEmpty(shared.approvedBy) || !nonEmpty(shared.reason) || !nonEmpty(shared.authorizationRuleId) || !validDate(shared.expiresAt) || Date.parse(shared.expiresAt) <= Date.now()) {
+      errors.push('shared-authorized sessions require an explicit, bounded authorization for selected lanes');
+    }
+  }
+  const coverage = policy.coverage;
+  if (!plainObject(coverage) || coverage.derivation !== 'target-support-and-risk' || !nonEmpty(coverage.supportSource) || !stringList(coverage.riskSignals, true) || !nonEmpty(coverage.rationale) || !Array.isArray(coverage.matrix) || coverage.matrix.length === 0) {
+    errors.push('browserPolicy.coverage must be derived from target support and risk');
+    return;
+  }
+  const keys = new Set();
+  for (const item of coverage.matrix) {
+    const valid = plainObject(item) && ['chromium', 'firefox', 'webkit'].includes(item.browser) && nonEmpty(item.device) && plainObject(item.viewport) && Number.isInteger(item.viewport.width) && item.viewport.width >= 240 && Number.isInteger(item.viewport.height) && item.viewport.height >= 240 && stringList(item.reasons, true);
+    if (!valid) errors.push('browserPolicy.coverage matrix entry is invalid');
+    else {
+      const key = `${item.browser}:${item.device}:${item.viewport.width}x${item.viewport.height}`;
+      if (keys.has(key)) errors.push(`duplicate browser coverage entry: ${key}`);
+      keys.add(key);
+    }
+  }
 }
 
 function sha256(value) {

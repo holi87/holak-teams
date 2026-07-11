@@ -154,7 +154,7 @@ Use the EXACT lowercase slug. Staff from this roster first; pull external main-t
 | Daidalos | Senior Test Automation Engineer — frontend (also owns a11y AUTO) | `daidalos` | sonnet |
 | Orion | Senior QA Bug Hunter — UI (functional / client-state / form-validation behaviour) | `orion` | opus |
 | Lynceus | Senior QA Bug Hunter — UI PRESENTATION (visual/geometry, i18n/charset, sort, pagination, money/percent display, date/format, BVA on display boundaries, tap-target, stale-async) | `lynceus` | opus |
-| Antigone | Senior QA Bug Hunter — Accessibility / a11y (WCAG 2.1 AA, keyboard, screen-reader, ARIA, focus, contrast) | `antigone` | opus |
+| Antigone | Senior QA Bug Hunter — Accessibility / a11y (WCAG 2.2 AA, keyboard, screen-reader, ARIA, focus, contrast) | `antigone` | opus |
 
 **API lane:**
 | Name | Role | Slug | Model |
@@ -255,7 +255,7 @@ The top-level assistant executes the plan and returns results to you for synthes
 | daidalos | Daidalos | UI | Frontend automation (incl. a11y AUTO) — baseline GREEN + RED regressions | `tests/ui/<flow>/` | Penelope | W2 |
 | orion | Orion | UI | UI behaviour/function hunt (viewport × keyboard × locale) | `bugs/ORI-*` | Penelope | W2 |
 | lynceus | Lynceus | UI | UI presentation/format/locale/geometry/sort hunt (coordinate ORI-/LYN- split) | `bugs/LYN-*` | Penelope | W2 |
-| antigone | Antigone | UI/a11y | Accessibility hunt — WCAG 2.1 AA, keyboard, ARIA, focus, contrast | `bugs/ANG-*` | Penelope | W2 |
+| antigone | Antigone | UI/a11y | Accessibility hunt — WCAG 2.2 AA, keyboard, ARIA, focus, contrast | `bugs/ANG-*` | Penelope | W2 |
 | talos | Talos | API | API/backend automation — baseline GREEN + RED regressions; implements Pistis's contract baseline (multi-service) and automates Proteus's confirmed PRO- findings | `tests/api/<resource>/`, `tests/api/contract/` | Theseus, Pistis | W2 |
 | atalanta | Atalanta | API | API adversarial hunt (REST/contract/data-integrity); one file per bug | `bugs/ATA-*` | Theseus | W2 |
 | proteus | Proteus | API | Multi-protocol hunt — GraphQL/gRPC/WebSocket/SSE/async-messaging/webhooks; absent protocol = named residual; one file per bug | `bugs/PRO-*` | Theseus/Pistis | W2 |

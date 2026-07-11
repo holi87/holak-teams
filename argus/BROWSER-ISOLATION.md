@@ -18,14 +18,20 @@ Concurrent lanes sharing the ONE Playwright MCP `browser_*` session clobber each
   node scripts/hunt-driver.mjs --agent <slug> [--role <role>|anon] [actions...]
   ```
 
-  The engagement controller gives each worker a unique `browserProfile`; pass it as
-  `ARGUS_BROWSER_PROFILE` so the driver uses that exact `userDataDir`. Outside a managed
+  The engagement controller gives each worker a unique managed `browserProfile` and
+  `browserArtifactsDirectory`; pass them as `ARGUS_BROWSER_PROFILE` and
+  `ARGUS_BROWSER_ARTIFACTS`. The driver uses that exact `userDataDir` and confines
+  downloads, traces, videos, and screenshots to the allocated artifact directory. Outside a managed
   engagement it falls back to `.pw-profiles/<agent>`. Separate OS process + separate
   profile ⇒ separate `localStorage` ⇒ zero cross-swap; own browser ⇒ screenshots never
   contended. The role token is minted via the API and injected with `addInitScript` BEFORE
   the first navigation, so the SPA route-guard always sees a valid session. The profile
   (and thus the session) persists between invocations until mandatory engagement cleanup;
-  batch several actions in one call to amortise the ~1 s launch. `--whoami` asserts the
+  batch several actions in one call to amortise the ~1 s launch. Cross-lane profile reuse
+  is prohibited unless `browserPolicy.sessionMode=shared-authorized` and the manifest has
+  an unexpired operator-authored authorization naming every sharing lane, shared account alias, approver, reason,
+  authorization rule, and expiry. The controller then assigns one named profile owner and
+  retains it until the final authorized lane cleans up. `--whoami` asserts the
   identity you think you have; `--fresh` wipes only that allocated profile.
 - **The shared MCP `browser_*` tools are for THROWAWAY single-shot recon on PUBLIC pages ONLY** — never authed flows, never multi-step state, never while a peer may be driving. Stay snapshot-frugal there: `browser_snapshot` dumps the whole accessibility tree into context (a real token + cache cost in a parallel run).
 
@@ -49,7 +55,29 @@ fetched content. Do not capture secret/PII-bearing views. Text evidence goes thr
 `argus-assets redact`; sensitive binary screenshots are omitted unless independently
 masked and reviewed under the installed authorization policy. Screenshot capture also
 requires the `binary-evidence` grant and `ARGUS_BINARY_EVIDENCE_REVIEWED=true`; the driver
-checks both before Playwright starts.
+  checks both before Playwright starts. `ARGUS_CAPTURE_TRACE=true` and
+  `ARGUS_CAPTURE_VIDEO=true` are permitted only after the same binary-evidence decision.
+
+### Profile and sensitive-artifact lifecycle
+
+- Profiles, cookies, local/session storage, auth files, downloads, traces, videos, and
+  screenshots live only below the allocated engagement worker root; durable reports may
+  contain only independently reviewed, redacted evidence references.
+- Same-lane reuse is allowed only during the active engagement. A missing lease file is
+  treated as crash recovery: the controller removes stale profile/auth/browser artifacts,
+  releases held locks, and issues a new lease before reuse.
+- Every terminal path calls `engagement cleanup --outcome success|failure|interrupted`.
+  Cleanup is idempotent and removes profiles, auth, temporary browser artifacts, leases,
+  and locks. For authorized sharing, the final active member removes shared state.
+
+### Risk-derived browser coverage
+
+`browserPolicy.coverage` in `ai_agents_internal/engagement.json` is the executable coverage
+contract. Preflight derives its browser/device/viewport matrix from declared target support
+and risks such as accessibility, responsive layout, touch input, locale, and engine-specific
+behavior. If support is unknown, the manifest records that uncertainty and a conservative
+representative matrix. Fixed browser counts are not a quality target: execute every recorded
+combination or name the missing combination and residual risk in the final report.
 
 ## 3. Verb map — `browser_*` action → hunt-driver flag
 
@@ -90,9 +118,11 @@ Example — sweep a screen at mobile width as a student, capture evidence:
 
 ```
 ARGUS_BROWSER_PROFILE=<allocated-browserProfile> \
+ARGUS_BROWSER_ARTIFACTS=<allocated-browserArtifactsDirectory> \
 node scripts/hunt-driver.mjs --agent orion --role argus-orion \
   --viewport 375x812 --goto /moje-kursy \
-  --shot out/mycourses-375.png --snapshot --console --net
+  --shot <allocated-browserArtifactsDirectory>/screenshots/mycourses-375.png \
+  --snapshot --console --net
 ```
 
 ## 4. Exceptions

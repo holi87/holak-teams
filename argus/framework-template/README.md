@@ -27,7 +27,7 @@ Tests/reporters record outcomes with `scripts/outcome-event.sh <case> <category>
 
 The runner fail-fasts on a dead environment ("ENVIRONMENT NOT READY") and gates on `tsc --noEmit` — a suite that doesn't typecheck doesn't run (Playwright strips types without checking them).
 
-**Visual regression** is pre-configured (`toHaveScreenshot`: 1% diff ratio, animations disabled): first run creates baselines, `--update-snapshots` refreshes them; baselines are render-environment-specific — never accept a diff without eyeballing it. **Browser matrix:** chromium-only by default; firefox/webkit/mobile project blocks sit commented in `playwright.config.ts` — enabling (or not) is a strategy decision to record.
+**Visual regression** is pre-configured (`toHaveScreenshot`: 1% diff ratio, animations disabled): first run creates baselines, `--update-snapshots` refreshes them; baselines are render-environment-specific — never accept a diff without eyeballing it. **Browser matrix:** the checked-in Chromium project is only a starter. Adapt the Playwright projects to every browser/device/viewport entry derived in `ai_agents_internal/engagement.json`; each omission is a named residual risk, never a fixed-quota decision.
 
 ## Solution documents (`solution/`)
 | File | Owner | Answers |
@@ -35,6 +35,7 @@ The runner fail-fasts on a dead environment ("ENVIRONMENT NOT READY") and gates 
 | `TEST-STRATEGY.md` | Metis | WHAT we test, WHY, in what order — planning of tests, zero implementation detail |
 | `ARCHITECTURE.md` | Talos (framework) + Metis (§1–2 digest) + Kleio (§10–11) | the reviewer-facing strategy+framework doc: what-we-test digest, key risks, stack & layers, How-we-used-AI, Summary — the agreed brief names THIS file as the strategy + run-summary deliverable |
 | `IMPLEMENTATION-REPORT.md` | Kleio (at finalisation) | what was DELIVERED vs designed — honest reconciliation + residual risk |
+| `ACCESSIBILITY-REPORT.md` | Kleio (from Antigone + Daidalos) | standard, level, tools, manual and automated checks, limitations, risk-derived browser matrix, and privacy-safe evidence |
 | `TRACEABILITY.md` | Metis seeds → Talos fills → Kleio reconciles | matrix: RISK → why this path → implemented tests → defects found |
 | `PERF-REPORT.md` | Hermes (optional) | perf probe: verdict vs a STATED budget, or light characterisation — p50/p97.5/p99, anomalies as candidate defects |
 
@@ -56,7 +57,7 @@ src/perf/run-perf.mjs    light autocannon probe (`npm run perf`) — characteris
 tests/setup/auth.setup.ts  UI login ONCE → storageState (.auth/user.json)
 tests/api/<resource>/    API/contract tests — one dir per OpenAPI tag (parallel writers)
 tests/ui/<flow>/         few critical-path UI smokes (project starts authenticated)
-tests/ui/a11y.smoke.spec.ts  axe-core WCAG 2.1 AA scan on critical pages (citable oracle)
+tests/ui/a11y.smoke.spec.ts  axe-core WCAG 2.2 AA scan on critical pages (citable oracle)
 tests/regression/        bug-linked tests (red = evidence) — see its README
 bugs/_TEMPLATE.md        bug report template (replace with the target's verbatim; the _-prefixed file is not a bug report)
 ```

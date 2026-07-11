@@ -174,7 +174,7 @@ Authorization check boundaries:
   --at <ISO-timestamp>         Deterministic evaluation time (tests only)
 
 Engagement coordination:
-  init --target <target> --artifact-root <root> --mode <A|B|C|D> [--output <path>]
+  init --target <target> --artifact-root <root> --mode <A|B|C|D> [--browser-support <json>] [--accessibility-requirement <json>]
   allocate --manifest <path> --lane <slug>
   fragment --manifest <path> --lane <slug> --token <lease> --canonical <path> --id <id> --input <file|->
   merge --manifest <path> --owner <slug> --token <lease> --canonical <path>
@@ -182,7 +182,7 @@ Engagement coordination:
   id --manifest <path> --lane <slug> --token <lease> --kind <kind> --identity <stable-key>
   checkpoint --manifest <path> --lane <slug> --token <lease> --phase <phase> --sequence <n> --input <json-file|->
   barrier arrive|status|advance --manifest <path> [lease options]
-  cleanup --manifest <path> --lane <slug> --token <lease> --outcome <success|failure>
+  cleanup --manifest <path> --lane <slug> --token <lease> --outcome <success|failure|interrupted>
 
 Templates are copied only to a new or empty directory. In ADAPT mode, copy to a
 temporary directory, diff against the target's existing harness, and merge explicitly.`);
@@ -364,7 +364,7 @@ function engagementCommand(args) {
 }
 
 function initializeEngagement(args) {
-  const options = parseNamedOptions(args, new Set(['--target', '--artifact-root', '--mode', '--output', '--engagement-id']));
+  const options = parseNamedOptions(args, new Set(['--target', '--artifact-root', '--mode', '--output', '--engagement-id', '--browser-support', '--accessibility-requirement']));
   for (const required of ['target', 'artifactRoot', 'mode']) if (!options[required]) fail(`engagement init requires --${camelToKebab(required)}`);
   if (!['A', 'B', 'C', 'D'].includes(options.mode)) fail('engagement init --mode must be A, B, C, or D');
   const artifactRoot = resolve(options.artifactRoot);
@@ -381,6 +381,8 @@ function initializeEngagement(args) {
     mode: options.mode,
     engagementId: options.engagementId ?? `argus-${new Date().toISOString().replace(/[:.]/g, '-')}`,
     selectedAgents,
+    browserSupport: options.browserSupport ? readJson(resolve(options.browserSupport)) : undefined,
+    accessibilityRequirement: options.accessibilityRequirement ? readJson(resolve(options.accessibilityRequirement)) : undefined,
   });
   const errors = validateEngagementManifest(engagement);
   if (errors.length > 0) fail(`generated engagement manifest is invalid: ${errors.join('; ')}`);
@@ -799,6 +801,8 @@ async function preflight(argv) {
       mode,
       engagementId: authorization.engagementId,
       selectedAgents: [...selectedSlugs],
+      browserSupport: profile.browserSupport,
+      accessibilityRequirement: profile.accessibilityRequirement,
     });
     mkdirSync(dirname(requestedEngagementPath), { recursive: true });
     writeFileSync(requestedEngagementPath, `${JSON.stringify(engagement, null, 2)}\n`, { mode: 0o600 });
@@ -826,6 +830,9 @@ async function preflight(argv) {
     stateCreated: engagementState?.created ?? false,
     phase: engagementState?.state.currentPhase ?? null,
     selectedAgents: engagementUsable ? engagement.selectedAgents.length : 0,
+    accessibilityTarget: engagementUsable ? `${engagement.accessibilityPolicy.standard} ${engagement.accessibilityPolicy.version} ${engagement.accessibilityPolicy.level}` : null,
+    browserCoverageEntries: engagementUsable ? engagement.browserPolicy.coverage.matrix.length : 0,
+    browserCoverageSource: engagementUsable ? engagement.browserPolicy.coverage.supportSource : null,
     hookPath: HOOKS_PATH,
     hookPackaged: existsSync(HOOKS_PATH),
   };

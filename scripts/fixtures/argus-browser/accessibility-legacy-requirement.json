@@ -1,0 +1,7 @@
+{
+  "version": "2.1",
+  "level": "AA",
+  "reason": "The signed project acceptance contract explicitly names WCAG 2.1 AA.",
+  "requirementSource": "REQ-A11Y-LEGACY-001",
+  "approvedBy": "engagement-owner"
+}

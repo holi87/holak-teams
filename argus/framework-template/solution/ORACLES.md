@@ -15,7 +15,7 @@ ID convention: `ORC-<LANE>-NNN` — lane ∈ API · BIZ · SEC · DB · UI · A1
 | ORC-SEC-001 | `<role × operation>` / object ownership | non-owner ⇒ 403; role matrix enforced; token expiry honoured | role matrix / spec |
 | ORC-DB-001 | `<constraint / invariant>` | `<unique/FK/cascade/transaction/consistency-after-failure>` | schema / recon |
 | ORC-UI-001 | `<screen / control>` | `<visible state, validation, enabled/disabled, formatting, empty state>` | spec / design |
-| ORC-A11Y-001 | `<screen>` WCAG | keyboard-only path · focus order · ARIA name/role · contrast ratio | WCAG 2.1 AA |
+| ORC-A11Y-001 | `<screen>` WCAG | keyboard-only path · focus order · ARIA name/role · contrast ratio | WCAG 2.2 AA |
 | ORC-PERF-001 | `<endpoint>` budget | p95 ≤ `<budget>` · payload ≤ `<ceiling>` · no N+1 / unbounded list | NFR / baseline |
 
 ## Unsourced / disputed (resolve or flag as residual risk)

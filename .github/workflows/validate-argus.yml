@@ -30,6 +30,9 @@ jobs:
       - name: Verify target immutability and parallel engagement coordination
         run: scripts/smoke-argus-engagement.sh
 
+      - name: Verify accessibility and managed browser-session policy
+        run: scripts/smoke-argus-browser-policy.sh
+
       - name: Verify versioned canonical QA contracts and fixtures
         run: scripts/smoke-argus-schemas.sh
 

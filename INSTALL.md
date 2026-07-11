@@ -97,8 +97,10 @@ file tools and recognized shell/process writes. Every worker allocates a unique 
 uses only its profile/account/namespace/port/temp/output coordinates, checkpoints
 monotonically, and arrives at phase barriers. Canonical changes travel as immutable
 fragments and are merged deterministically by the declared owner. Reset/fault windows
-are exclusive. Always run `engagement cleanup --outcome success|failure`; lease tokens,
-profiles, auth, temp state, and locks must be absent at sign-off. See the installed
+are exclusive. Pass both the allocated `ARGUS_BROWSER_PROFILE` and
+`ARGUS_BROWSER_ARTIFACTS` to browser workers. Always run
+`engagement cleanup --outcome success|failure|interrupted`; lease tokens, profiles, auth,
+cookies, downloads, traces, videos, screenshots, temp state, and locks must be absent at sign-off. See the installed
 `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 
 On a greenfield BUILD engagement, Atlas can seed a framework without access to this

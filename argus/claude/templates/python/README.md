@@ -36,6 +36,10 @@ Reports after every run:
 - `reports/junit.xml` — CI ingestion.
 - `reports/argus-runner-result.json` — shared `argus/runner-result@1` categories and exit code.
 
+Kleio completes `solution/ACCESSIBILITY-REPORT.md` from Antigone's manual checks and
+Daidalos's automated results. It records the manifest's WCAG version/level/exception,
+tools, limitations, risk-derived browser/device/viewport matrix, and privacy-safe evidence.
+
 Outcome adapters append the shared seven-field TSV records to `reports/outcomes.raw.tsv`.
 Extra args after `--` pass through to pytest. Exit codes are 0 or 10-15 per
 `RUNNER-CONTRACT.md`; known RED succeeds only in `defect-evidence` and fails

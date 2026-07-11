@@ -196,7 +196,7 @@ Every agent runs on an **Anthropic** model under Claude Code and on a **mapped O
 | Hermes | `hermes` | Performance hunter (structural oracles) | sonnet | terra · medium |
 | Tyche | `tyche` | Resilience / chaos hunter (fault injection) | opus | sol · xhigh |
 | Perseus | `perseus` | Security hunter (STRIDE/OWASP) | opus | sol · xhigh |
-| Antigone | `antigone` | Accessibility hunter (WCAG 2.1 AA) | sonnet | terra · medium |
+| Antigone | `antigone` | Accessibility hunter (WCAG 2.2 AA) | sonnet | terra · medium |
 | Charon | `charon` | Database hunter *(gated: DB access)* | sonnet | terra · medium |
 | Tiresias | `tiresias` | White-box source analyst *(gated: source)* | opus | sol · xhigh |
 | Atlas | `atlas` | Automation Architect (harness, run-tests.sh) | opus | sol · xhigh |

@@ -69,10 +69,20 @@ produce byte-identical output.
 ## Isolated resources and leases
 
 `engagement allocate --lane <slug>` returns a lease token and deterministic unique
-allocation: browser profile, auth directory, temporary directory, output directory,
+allocation: managed browser profile, browser-artifact directory, auth directory, temporary directory, output directory,
 synthetic account alias, data namespace, and port. The state stores only the token hash;
 the token itself is kept in a mode-0600 worker lease file so an interrupted engagement can
-resume. Agents use only their own allocation.
+resume. Agents use only their own allocation. Each browser-artifact directory contains
+dedicated `downloads/`, `traces/`, `videos/`, and `screenshots/` roots. A lane may reuse
+its own profile during the engagement; different lanes never share one unless the
+manifest's `browserPolicy` contains an explicit, unexpired shared-session authorization
+naming all lanes, shared account alias, approver, reason, authorization rule, and expiry.
+
+The same manifest records the default `WCAG 2.2 AA` accessibility policy and a
+browser/device/viewport matrix derived from declared target support and risk signals.
+An older accessibility target is valid only with an explicit project-requirement source,
+reason, and approver. Unknown browser support produces a recorded conservative matrix,
+not a silent single-browser assumption.
 
 Reset and fault-injection windows are exclusive resources. `engagement claim` permits
 only the manifest owner and rejects a second holder. `engagement release` closes the
@@ -117,10 +127,14 @@ schema until it ships an explicit deterministic migration and fixtures. Maintain
 
 ## Cleanup
 
-Every worker finishes with `engagement cleanup --outcome success|failure`. Cleanup
-removes its browser profile, auth tokens, temporary directory, lease file, and held
+Every worker finishes with `engagement cleanup --outcome success|failure|interrupted`. Cleanup
+removes its browser profile, auth tokens/cookies, downloads, traces, videos, screenshots,
+temporary directory, lease file, and held
 exclusive locks while preserving immutable fragments, checkpoints, reports, and
-canonical outputs. The command is idempotent and runs on both success and failure paths.
+canonical outputs. The command is idempotent and runs on success, failure, and interruption
+paths. A missing lease file during resume triggers crash recovery: stale sensitive state
+is removed before a new lease is issued. For an explicitly authorized shared session,
+the final active member removes the shared profile and auth state.
 Odysseus verifies no active allocation or exclusive lock remains before final reporting.
 
 ## Guard rules

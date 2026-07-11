@@ -50,7 +50,7 @@
     "engagement": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["manifestPath", "statePath", "immutabilityAuditPath", "sha256", "created", "stateCreated", "phase", "selectedAgents", "hookPath", "hookPackaged"],
+      "required": ["manifestPath", "statePath", "immutabilityAuditPath", "sha256", "created", "stateCreated", "phase", "selectedAgents", "accessibilityTarget", "browserCoverageEntries", "browserCoverageSource", "hookPath", "hookPackaged"],
       "properties": {
         "manifestPath": { "type": "string", "minLength": 1 },
         "statePath": { "type": "string", "minLength": 1 },
@@ -60,6 +60,9 @@
         "stateCreated": { "type": "boolean" },
         "phase": { "type": ["string", "null"] },
         "selectedAgents": { "type": "integer", "minimum": 0 },
+        "accessibilityTarget": { "type": ["string", "null"] },
+        "browserCoverageEntries": { "type": "integer", "minimum": 0 },
+        "browserCoverageSource": { "type": ["string", "null"] },
         "hookPath": { "type": "string", "minLength": 1 },
         "hookPackaged": { "type": "boolean" }
       }

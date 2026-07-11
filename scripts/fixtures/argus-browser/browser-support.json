@@ -1,0 +1,10 @@
+{
+  "source": "product-support-policy-2026",
+  "browsers": ["chromium", "firefox"],
+  "viewports": [
+    { "device": "desktop", "width": 1440, "height": 900 },
+    { "device": "mobile", "width": 390, "height": 844 }
+  ],
+  "riskSignals": ["responsive-layout", "touch-input", "locale"],
+  "rationale": "The product supports Chromium and Firefox on desktop and mobile layouts, with touch and locale risks in scope."
+}

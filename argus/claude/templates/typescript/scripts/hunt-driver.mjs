@@ -156,6 +156,14 @@ const BASE = process.env.QCA_BASE_URL ?? cfg.baseUrl;
 const ACCESS_KEY = cfg.tokenStorageKey ?? 'access-token';
 const REFRESH_KEY = cfg.refreshTokenStorageKey ?? null;
 const POST_AUTH_MARKER = cfg.postAuthMarker ?? null;
+const managedEngagement = Boolean(process.env.ARGUS_ENGAGEMENT_MANIFEST || process.env.ARGUS_BROWSER_PROFILE);
+const browserArtifactsDir = process.env.ARGUS_BROWSER_ARTIFACTS ? resolve(process.env.ARGUS_BROWSER_ARTIFACTS) : null;
+const captureTrace = process.env.ARGUS_CAPTURE_TRACE === 'true';
+const captureVideo = process.env.ARGUS_CAPTURE_VIDEO === 'true';
+if (managedEngagement && !browserArtifactsDir) fail('ARGUS_BROWSER_ARTIFACTS is required inside a managed engagement');
+if (browserArtifactsDir) {
+  for (const name of ['downloads', 'traces', 'videos', 'screenshots']) mkdirSync(join(browserArtifactsDir, name), { recursive: true });
+}
 
 // ---- shared authorization gate ------------------------------------------
 // Any interactive verb is treated as a target state change. This check is
@@ -183,7 +191,7 @@ try {
 } catch {
   fail(`authorization denied ${authorizationAction}; inspect the shared authorization audit and do not launch the browser`);
 }
-if (actions.some(([action]) => action === 'shot')) {
+if (actions.some(([action]) => action === 'shot') || captureTrace || captureVideo) {
   const binaryArgs = [
     'authorization', 'check',
     '--manifest', authorizationManifest,
@@ -229,7 +237,10 @@ const ctx = await chromium.launchPersistentContext(profileDir, {
   ...(tz ? { timezoneId: tz } : {}),
   ...(locale ? { locale } : {}),
   ...(reducedMotion ? { reducedMotion: 'reduce' } : {}),
+  ...(browserArtifactsDir ? { downloadsPath: join(browserArtifactsDir, 'downloads') } : {}),
+  ...(captureVideo && browserArtifactsDir ? { recordVideo: { dir: join(browserArtifactsDir, 'videos') } } : {}),
 });
+if (captureTrace) await ctx.tracing.start({ screenshots: true, snapshots: true, sources: false });
 if (tz || locale || reducedMotion) {
   log('context', [tz && `tz=${tz}`, locale && `locale=${locale}`, reducedMotion && 'reducedMotion=reduce'].filter(Boolean).join(' '));
 }
@@ -307,9 +318,13 @@ try {
         log('wait', `${val} visible`);
         break;
       case 'shot': {
-        mkdirSync(dirname(resolve(val)), { recursive: true });
-        await page.screenshot({ path: val, fullPage: true, timeout: 15_000 });
-        log('shot', resolve(val));
+        const output = resolve(val);
+        if (browserArtifactsDir && !isWithin(join(browserArtifactsDir, 'screenshots'), output)) {
+          fail(`screenshot must stay under ${join(browserArtifactsDir, 'screenshots')}`);
+        }
+        mkdirSync(dirname(output), { recursive: true });
+        await page.screenshot({ path: output, fullPage: true, timeout: 15_000 });
+        log('shot', output);
         break;
       }
       case 'eval': {
@@ -395,7 +410,11 @@ try {
   }
   log('DONE');
 } finally {
-  await ctx.close();
+  try {
+    if (captureTrace && browserArtifactsDir) await ctx.tracing.stop({ path: join(browserArtifactsDir, 'traces', 'session.zip') });
+  } finally {
+    await ctx.close();
+  }
 }
 
 // ---- helpers --------------------------------------------------------------
@@ -430,4 +449,10 @@ function formatLogValue(value) {
   } catch {
     return '[UNSERIALIZABLE]';
   }
+}
+
+function isWithin(root, candidate) {
+  const normalizedRoot = `${resolve(root)}/`;
+  const normalizedCandidate = resolve(candidate);
+  return normalizedCandidate === resolve(root) || normalizedCandidate.startsWith(normalizedRoot);
 }

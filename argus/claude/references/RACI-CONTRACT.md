@@ -54,6 +54,7 @@ The accountable owner is also the sole owner of that artifact's `fragment → ca
 | `solution/coverage-result.json` | kleio |
 | `solution/final-summary.json` | kleio |
 | `solution/FINDINGS.md` | kleio |
+| `solution/ACCESSIBILITY-REPORT.md` | kleio |
 | `solution/IMPLEMENTATION-REPORT.md` | kleio |
 | `solution/ORACLES.md` | metis |
 | `solution/PERF-REPORT.md` | hermes |
@@ -114,7 +115,7 @@ The accountable owner is also the sole owner of that artifact's `fragment → ca
 | daidalos | UI and accessibility automation engineer | ui-automation | tests-only | — |
 | hermes | Performance hunter | performance-hunt | candidate-file | `solution/PERF-REPORT.md` |
 | kalchas | System reconnaissance analyst | recon | owned-artifact | `solution/surface-inventory.json` |
-| kleio | Final reporter | reporting | owned-artifact | `README.md`, `solution/evidence-reference.json`, `solution/coverage-result.json`, `solution/final-summary.json`, `solution/FINDINGS.md`, `solution/IMPLEMENTATION-REPORT.md`, `solution/TRACEABILITY.md` |
+| kleio | Final reporter | reporting | owned-artifact | `README.md`, `solution/evidence-reference.json`, `solution/coverage-result.json`, `solution/final-summary.json`, `solution/FINDINGS.md`, `solution/ACCESSIBILITY-REPORT.md`, `solution/IMPLEMENTATION-REPORT.md`, `solution/TRACEABILITY.md` |
 | lynceus | UI presentation hunter | presentation-hunt | candidate-file | — |
 | metis | Test strategist | strategy | owned-artifact | `solution/TEST-STRATEGY.md`, `solution/ORACLES.md` |
 | minos | Defect authority and triage lead | triage | owned-artifact | `solution/BUG-LEDGER.md`, `solution/bug-ledger.json`, `solution/WHITEBOX-LEADS.md` |
