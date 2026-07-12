@@ -36,10 +36,11 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["schema", "source", "trustStoreSha256", "pinnedAt", "keys", "legacyBootstrap"],
+          "required": ["schema", "source", "trustStorePath", "trustStoreSha256", "pinnedAt", "keys"],
           "properties": {
             "schema": { "const": "argus/model-trust-bundle@1" },
             "source": { "const": "host-trust-store" },
+            "trustStorePath": { "type": "string", "pattern": "^/" },
             "trustStoreSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
             "pinnedAt": { "type": "string", "format": "date-time" },
             "keys": {
@@ -50,23 +51,6 @@
                 "runtimeAttestation": { "$ref": "#/$defs/runtimeAttestationTrustKey" },
                 "operatorApproval": { "$ref": "#/$defs/operatorApprovalTrustKey" }
               }
-            },
-            "legacyBootstrap": {
-              "oneOf": [
-                { "type": "null" },
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": ["kind", "authenticatedLane", "allocationId", "migrationId", "migrationSourceSha256"],
-                  "properties": {
-                    "kind": { "const": "legacy-v1-active-allocation" },
-                    "authenticatedLane": { "$ref": "#/$defs/slug" },
-                    "allocationId": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
-                    "migrationId": { "type": "string", "pattern": "^state-v1-[a-f0-9]{24}$" },
-                    "migrationSourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
-                  }
-                }
-              ]
             }
           }
         }

@@ -92,16 +92,13 @@ export function validateEngagementManifest(manifest) {
   if (!nonEmpty(manifest.artifactRoot) || !isAbsolute(manifest.artifactRoot)) errors.push('artifactRoot must be absolute');
   if (!stringList(manifest.selectedAgents, true) || !manifest.selectedAgents.every(validSlug)) errors.push('selectedAgents must contain unique slugs');
   const modelTrust = manifest.modelTrust ?? null;
-  const legacyBootstrap = modelTrust?.legacyBootstrap ?? null;
   const runtimeTrust = modelTrust?.keys?.runtimeAttestation;
   const operatorTrust = modelTrust?.keys?.operatorApproval;
   if (modelTrust !== null && (!plainObject(modelTrust) || modelTrust.schema !== 'argus/model-trust-bundle@1' || modelTrust.source !== 'host-trust-store' ||
+      !nonEmpty(modelTrust.trustStorePath) || !isAbsolute(modelTrust.trustStorePath) ||
       !/^[a-f0-9]{64}$/.test(modelTrust.trustStoreSha256 ?? '') || !validDate(modelTrust.pinnedAt) ||
       !validModelTrustKey(runtimeTrust, 'runtime-attestation') || !validModelTrustKey(operatorTrust, 'operator-approval') ||
-      runtimeTrust.keyId === operatorTrust.keyId || runtimeTrust.keyFingerprintSha256 === operatorTrust.keyFingerprintSha256 ||
-      !(legacyBootstrap === null || (plainObject(legacyBootstrap) && legacyBootstrap.kind === 'legacy-v1-active-allocation' &&
-        validSlug(legacyBootstrap.authenticatedLane) && /^[a-f0-9]{24}$/.test(legacyBootstrap.allocationId ?? '') &&
-        /^state-v1-[a-f0-9]{24}$/.test(legacyBootstrap.migrationId ?? '') && /^[a-f0-9]{64}$/.test(legacyBootstrap.migrationSourceSha256 ?? ''))))) {
+      runtimeTrust.keyId === operatorTrust.keyId || runtimeTrust.keyFingerprintSha256 === operatorTrust.keyFingerprintSha256)) {
     errors.push('modelTrust must be null or a complete purpose-separated host-trust-store Ed25519 bundle');
   }
   validateAccessibilityPolicy(manifest.accessibilityPolicy, errors);
@@ -178,7 +175,6 @@ export function createInitialEngagementState(manifest) {
     checkpoints: {},
     fragments: {},
     merges: {},
-    migrations: [],
   };
 }
 
@@ -227,11 +223,11 @@ export function allocateWorker(manifest, lane, { resumeToken, controllerToken, e
       requireLeaseState(manifest, state, lane, resumeToken);
       requireLiveLeaseFile(manifest, state, lane, resumeToken, { allowMigratedToken: true });
       requireControllerAllocation(manifest, state, lane, effectiveControllerToken);
-      if (!hasExecutionBinding(existing)) throw new Error(`${lane} migrated allocation must bind its authenticated model decision before resume`);
+      if (!hasExecutionBinding(existing)) throw new Error(`${lane} allocation must bind its authenticated model decision before resume`);
       if (executionBinding && !sameExecutionBinding(existing, executionBinding)) throw new Error(`${lane} resume decision differs from its active allocation`);
       const dispatchBinding = validateDispatchAuthorization(manifest, lane, existing, dispatchAuthorization, existing.allocationId);
       if (existing.runtime === 'codex') {
-        validateDispatchAuthorizationUse(manifest, state, lane, existing, dispatchBinding, { operation: 'resume', allowFirstLegacy: true });
+        validateDispatchAuthorizationUse(manifest, state, lane, existing, dispatchBinding, { operation: 'resume' });
         Object.assign(existing, dispatchBindingWithHistory(existing, dispatchBinding));
         return { result: { ...publicAllocation(existing), token: resumeToken, resumed: true }, changed: true };
       }
@@ -245,10 +241,10 @@ export function allocateWorker(manifest, lane, { resumeToken, controllerToken, e
       binding = validateExecutionBinding(executionBinding);
       requireLeaseState(manifest, state, lane, resumeToken);
       requireControllerAllocation(manifest, state, lane, effectiveControllerToken, { selfRecovery: lane === 'odysseus' });
-      if (!hasExecutionBinding(existing)) throw new Error(`${lane} migrated allocation must bind its authenticated model decision before recovery`);
+      if (!hasExecutionBinding(existing)) throw new Error(`${lane} allocation must bind its authenticated model decision before recovery`);
       if (!sameExecutionBinding(existing, binding)) throw new Error(`${lane} recovery decision differs from its active allocation`);
       dispatchBinding = validateDispatchAuthorization(manifest, lane, binding, dispatchAuthorization, existing.allocationId);
-      if (binding.runtime === 'codex') validateDispatchAuthorizationUse(manifest, state, lane, existing, dispatchBinding, { operation: 'recovery', allowFirstLegacy: true });
+      if (binding.runtime === 'codex') validateDispatchAuthorizationUse(manifest, state, lane, existing, dispatchBinding, { operation: 'recovery' });
     } else {
       binding = validateExecutionBinding(executionBinding);
       requireControllerAllocation(manifest, state, lane, controllerToken, { bootstrap: true });
@@ -315,28 +311,6 @@ export function startWorkerAttempt(manifest, lane, { token, controllerToken, exe
       changed: true,
     };
   });
-}
-
-export function bindLegacyAllocationDecision(manifest, lane, token, executionBinding) {
-  requireSelected(manifest, lane);
-  const binding = validateExecutionBinding(executionBinding);
-  const result = mutateState(manifest, (state) => {
-    const allocation = state.allocations[lane];
-    requireLeaseState(manifest, state, lane, token);
-    const migratedId = state.migrations.find((item) => item.fromVersion === 1 && item.toVersion === ENGAGEMENT_STATE_VERSION)
-      ?.activeAllocationIdsAtMigration?.[lane];
-    if (!migratedId || allocation.allocationId !== migratedId) throw new Error(`${lane} is not the exact active allocation preserved from v1`);
-    requireLiveLeaseFile(manifest, state, lane, token, { allowMigratedToken: true });
-    if (hasExecutionBinding(allocation)) {
-      if (!sameExecutionBinding(allocation, binding)) throw new Error(`${lane} legacy allocation already has a different model decision`);
-      return { result: publicAllocation(allocation), changed: false };
-    }
-    Object.assign(allocation, binding);
-    return { result: publicAllocation(allocation), changed: true };
-  });
-  const state = getEngagementStatus(manifest);
-  requireLiveLeaseFile(manifest, state, lane, token, { upgradeMigratedToken: true });
-  return result;
 }
 
 export function getEngagementStatus(manifest) {
@@ -509,8 +483,7 @@ export function appendHeartbeat(manifest, lane, token, phase, completed, total, 
 
 // Preflight runs before Odysseus receives a worker lease. Keep this capability
 // separate from the public heartbeat path so it cannot impersonate another lane.
-// Re-entry validates the original record without appending; a migrated v1 active
-// allocation is the only case that may truthfully resume without a historical log.
+// Re-entry validates the original record without appending.
 export function ensurePreflightHeartbeat(manifest, timestamp = new Date().toISOString()) {
   return withStateLock(manifest, () => {
     const state = readState(manifest, { persistMigration: true });
@@ -519,24 +492,15 @@ export function ensurePreflightHeartbeat(manifest, timestamp = new Date().toISOS
     const path = heartbeatPath(manifest, 'odysseus');
     const relativePath = relative(manifest.artifactRoot, path).split(sep).join('/');
     const allocation = state.allocations.odysseus;
-    const migration = state.migrations.find((item) => item.fromVersion === 1 && item.toVersion === ENGAGEMENT_STATE_VERSION);
-    const resumedLegacyAllocation = allocation?.status === 'active'
-      && migration?.activeAllocationIdsAtMigration?.odysseus === allocation.allocationId;
     if (existsSync(path)) {
       const records = parseHeartbeatLog(readManagedFile(path, 'Odysseus heartbeat').toString('utf8'), 'odysseus');
       const initial = records[0];
       if (initial?.phase === 'preflight' && initial.completed === 0 && initial.total === 1 && initial.status === 'running') {
         return { disposition: 'existing', wrote: false, lane: 'odysseus', path: relativePath, record: initial };
       }
-      if (resumedLegacyAllocation && initial && PHASES.indexOf(initial.phase) > PHASES.indexOf('preflight')) {
-        return { disposition: 'legacy-migrated-existing', wrote: false, lane: 'odysseus', path: relativePath, record: initial };
-      }
       throw new Error('existing Odysseus heartbeat log has no valid initial preflight record');
     }
     if (allocation) {
-      if (resumedLegacyAllocation) {
-        return { disposition: 'legacy-migrated-no-record', wrote: false, lane: 'odysseus', path: relativePath, record: null };
-      }
       throw new Error('Odysseus was allocated before the initial preflight heartbeat record');
     }
     const record = appendHeartbeatRecord(manifest, 'odysseus', 'preflight', 0, 1, 'running', timestamp, { initialOnly: true });
@@ -862,12 +826,10 @@ function readState(manifest, { persistMigration = false } = {}) {
   const raw = readManagedFile(path, 'engagement state');
   const source = JSON.parse(raw.toString('utf8'));
   if (source.engagementId !== manifest.engagementId) throw new Error('engagement state does not match the manifest');
-  const migrated = source.schemaVersion === 1 ? migrateEngagementStateV1(manifest, source, sha256(raw)) : null;
-  const state = migrated ?? source;
+  const state = source;
   if (state.schemaVersion !== ENGAGEMENT_STATE_VERSION) throw new Error(`unsupported engagement state schemaVersion: ${state.schemaVersion}`);
   const errors = validateCurrentState(manifest, state);
   if (errors.length > 0) throw new Error(`engagement state integrity failed: ${errors.join('; ')}`);
-  if (migrated && persistMigration) atomicWriteJson(path, state);
   return state;
 }
 
@@ -883,86 +845,6 @@ function mutateState(manifest, mutate) {
     }
     return result;
   });
-}
-
-function migrateEngagementStateV1(manifest, source, sourceDigest) {
-  if (!plainObject(source) || source.engagementId !== manifest.engagementId) throw new Error('engagement state does not match the manifest');
-  const state = structuredClone(source);
-  const allocationIdsSynthesized = [];
-  const activeAllocationIdsAtMigration = {};
-  const checkpointBindingsSynthesized = [];
-  const runtimeV1BindingsPreserved = [];
-  if (!plainObject(state.allocations) || !plainObject(state.checkpoints)) throw new Error('legacy engagement state allocations/checkpoints are malformed');
-
-  for (const [lane, allocation] of Object.entries(state.allocations)) {
-    if (!plainObject(allocation) || !/^[a-f0-9]{64}$/.test(allocation.leaseTokenSha256 ?? '')) {
-      throw new Error(`legacy allocation ${lane} has no valid lease digest`);
-    }
-    if (!/^[a-f0-9]{24}$/.test(allocation.allocationId ?? '')) {
-      allocation.allocationId = deterministicLegacyAllocationId(state.engagementId, lane, allocation);
-      allocationIdsSynthesized.push(lane);
-    }
-    if (allocation.status === 'active') activeAllocationIdsAtMigration[lane] = allocation.allocationId;
-  }
-
-  for (const [lane, checkpoint] of Object.entries(state.checkpoints)) {
-    const allocation = state.allocations[lane];
-    if (!plainObject(checkpoint) || !allocation) throw new Error(`legacy checkpoint ${lane} cannot be bound to an allocation`);
-    const completeRuntimeBinding = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(checkpoint.dispatchId ?? '')
-      && Number.isInteger(checkpoint.attempt) && checkpoint.attempt >= 1
-      && checkpoint.allocationId === allocation.allocationId;
-    if (completeRuntimeBinding) {
-      checkpoint.bindingOrigin = 'runtime-v1';
-      runtimeV1BindingsPreserved.push(lane);
-      continue;
-    }
-    checkpoint.dispatchId = deterministicLegacyDispatchId(state.engagementId, lane, checkpoint);
-    checkpoint.attempt = 1;
-    checkpoint.allocationId = allocation.allocationId;
-    checkpoint.bindingOrigin = 'migrated-v1';
-    checkpointBindingsSynthesized.push(lane);
-  }
-
-  state.dispatchableAgents = null;
-  state.schemaVersion = ENGAGEMENT_STATE_VERSION;
-  state.revision = Number.isInteger(state.revision) && state.revision >= 0 ? state.revision + 1 : 1;
-  state.migrations = [{
-    fromVersion: 1,
-    toVersion: ENGAGEMENT_STATE_VERSION,
-    migrationId: `state-v1-${sourceDigest.slice(0, 24)}`,
-    sourceSha256: sourceDigest,
-    strategy: 'deterministic-lease-bound-execution-bindings',
-    allocationIdsSynthesized: allocationIdsSynthesized.sort(),
-    activeAllocationIdsAtMigration: Object.fromEntries(Object.entries(activeAllocationIdsAtMigration).sort(([left], [right]) => left.localeCompare(right))),
-    checkpointBindingsSynthesized: checkpointBindingsSynthesized.sort(),
-    runtimeV1BindingsPreserved: runtimeV1BindingsPreserved.sort(),
-  }];
-  return state;
-}
-
-function deterministicLegacyAllocationId(engagementId, lane, allocation) {
-  return sha256(JSON.stringify([
-    'argus/engagement-state@2',
-    'migrated-allocation',
-    engagementId,
-    lane,
-    allocation.leaseTokenSha256,
-    allocation.allocatedAt ?? null,
-  ])).slice(0, 24);
-}
-
-function deterministicLegacyDispatchId(engagementId, lane, checkpoint) {
-  return `legacy-v1:${sha256(JSON.stringify([
-    'argus/engagement-state@2',
-    'migrated-checkpoint',
-    engagementId,
-    lane,
-    checkpoint.phase ?? null,
-    checkpoint.sequence ?? null,
-    checkpoint.path ?? null,
-    checkpoint.sha256 ?? null,
-    checkpoint.recordedAt ?? null,
-  ])).slice(0, 24)}`;
 }
 
 function lstatEntry(path) {
@@ -1143,9 +1025,6 @@ function validateDispatchAuthorization(manifest, lane, binding, document, expect
   if (decision.runtime !== 'codex' || modelConfigSha256(decision.selectedConfig) !== document.selectedConfigSha256) {
     throw new Error('Codex dispatch authorization differs from the immutable selected decision');
   }
-  if (decision.runtimeAttestation?.parentSessionId !== document.parentSessionId) {
-    throw new Error('Codex dispatch authorization parentSessionId differs from the selected route attestation');
-  }
   return {
     allocationId: document.allocationId,
     dispatchAuthorizationSha256: modelAuthenticatedDocumentSha256(document),
@@ -1171,13 +1050,11 @@ function loadImmutableSelectedDecision(manifest, lane, binding) {
   return decision;
 }
 
-function validateDispatchAuthorizationUse(manifest, state, lane, allocation, dispatchBinding, { operation, allowFirstLegacy = false }) {
+function validateDispatchAuthorizationUse(manifest, state, lane, allocation, dispatchBinding, { operation }) {
   if (!dispatchBinding) throw new Error(`${lane} Codex ${operation} requires a fresh JIT dispatch authorization`);
   const history = dispatchAuthorizationHistory(allocation);
-  const legacyId = state.migrations?.find((item) => item.fromVersion === 1 && item.toVersion === ENGAGEMENT_STATE_VERSION)
-    ?.activeAllocationIdsAtMigration?.[lane];
-  if (allocation && !allocation.dispatchAuthorizationSha256 && !(allowFirstLegacy && allocation.allocationId === legacyId)) {
-    throw new Error(`${lane} Codex ${operation} cannot introduce a first dispatch authorization outside an exact v1 migration`);
+  if (allocation && !allocation.dispatchAuthorizationSha256) {
+    throw new Error(`${lane} Codex ${operation} cannot introduce a first dispatch authorization after allocation`);
   }
   if (history.some((entry) => entry.sha256 === dispatchBinding.dispatchAuthorizationSha256)) {
     throw new Error(`${lane} Codex ${operation} cannot replay a consumed dispatch authorization`);
@@ -1261,9 +1138,6 @@ function validateRetryLineage(manifest, state, allocation, decision) {
       throw new Error(`${allocation.lane} retry availability lineage is stale or belongs to another allocation`);
     }
   }
-  if (decision.runtime === 'codex' && !decision.runtimeAttestation) {
-    throw new Error(`${allocation.lane} Codex retry requires an authenticated route attestation`);
-  }
 }
 
 function hasExecutionBinding(allocation) {
@@ -1284,7 +1158,7 @@ function leaseMarker(allocation) {
   return `allocation:${allocation.allocationId}`;
 }
 
-function requireLiveLeaseFile(manifest, state, lane, token, { allowMigratedToken = false, upgradeMigratedToken = false } = {}) {
+function requireLiveLeaseFile(manifest, state, lane, token) {
   const allocation = state.allocations[lane];
   if (!allocation || allocation.status !== 'active' || !nonEmpty(token) || allocation.leaseTokenSha256 !== sha256(token)) {
     throw new Error(`invalid or inactive lease for ${lane}`);
@@ -1293,12 +1167,6 @@ function requireLiveLeaseFile(manifest, state, lane, token, { allowMigratedToken
   if (!existsSync(leasePath)) throw new Error(`active lease file is missing for ${lane}`);
   const content = readManagedFile(leasePath, `${lane} lease`).toString('utf8').trim();
   if (content === leaseMarker(allocation)) return;
-  const migratedId = state.migrations.find((item) => item.fromVersion === 1 && item.toVersion === ENGAGEMENT_STATE_VERSION)
-    ?.activeAllocationIdsAtMigration?.[lane];
-  if ((allowMigratedToken || upgradeMigratedToken) && allocation.allocationId === migratedId && content === token) {
-    if (upgradeMigratedToken) atomicWrite(leasePath, `${leaseMarker(allocation)}\n`);
-    return;
-  }
   throw new Error(`active lease marker does not match the allocation for ${lane}`);
 }
 
@@ -1401,12 +1269,10 @@ function validateStateAllocations(manifest, state) {
     if (!['active', 'released'].includes(allocation.status) || !/^[a-f0-9]{64}$/.test(allocation.leaseTokenSha256 ?? '') || !/^[a-f0-9]{24}$/.test(allocation.allocationId ?? '')) {
       errors.push(`${lane}: allocation status or lease digest is invalid`);
     }
-    const legacyId = state.migrations?.find((item) => item.fromVersion === 1 && item.toVersion === ENGAGEMENT_STATE_VERSION)
-      ?.activeAllocationIdsAtMigration?.[lane];
     const presentBindingFields = EXECUTION_BINDING_FIELDS.filter((field) => Object.hasOwn(allocation, field));
     if (presentBindingFields.length > 0 && (presentBindingFields.length !== EXECUTION_BINDING_FIELDS.length || !hasExecutionBinding(allocation))) {
       errors.push(`${lane}: allocation model decision binding is partial or invalid`);
-    } else if (presentBindingFields.length === 0 && allocation.allocationId !== legacyId) {
+    } else if (presentBindingFields.length === 0) {
       errors.push(`${lane}: allocation has no authenticated model decision binding`);
     }
     const presentDispatchFields = DISPATCH_AUTHORIZATION_FIELDS.filter((field) => Object.hasOwn(allocation, field));
@@ -1420,7 +1286,7 @@ function validateStateAllocations(manifest, state) {
         new Set(dispatchHistory.map((entry) => entry.nonce)).size !== dispatchHistory.length)) {
       errors.push(`${lane}: dispatch authorization history is invalid or contains replayed identities`);
     }
-    if (allocation.runtime === 'codex' && allocation.allocationId !== legacyId) {
+    if (allocation.runtime === 'codex') {
       if (presentDispatchFields.length !== DISPATCH_AUTHORIZATION_FIELDS.length ||
           !/^[a-f0-9]{64}$/.test(allocation.dispatchAuthorizationSha256 ?? '') ||
           !/^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/.test(allocation.dispatchAuthorizationNonce ?? '') ||
@@ -1472,27 +1338,11 @@ function validateCurrentState(manifest, state) {
       || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(checkpoint.dispatchId ?? '')
       || !Number.isInteger(checkpoint.attempt) || checkpoint.attempt < 1
       || checkpoint.allocationId !== allocation.allocationId
-      || !['runtime', 'runtime-v1', 'migrated-v1'].includes(checkpoint.bindingOrigin)
+      || checkpoint.bindingOrigin !== 'runtime'
       || !safeRelative(checkpoint.path)
       || !/^[a-f0-9]{64}$/.test(checkpoint.sha256 ?? '')
       || !validDate(checkpoint.recordedAt)) {
       errors.push(`${lane}: checkpoint execution binding is invalid`);
-    }
-  }
-  if (!Array.isArray(state.migrations)) errors.push('migrations must be an array');
-  else for (const migration of state.migrations) {
-    if (!plainObject(migration)
-      || migration.fromVersion !== 1
-      || migration.toVersion !== ENGAGEMENT_STATE_VERSION
-      || !/^state-v1-[a-f0-9]{24}$/.test(migration.migrationId ?? '')
-      || !/^[a-f0-9]{64}$/.test(migration.sourceSha256 ?? '')
-      || migration.strategy !== 'deterministic-lease-bound-execution-bindings'
-      || !stringList(migration.allocationIdsSynthesized, false)
-      || !plainObject(migration.activeAllocationIdsAtMigration)
-      || !Object.entries(migration.activeAllocationIdsAtMigration).every(([lane, allocationId]) => validSlug(lane) && /^[a-f0-9]{24}$/.test(allocationId))
-      || !stringList(migration.checkpointBindingsSynthesized, false)
-      || !stringList(migration.runtimeV1BindingsPreserved, false)) {
-      errors.push('migration audit record is invalid');
     }
   }
   return errors;
@@ -1523,7 +1373,7 @@ function collectDirectPaths(value, output = []) {
 }
 
 function shellMayWrite(command) {
-  return /(?:^|[;&|\s])(?:rm|mv|cp|install|touch|mkdir|chmod|chown|truncate|tee|patch)(?:\s|$)|(?:^|\s)(?:sed\s+[^\n]*-[A-Za-z]*i|perl\s+[^\n]*-[A-Za-z]*[pi][A-Za-z]*)|(?:^|[^<])>{1,2}\s*[^&]|\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|unlink(?:Sync)?|rename(?:Sync)?|chmod(?:Sync)?|rm(?:Sync)?|rmdir(?:Sync)?|rmtree|remove|write_text|write_bytes|open|allocateWorker|startWorkerAttempt|bindLegacyAllocationDecision)\s*\(|\.write_(?:text|bytes)\s*\(/i.test(command);
+  return /(?:^|[;&|\s])(?:rm|mv|cp|install|touch|mkdir|chmod|chown|truncate|tee|patch)(?:\s|$)|(?:^|\s)(?:sed\s+[^\n]*-[A-Za-z]*i|perl\s+[^\n]*-[A-Za-z]*[pi][A-Za-z]*)|(?:^|[^<])>{1,2}\s*[^&]|\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|unlink(?:Sync)?|rename(?:Sync)?|chmod(?:Sync)?|rm(?:Sync)?|rmdir(?:Sync)?|rmtree|remove|write_text|write_bytes|open|allocateWorker|startWorkerAttempt)\s*\(|\.write_(?:text|bytes)\s*\(/i.test(command);
 }
 
 function shellMayCreateLink(command) {

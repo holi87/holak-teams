@@ -35,21 +35,10 @@ owner merges them by stable key (`lane`, `id`, or `testId`). Duplicate keys fail
 and the canonical arrays are sorted by that key so fragment arrival order cannot change
 the resulting bytes.
 
-The shipped single-record `argus/lane-plan@1`, `argus/evidence-reference@1`, and
-`argus/automation-status@1` schemas remain readable. Their explicit compatibility entries
-wrap one legacy record in the corresponding v2 array, normalize field order, validate the
-v2 result, and persist new submissions as v2. Already persisted v1 fragments remain
-immutable and are migrated during merge; canonical output is always v2. Other solution
-contracts do not change version. The separately versioned preflight report writes v2
-because the model-runtime and bound orchestration fields changed its shape. The exact
-1.18 v1 validator remains available for historical reports; those immutable snapshots
-are read but never rewritten.
-Every schema-valid v1 lane state/status combination migrates to one strict v2 path ending
-at the declared status. Already-canonical ordered transitions retain their exact actors and
-timestamps; arbitrary, missing, repeated, or out-of-order legacy transitions are reduced to
-a deterministic canonical path. The 1.18 lane fixture's direct `planned → completed` edge
-inserts `running` at the deterministic timestamp midpoint. When a strict preserved timeline
-cannot be formed, migration uses a fixed millisecond-spaced synthetic timeline.
+Argus 3 accepts only the current `@2` forms of these three collections. Their retired
+single-record `@1` schemas and migrations are absent. Other solution contracts keep their
+current version. Active older engagements must finish with their original runtime before
+upgrading.
 
 ## Runtime report schema registry
 
@@ -57,13 +46,12 @@ cannot be formed, migration uses a fixed millisecond-spaced synthetic timeline.
 a canonical solution fragment and never an input to `engagement fragment` or `engagement
 merge`. New reports identify the actual writer schema URL
 `https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/preflight-report.schema.json`
-and `schemaVersion: 2`. The report-only reader selects the preserved v1 or current v2
-validator from the document's `schemaVersion`; its listing exposes the current URL plus
-`readCompatible=1,2` rather than inventing an `argus/<contract>@<version>` identity.
+and `schemaVersion: 2`. The report-only reader accepts only v2 and exposes
+`readCompatible=2` rather than inventing an `argus/<contract>@<version>` identity.
 
 Run `argus-assets schema validate --kind preflight-report --input ai_agents_internal/preflight.json`
-to validate either supported report version. Successful
-output includes the version and report-only identity; an unknown version fails closed.
+to validate the current report. Successful output includes the version and report-only
+identity; an unknown or retired version fails closed.
 
 `argus/model-escalation-request@1` is a controller-bound stop envelope, not a canonical
 solution artifact. A worker returns it after persisting a monotonic checkpoint. Odysseus
@@ -73,21 +61,13 @@ and checkpoint state before opening a new attempt in a new thread. A pre-spawn
 availability binding and may have no checkpoint because no worker thread began.
 
 Model-control records are likewise runtime controls, not mergeable solution fragments.
-`argus/model-decision@2` is the immutable selected/blocked route. A signed
-`argus/model-runtime-attestation@1` proves that the isolated Codex wrapper can enforce the
-selected route configuration. A separate fresh `argus/model-dispatch-authorization@1`
-binds that decision and selected-config digest to one parent session, random allocation ID,
-nonce, and at-most-15-minute CLI authorization window. The CLI verifies and persists this
-binding; the external wrapper, not the runtime record, is responsible for pairing success
-with the actual exact-config spawn. Human frontier disposition uses
+`argus/model-decision@2` is the immutable selected/blocked route. Human frontier disposition uses
 `argus/model-operator-decision@1` under the distinct operator trust purpose. Engagement
-state v2 persists the exact decision binding on every current allocation and additionally
-persists the JIT authorization digest and coordinates on each non-legacy Codex allocation.
+state v2 persists the exact decision binding on every current allocation.
 `engagement start-attempt` consumes the current lane capability, atomically rotates it, and
 returns the next token once; telemetry for the completed decision must precede that
-transition. Codex authorization history retains allocation ID, digest, nonce, and issue time:
-resume/retry keeps the active allocation ID, while a released-lane replacement must use a
-never-before-consumed ID.
+transition. Codex routes are currently blocked because the CLI lacks a native hard turn cap;
+signed metadata cannot override that capability result.
 
 ## Field ownership and state transitions
 
@@ -116,9 +96,8 @@ canonical artifact.
 ## Compatibility and migration
 
 `policies/schema-compatibility.json` owns versions per contract. Contracts without an
-override remain immutable v1. The three collection contracts write v2, read v1/v2, and
-name an exact deterministic v1-to-v2 migration. Preflight reports write v2 and preserve
-the exact v1 reader without rewriting historical snapshots. Unknown or unversioned shapes fail closed.
+override keep their current v1 definition. The three collection contracts and preflight
+report accept only v2. Unknown, unversioned, or retired shapes fail closed.
 A future version must:
 
 1. add a new schema with valid and invalid fixtures;

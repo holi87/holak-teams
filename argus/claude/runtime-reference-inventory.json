@@ -9,6 +9,12 @@
   "hooksScanned": 1,
   "pluginAssetReferences": [
     {
+      "value": "bin/argus-launch",
+      "consumers": [
+        "/argus:run"
+      ]
+    },
+    {
       "value": "references/AUTHORIZATION-POLICY.md",
       "consumers": [
         "skill:qa-core"
@@ -993,6 +999,18 @@
     }
   ],
   "assetConsumers": [
+    {
+      "assetId": "native-launcher",
+      "destination": "bin/argus-launch",
+      "consumers": [
+        {
+          "consumer": "/argus:run",
+          "kind": "entrypoint",
+          "mechanism": "plugin-path",
+          "reference": "bin/argus-launch"
+        }
+      ]
+    },
     {
       "assetId": "browser-isolation",
       "destination": "references/BROWSER-ISOLATION.md",

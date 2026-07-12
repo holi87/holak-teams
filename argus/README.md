@@ -8,13 +8,14 @@ Greek code names. Black-box hunting + regression automation in a single pass.
 
 ## How to start
 
-**Recommended entry point: `/argus:run`**
+**Supported entry point: `argus-launch`**
 
-After installing the marketplace plugin, invoke the skill from the Claude Code main
-conversation:
+After installing the marketplace plugin, launch the skill through its native enforcement
+wrapper:
 
-```
-/argus:run <target URL, running stack, or repo path — and QA scope>
+```bash
+argus-launch doctor
+argus-launch claude --target /absolute/target --artifact-root /absolute/artifacts --mode A
 ```
 
 The main thread loads Odysseus's orchestration policy and does the rest:
@@ -29,11 +30,9 @@ specialists return results only to it. If the target is missing, `Agent` delegat
 denied, or the plugin agents are unavailable, the command stops with an actionable
 `ARGUS_PREFLIGHT_ERROR` and never claims that execution occurred.
 
-**Alternate main-session entry point:** `claude --agent argus:odysseus`. This starts a
-new Claude Code session with Odysseus's prompt active and supports the same direct
-specialist dispatch when `Agent` is available. Direct `@argus:odysseus` invocation is
-runtime-dependent; current Claude Code versions can permit nested delegation, while a
-restricted context receives the same explicit preflight error.
+The launcher binds the native 96-turn cap and OS sandbox. Direct `/argus:run`,
+`claude --agent argus:odysseus`, and `@argus:odysseus` sessions fail preflight because they
+cannot prove that complete execution envelope.
 
 ## Packaged runtime assets
 
@@ -71,12 +70,12 @@ and `argus-assets engagement heartbeat` authenticates the active lane lease and 
 monotonic progress to the contracted lane log. A frontier
 continuation additionally requires an external operator-authored decision under
 `ai_agents_internal/operator-decisions/`. Before routing, the host trust store supplies two
-distinct public anchors from one snapshot: `runtime-attestation` for the enforcing Codex
-dispatch wrapper and `operator-approval` for an isolated human approval boundary. `model
-trust` pins both stable IDs and preflight reruns for the changed manifest digest. The
+distinct public anchors: `runtime-attestation` for runtime control and `operator-approval`
+for an isolated human approval boundary. `model trust` pins both stable IDs and the secure
+host-store path, then preflight reruns for the changed manifest digest. The
 controller, workers, and their OS user receive neither private key nor a generic signing
-interface. A pinned snapshot is not live revocation: revoke, abort the engagement, and
-start a new one with current anchors. Normal attempt-1 decisions for Odysseus and every
+interface. Every sensitive model operation rereads the live store and blocks immediately
+on revocation or key replacement. Normal attempt-1 decisions for Odysseus and every
 currently dispatchable selected role are persisted before allocation; deferred, skipped,
 and blocked roles are excluded from that sealed set. A late normal dispatch is rejected.
 
@@ -87,13 +86,8 @@ specialist dispatch. Given a primary URL/path and Mode A–D, it persists
 `ai_agents_internal/preflight.json` and evaluates orchestration tools, the strict
 frontmatter vocabulary, connected MCP servers, referenced host commands, packaged asset
 hashes, browser support, target reachability/features, and safe writable artifact paths.
-New reports use `schemaVersion: 2` so the model runtime and bound orchestration projection
-are explicit. The exact Argus 1.18 v1 schema remains packaged for historical validation;
-persisted v1 reports are immutable and are not rewritten.
-New engagements store physical target and artifact-root paths. Existing 1.18 manifests may
-retain lexical macOS aliases such as `/tmp` or `/var`; the current runtime accepts those
-stored values only when they resolve to the same physical roots, without silently changing
-the legacy manifest digest.
+Reports use `schemaVersion: 2` so the model runtime and bound orchestration projection are
+explicit. Retired v1 preflight and engagement-state readers are absent in Argus 3.
 
 Every role receives one disposition: `ready`, `degraded`, `deferred`, `skipped`, or
 `blocked`. Only `ready` and `degraded` worker records may have `dispatchAllowed=true`;
@@ -151,17 +145,12 @@ namespace, port, temp, and output coordinates. State retains only each token's S
 the `.lease` file retains only an allocation-ID marker, so resume requires the current
 attempt-generation token rather than redisclosing it.
 After allocation, model routing requires the controller token; request and exactly-once
-telemetry writes require the decision-owning lane token. A Codex route attestation is
-validated at immutable selection time. Each later Codex allocation, resume, or retry rebind
-requires a fresh, 15-minute `argus/model-dispatch-authorization@1` binding that decision and
-config to the allocation and parent session. The CLI verifies and persists the binding; the
-external wrapper must pair the successful operation with the actual exact-config spawn,
-which the CLI cannot observe or prove. Resume/retry keeps the active allocation ID with a
-new MDA nonce and issue time. A post-release replacement must use a never-before-consumed
-allocation ID; bounded lane history rejects reuse of earlier allocation IDs, MDA digests,
-and nonces. Tokens are bearer capabilities, so keep
-them out of prompts, artifacts, logs, shell history, and cross-lane environments; same-UID
-process isolation remains a host responsibility.
+telemetry writes require the decision-owning lane token. Codex dispatch is currently blocked
+because its CLI lacks a native hard turn cap; signed metadata cannot unlock it. Tokens are
+bearer capabilities, so keep
+them out of prompts, artifacts, logs, and shell history. The supported launcher clears
+inherited capabilities and denies process inspection on macOS or creates a private PID
+namespace on Linux.
 Cross-lane profile reuse requires an explicit, bounded shared-session authorization.
 Browser/device/viewport coverage comes from target support and risk in the engagement
 manifest, and new accessibility work defaults to WCAG 2.2 AA. Kleio publishes
@@ -204,11 +193,11 @@ the engagement controller rejects malformed or cross-engagement JSON fragments b
 merge. Stable IDs are allocated with an identity key and survive rerun/resume
 deduplication. Merging `solution/final-summary.json` renders `solution/FINAL-SUMMARY.md`
 with its source schema version. Compatibility is per contract: unchanged contracts remain
-v1-only, while lane-plan, evidence-reference, and automation-status read their immutable
-single-record v1 forms and deterministically persist current multi-record v2 collections.
+v1-only, while lane-plan, evidence-reference, and automation-status accept only their
+current multi-record v2 collections.
 Preflight is intentionally separate from that merge registry: `argus-assets schema list`
-labels it `report-only`, and `schema validate --kind preflight-report` selects the preserved
-v1 or current v2 reader by `schemaVersion`. New reports carry the actual schema URL and
+labels it `report-only`, and `schema validate --kind preflight-report` accepts v2 only.
+New reports carry the actual schema URL and
 `schemaVersion: 2`; validating one never makes it an engagement fragment.
 
 The ownership source of truth is `raci.json`, rendered as `RACI-CONTRACT.md`. Use
@@ -309,5 +298,6 @@ variant of the roster (27 runtime `*.toml` files + compact provenance `*.md` stu
 `framework-template-python/` (pytest + Playwright + httpx) — project skeletons, all
 no-Selenium. `shared-skills/qa-core`, `qa-browser`, `qa-framework-runner`,
 `qa-coverage-reporting`, and `orchestration-core` are the canonical scoped contracts;
-`competition-profile` is explicit opt-in. The old `qa-doctrine` monolith is retained only
-for maintainer comparison. `COLOR-SCHEME.md` and `SHARED-DOCTRINE.md` are maintainer docs.
+`competition-profile` is explicit opt-in. The retired `qa-doctrine` monolith and
+`SHARED-DOCTRINE.md` compatibility pointer are no longer shipped. `COLOR-SCHEME.md` is a
+maintainer reference.

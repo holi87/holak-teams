@@ -20,9 +20,9 @@ export const CONTRACT_KINDS = Object.freeze([
 ]);
 
 const COLLECTION_CONTRACTS = Object.freeze({
-  'lane-plan': { field: 'lanes', key: 'lane', label: 'lane', migration: 'argus/migrate-lane-plan-v1-to-v2', fields: ['lane', 'owner', 'phase', 'status', 'dependsOn', 'outputContracts', 'transitions'] },
-  'evidence-reference': { field: 'references', key: 'id', label: 'evidence reference', migration: 'argus/migrate-evidence-reference-v1-to-v2', fields: ['id', 'kind', 'source', 'collectedBy', 'capturedAt', 'redaction', 'sha256', 'relatedBugIds'] },
-  'automation-status': { field: 'tests', key: 'testId', label: 'automation test', migration: 'argus/migrate-automation-status-v1-to-v2', fields: ['testId', 'owner', 'status', 'runner', 'updatedAt', 'coversBugIds', 'evidenceIds'] },
+  'lane-plan': { field: 'lanes', key: 'lane', label: 'lane' },
+  'evidence-reference': { field: 'references', key: 'id', label: 'evidence reference' },
+  'automation-status': { field: 'tests', key: 'testId', label: 'automation test' },
 });
 
 const SCHEMAS = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas');
@@ -40,13 +40,13 @@ if (compatibility.current !== CONTRACT_VERSION || !compatibility.readCompatible.
 }
 for (const [kind, contract] of Object.entries(COLLECTION_CONTRACTS)) {
   const policy = compatibility.contracts?.[kind];
-  if (policy?.current !== 2 || !sameNumbers(policy.readCompatible, [1, 2]) || policy.migration !== contract.migration) {
-    throw new Error(`${kind} compatibility policy must preserve v1 and migrate deterministically to v2`);
+  if (policy?.current !== 2 || !sameNumbers(policy.readCompatible, [2])) {
+    throw new Error(`${kind} compatibility policy must accept only the current v2 contract`);
   }
 }
 const preflightCompatibility = compatibility.contracts?.['preflight-report'];
-if (preflightCompatibility?.current !== 2 || !sameNumbers(preflightCompatibility.readCompatible, [1, 2]) || preflightCompatibility.migration !== 'argus/preserve-preflight-report-v1-reader') {
-  throw new Error('preflight-report compatibility policy must preserve the v1 reader and write v2');
+if (preflightCompatibility?.current !== 2 || !sameNumbers(preflightCompatibility.readCompatible, [2])) {
+  throw new Error('preflight-report compatibility policy must accept only v2');
 }
 
 export function schemaId(kind, version = contractPolicy(kind).current) {
@@ -78,14 +78,12 @@ export function migrateCanonicalDocument(kind, document) {
   const contract = COLLECTION_CONTRACTS[kind];
   if (!contract) return document;
   const version = declaredContractVersion(kind, document);
-  const records = version === 1
-    ? [migrateLegacyRecord(kind, pickFields(document, contract.fields))]
-    : document[contract.field];
+  const records = document[contract.field];
   const migrated = {
     $schema: schemaId(kind),
     schemaVersion: contractPolicy(kind).current,
     engagementId: document.engagementId,
-    [contract.field]: records.map((record) => pickFields(record, contract.fields)),
+    [contract.field]: structuredClone(records),
   };
   migrated[contract.field].sort((left, right) => compareAscii(left[contract.key], right[contract.key]));
   const migratedErrors = validateCanonicalDocument(kind, migrated);
@@ -185,7 +183,8 @@ function canonicalValidator(kind, version) {
   const key = `${kind}@${version}`;
   if (!validators.has(key)) {
     const current = contractPolicy(kind).current;
-    const path = join(SCHEMAS, version === current ? `${kind}.schema.json` : `${kind}-v${version}.schema.json`);
+    if (version !== current) throw new Error(`unsupported ${kind} contract version: ${version}`);
+    const path = join(SCHEMAS, `${kind}.schema.json`);
     let schema;
     try { schema = JSON.parse(readFileSync(path, 'utf8')); }
     catch (error) { throw new Error(`cannot load canonical schema ${path}: ${error.message}`); }
@@ -194,19 +193,17 @@ function canonicalValidator(kind, version) {
   return validators.get(key);
 }
 
-function semanticErrors(kind, document, version) {
+function semanticErrors(kind, document) {
   if (kind === 'bug-ledger') return duplicateIds(document.bugs, 'bug');
-  if (kind === 'lane-plan') return validateLanePlan(document, version);
-  if (COLLECTION_CONTRACTS[kind] && version === contractPolicy(kind).current) return validateOrderedCollection(document, COLLECTION_CONTRACTS[kind]);
+  if (kind === 'lane-plan') return validateLanePlan(document);
+  if (COLLECTION_CONTRACTS[kind]) return validateOrderedCollection(document, COLLECTION_CONTRACTS[kind]);
   if (kind === 'surface-inventory') return validateSurfaceInventory(document);
   if (kind === 'coverage-observations') return validateCoverageObservations(document);
   if (kind === 'runner-result') return validateRunnerResult(document);
   return [];
 }
 
-function validateLanePlan(document, version) {
-  const current = version === contractPolicy('lane-plan').current;
-  if (!current) return [];
+function validateLanePlan(document) {
   const errors = validateOrderedCollection(document, COLLECTION_CONTRACTS['lane-plan']);
   for (const lane of document.lanes) errors.push(...validateLaneTransitions(lane));
   return errors;
@@ -259,87 +256,6 @@ function normalizeRfc3339Zone(value) {
   return value;
 }
 
-function migrateLegacyRecord(kind, record) {
-  if (kind !== 'lane-plan') return record;
-  return { ...record, transitions: migrateLegacyLaneTransitions(record) };
-}
-
-function migrateLegacyLaneTransitions(record) {
-  const source = record.transitions;
-  const targetStates = canonicalLaneStates(record);
-
-  // Preserve the historical v1 shape without rewriting either recorded endpoint.
-  if (record.status === 'completed' && source.length === 2 && source[0].to === 'planned' && source[1].to === 'completed') {
-    const midpoint = midpointTimestamp(source[0].at, source[1].at);
-    if (midpoint !== null) {
-      return [
-        source[0],
-        { to: 'running', at: midpoint, by: source[1].by },
-        source[1],
-      ];
-    }
-  }
-
-  // A valid ordered subsequence keeps the original actors and exact RFC3339 values,
-  // while obsolete or repeated v1 transitions are discarded deterministically.
-  const selected = selectOrderedTransitions(source, targetStates);
-  if (selected && strictlyIncreasingTransitions(selected)) return selected;
-
-  // Every remaining schema-valid v1 state/status combination receives one stable,
-  // strict v2 path. The fixed epoch makes repeated migrations byte-identical.
-  return targetStates.map((to, index) => ({
-    to,
-    at: new Date(Date.UTC(2000, 0, 1) + index).toISOString(),
-    by: legacyTransitionActor(source, record, to),
-  }));
-}
-
-function canonicalLaneStates(record) {
-  if (record.status === 'planned') return ['planned'];
-  if (record.status === 'running') return ['planned', 'running'];
-  if (record.status === 'completed') return ['planned', 'running', 'completed'];
-  return record.transitions.some(({ to }) => to === 'running')
-    ? ['planned', 'running', 'blocked']
-    : ['planned', 'blocked'];
-}
-
-function selectOrderedTransitions(source, states) {
-  const selected = [];
-  let sourceIndex = 0;
-  for (const state of states) {
-    while (sourceIndex < source.length && source[sourceIndex].to !== state) sourceIndex += 1;
-    if (sourceIndex === source.length) return null;
-    selected.push(source[sourceIndex]);
-    sourceIndex += 1;
-  }
-  return selected;
-}
-
-function strictlyIncreasingTransitions(transitions) {
-  return transitions.every((transition, index) => index === 0 || compareRfc3339(transitions[index - 1].at, transition.at) < 0);
-}
-
-function legacyTransitionActor(source, record, state) {
-  for (let index = source.length - 1; index >= 0; index -= 1) {
-    if (source[index].to === state) return source[index].by;
-  }
-  if (state === 'running') {
-    for (let index = source.length - 1; index >= 0; index -= 1) {
-      if (source[index].to === record.status) return source[index].by;
-    }
-  }
-  return record.owner;
-}
-
-function midpointTimestamp(left, right) {
-  const leftMillis = Date.parse(left);
-  const rightMillis = Date.parse(right);
-  const midpoint = leftMillis + Math.floor((rightMillis - leftMillis) / 2);
-  if (!Number.isFinite(midpoint) || midpoint <= leftMillis || midpoint >= rightMillis) {
-    return null;
-  }
-  return new Date(midpoint).toISOString();
-}
 
 function validateOrderedCollection(document, { field, key, label }) {
   const seen = new Set();
@@ -387,10 +303,6 @@ function declaredContractVersion(kind, document) {
   const declaredId = document?.$schema ?? document?.schema;
   const match = new RegExp(`^argus/${kind.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}@(\\d+)$`).exec(declaredId ?? '');
   return match ? Number(match[1]) : Number.isInteger(document?.schemaVersion) ? document.schemaVersion : contractPolicy(kind).current;
-}
-
-function pickFields(document, fields) {
-  return Object.fromEntries(fields.map((field) => [field, document[field]]));
 }
 
 function sameNumbers(left, right) {

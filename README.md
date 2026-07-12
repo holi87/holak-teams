@@ -80,7 +80,6 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   ├── COLOR-SCHEME.md          # colors by role type
 │   ├── shared-skills/           # canonical capability-scoped skill sources
 │   ├── prompt-*.json            # prompt budgets + engagement regression contract
-│   ├── SHARED-DOCTRINE.md       # compatibility pointer to the canonical skill
 │   ├── team-graph.html + .png   # visual team graph (embedded in README)
 │   └── README.md                # how to start (entry: odysseus)
 ├── agents-roster.html           # visual roster (both teams)

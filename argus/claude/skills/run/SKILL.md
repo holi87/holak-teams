@@ -10,6 +10,11 @@ effort: max
 
 # Run Argus from the main thread
 
+This skill is executable only inside a session started by
+`${CLAUDE_PLUGIN_ROOT}/bin/argus-launch`. Preflight must observe the launcher's native
+turn-cap and OS-sandbox binding. A direct skill or agent invocation stops before target
+probing or specialist dispatch.
+
 `$ARGUMENTS` is the target and QA scope. Stay the sole controller; never spawn
 `argus:odysseus`. Read `${CLAUDE_PLUGIN_ROOT}/skills/orchestration-core/SKILL.md` completely
 and execute it as the only controller policy. Do not read the Odysseus agent as a second policy source.
@@ -22,10 +27,7 @@ first-use trust. Persist exactly one normal attempt-1 decision for Odysseus and 
 selected agent whose current disposition is `ready` or `degraded` with
 `dispatchAllowed=true`.
 Allocate Odysseus first with its decision, then workers with their decisions and its
-controller token. Give workers only their own lane token and public coordinates. Codex
-allocation, resume, or retry rebind also requires the isolated wrapper's fresh
-`argus/model-dispatch-authorization@1` via `--dispatch-authorization <MDA-file>`. The CLI
-verifies that binding; the wrapper must pair success with the exact-config spawn. Reject
+controller token. Give workers only their own lane token and public coordinates. Reject
 late normal routes; retries keep the dispatch/allocation and run `engagement start-attempt`
 after emitting prior-attempt telemetry. Capture its returned lane token, replace the
 consumed token, and only then start the new thread; the stale token is revoked.

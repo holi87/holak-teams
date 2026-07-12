@@ -24,6 +24,12 @@
   },
   "assets": [
     {
+      "id": "native-launcher",
+      "kind": "runtime",
+      "source": "argus/bin/argus-launch",
+      "destination": "bin/argus-launch"
+    },
+    {
       "id": "browser-isolation",
       "kind": "reference",
       "source": "argus/BROWSER-ISOLATION.md",
@@ -233,14 +239,6 @@
     }
   ],
   "maintainerOnly": [
-    {
-      "source": "argus/SHARED-DOCTRINE.md",
-      "reason": "Compatibility pointer for maintainers; effective runtime doctrine is delivered by capability-scoped skills."
-    },
-    {
-      "source": "argus/shared-skills/qa-doctrine",
-      "reason": "Legacy monolithic doctrine retained as a maintainer comparison source after capability-scoped skill migration."
-    },
     {
       "source": "argus/COLOR-SCHEME.md",
       "reason": "The runtime color values are embedded in agent frontmatter."
