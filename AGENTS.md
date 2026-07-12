@@ -6,10 +6,10 @@ teams as installable plugins:
 | Plugin | Theme | Agents | Entry point | Purpose |
 |---|---|:--:|---|---|
 | **hephaestus** | Roman names | 22 | `marcus` | Software delivery — goal → designed team → delivered increment |
-| **argus** | Greek names | 27 | `/argus:run` | QA — black-box bug hunting + regression automation |
+| **argus** | Greek names | 27 | `argus-launch` | QA — black-box bug hunting + regression automation |
 
 Both teams are **hub-and-spoke**: you use the team's entry point (`marcus` or
-`/argus:run`); its main-thread controller decomposes the work, dispatches specialists,
+`argus-launch`); its main-thread controller decomposes the work, dispatches specialists,
 and reports back. Specialists never talk to each other directly.
 
 ---
@@ -24,18 +24,17 @@ and reports back. Specialists never talk to each other directly.
 /plugin install argus@holak-teams
 ```
 
-Then in any session:
+Then use Marcus in a session and Argus through its packaged launcher:
 
 ```
 > marcus, build a REST API for task management with tests and CI
-> /argus:run <target — URL / running stack / repo path — and QA scope>
+> argus-launch claude --target /absolute/target --artifact-root /absolute/artifacts --mode A
 ```
 
-`/argus:run` stays in the main Claude Code thread, applies Odysseus's orchestration
-policy, dispatches the namespaced specialists (`argus:kalchas`, `argus:metis`, etc.),
-and collects their results. To start a new session with Odysseus as the main agent, use
-`claude --agent argus:odysseus`. Installed plugin agents remain available under their
-namespaced slugs. Update later with `/plugin marketplace update holak-teams`.
+`argus-launch` starts `/argus:run` with the native controller turn cap and OS sandbox,
+applies Odysseus's orchestration policy, dispatches the namespaced specialists, and
+collects their results. Direct `/argus:run` or `claude --agent argus:odysseus` sessions
+fail preflight. Update later with `/plugin marketplace update holak-teams`.
 
 ### Automatic — when working inside this repo
 
@@ -114,7 +113,6 @@ holak-teams/                         # this repo == the marketplace
     ├── COLOR-SCHEME.md              # colors by role type (shared reference)
     ├── shared-skills/               # canonical doctrine + optional profile sources
     ├── prompt-*.json                # prompt budgets + engagement regression contract
-    ├── SHARED-DOCTRINE.md           # compatibility pointer to the canonical skill
     ├── BROWSER-ISOLATION.md         # browser-lane isolation spec + hunt-driver verb map (shared reference)
     ├── team-graph.html + .png       # visual team graph (embedded in README)
     └── README.md                    # roster + how-to-start
@@ -149,8 +147,8 @@ explicitly maintainer-only; their runtime values already live in agent frontmatt
 Every Claude specialist preloads the exact profiles selected by the capability matrix.
 `qa-core` is universal; browser, framework-runner, coverage-reporting, and orchestration
 policy are attached only where needed. Codex generation embeds the same selected bodies.
-The legacy `qa-doctrine` monolith is maintainer-only. The optional `competition-profile`
-is packaged but disabled and never preloaded; it requires explicit user opt-in.
+The retired `qa-doctrine` monolith is absent. The optional `competition-profile` is
+packaged but disabled and never preloaded; it requires explicit user opt-in.
 `node scripts/check-argus-prompts.mjs` enforces effective Claude and Codex corpus budgets,
 profile/tool assignments, semantic duplicate detection, default-profile isolation, and a
 representative engagement regression contract.
@@ -169,18 +167,19 @@ and a validator pass before merge. `model-policy.benchmark.json` records synthet
 quality, latency, token, and provider-cost comparisons without prompts, completions, or
 target data. Run `scripts/sync-argus-model-policy.mjs --write|--check` and
 `scripts/smoke-argus-model-policy.sh` after policy changes.
-Before routing, the host trust store must contain two distinct Ed25519 public anchors from
-one snapshot: a `runtime-attestation` key for a trusted Codex dispatch wrapper and an
-`operator-approval` key controlled through a separate human approval boundary. `model
-trust` pins both stable key IDs, then preflight reruns for the changed manifest digest.
-Neither private key nor a generic signing service may be available to the controller,
-workers, or their OS user. The runtime wrapper emits route attestations only for exact
-configurations it can enforce and emits a separate JIT dispatch authorization immediately
-before it applies the model, effort, and turn cap; the CLI verifies that authorization but
-cannot prove the external spawn, so the wrapper must pair CLI success with the exact-config
-dispatch. The isolated operator signer alone authorizes frontier
-continuation or abort. The pinned trust store is a snapshot: revocation requires aborting
-the current engagement and starting a new one with current anchors.
+Before routing, the host trust store must contain distinct active Ed25519 anchors for
+runtime control and human operator approval. `model trust` pins their identities and the
+secure absolute host-store path. Every model request, route, allocation, retry, and
+telemetry operation reopens the live store; a revoked, replaced, or missing key blocks
+immediately. Neither private key nor a generic signing service may be available to the
+controller or workers. The isolated operator signer alone authorizes frontier continuation
+or abort.
+`argus-launch` is the only supported Claude entry point. It starts Odysseus with the native
+96-turn cap, exact frontier controller baseline, no session persistence, cleared inherited
+Argus bearer variables, and an OS filesystem sandbox. Direct `/argus:run` preflight blocks.
+The installed Codex CLI can enforce model and reasoning effort but has no native hard turn
+cap, so Codex dispatch fails closed; a signed assertion or approximate counter cannot
+replace missing runtime enforcement.
 The controller persists normal attempt-1 decisions for Odysseus and every currently
 dispatchable selected role before any allocation,
 allocates Odysseus first against its exact decision, and uses that controller token to
@@ -192,12 +191,7 @@ attempt's token once; the controller replaces the old token before spawning the 
 the stale token is immediately invalid. A model request requires the current lane token;
 routes after allocation require the controller token; telemetry requires the decision-owning
 token, is accepted exactly once per selected decision, and must be emitted before a retry
-rebind or cleanup changes that active binding. Every Codex allocation, resume, or retry
-rebind requires a fresh `argus/model-dispatch-authorization@1` binding the immutable
-decision, configuration, parent session, allocation ID, and nonce. Resume/retry stays on the
-active allocation ID, while a released-lane replacement must use a never-before-consumed
-allocation ID; the bounded history rejects reuse of any MDA digest, nonce, or replacement
-allocation identity. Deferred, skipped, and blocked roles are excluded from the sealed
+rebind or cleanup changes that active binding. Deferred, skipped, and blocked roles are excluded from the sealed
 decision set and cannot allocate. A declared worker escalation resumes from its authenticated
 checkpoint; a pre-spawn `model-unavailable` retry instead uses the immutable availability
 binding and may have no checkpoint because no worker thread began.

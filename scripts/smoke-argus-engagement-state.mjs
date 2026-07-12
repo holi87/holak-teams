@@ -20,7 +20,6 @@ import {
   advanceBarrier,
   appendHeartbeat,
   arriveBarrier,
-  bindLegacyAllocationDecision,
   cleanupWorker,
   createDefaultEngagement,
   ensurePreflightHeartbeat,
@@ -43,8 +42,7 @@ try {
   testWorkerSuccessRequiresBarrier();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
-  testLegacyStateMigrationAndResume();
-  console.log('PASS  Argus engagement state: decision-bound leases, v1 migration, authenticated heartbeat, and link defenses');
+  console.log('PASS  Argus engagement state: decision-bound leases, authenticated heartbeat, and link defenses');
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
@@ -291,33 +289,6 @@ function testIdempotentPreflightHeartbeat() {
   writeFileSync(malformedPath, '2026-07-12T07:00:00.000Z\todysseus\tdiscovery\t0/1\tstarted\n', { mode: 0o600 });
   expectThrow(() => ensurePreflightHeartbeat(malformed.manifest), 'existing heartbeat without an initial preflight record');
 
-  const migrated = createFixture('preflight-legacy-active');
-  const migratedAllocation = allocateWorker(migrated.manifest, 'odysseus', { executionBinding: executionBinding('preflight-legacy-controller') });
-  const legacy = JSON.parse(readFileSync(migrated.statePath, 'utf8'));
-  legacy.schemaVersion = 1;
-  delete legacy.migrations;
-  delete legacy.allocations.odysseus.allocationId;
-  writeFileSync(leasePath(migrated, 'odysseus'), `${migratedAllocation.token}\n`, { mode: 0o600 });
-  writeFileSync(migrated.statePath, `${JSON.stringify(legacy, null, 2)}\n`, { mode: 0o600 });
-  const migratedState = getEngagementStatus(migrated.manifest);
-  assert(migratedState.migrations[0].activeAllocationIdsAtMigration.odysseus === migratedState.allocations.odysseus.allocationId, 'legacy heartbeat exemption did not bind the original allocation');
-  const legacyResult = ensurePreflightHeartbeat(migrated.manifest, '2026-07-12T07:00:03.000Z');
-  assert(legacyResult.disposition === 'legacy-migrated-no-record' && legacyResult.wrote === false && legacyResult.record === null, 'legacy migration did not return a truthful non-writing preflight result');
-  assert(!existsSync(join(migrated.root, legacyResult.path)), 'legacy no-record result wrote a heartbeat file');
-  appendHeartbeat(migrated.manifest, 'odysseus', migratedAllocation.token, 'discovery', 0, 4, 'started', '2026-07-12T07:00:04.000Z');
-  const migratedExisting = ensurePreflightHeartbeat(migrated.manifest, '2026-07-12T07:00:05.000Z');
-  assert(migratedExisting.disposition === 'legacy-migrated-existing' && migratedExisting.wrote === false, 'legacy discovery heartbeat was not resumable');
-  assert(migratedExisting.record?.phase === 'discovery' && migratedExisting.record.completed === 0, 'legacy resume did not return the first authenticated post-preflight record');
-  assert(ensurePreflightHeartbeat(migrated.manifest).disposition === 'legacy-migrated-existing', 'later legacy preflight ensure was not idempotent');
-  cleanupWorker(migrated.manifest, 'odysseus', migratedAllocation.token, 'interrupted');
-  const replacementState = JSON.parse(readFileSync(migrated.statePath, 'utf8'));
-  delete replacementState.allocations.odysseus;
-  writeFileSync(migrated.statePath, `${JSON.stringify(replacementState, null, 2)}\n`, { mode: 0o600 });
-  const replacement = allocateWorker(migrated.manifest, 'odysseus', { executionBinding: executionBinding('preflight-current-controller') });
-  assert(replacement.allocationId !== migratedState.allocations.odysseus.allocationId, 'replacement allocation reused the migrated allocation identity');
-  expectThrow(() => ensurePreflightHeartbeat(migrated.manifest), 'replacement allocation inherited a migrated existing-heartbeat exemption');
-  rmSync(join(migrated.root, legacyResult.path), { force: true });
-  expectThrow(() => ensurePreflightHeartbeat(migrated.manifest), 'replacement allocation inherited a migrated no-heartbeat exemption');
 }
 
 function createFixture(name, selectedAgents = ['atlas', 'hermes', 'odysseus']) {
@@ -334,7 +305,7 @@ function createFixture(name, selectedAgents = ['atlas', 'hermes', 'odysseus']) {
   });
   const initialized = initializeEngagementState(manifest);
   assert(initialized.state.schemaVersion === 2, 'new engagement state did not use schemaVersion 2');
-  assert(initialized.state.migrations.length === 0, 'new engagement state unexpectedly recorded a migration');
+  assert(!Object.hasOwn(initialized.state, 'migrations'), 'new engagement state retained a migration surface');
   assertPrivateSingleLink(initialized.path, 'new engagement state');
   return { root, manifest, statePath: initialized.path };
 }
@@ -412,85 +383,6 @@ function testAuthenticatedMonotonicHeartbeats() {
   );
   assert(readFileSync(statePeer, 'utf8') === stateBefore, 'hard-linked state peer was modified');
   unlinkSync(statePeer);
-}
-
-function testLegacyStateMigrationAndResume() {
-  const { root, manifest, statePath } = createFixture('legacy-state-resume', ['hermes', 'odysseus']);
-  const controllerBinding = executionBinding('legacy-controller');
-  const workerBinding = executionBinding('legacy-hermes');
-  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: controllerBinding });
-  const allocation = allocateWorker(manifest, 'hermes', {
-    controllerToken: controller.token,
-    executionBinding: workerBinding,
-  });
-  writeCheckpoint(manifest, 'hermes', allocation.token, 'hunting', 1, workerBinding.dispatchId, 1, { completed: ['surface-a'], next: 'surface-b' });
-
-  // This is the exact field shape written before commit 8db70aa: allocation
-  // records had no allocationId and checkpoints had no dispatch/attempt/allocation binding.
-  const runtimeV1 = JSON.parse(readFileSync(statePath, 'utf8'));
-  const legacy = structuredClone(runtimeV1);
-  runtimeV1.schemaVersion = 1;
-  delete runtimeV1.migrations;
-  delete runtimeV1.checkpoints.hermes.bindingOrigin;
-  const preservedAllocationId = runtimeV1.allocations.hermes.allocationId;
-  const preservedDispatchId = runtimeV1.checkpoints.hermes.dispatchId;
-  writeFileSync(statePath, `${JSON.stringify(runtimeV1, null, 2)}\n`, { mode: 0o600 });
-  const preserved = getEngagementStatus(manifest);
-  assert(preserved.allocations.hermes.allocationId === preservedAllocationId, 'runtime-v1 allocation binding was not preserved');
-  assert(preserved.checkpoints.hermes.dispatchId === preservedDispatchId, 'runtime-v1 dispatch binding was not preserved');
-  assert(preserved.checkpoints.hermes.bindingOrigin === 'runtime-v1', 'runtime-v1 checkpoint origin is not truthful');
-  assert(preserved.migrations[0].runtimeV1BindingsPreserved.join(',') === 'hermes', 'runtime-v1 preservation audit is incomplete');
-  assert(preserved.migrations[0].activeAllocationIdsAtMigration.hermes === preserved.allocations.hermes.allocationId, 'runtime-v1 active allocation audit is incomplete');
-
-  legacy.schemaVersion = 1;
-  delete legacy.migrations;
-  for (const lane of ['hermes', 'odysseus']) {
-    delete legacy.allocations[lane].allocationId;
-    for (const field of ['modelDecisionId', 'modelDecisionIntegritySha256', 'dispatchId', 'attempt', 'runtime']) delete legacy.allocations[lane][field];
-  }
-  delete legacy.checkpoints.hermes.dispatchId;
-  delete legacy.checkpoints.hermes.attempt;
-  delete legacy.checkpoints.hermes.allocationId;
-  delete legacy.checkpoints.hermes.bindingOrigin;
-  const legacyBytes = `${JSON.stringify(legacy, null, 2)}\n`;
-  writeFileSync(leasePath({ root }, 'hermes'), `${allocation.token}\n`, { mode: 0o600 });
-  writeFileSync(leasePath({ root }, 'odysseus'), `${controller.token}\n`, { mode: 0o600 });
-
-  writeFileSync(statePath, legacyBytes, { mode: 0o600 });
-  const first = getEngagementStatus(manifest);
-  assert(first.schemaVersion === 2 && first.migrations.length === 1, 'legacy state was not persisted as v2');
-  assert(first.migrations[0].allocationIdsSynthesized.join(',') === 'hermes,odysseus', 'legacy allocation migration audit is incomplete');
-  assert(first.migrations[0].activeAllocationIdsAtMigration.hermes === first.allocations.hermes.allocationId, 'legacy active allocation migration audit is incomplete');
-  assert(first.migrations[0].checkpointBindingsSynthesized.join(',') === 'hermes', 'legacy checkpoint migration audit is incomplete');
-  assert(first.checkpoints.hermes.bindingOrigin === 'migrated-v1', 'legacy checkpoint binding origin is not truthful');
-  assert(first.checkpoints.hermes.allocationId === first.allocations.hermes.allocationId, 'legacy checkpoint was not bound to its allocation');
-  assert(/^legacy-v1:[a-f0-9]{24}$/.test(first.checkpoints.hermes.dispatchId), 'legacy checkpoint has no deterministic dispatch identity');
-  assertPrivateSingleLink(statePath, 'migrated engagement state');
-
-  writeFileSync(statePath, legacyBytes, { mode: 0o600 });
-  const second = getEngagementStatus(manifest);
-  assert(second.allocations.hermes.allocationId === first.allocations.hermes.allocationId, 'legacy allocation ID migration is not deterministic');
-  assert(second.checkpoints.hermes.dispatchId === first.checkpoints.hermes.dispatchId, 'legacy checkpoint dispatch migration is not deterministic');
-  assert(second.migrations[0].migrationId === first.migrations[0].migrationId, 'legacy migration identity is not deterministic');
-
-  writeFileSync(leasePath({ root }, 'hermes'), `allocation:${second.allocations.hermes.allocationId}\n`, { mode: 0o600 });
-  bindLegacyAllocationDecision(manifest, 'odysseus', controller.token, controllerBinding);
-  bindLegacyAllocationDecision(manifest, 'hermes', allocation.token, workerBinding);
-  assert(readFileSync(leasePath({ root }, 'odysseus'), 'utf8').trim() === `allocation:${second.allocations.odysseus.allocationId}`, 'legacy controller lease token remained readable after binding');
-  assert(readFileSync(leasePath({ root }, 'hermes'), 'utf8').trim() === `allocation:${second.allocations.hermes.allocationId}`, 'legacy worker lease token remained readable after binding');
-  const resumed = allocateWorker(manifest, 'hermes', {
-    resumeToken: allocation.token,
-    controllerToken: controller.token,
-    executionBinding: workerBinding,
-  });
-  assert(resumed.resumed && resumed.token === allocation.token, 'migrated active allocation did not resume with its original lease');
-  writeCheckpoint(manifest, 'hermes', allocation.token, 'hunting', 2, workerBinding.dispatchId, 1, { completed: ['surface-a', 'surface-b'], next: null });
-  const current = getEngagementStatus(manifest);
-  assert(current.checkpoints.hermes.bindingOrigin === 'runtime', 'post-migration checkpoint did not return to runtime binding');
-  assert(current.checkpoints.hermes.allocationId === current.allocations.hermes.allocationId, 'post-migration checkpoint lost allocation ownership');
-  cleanupWorker(manifest, 'hermes', allocation.token, 'interrupted');
-  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
-  assert(getEngagementStatus(manifest).allocations.hermes.status === 'released', 'migrated allocation did not complete its lifecycle');
 }
 
 function executionBinding(seed, overrides = {}) {

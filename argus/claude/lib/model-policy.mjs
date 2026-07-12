@@ -98,7 +98,7 @@ export function modelAuthenticationPayload(document) {
 
 export function verifyModelDocumentAuthentication(document, modelTrust) {
   const trust = validateModelTrust(modelTrust);
-  const expected = ['MODEL_RUNTIME_ATTESTATION', 'MODEL_DISPATCH_AUTHORIZATION'].includes(document?.kind)
+  const expected = document?.kind === 'MODEL_DISPATCH_AUTHORIZATION'
     ? { slot: 'runtimeAttestation', purpose: 'runtime-attestation', identityField: 'issuedBy' }
     : document?.kind === 'MODEL_OPERATOR_DECISION'
       ? { slot: 'operatorApproval', purpose: 'operator-approval', identityField: 'approvedBy' }
@@ -149,9 +149,7 @@ export function resolveModelDecision(policy, adapters, {
   attempt,
   escalationBinding = null,
   availabilityBinding = null,
-  legacyResumeBinding = null,
   operatorDecision = null,
-  runtimeAttestation = null,
   createdAt = new Date().toISOString(),
 } = {}) {
   const policyErrors = validateModelPolicy(policy);
@@ -165,9 +163,7 @@ export function resolveModelDecision(policy, adapters, {
   if (typeof signal !== 'string' || signal.length === 0) throw new Error('signal is required');
   if (!(escalationBinding === null || (typeof escalationBinding === 'object' && !Array.isArray(escalationBinding)))) throw new Error('escalationBinding must be an object or null');
   if (!(availabilityBinding === null || (typeof availabilityBinding === 'object' && !Array.isArray(availabilityBinding)))) throw new Error('availabilityBinding must be an object or null');
-  if (!(legacyResumeBinding === null || (typeof legacyResumeBinding === 'object' && !Array.isArray(legacyResumeBinding)))) throw new Error('legacyResumeBinding must be an object or null');
   if (!(operatorDecision === null || (typeof operatorDecision === 'object' && !Array.isArray(operatorDecision)))) throw new Error('operatorDecision must be an object or null');
-  if (!(runtimeAttestation === null || (typeof runtimeAttestation === 'object' && !Array.isArray(runtimeAttestation)))) throw new Error('runtimeAttestation must be an object or null');
   const role = policy.roles.find((item) => item.slug === slug);
   if (!role) throw new Error(`unknown model-policy role: ${slug}`);
   const runtimeAdapter = adapters?.[runtime];
@@ -187,14 +183,8 @@ export function resolveModelDecision(policy, adapters, {
   if (unavailableSignal !== (availabilityBinding !== null)) {
     throw new Error('model-unavailable requires an exact prior-decision/allocation binding, and no other signal may carry one');
   }
-  if (legacyResumeBinding !== null && (signal !== 'normal' || attempt !== 1)) {
-    throw new Error('legacyResumeBinding is valid only for a normal attempt 1');
-  }
   if (operatorDecision !== null && !(role.tier === 'frontier' && (triggers.includes(signal) || unavailableSignal))) {
     throw new Error('operatorDecision is valid only for a declared or unavailable frontier escalation');
-  }
-  if (runtimeAttestation !== null && runtime !== 'codex') {
-    throw new Error('runtimeAttestation is valid only for Codex routing');
   }
 
   if (signal === 'normal') {
@@ -259,7 +249,6 @@ export function resolveModelDecision(policy, adapters, {
     runtime,
     runtimeAdapter,
     adapterMode,
-    runtimeAttestation,
     selectedConfig,
     engagementId,
     dispatchId,
@@ -304,9 +293,7 @@ export function resolveModelDecision(policy, adapters, {
     operatorEscalation,
     escalationBinding,
     availabilityBinding,
-    legacyResumeBinding,
     operatorDecision,
-    runtimeAttestation,
     weakerFallbackAllowed: false,
     reason,
   };
@@ -345,9 +332,7 @@ export function resolveModelDecision(policy, adapters, {
     operatorEscalation,
     escalationBinding,
     availabilityBinding,
-    legacyResumeBinding,
     operatorDecision,
-    runtimeAttestation,
     weakerFallbackAllowed: false,
     reason,
   };
@@ -366,7 +351,7 @@ export function buildModelRoutingPreview(policy, adapters, { slug, runtime = 'cl
     policyId: policy.policyId,
     agent: slug,
     runtime,
-    status: missingCapabilities.length ? (runtime === 'codex' ? 'attestation-required' : 'blocked') : 'ready',
+    status: missingCapabilities.length ? 'blocked' : 'ready',
     baselineConfig: modelConfig(policy, role.tier, runtime, role.maxTurns),
     requiredOverrides: [],
     requiredEnforcements: [...REQUIRED_ENFORCEMENTS],
@@ -374,9 +359,7 @@ export function buildModelRoutingPreview(policy, adapters, { slug, runtime = 'cl
     adapterSnapshotSha256: adapterSnapshotSha256(adapters),
     missingCapabilities,
     reason: missingCapabilities.length
-      ? runtime === 'codex'
-        ? `${runtimeAdapter.adapterId} requires an external dispatch-bound parent attestation for ${missingCapabilities.join(', ')}`
-        : `${runtimeAdapter.adapterId} cannot enforce ${missingCapabilities.join(', ')} for the baseline route`
+      ? `${runtimeAdapter.adapterId} cannot natively enforce ${missingCapabilities.join(', ')} for the baseline route`
       : `${runtimeAdapter.adapterId} can enforce the complete reviewed baseline`,
   };
 }
@@ -422,9 +405,7 @@ export function validateModelDecisionBinding(policy, adapters, decision, {
       attempt: decision?.attempt,
       escalationBinding: decision?.escalationBinding,
       availabilityBinding: decision?.availabilityBinding,
-      legacyResumeBinding: decision?.legacyResumeBinding,
       operatorDecision: decision?.operatorDecision,
-      runtimeAttestation: decision?.runtimeAttestation,
       createdAt: decision?.createdAt,
     });
   } catch (error) {
@@ -493,52 +474,8 @@ function modelConfig(policy, tierName, runtime, maxTurns) {
   };
 }
 
-function effectiveRoutingCapabilities({
-  adapters,
-  runtime,
-  runtimeAdapter,
-  adapterMode,
-  runtimeAttestation,
-  selectedConfig,
-  engagementId,
-  dispatchId,
-  attempt,
-  slug,
-  createdAt,
-}) {
-  const capabilities = structuredClone(runtimeAdapter.routingCapabilities[adapterMode]);
-  if (runtimeAttestation === null) return capabilities;
-  if (runtime !== 'codex') throw new Error('only Codex may use a parent runtime attestation');
-  const expectedIdentity = {
-    engagementId,
-    dispatchId,
-    attempt,
-    agent: slug,
-    runtime,
-    parentRuntime: 'codex',
-    adapterContractId: adapters.contractId,
-    adapterId: runtimeAdapter.adapterId,
-  };
-  for (const [field, expected] of Object.entries(expectedIdentity)) {
-    if (runtimeAttestation[field] !== expected) throw new Error(`runtime attestation ${field} differs from the route`);
-  }
-  requireSha256(runtimeAttestation.documentSha256, 'runtimeAttestation.documentSha256');
-  requireStableId(runtimeAttestation.parentSessionId, 'runtimeAttestation.parentSessionId');
-  if (typeof runtimeAttestation.issuedBy !== 'string' || runtimeAttestation.issuedBy.trim().length === 0) throw new Error('runtime attestation issuedBy is required');
-  if (runtimeAttestation.adapterSnapshotSha256 !== adapterSnapshotSha256(adapters)) throw new Error('runtime attestation adapter snapshot differs from the route');
-  if (runtimeAttestation.selectedConfigSha256 !== modelConfigSha256(selectedConfig)) throw new Error('runtime attestation selectedConfig differs from the route');
-  if (stableJson(runtimeAttestation.enforcements) !== stableJson({ model: true, effort: true, maxTurns: true })) {
-    throw new Error('runtime attestation must enforce model, effort, and maxTurns together');
-  }
-  const issuedAt = Date.parse(runtimeAttestation.issuedAt);
-  const expiresAt = Date.parse(runtimeAttestation.expiresAt);
-  const routedAt = Date.parse(createdAt);
-  if (![issuedAt, expiresAt, routedAt].every(Number.isFinite)) throw new Error('runtime attestation timestamps must be ISO date-times');
-  const maximumValiditySeconds = runtimeAdapter.capabilityAttestation?.maxValiditySeconds;
-  if (!Number.isInteger(maximumValiditySeconds) || maximumValiditySeconds < 1) throw new Error('Codex runtime adapter attestation policy is invalid');
-  if (expiresAt <= issuedAt || expiresAt - issuedAt > maximumValiditySeconds * 1000) throw new Error('runtime attestation validity window is invalid');
-  if (routedAt < issuedAt || routedAt > expiresAt) throw new Error('runtime attestation is not valid at routing time');
-  return structuredClone(runtimeAttestation.enforcements);
+function effectiveRoutingCapabilities({ runtimeAdapter, adapterMode }) {
+  return structuredClone(runtimeAdapter.routingCapabilities[adapterMode]);
 }
 
 function requireStableId(value, label) {
@@ -571,32 +508,6 @@ function validateModelTrust(modelTrust) {
 }
 
 function validateDecisionAuthentication(decision, modelTrust, errors) {
-  if (decision?.runtimeAttestation) {
-    try {
-      const document = verifyModelAuthenticationProof(decision.runtimeAttestation.authentication, modelTrust);
-      const expected = {
-        engagementId: decision.engagementId,
-        dispatchId: decision.dispatchId,
-        attempt: decision.attempt,
-        agent: decision.agent,
-        runtime: decision.runtime,
-        parentRuntime: 'codex',
-        adapterContractId: decision.adapter.contractId,
-        adapterId: decision.adapter.adapterId,
-        parentSessionId: decision.runtimeAttestation.parentSessionId,
-        issuedBy: decision.runtimeAttestation.issuedBy,
-        issuedAt: decision.runtimeAttestation.issuedAt,
-        expiresAt: decision.runtimeAttestation.expiresAt,
-      };
-      for (const [field, value] of Object.entries(expected)) if (document[field] !== value) errors.push(`runtime attestation signed ${field} differs from decision`);
-      if (document.schema !== 'argus/model-runtime-attestation@1' || document.kind !== 'MODEL_RUNTIME_ATTESTATION') errors.push('runtime attestation signed identity is invalid');
-      if (modelAuthenticatedDocumentSha256(document) !== decision.runtimeAttestation.documentSha256) errors.push('runtime attestation signed document digest differs from decision');
-      if (modelConfigSha256(document.selectedConfig) !== decision.runtimeAttestation.selectedConfigSha256) errors.push('runtime attestation signed configuration differs from decision');
-      if (stableJson(document.enforcements) !== stableJson(decision.runtimeAttestation.enforcements)) errors.push('runtime attestation signed enforcements differ from decision');
-    } catch (error) {
-      errors.push(`runtime attestation authentication is invalid: ${error.message}`);
-    }
-  }
   if (decision?.operatorDecision) {
     try {
       const document = verifyModelAuthenticationProof(decision.operatorDecision.authentication, modelTrust);

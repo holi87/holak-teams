@@ -118,8 +118,8 @@ function validateSourceManifest(manifest) {
     if (!asset.id || ids.has(asset.id)) fail(`duplicate or missing asset id: ${asset.id ?? '(missing)'}`);
     ids.add(asset.id);
     if (!asset.source?.startsWith('argus/')) fail(`asset ${asset.id} source must stay under argus/`);
-    if (!/^(capabilities|lib|policies|references|schemas|skills|templates)(?:\/|$)/.test(asset.destination ?? '')) {
-      fail(`asset ${asset.id} destination must stay under capabilities/, lib/, policies/, references/, schemas/, skills/, or templates/`);
+    if (!/^(bin|capabilities|lib|policies|references|schemas|skills|templates)(?:\/|$)/.test(asset.destination ?? '')) {
+      fail(`asset ${asset.id} destination must stay under bin/, capabilities/, lib/, policies/, references/, schemas/, skills/, or templates/`);
     }
     const overlap = destinations.find((destination) =>
       sourceContains(destination, asset.destination) || sourceContains(asset.destination, destination));
@@ -218,7 +218,7 @@ function allSourceFiles(asset) {
     { cwd: ROOT, encoding: 'utf8' },
   );
   const prefix = `${asset.source}/`;
-  const files = output.split('\n').filter(Boolean).filter((path) => path.startsWith(prefix)).sort();
+  const files = output.split('\n').filter(Boolean).filter((path) => path.startsWith(prefix) && existsSync(join(ROOT, path))).sort();
   if (files.length === 0) fail(`asset ${asset.id} directory has no tracked or trackable files: ${asset.source}`);
   return files.map((path) => sourceFile(join(ROOT, path), path.slice(prefix.length)));
 }

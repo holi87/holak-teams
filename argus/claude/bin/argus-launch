@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# Launch Argus with native turn enforcement and an OS process/filesystem sandbox.
+
+set -euo pipefail
+PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+fail() { printf 'FAIL  %s\n' "$*" >&2; exit 2; }
+
+usage() {
+  cat <<'EOF'
+Usage:
+  argus-launch doctor
+  argus-launch claude --target <absolute-path> --artifact-root <absolute-path> --mode <A|B|C|D> [--dry-run]
+
+Codex execution is unavailable until its CLI exposes a native hard turn cap.
+EOF
+}
+
+claude_supports_native_turn_cap() {
+  local output status
+  set +e
+  output="$(claude -p --max-turns not-an-integer '' 2>&1)"
+  status=$?
+  set -e
+  [ "$status" -ne 0 ] && [[ "$output" != *"unknown option"* ]] && [[ "$output" != *"Unknown option"* ]]
+}
+
+case "${1:-}" in
+  doctor)
+    command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
+    claude_supports_native_turn_cap || fail 'Claude Code does not expose native --max-turns enforcement'
+    case "$(uname -s)" in
+      Darwin) command -v sandbox-exec >/dev/null 2>&1 || fail 'sandbox-exec is unavailable' ;;
+      Linux) command -v bwrap >/dev/null 2>&1 || fail 'bubblewrap is unavailable' ;;
+      *) fail "unsupported OS sandbox: $(uname -s)" ;;
+    esac
+    printf 'PASS  Claude native turn cap and OS sandbox are available; Codex dispatch remains fail-closed\n'
+    exit 0
+    ;;
+  claude) shift ;;
+  codex) fail 'Codex dispatch is blocked: the installed CLI has no native hard turn cap' ;;
+  -h|--help|'') usage; exit 0 ;;
+  *) usage; fail "unknown runtime: $1" ;;
+esac
+
+target=''
+artifact_root=''
+mode=''
+dry_run=false
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --target) [ "$#" -ge 2 ] || fail '--target requires a path'; target="$2"; shift 2 ;;
+    --artifact-root) [ "$#" -ge 2 ] || fail '--artifact-root requires a path'; artifact_root="$2"; shift 2 ;;
+    --mode) [ "$#" -ge 2 ] || fail '--mode requires a value'; mode="$(printf '%s' "$2" | tr '[:lower:]' '[:upper:]')"; shift 2 ;;
+    --dry-run) dry_run=true; shift ;;
+    *) fail "unknown option: $1" ;;
+  esac
+done
+
+[ -n "$target" ] || fail '--target is required'
+[ -n "$artifact_root" ] || fail '--artifact-root is required'
+[[ "$mode" =~ ^[ABCD]$ ]] || fail '--mode must be A, B, C, or D'
+[[ "$target" = /* && "$artifact_root" = /* ]] || fail 'target and artifact root must be absolute paths'
+[ -d "$target" ] || fail 'target must be an existing directory'
+mkdir -p "$artifact_root"
+target="$(cd "$target" && pwd -P)"
+artifact_root="$(cd "$artifact_root" && pwd -P)"
+case "$artifact_root/" in "$target/"*) fail 'artifact root must be outside the target tree for OS-enforced target immutability' ;; esac
+case "$target/" in "$artifact_root/"*) fail 'target must be outside the artifact tree for OS-enforced target immutability' ;; esac
+command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
+claude_supports_native_turn_cap || fail 'Claude Code does not expose native --max-turns enforcement'
+
+prompt="/argus:run target=$target artifact-root=$artifact_root mode=$mode"
+command=(claude -p --no-session-persistence --max-turns 96 --model opus --effort max --agent argus:odysseus --plugin-dir "$PLUGIN_ROOT" "$prompt")
+
+if $dry_run; then
+  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=96 agent=argus:odysseus mode=%s target=%s artifactRoot=%s sandbox=os-native processInspection=denied inheritedBearerCapabilities=cleared\n' \
+    "$mode" "$target" "$artifact_root"
+  exit 0
+fi
+
+case "$(uname -s)" in
+  Darwin)
+    command -v sandbox-exec >/dev/null 2>&1 || fail 'sandbox-exec is unavailable'
+    profile="$(mktemp -t argus-sandbox.XXXXXX)"
+    trap 'rm -f "$profile"' EXIT
+    escaped_artifact="${artifact_root//\\/\\\\}"; escaped_artifact="${escaped_artifact//\"/\\\"}"
+    escaped_home="${HOME//\\/\\\\}"; escaped_home="${escaped_home//\"/\\\"}"
+    printf '%s\n' \
+      '(version 1)' \
+      '(deny default)' \
+      '(import "system.sb")' \
+      '(allow process*)' \
+      '(deny process-info*)' \
+      '(allow network*)' \
+      '(allow sysctl-read)' \
+      '(allow file-read*)' \
+      "(allow file-write* (subpath \"$escaped_artifact\"))" \
+      "(allow file-write* (subpath \"$escaped_home/.claude\"))" \
+      '(allow file-write* (subpath "/private/tmp"))' \
+      '(allow file-write* (subpath "/tmp"))' >"$profile"
+    env -u ARGUS_ENGAGEMENT_LEASE_TOKEN -u ARGUS_ENGAGEMENT_CONTROLLER_TOKEN -u ARGUS_MODEL_SIGNING_KEY \
+      ARGUS_NATIVE_LAUNCH_PROOF='argus-launch/1:claude:96:os-native' \
+      sandbox-exec -f "$profile" "${command[@]}"
+    ;;
+  Linux)
+    command -v bwrap >/dev/null 2>&1 || fail 'bubblewrap is unavailable'
+    env -u ARGUS_ENGAGEMENT_LEASE_TOKEN -u ARGUS_ENGAGEMENT_CONTROLLER_TOKEN -u ARGUS_MODEL_SIGNING_KEY \
+      ARGUS_NATIVE_LAUNCH_PROOF='argus-launch/1:claude:96:os-native' \
+      bwrap --die-with-parent --new-session --unshare-all --share-net \
+        --ro-bind / / --bind "$artifact_root" "$artifact_root" --tmpfs /tmp --chdir "$target" \
+        "${command[@]}"
+    ;;
+  *) fail "unsupported OS sandbox: $(uname -s)" ;;
+esac

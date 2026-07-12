@@ -70,7 +70,7 @@ starts a new generation. Only validated RESULT envelopes and canonical artifacts
 - Persist through `argus-assets model request ... --token <lane-token>`; route centrally with `argus-assets model route --manifest <manifest> --request <request-id> --controller-token <controller-token> --attempt <next-attempt>`. Running-worker escalation requires its checkpoint; pre-spawn `model-unavailable` uses the availability binding and may have none.
 - A blocked decision stops. `operatorEscalation=true` requires an external signed `argus/model-operator-decision@1`.
 - Before rebind or cleanup, emit one `argus-assets model telemetry --manifest <manifest> --decision <current-decision> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <bool>`; reject worker-authored values.
-- Retry with `argus-assets engagement start-attempt ... --decision <next-decision> --token <lane-token> --controller-token <controller-token> [--dispatch-authorization <MDA-file>]`; the final option is mandatory only for Codex. Replace the consumed token, then start a new thread from checkpoint or availability binding; never resume under another model. The stale token is revoked.
+- Retry with `argus-assets engagement start-attempt ... --decision <next-decision> --token <lane-token> --controller-token <controller-token>`. Replace the consumed token, then start a new thread from checkpoint or availability binding; never resume under another model. The stale token is revoked.
 <!-- MODEL_CONTROLLER_END -->
 
 <!-- RACI_CONTRACT_START -->

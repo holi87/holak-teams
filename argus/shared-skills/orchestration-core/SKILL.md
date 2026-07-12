@@ -123,15 +123,10 @@ Running-worker signals require that checkpoint; pre-spawn `model-unavailable` us
 availability binding and may have none. Frontier continuation/retry also requires a signed
 `argus/model-operator-decision@1`.
 
-Codex routing requires an attestation; every allocation, resume, or retry consumes a fresh
-parent-session-bound MDA via `--dispatch-authorization`. Replay fails. Before retry, emit
-`argus-assets model telemetry` for the current decision, then run `argus-assets engagement
-start-attempt` with decision, lane token, and controller token; Codex adds
-`--dispatch-authorization <MDA-file>`. Replace the consumed token with the returned token,
-then start a new thread; never resume an existing thread under a different model. The stale
-token is revoked. Resume/retry keeps the allocation ID; replacement uses a fresh ID, and
-history forbids reused IDs, digests, or nonces. The wrapper couples CLI success to one exact
-spawn.
+Before retry, emit `argus-assets model telemetry` for the current decision, then run `argus-assets
+engagement start-attempt` with decision, lane token, and controller token. Replace the
+consumed token with the returned token, then start a new thread; never resume an existing
+thread under a different model. The stale token is revoked.
 
 Emit one sanitized telemetry event per decision before rebind or cleanup; never store
 prompts, completions, targets, accounts, or evidence. Record wave boundaries with

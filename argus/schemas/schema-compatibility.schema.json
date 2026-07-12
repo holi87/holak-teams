@@ -5,7 +5,7 @@
   "type": "object", "additionalProperties": false,
   "required": ["$schema", "schemaVersion", "current", "readCompatible", "migration", "contracts"],
   "properties": {
-    "$schema": { "type": "string" }, "schemaVersion": { "const": 2 }, "current": { "const": 1 }, "readCompatible": { "const": [1] }, "migration": { "type": "string", "minLength": 1 },
+    "$schema": { "type": "string" }, "schemaVersion": { "const": 3 }, "current": { "const": 1 }, "readCompatible": { "const": [1] }, "migration": { "type": "string", "minLength": 1 },
     "contracts": {
       "type": "object", "additionalProperties": false,
       "required": ["lane-plan", "evidence-reference", "automation-status", "preflight-report"],
@@ -13,18 +13,14 @@
         "lane-plan": { "$ref": "#/$defs/override" },
         "evidence-reference": { "$ref": "#/$defs/override" },
         "automation-status": { "$ref": "#/$defs/override" },
-        "preflight-report": { "$ref": "#/$defs/readOverride" }
+        "preflight-report": { "$ref": "#/$defs/override" }
       }
     }
   },
   "$defs": {
     "override": {
-      "type": "object", "additionalProperties": false, "required": ["current", "readCompatible", "migration"],
-      "properties": { "current": { "const": 2 }, "readCompatible": { "const": [1, 2] }, "migration": { "type": "string", "pattern": "^argus/migrate-[a-z-]+-v1-to-v2$" } }
-    },
-    "readOverride": {
-      "type": "object", "additionalProperties": false, "required": ["current", "readCompatible", "migration"],
-      "properties": { "current": { "const": 2 }, "readCompatible": { "const": [1, 2] }, "migration": { "const": "argus/preserve-preflight-report-v1-reader" } }
+      "type": "object", "additionalProperties": false, "required": ["current", "readCompatible"],
+      "properties": { "current": { "const": 2 }, "readCompatible": { "const": [2] } }
     }
   }
 }

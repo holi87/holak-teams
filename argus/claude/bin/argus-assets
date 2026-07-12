@@ -46,7 +46,6 @@ import {
   allocateWorker,
   appendHeartbeat,
   arriveBarrier,
-  bindLegacyAllocationDecision,
   bindDispatchableAgents,
   buildGuardAudit,
   claimExclusive,
@@ -106,11 +105,9 @@ const RUNTIME_ADAPTERS_SCHEMA_PATH = join(ROOT, 'schemas', 'runtime-adapters.sch
 const MODEL_DECISION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-decision.schema.json');
 const MODEL_DISPATCH_AUTHORIZATION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-dispatch-authorization.schema.json');
 const MODEL_OPERATOR_DECISION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-operator-decision.schema.json');
-const MODEL_RUNTIME_ATTESTATION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-runtime-attestation.schema.json');
 const MODEL_TRUST_STORE_SCHEMA_PATH = join(ROOT, 'schemas', 'model-trust-store.schema.json');
 const MODEL_TELEMETRY_SCHEMA_PATH = join(ROOT, 'schemas', 'model-telemetry-event.schema.json');
 const PREFLIGHT_REPORT_SCHEMA_PATH = join(ROOT, 'schemas', 'preflight-report.schema.json');
-const PREFLIGHT_REPORT_V1_SCHEMA_PATH = join(ROOT, 'schemas', 'preflight-report-v1.schema.json');
 const ORCHESTRATION_PLAN_PATH = join(ROOT, 'capabilities', 'orchestration-plan.json');
 const TEMPLATE_CONTRACT_PATH = join(ROOT, 'capabilities', 'template-contract.json');
 const AUTHORIZATION_TEMPLATE_PATH = join(ROOT, 'policies', 'authorization.template.json');
@@ -134,12 +131,10 @@ if (runtimeAdapterErrors.length) fail(`runtime adapter snapshot invalid: ${forma
 const validateModelDecisionSchema = compileJsonSchema(readJson(MODEL_DECISION_SCHEMA_PATH));
 const validateModelDispatchAuthorizationSchema = compileJsonSchema(readJson(MODEL_DISPATCH_AUTHORIZATION_SCHEMA_PATH));
 const validateModelOperatorDecisionSchema = compileJsonSchema(readJson(MODEL_OPERATOR_DECISION_SCHEMA_PATH));
-const validateModelRuntimeAttestationSchema = compileJsonSchema(readJson(MODEL_RUNTIME_ATTESTATION_SCHEMA_PATH));
 const validateModelTrustStoreSchema = compileJsonSchema(readJson(MODEL_TRUST_STORE_SCHEMA_PATH));
 const validateModelTelemetrySchema = compileJsonSchema(readJson(MODEL_TELEMETRY_SCHEMA_PATH));
 const preflightReportSchema = readJson(PREFLIGHT_REPORT_SCHEMA_PATH);
 const validatePreflightReportSchema = compileJsonSchema(preflightReportSchema);
-const validatePreflightReportV1Schema = compileJsonSchema(readJson(PREFLIGHT_REPORT_V1_SCHEMA_PATH));
 const orchestrationPlan = readJson(ORCHESTRATION_PLAN_PATH);
 const orchestrationPlanErrors = validateOrchestrationPlan(orchestrationPlan, matrix, raciContract);
 if (orchestrationPlanErrors.length) fail(`orchestration plan invalid: ${orchestrationPlanErrors.join('; ')}`);
@@ -233,10 +228,10 @@ Usage:
   argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
   argus-assets model list
   argus-assets model benchmark
-  argus-assets model trust --manifest <engagement.json> --runtime-key-id <key> --operator-key-id <key> [--legacy-lane <slug> --legacy-lease-token <token>]
+  argus-assets model trust --manifest <engagement.json> --runtime-key-id <key> --operator-key-id <key>
   argus-assets model payload --document <unsigned-or-signed.json>
   argus-assets model request --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n> --checkpoint-ref <path> --token <lane-token>
-  argus-assets model route --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n> [--request <escalation.json>] [--operator-decision <json>] [--runtime-attestation <json>] [--controller-token <odysseus-token>] [--legacy-lease-token <token>]
+  argus-assets model route --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n> [--request <escalation.json>] [--operator-decision <json>] [--controller-token <odysseus-token>]
   argus-assets model telemetry --manifest <engagement.json> --decision <model-decision.json> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false> [options]
   argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--artifact-root <path>] [--output <json|->]
   argus-assets template <detect|select|scaffold> [options]
@@ -516,7 +511,7 @@ function modelCommand(args) {
     return 0;
   }
   if (operation === 'trust') {
-    const options = parseNamedOptions(rest, new Set(['--manifest', '--runtime-key-id', '--operator-key-id', '--legacy-lane', '--legacy-lease-token']));
+    const options = parseNamedOptions(rest, new Set(['--manifest', '--runtime-key-id', '--operator-key-id']));
     requireOptions(options, ['manifest', 'runtimeKeyId', 'operatorKeyId'], 'model trust');
     assertTrustedModelRoutingAssets();
     return pinModelTrust(options);
@@ -528,7 +523,7 @@ function modelCommand(args) {
     const path = resolveExistingPhysicalInput(options.document);
     if (!statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) fail('model payload document must be a non-aliased real file');
     const document = readSecureJson(path, 'model payload document');
-    if (!['argus/model-operator-decision@1', 'argus/model-runtime-attestation@1', 'argus/model-dispatch-authorization@1'].includes(document.schema)) fail('model payload document has an unsupported schema');
+    if (!['argus/model-operator-decision@1', 'argus/model-dispatch-authorization@1'].includes(document.schema)) fail('model payload document has an unsupported schema');
     process.stdout.write(modelAuthenticationPayload(document));
     return 0;
   }
@@ -537,7 +532,7 @@ function modelCommand(args) {
     requireOptions(options, ['manifest', 'agent', 'runtime', 'signal', 'dispatchId', 'attempt', 'checkpointRef'], 'model request');
     assertTrustedModelRoutingAssets();
     const engagementContext = loadModelEngagement(options.manifest, options.agent);
-    requirePinnedModelTrust(engagementContext.engagement);
+    requirePinnedModelTrust(engagementContext);
     requireCurrentModelPreflight(engagementContext, options.agent, options.runtime);
     requireActiveLaneCapability(engagementContext, options.agent, laneCapabilityToken(options));
     const request = persistModelEscalationRequest(engagementContext, options, positiveInteger(options.attempt, '--attempt'));
@@ -545,15 +540,15 @@ function modelCommand(args) {
     return 0;
   }
   if (operation === 'route') {
-    const options = parseNamedOptions(rest, new Set(['--manifest', '--agent', '--runtime', '--signal', '--dispatch-id', '--attempt', '--request', '--operator-decision', '--runtime-attestation', '--controller-token', '--legacy-lease-token']));
+    const options = parseNamedOptions(rest, new Set(['--manifest', '--agent', '--runtime', '--signal', '--dispatch-id', '--attempt', '--request', '--operator-decision', '--controller-token']));
     requireOptions(options, ['manifest', 'agent', 'runtime', 'signal', 'dispatchId', 'attempt'], 'model route');
     assertTrustedModelRoutingAssets();
     const engagementContext = loadModelEngagement(options.manifest, options.agent);
     const attempt = positiveInteger(options.attempt, '--attempt');
-    requirePinnedModelTrust(engagementContext.engagement);
+    requirePinnedModelTrust(engagementContext);
     requireCurrentModelPreflight(engagementContext, options.agent, options.runtime);
     requireModelRouteAuthority(engagementContext, options);
-    const legacyResumeBinding = requirePreAllocationInitialRoute(engagementContext, options, attempt);
+    requirePreAllocationInitialRoute(engagementContext, options, attempt);
     const escalationBinding = bindModelEscalation(engagementContext, options, attempt);
     const availabilityBinding = bindModelUnavailable(engagementContext, options, attempt);
     const operatorDecision = bindOperatorDecision(engagementContext, options, attempt, escalationBinding, availabilityBinding);
@@ -568,26 +563,13 @@ function modelCommand(args) {
       attempt,
       escalationBinding,
       availabilityBinding,
-      legacyResumeBinding,
       operatorDecision,
       createdAt,
     };
     const preview = resolveModelDecision(policy, runtimeAdapters, routingInput);
-    const runtimeAttestation = bindRuntimeAttestation(engagementContext, options, attempt, preview.selectedConfig, createdAt);
-    const candidate = resolveModelDecision(policy, runtimeAdapters, {
-      ...routingInput,
-      runtimeAttestation,
-    });
+    const candidate = preview;
     assertSchemaDocument(validateModelDecisionSchema, candidate, 'model decision');
     const decision = persistModelDecision(policy, candidate, engagementContext);
-    if (decision.status === 'selected' && legacyResumeBinding) {
-      bindLegacyAllocationDecision(
-        engagementContext.engagement,
-        options.agent,
-        options.legacyLeaseToken,
-        executionBindingForDecision(decision),
-      );
-    }
     console.log(JSON.stringify(decision));
     return decision.status === 'blocked' ? 2 : 0;
   }
@@ -599,6 +581,7 @@ function modelCommand(args) {
     requireOptions(options, ['manifest', 'decision', 'inputTokens', 'outputTokens', 'durationMs', 'success'], 'model telemetry');
     assertTrustedModelRoutingAssets();
     const engagementContext = loadModelEngagement(options.manifest);
+    requirePinnedModelTrust(engagementContext);
     const decisionPath = resolveExistingPhysicalInput(options.decision, engagementContext.artifactRoot);
     const decisionDirectory = resolve(engagementContext.artifactRoot, policy.routing.decisionDirectory);
     if (!isWithin(engagementContext.artifactRoot, decisionPath) || dirname(decisionPath) !== decisionDirectory) {
@@ -743,7 +726,9 @@ function pinModelTrust(options) {
     fail('model trust is immutable once pinned');
   }
   const state = getEngagementStatus(context.engagement);
-  const legacyBootstrap = authorizeLegacyTrustBootstrap(context, state, options);
+  if (Object.values(state.allocations).some((allocation) => allocation.status === 'active')) {
+    fail('model trust must be pinned before any allocation becomes active');
+  }
   const decisionDirectory = join(context.artifactRoot, modelPolicy.routing.decisionDirectory);
   if (statSafe(decisionDirectory)?.isDirectory() && readdirSync(decisionDirectory).some((name) => /^MDR-[a-f0-9]{24}\.json$/.test(name))) {
     fail('model trust must be pinned before any model decision');
@@ -752,10 +737,10 @@ function pinModelTrust(options) {
   updated.modelTrust = {
     schema: 'argus/model-trust-bundle@1',
     source: 'host-trust-store',
+    trustStorePath: runtimeTrust.path,
     trustStoreSha256: runtimeTrust.sha256,
     pinnedAt: new Date().toISOString(),
     keys: { runtimeAttestation: runtimeKey, operatorApproval: operatorKey },
-    legacyBootstrap,
   };
   const errors = validateEngagementManifest(updated);
   if (errors.length) fail(`pinned model trust makes engagement invalid: ${errors.join('; ')}`);
@@ -764,11 +749,11 @@ function pinModelTrust(options) {
   return 0;
 }
 
-function loadHostModelTrust(keyId, expectedPurpose, context) {
+function loadHostModelTrust(keyId, expectedPurpose, context, explicitStorePath) {
   if (typeof keyId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(keyId)) fail('model trust key IDs must be stable identifiers');
-  const configured = process.env.ARGUS_MODEL_TRUST_STORE;
+  const configured = explicitStorePath ?? process.env.ARGUS_MODEL_TRUST_STORE;
   const storePath = configured ? resolve(configured) : join(userInfo().homedir, '.config', 'argus', 'model-trust.json');
-  if (configured && configured !== resolve(configured)) fail('ARGUS_MODEL_TRUST_STORE must be an absolute host path');
+  if (configured && configured !== resolve(configured)) fail('host model trust store path must be absolute');
   if (isWithin(context.artifactRoot, storePath)) fail('host model trust store must stay outside the engagement artifact root');
   const declaredTargetRoot = context.engagement.target?.root && resolve(context.engagement.target.root);
   const targetRoot = declaredTargetRoot && statSafe(declaredTargetRoot)?.isDirectory() ? realpathSync(declaredTargetRoot) : declaredTargetRoot;
@@ -827,36 +812,8 @@ function pinnedTrustKey(record) {
   };
 }
 
-function authorizeLegacyTrustBootstrap(context, state, options) {
-  const active = Object.values(state.allocations).filter((allocation) => allocation.status === 'active');
-  const hasLegacyOptions = options.legacyLane !== undefined || options.legacyLeaseToken !== undefined;
-  if (active.length === 0) {
-    if (hasLegacyOptions) fail('legacy trust bootstrap options require a migration-proven active allocation');
-    return null;
-  }
-  if (!options.legacyLane || !options.legacyLeaseToken) fail('active allocations require --legacy-lane and --legacy-lease-token for authenticated legacy trust bootstrap');
-  const migration = legacyStateMigration(state);
-  for (const allocation of active) {
-    if (migration.activeAllocationIdsAtMigration?.[allocation.lane] !== allocation.allocationId) {
-      fail('model trust cannot be pinned after a non-legacy allocation becomes active');
-    }
-  }
-  const allocation = state.allocations[options.legacyLane];
-  if (!allocation || allocation.status !== 'active' || migration.activeAllocationIdsAtMigration?.[options.legacyLane] !== allocation.allocationId) {
-    fail('legacy trust bootstrap lane is not the exact migration-proven active allocation');
-  }
-  requireExactLegacyLease(context, allocation, options.legacyLeaseToken);
-  return {
-    kind: 'legacy-v1-active-allocation',
-    authenticatedLane: allocation.lane,
-    allocationId: allocation.allocationId,
-    migrationId: migration.migrationId,
-    migrationSourceSha256: migration.sourceSha256,
-  };
-}
-
-function requirePinnedModelTrust(engagement) {
-  const trust = engagement.modelTrust;
+function requirePinnedModelTrust(context) {
+  const trust = context.engagement.modelTrust;
   if (!trust || trust.schema !== 'argus/model-trust-bundle@1' || trust.source !== 'host-trust-store' || !/^[a-f0-9]{64}$/.test(trust.trustStoreSha256 ?? '')) {
     fail('model routing requires a complete purpose-separated host trust bundle');
   }
@@ -874,6 +831,13 @@ function requirePinnedModelTrust(engagement) {
   if (trust.keys.runtimeAttestation.keyId === trust.keys.operatorApproval.keyId ||
       trust.keys.runtimeAttestation.keyFingerprintSha256 === trust.keys.operatorApproval.keyFingerprintSha256) {
     fail('model trust purposes must use distinct keys');
+  }
+  for (const [slot, purpose] of Object.entries(expected)) {
+    const live = loadHostModelTrust(trust.keys[slot].keyId, purpose, context, trust.trustStorePath).record;
+    const fingerprint = modelPublicKeyFingerprint(live.publicKeyPem);
+    if (live.subjectId !== trust.keys[slot].subjectId || fingerprint !== trust.keys[slot].keyFingerprintSha256) {
+      fail(`live model trust ${slot} differs from the pinned identity; abort this engagement`);
+    }
   }
 }
 
@@ -902,67 +866,13 @@ function requireCurrentModelPreflight(context, agent, runtime) {
 }
 
 function requirePreAllocationInitialRoute(context, options, attempt) {
-  if (options.signal !== 'normal' || attempt !== 1) {
-    if (options.legacyLeaseToken !== undefined) fail('--legacy-lease-token is valid only for a normal attempt 1 legacy resume');
-    return null;
-  }
+  if (options.signal !== 'normal' || attempt !== 1) return;
   const existing = selectedModelDecisions(context, options.agent, options.runtime, options.dispatchId, attempt);
   if (existing.length > 1) fail('multiple selected model decisions already exist for the exact dispatch attempt');
-  if (existing.length === 1) return existing[0].legacyResumeBinding;
+  if (existing.length === 1) return;
   const state = getEngagementStatus(context.engagement);
   const active = Object.values(state.allocations).filter((allocation) => allocation.status === 'active');
-  if (active.length === 0) {
-    if (options.legacyLeaseToken !== undefined) fail('--legacy-lease-token requires a migration-proven active allocation');
-    return null;
-  }
-  if (!options.legacyLeaseToken) fail('normal attempt 1 must be selected before any worker allocation becomes active, except an authenticated legacy-v1 resume');
-  const migration = legacyStateMigration(state);
-  const allocation = state.allocations[options.agent];
-  if (!allocation || allocation.status !== 'active' || migration.activeAllocationIdsAtMigration?.[options.agent] !== allocation.allocationId) {
-    fail('legacy resume requires the exact migration-proven active allocation for the routed agent');
-  }
-  if (active.some((candidate) => migration.activeAllocationIdsAtMigration?.[candidate.lane] !== candidate.allocationId)) {
-    fail('legacy resume is forbidden after any non-legacy allocation becomes active');
-  }
-  const bootstrap = context.engagement.modelTrust?.legacyBootstrap;
-  if (!bootstrap || bootstrap.migrationId !== migration.migrationId || bootstrap.migrationSourceSha256 !== migration.sourceSha256) {
-    fail('legacy resume trust anchor is not bound to the active state migration');
-  }
-  requireExactLegacyLease(context, allocation, options.legacyLeaseToken);
-  const checkpoint = state.checkpoints[options.agent];
-  if (checkpoint && (!['migrated-v1', 'runtime-v1'].includes(checkpoint.bindingOrigin) || checkpoint.allocationId !== allocation.allocationId ||
-      checkpoint.dispatchId !== options.dispatchId || checkpoint.attempt !== 1)) {
-    fail('legacy resume route must use the exact migrated checkpoint dispatch and attempt');
-  }
-  return {
-    kind: 'legacy-v1-active-allocation',
-    lane: allocation.lane,
-    allocationId: allocation.allocationId,
-    allocationSha256: legacyAllocationSha256(allocation),
-    checkpointRef: checkpoint?.path ?? null,
-    checkpointSha256: checkpoint?.sha256 ?? null,
-    migrationId: migration.migrationId,
-    migrationSourceSha256: migration.sourceSha256,
-  };
-}
-
-function legacyStateMigration(state) {
-  const migrations = state.migrations?.filter((entry) => entry.fromVersion === 1 && entry.toVersion === 2) ?? [];
-  if (migrations.length !== 1 || !migrations[0].activeAllocationIdsAtMigration || !/^[a-f0-9]{64}$/.test(migrations[0].sourceSha256 ?? '')) {
-    fail('active allocation is not backed by exactly one authenticated legacy-v1 migration record');
-  }
-  return migrations[0];
-}
-
-function requireExactLegacyLease(context, allocation, token) {
-  if (!nonEmptyString(token) || createHash('sha256').update(token).digest('hex') !== allocation.leaseTokenSha256) fail(`invalid legacy lease token for ${allocation.lane}`);
-  const path = join(context.artifactRoot, context.engagement.writePolicy.workerRoot, allocation.lane, '.lease');
-  const expectedMarker = `allocation:${allocation.allocationId}`;
-  if (!safePhysicalPath(context.artifactRoot, path) || !statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) {
-    fail(`legacy lease file is missing, aliased, or differs from the supplied token for ${allocation.lane}`);
-  }
-  const content = readSecureSingleLink(path, `${allocation.lane} legacy lease`).toString('utf8').trim();
-  if (![token, expectedMarker].includes(content)) fail(`legacy lease file differs from the supplied token for ${allocation.lane}`);
+  if (active.length > 0) fail('normal attempt 1 must be selected before any allocation becomes active');
 }
 
 function laneCapabilityToken(options) {
@@ -972,8 +882,7 @@ function laneCapabilityToken(options) {
 }
 
 function controllerCapabilityToken(options) {
-  return options.controllerToken ?? process.env.ARGUS_ENGAGEMENT_CONTROLLER_TOKEN ??
-    (options.agent === 'odysseus' ? options.legacyLeaseToken : null);
+  return options.controllerToken ?? process.env.ARGUS_ENGAGEMENT_CONTROLLER_TOKEN;
 }
 
 function requireModelRouteAuthority(context, options) {
@@ -999,21 +908,10 @@ function requireActiveLaneCapability(context, lane, token, expectedBinding) {
     fail(`model operation requires the live non-aliased ${lane} lease marker`);
   }
   const content = readSecureSingleLink(path, `${lane} lease marker`).toString('utf8').trim();
-  const migratedId = state.migrations?.find((item) => item.fromVersion === 1 && item.toVersion === 2)?.activeAllocationIdsAtMigration?.[lane];
-  if (content !== `allocation:${allocation.allocationId}` && !(allocation.allocationId === migratedId && content === token)) {
+  if (content !== `allocation:${allocation.allocationId}`) {
     fail(`model operation ${lane} lease marker differs from the active allocation`);
   }
   return allocation;
-}
-
-function legacyAllocationSha256(allocation) {
-  return createHash('sha256').update(JSON.stringify({
-    lane: allocation.lane,
-    status: allocation.status,
-    allocationId: allocation.allocationId,
-    leaseTokenSha256: allocation.leaseTokenSha256,
-    allocatedAt: allocation.allocatedAt,
-  })).digest('hex');
 }
 
 function persistModelEscalationRequest(context, options, attempt) {
@@ -1213,68 +1111,6 @@ function bindOperatorDecision(context, options, attempt, escalationBinding, avai
   return binding;
 }
 
-function bindRuntimeAttestation(context, options, attempt, selectedConfig, createdAt) {
-  if (!options.runtimeAttestation) return null;
-  if (options.runtime !== 'codex') fail('runtime attestation is valid only for Codex routing');
-  const path = resolveExistingPhysicalInput(options.runtimeAttestation);
-  const directory = join(context.artifactRoot, runtimeAdapters.codex.capabilityAttestation.directory);
-  if (dirname(path) !== directory || !safePhysicalPath(context.artifactRoot, path) || !statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) {
-    fail('runtime attestation must be a non-aliased real file directly under ai_agents_internal/operator-decisions');
-  }
-  const raw = readSecureSingleLink(path, 'runtime attestation');
-  let document;
-  try { document = JSON.parse(raw); }
-  catch { fail('runtime attestation is not valid JSON'); }
-  assertSchemaDocument(validateModelRuntimeAttestationSchema, document, 'runtime attestation');
-  let authentication;
-  try { authentication = verifyModelDocumentAuthentication(document, context.engagement.modelTrust); }
-  catch (error) { fail(`runtime attestation authentication failed: ${error.message}`); }
-  for (const [field, expected] of Object.entries({
-    engagementId: context.engagement.engagementId,
-    dispatchId: options.dispatchId,
-    attempt,
-    agent: options.agent,
-    runtime: options.runtime,
-    parentRuntime: 'codex',
-    adapterContractId: runtimeAdapters.contractId,
-    adapterId: runtimeAdapters.codex.adapterId,
-  })) {
-    if (document[field] !== expected) fail(`runtime attestation ${field} does not match the route`);
-  }
-  for (const field of ['tier', 'model', 'effort', 'maxTurns']) {
-    if (document.selectedConfig[field] !== selectedConfig[field]) fail(`runtime attestation selectedConfig.${field} does not match the selected route`);
-  }
-  const binding = {
-    engagementId: document.engagementId,
-    dispatchId: document.dispatchId,
-    attempt: document.attempt,
-    agent: document.agent,
-    runtime: document.runtime,
-    parentRuntime: document.parentRuntime,
-    adapterContractId: document.adapterContractId,
-    adapterId: document.adapterId,
-    documentSha256: modelAuthenticatedDocumentSha256(document),
-    parentSessionId: document.parentSessionId,
-    adapterSnapshotSha256: adapterSnapshotSha256(runtimeAdapters),
-    selectedConfigSha256: modelConfigSha256(selectedConfig),
-    enforcements: document.enforcements,
-    issuedBy: document.issuedBy,
-    issuedAt: document.issuedAt,
-    expiresAt: document.expiresAt,
-    authentication,
-  };
-  // Reuse the pure resolver's expiry and exact-capability checks before any
-  // selected decision can be persisted.
-  const issuedAt = Date.parse(binding.issuedAt);
-  const expiresAt = Date.parse(binding.expiresAt);
-  const routedAt = Date.parse(createdAt);
-  if (![issuedAt, expiresAt, routedAt].every(Number.isFinite) || routedAt < issuedAt || routedAt > expiresAt ||
-      expiresAt - issuedAt > runtimeAdapters.codex.capabilityAttestation.maxValiditySeconds * 1000) {
-    fail('runtime attestation is expired, not yet valid, or exceeds the adapter validity window');
-  }
-  return binding;
-}
-
 function persistOperatorResolution(context, binding) {
   const output = join(context.artifactRoot, modelPolicy.routing.decisionDirectory, `OPR-${binding.blockedDecisionId.slice(4)}.json`);
   if (!safePhysicalPath(context.artifactRoot, output)) fail('operator resolution output is physically unsafe');
@@ -1351,13 +1187,7 @@ function persistModelDecision(policy, candidate, context) {
       if (exact.length === 0) {
         if (loadModelControlSeal(context, { required: false })) fail('normal attempt 1 cannot be added after the initial model-control set was sealed');
         const state = getEngagementStatus(context.engagement);
-        const allocation = state.allocations[candidate.agent];
-        if (candidate.legacyResumeBinding !== null && allocation && hasAllocationExecutionBinding(allocation) &&
-            (allocation.modelDecisionId !== candidate.decisionId || allocation.modelDecisionIntegritySha256 !== candidate.integritySha256 ||
-             allocation.dispatchId !== candidate.dispatchId || allocation.attempt !== candidate.attempt || allocation.runtime !== candidate.runtime)) {
-          fail('legacy normal attempt-1 route differs from the model decision already bound to the active allocation');
-        }
-        if (Object.values(state.allocations).some((allocation) => allocation.status === 'active') && candidate.legacyResumeBinding === null) {
+        if (Object.values(state.allocations).some((allocation) => allocation.status === 'active')) {
           fail('normal attempt 1 must be selected before any allocation becomes active');
         }
       }
@@ -1365,13 +1195,6 @@ function persistModelDecision(policy, candidate, context) {
     });
   }
   return persistModelDecisionUnlocked(policy, candidate, context);
-}
-
-function hasAllocationExecutionBinding(allocation) {
-  return /^MDR-[a-f0-9]{24}$/.test(allocation?.modelDecisionId ?? '') &&
-    /^[a-f0-9]{64}$/.test(allocation?.modelDecisionIntegritySha256 ?? '') &&
-    typeof allocation?.dispatchId === 'string' && Number.isInteger(allocation?.attempt) &&
-    ['claude', 'codex'].includes(allocation?.runtime);
 }
 
 function persistModelDecisionUnlocked(policy, candidate, context) {
@@ -1608,7 +1431,7 @@ function schemaCommand(args) {
   const [operation, ...rest] = args;
   if (operation === 'list') {
     for (const kind of CONTRACT_KINDS) console.log(`${kind}\t${schemaId(kind)}`);
-    console.log(`preflight-report\t${preflightReportSchema.properties.$schema.const}\tschemaVersion=2\treadCompatible=1,2\treport-only`);
+    console.log(`preflight-report\t${preflightReportSchema.properties.$schema.const}\tschemaVersion=2\treadCompatible=2\treport-only`);
     return 0;
   }
   if (operation === 'validate') {
@@ -1621,16 +1444,11 @@ function schemaCommand(args) {
     catch (error) { fail(`schema validate: input is not valid JSON: ${error.message}`); }
     if (options.kind === 'preflight-report') {
       const version = document?.schemaVersion;
-      const validate = version === 1
-        ? validatePreflightReportV1Schema
-        : version === 2
-          ? validatePreflightReportSchema
-          : null;
-      if (!validate) fail(`schema validate preflight-report: unsupported schemaVersion ${String(version)}; expected 1 or 2`);
+      const validate = version === 2 ? validatePreflightReportSchema : null;
+      if (!validate) fail(`schema validate preflight-report: unsupported schemaVersion ${String(version)}; expected 2`);
       const errors = validate(document);
       if (errors.length) fail(`schema validate preflight-report@${version}: ${formatSchemaErrors(errors)}`);
-      const validatorIdentity = version === 1 ? 'preflight-report-v1.schema.json' : document.$schema;
-      console.log(`PASS  schema preflight-report schemaVersion=${version} validator=${validatorIdentity} report-only input=${options.input}`);
+      console.log(`PASS  schema preflight-report schemaVersion=${version} validator=${document.$schema} report-only input=${options.input}`);
       return 0;
     }
     const errors = validateCanonicalDocument(options.kind, document);
@@ -1718,7 +1536,7 @@ function engagementAllocate(args) {
   const initialContext = loadModelEngagement(options.manifest, options.lane);
   withInitialModelControlLock(initialContext, () => {
     const context = loadModelEngagement(options.manifest, options.lane);
-    requirePinnedModelTrust(context.engagement);
+    requirePinnedModelTrust(context);
     const initialState = getEngagementStatus(context.engagement);
     const activeAllocation = initialState.allocations?.[options.lane];
     const resumingBoundAttempt = activeAllocation?.status === 'active' &&
@@ -1734,14 +1552,13 @@ function engagementAllocate(args) {
       if (options.lane !== 'odysseus') fail('the first allocation must be Odysseus');
       seal = createModelControlSeal(context, decision.runtime, preflight);
     } else {
-      seal = loadModelControlSeal(context, { required: decision.legacyResumeBinding === null });
-      if (seal && seal.preflightSha256 !== preflight.sha256) {
+      seal = loadModelControlSeal(context);
+      if (seal.preflightSha256 !== preflight.sha256) {
         fail('engagement allocation preflight differs from the sealed model-control report');
       }
     }
-    if (seal && resumingBoundAttempt) requireActiveAllocationDecision(state, options.lane, seal, decision);
-    else if (seal) requireSealedAllocationDecision(seal, decision);
-    else requireExactLegacyResumeAllocation(state, options, decision);
+    if (resumingBoundAttempt) requireActiveAllocationDecision(state, options.lane, seal, decision);
+    else requireSealedAllocationDecision(seal, decision);
     console.log(JSON.stringify(allocateWorker(context.engagement, options.lane, {
       resumeToken: options.token,
       controllerToken: options.controllerToken,
@@ -1757,7 +1574,7 @@ function engagementStartAttempt(args) {
   requireOptions(options, ['manifest', 'lane', 'decision', 'token'], 'engagement start-attempt');
   assertTrustedModelRoutingAssets();
   const context = loadModelEngagement(options.manifest, options.lane);
-  requirePinnedModelTrust(context.engagement);
+  requirePinnedModelTrust(context);
   const decision = loadSelectedRetryDecision(context, options.lane, options.decision);
   const dispatchAuthorization = loadDispatchAuthorization(context, options.dispatchAuthorization, decision);
   const preflight = requireCurrentModelPreflight(context, options.lane, decision.runtime);
@@ -1956,21 +1773,6 @@ function requireActiveAllocationDecision(state, lane, seal, decision) {
   if (allocation?.status !== 'active' || seal.runtime !== decision.runtime || !seal.decisions[lane] ||
       !Object.entries(binding).every(([field, value]) => allocation[field] === value)) {
     fail(`${lane} resume decision differs from the active allocation or sealed dispatchable set`);
-  }
-}
-
-function requireExactLegacyResumeAllocation(state, options, decision) {
-  const legacy = decision.legacyResumeBinding;
-  const allocation = state.allocations?.[options.lane];
-  const migrations = state.migrations?.filter((entry) =>
-    entry.fromVersion === 1 && entry.toVersion === 2 &&
-    entry.migrationId === legacy?.migrationId && entry.sourceSha256 === legacy?.migrationSourceSha256,
-  ) ?? [];
-  const migration = migrations.length === 1 ? migrations[0] : null;
-  if (!legacy || legacy.lane !== options.lane || allocation?.status !== 'active' ||
-      allocation.allocationId !== legacy.allocationId || !options.token || !migration ||
-      migration.activeAllocationIdsAtMigration?.[options.lane] !== allocation.allocationId) {
-    fail('legacy allocation bypass is valid only for the exact active migration-proven allocation with its retained lane token');
   }
 }
 
@@ -2699,6 +2501,19 @@ async function preflight(argv) {
   }
 
   const checks = [];
+  const nativeLaunchProof = process.env.ARGUS_NATIVE_LAUNCH_PROOF;
+  const nativeLaunchReady = modelRuntime === 'claude' && nativeLaunchProof === 'argus-launch/1:claude:96:os-native';
+  addCheck(
+    checks,
+    'native-host-execution',
+    true,
+    nativeLaunchReady,
+    nativeLaunchReady
+      ? 'argus-launch bound Claude opus/max effort to the native 96-turn cap inside an OS sandbox and cleared inherited bearer capabilities'
+      : modelRuntime === 'codex'
+        ? 'Codex dispatch is disabled because the installed CLI exposes no native hard turn cap'
+        : 'start the engagement with argus-launch; direct /argus:run cannot prove a native turn cap or OS sandbox',
+  );
   addCheck(checks, 'target-reachable', true, target.reachable, target.evidence);
   addCheck(checks, 'artifact-root-writable', true, artifactWritable, artifactWritable ? `writable: ${artifactRootPath}` : `not writable: ${artifactRootPath}`);
   addCheck(checks, 'artifact-paths-safe', true, safePaths, safePaths ? 'all contracted paths remain under the artifact root' : 'a contracted or output path escapes the artifact root');
@@ -2857,6 +2672,10 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
   if (!selected) return agentResult(contract, false, 'not-selected', false, [], [], [], contract.artifactPaths, authorizationDecisions, modelRuntime);
   if (mandatoryFailure) {
     return agentResult(contract, true, 'blocked', false, [], [], ['Orchestration preflight failed; no specialist may be dispatched.'], contract.artifactPaths, authorizationDecisions, modelRuntime);
+  }
+  const modelPreview = buildModelRoutingPreview(modelPolicy, runtimeAdapters, { slug: contract.slug, runtime: modelRuntime });
+  if (modelPreview.status !== 'ready') {
+    return agentResult(contract, true, 'blocked', false, [], [`model:${modelPreview.missingCapabilities.join(',')}`], [modelPreview.reason], contract.artifactPaths, authorizationDecisions, modelRuntime);
   }
 
   const missingTools = contract.requiredTools.filter((tool) => !availableTools.has(tool));

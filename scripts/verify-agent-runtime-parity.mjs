@@ -47,7 +47,7 @@ execFileSync('node', [join(ROOT, 'scripts/sync-hephaestus-codex-variants.mjs'), 
 execFileSync('node', [join(ROOT, 'scripts/sync-argus-role-variants.mjs'), '--check'], { stdio: 'inherit' });
 
 assert(adapters.schemaVersion === 3, 'Argus runtime support contract must use schema v3');
-assert(adapters.support?.claude?.level === 'plugin-native', 'Claude support must be plugin-native');
+assert(adapters.support?.claude?.level === 'host-launcher-required' && adapters.support.claude.launcher === 'bin/argus-launch', 'Claude support must require the native host launcher');
 assert(adapters.support?.codex?.level === 'parent-runtime-dependent', 'Codex support must be parent-runtime-dependent');
 assert(adapters.support?.codex?.parentRuntimeRequired === true, 'Codex support must require a parent runtime');
 assert(adapters.support?.codex?.missingCapabilityOutcome === 'CAPABILITY_GAP', 'Codex missing capabilities must return CAPABILITY_GAP');

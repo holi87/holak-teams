@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+export ARGUS_NATIVE_LAUNCH_PROOF='argus-launch/1:claude:96:os-native'
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -20,6 +22,7 @@ claude plugin validate --strict . >/dev/null
 claude plugin validate --strict argus/claude >/dev/null
 claude plugin validate --strict hephaestus/claude >/dev/null
 scripts/sync-argus-runtime-assets.mjs --check
+scripts/smoke-argus-launcher.sh
 scripts/smoke-argus-technique-selection.sh
 node scripts/sync-argus-raci.mjs --check
 node scripts/sync-argus-model-policy.mjs --check

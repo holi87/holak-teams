@@ -1,134 +1,71 @@
 # Release validation
 
-The repository has one release gate for local development and CI:
+The repository has one local and CI release gate:
 
 ```bash
 scripts/validate-release.sh
 ```
 
-It installs locked validation dependencies, validates both plugin manifests, rejects
-representative marketplace drift, compiles every canonical Argus JSON Schema, runs the
-contract suites, verifies generated-document synchronization and prompt regressions,
-then clean-installs the previous Argus release and updates it to the current release.
-The installed marketplace-lifecycle smoke covers the successful install/update path: it
-provisions distinct `runtime-attestation` and `operator-approval` public anchors, pins their
-stable IDs, reruns current preflight, seals the dispatchable normal attempt-1 decisions,
-allocates the Odysseus controller first, authenticates two exact decision-bound specialist
-leases, and verifies their release without third-party services. Dedicated repository model
-and engagement smokes cover the negative purpose/key, late-normal, lane/controller-token,
-authorization replay, retry-rebind, token rotation, and exactly-once telemetry cases. The
-installed lifecycle is the install/update happy path; it does not claim installed telemetry
-coverage. A release is not ready until the complete gate passes.
+It installs lockfile dependencies, validates all plugin manifests and JSON Schemas, runs model, authorization, engagement, orchestration, runner, template, prompt, and generated-file regression suites, verifies package budgets, then installs the previous marketplace revision and updates it to the current release. A release is not ready until the complete gate passes.
 
-## Argus 2.0 contract migration
+## Argus 3.0 breaking boundary
 
-Argus 2.0 changes the canonical lane plan, evidence reference, and automation status
-documents from single records to deterministic collections. Their current IDs are
-`argus/lane-plan@2`, `argus/evidence-reference@2`, and
-`argus/automation-status@2`. The packaged reader preserves the three shipped `@1`
-schemas, validates either version, and migrates legacy fragments to sorted `@2`
-collections before persistence and merge. Other canonical contracts remain at `@1`.
-The genuine 1.18 lane fixture's direct `planned → completed` transition remains readable;
-its v2 migration inserts `running` at the deterministic timestamp midpoint.
-For equal, reversed, or sub-millisecond legacy timestamps without such a midpoint, the
-migration emits a fixed millisecond-spaced synthetic timeline instead of rejecting v1.
+Argus 3 retires compatibility code whose migration window ended in Argus 2:
 
-The preflight report moves to `schemaVersion: 2` because model-runtime selection and the
-bound orchestration projection changed its required shape. The exact Argus 1.18 validator
-is preserved as `preflight-report-v1.schema.json`; historical reports remain readable and
-immutable, while every new preflight writes and validates v2. `argus-assets schema list`
-exposes this as a report-only URL/schemaVersion registry entry, and
-`schema validate --kind preflight-report` dispatches v1/v2 without admitting either report to canonical
-fragment or merge handling.
+- `lane-plan`, `evidence-reference`, and `automation-status` accept only their current collection form at `@2`;
+- preflight accepts only `schemaVersion: 2`;
+- engagement state accepts only `schemaVersion: 2` and contains no migration surface;
+- the `qa-doctrine` monolith and `SHARED-DOCTRINE.md` pointer are removed;
+- active pre-v3 engagements must finish or be cleaned with their original runtime before upgrade.
 
-Separately, the internal resumable engagement state moves from `schemaVersion: 1` to
-`schemaVersion: 2`. The packaged runtime preserves `engagement-state-v1.schema.json`,
-derives allocation IDs and legacy checkpoint execution bindings deterministically under
-the state lock, records a source-bound migration audit, and preserves the active lease for
-resume and cleanup. The marketplace lifecycle gate now installs the genuine previous Git
-revision, creates an active v1 allocation and checkpoint with that installed CLI, updates
-the plugin, and verifies v2 migration and cleanup.
-Current state also seals the preflight dispatchable projection before allocation. Barrier
-participants are the manifest phase members inside that immutable projection, worker
-`success` cleanup requires every declared arrival, and heartbeat records bind progress to
-the active allocation, dispatch, and attempt generation.
-New manifests persist physical target and artifact-root paths. During this upgrade, a
-genuine legacy manifest that stored a lexical macOS alias such as `/tmp` or `/var` remains
-readable only when its resolved physical path equals the current root; validation retains
-the original hashed manifest rather than rewriting it in place.
+Stable contracts that are still current at `@1` do not change merely because old readers were removed.
 
-The runtime adapter contract also moves to `argus/runtime-adapters@3` so an executable
-Codex route can require a short-lived Ed25519-signed runtime attestation bound to the exact
-engagement, dispatch, attempt, agent, configuration, adapter, and enforcement set. The
-host trust store contains distinct public anchors for the dispatch wrapper's
-`runtime-attestation` and the human boundary's `operator-approval`; `model trust` pins both
-stable IDs from one immutable snapshot. Neither private key nor a generic signing endpoint
-is available to the controller, workers, or their OS user. The wrapper emits immutable
-route attestations only for configurations it can enforce, then emits a separate fresh JIT
-dispatch authorization immediately before it applies the exact model, effort, and turn cap; the operator signer alone
-authorizes frontier continuation or abort. Revocation requires aborting the current
-snapshot-bound engagement and starting a new one. Pinning requires a fresh preflight bound
-to the new manifest digest. Normal attempt-1 decisions for Odysseus and every currently
-dispatchable selected role precede allocation; deferred, skipped, and blocked roles are not
-part of that sealed set.
-Odysseus is allocated first against its exact decision; its controller token authenticates
-each worker's exact decision-bound allocation. Model requests and exactly-once telemetry
-require the lane token, routes after allocation require the controller token, and retries
-reuse the original dispatch and active allocation through an explicit `engagement
-start-attempt` rebind. Telemetry for the completed attempt precedes that rebind;
-`start-attempt` consumes the current lane token, atomically rotates it, and returns the next
-token once, so the stale attempt token cannot authorize the retry. Every Codex allocation,
-resume, or retry rebind verifies a fresh
-`argus/model-dispatch-authorization@1` that binds the selected decision and config, parent
-session, random allocation ID, and nonce. Resume/retry keeps the active allocation identity;
-a post-release replacement must use a new allocation ID, and bounded history prevents reuse
-of prior MDA digests, nonces, or allocation identities. The CLI verifies and persists that binding; the
-external wrapper remains responsible for pairing the successful operation with the actual
-exact-config spawn because the CLI cannot prove an external process launch. The
-canonical output changes, state migration, and adapter contract expansion together make
-this a major rather than minor release.
+The marketplace lifecycle smoke installs the immediately previous release, updates to the current major, proves that the retired reader files are absent, verifies the installed native launcher and 27-agent roster, and completes a clean current two-lane engagement. It deliberately does not resume old state.
 
-For Argus role changes, regenerate both runtimes before the release gate:
+## Native execution contract
+
+`argus-launch` is the only supported Claude entry point. It binds Odysseus to the reviewed `opus` / maximum-effort controller baseline, Claude's native 96-turn cap, no session persistence, cleared inherited Argus bearer variables, and an OS filesystem sandbox. Direct `/argus:run` preflight fails.
+
+Codex model and effort mapping remains generated and validated, but Codex dispatch is fail-closed because the installed CLI has no native hard turn cap. Signed route-attestation metadata was removed because a claim cannot create missing enforcement.
+
+The host trust bundle now pins the secure absolute trust-store path. Every request, route, allocation, retry, and telemetry operation reopens that store and blocks immediately when a pinned public key is revoked, missing, or replaced.
+
+## Reproducible Argus release
+
+Regenerate canonical outputs before the gate:
 
 ```bash
 scripts/sync-argus-role-variants.mjs --write
+scripts/sync-argus-runtime-assets.mjs --write
+node scripts/sync-argus-raci.mjs --write
+node scripts/sync-argus-model-policy.mjs --write
+node scripts/sync-argus-technique-bundle.mjs --write
 ```
 
-CI runs the same command in check mode and loads the generated files through both Claude
-Code's strict plugin validator and Codex's native config loader.
+Bump all release declarations atomically:
 
-For Hephaestus role changes, regenerate Codex from the flat Claude sources:
+```bash
+node scripts/release-plugin.mjs --plugin argus --bump major --write
+node scripts/release-plugin.mjs --plugin argus --check
+```
+
+The helper updates the Argus plugin version, its marketplace entry, and the top-level marketplace version together.
+
+For Hephaestus agent changes, regenerate Codex variants from the flat Claude sources:
 
 ```bash
 scripts/sync-hephaestus-codex-variants.mjs --write
 ```
 
-The release gate validates exact model mapping, descriptions, source hashes, full runtime
-role bodies, sandbox policy, README rows, and the HTML roster for all 49 agents. Argus also
-enforces the exact 15-field provenance schema, source/config/instruction hashes, and strict
-per-file and corpus byte budgets for its non-runtime Codex Markdown stubs.
-
-## Reproducible version bump
-
-Prepare a semver release with the repository helper:
-
-```bash
-node scripts/release-plugin.mjs --plugin argus --bump minor --write
-```
-
-Use `patch`, `minor`, or `major` according to `AGENTS.md`. The helper changes the plugin
-manifest, its marketplace entry, and the marketplace's top-level release version as one
-operation. Verify the synchronized result with:
-
-```bash
-node scripts/release-plugin.mjs --plugin argus --check
-claude plugin tag --dry-run argus/claude
-```
-
 ## Prompt regression approval
 
-`argus/prompt-budgets.json` records the approved total and per-agent prompt corpus. Any
-agent increase fails validation even when the broad maximum remains satisfied. A deliberate
-increase requires a reviewed `regressionApproval` object containing the exact current corpus
-SHA-256, issue number, approver, reason, and exact per-agent increases. After approval lands,
-replace `approvedCorpus` with the reviewed corpus and remove the one-release approval.
+`argus/prompt-budgets.json` records approved corpus and per-agent budgets. Changes that intentionally alter a prompt require regeneration, semantic duplicate review, and the full release gate. Budget increases without a reviewed contract change should be rejected.
+
+## Release checklist
+
+1. Regenerate changed canonical outputs.
+2. Run `scripts/validate-release.sh`.
+3. Confirm `git diff --check` and review generated changes.
+4. Bump the correct semver level.
+5. Commit on a dedicated branch, push, and open a pull request.
+6. Confirm every required GitHub check passes before merge.

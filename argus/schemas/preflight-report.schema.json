@@ -118,7 +118,7 @@
               "policyId": { "const": "argus/model-policy@1" },
               "agent": { "type": "string" },
               "runtime": { "enum": ["claude", "codex"] },
-              "status": { "enum": ["ready", "blocked", "attestation-required"] },
+              "status": { "enum": ["ready", "blocked"] },
               "baselineConfig": {
                 "type": "object",
                 "additionalProperties": false,

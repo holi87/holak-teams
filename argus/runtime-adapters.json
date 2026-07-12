@@ -4,8 +4,9 @@
   "contractId": "argus/runtime-adapters@3",
   "support": {
     "claude": {
-      "level": "plugin-native",
-      "parentRuntimeRequired": false
+      "level": "host-launcher-required",
+      "parentRuntimeRequired": true,
+      "launcher": "bin/argus-launch"
     },
     "codex": {
       "level": "parent-runtime-dependent",
@@ -13,9 +14,7 @@
       "requiredParentCapabilities": [
         "orchestration",
         "packaged-assets",
-        "tool-equivalence",
-        "dispatch-enforcement-attestation",
-        "jit-dispatch-authorization"
+        "tool-equivalence"
       ],
       "missingCapabilityOutcome": "CAPABILITY_GAP"
     }
@@ -53,7 +52,7 @@
         "effort": false,
         "maxTurns": true
       },
-      "evidence": "Claude agent frontmatter enforces the reviewed baseline. Agent dispatch can select a model and enforce a turn cap, but exposes no verified per-dispatch effort override."
+      "evidence": "argus-launch starts Odysseus with Claude's native --max-turns 96, the reviewed opus/max controller baseline, cleared inherited Argus capabilities, and an OS filesystem sandbox. Direct /argus:run is blocked by preflight."
     }
   },
   "codex": {
@@ -62,33 +61,6 @@
     "sandboxPolicy": "read-only when the capability contract has no Write tool; workspace-write otherwise",
     "doctrinePolicy": "embed only capability-selected doctrine profiles; load hash-bound technique catalogs lazily after surface inventory, with full-catalog fallback",
     "toolPolicy": "require contract-equivalent runtime capabilities and return CAPABILITY_GAP when an assigned capability is unavailable",
-    "capabilityAttestation": {
-      "schema": "argus/model-runtime-attestation@1",
-      "directory": "ai_agents_internal/operator-decisions",
-      "authoringBoundary": "isolated-codex-dispatch-wrapper",
-      "authentication": "ed25519-pinned-engagement-key",
-      "maxValiditySeconds": 900,
-      "requiredEnforcements": [
-        "model",
-        "effort",
-        "maxTurns"
-      ]
-    },
-    "dispatchAuthorization": {
-      "schema": "argus/model-dispatch-authorization@1",
-      "directory": "ai_agents_internal/operator-decisions",
-      "authoringBoundary": "isolated-codex-dispatch-wrapper",
-      "authentication": "ed25519-pinned-engagement-key",
-      "maxValiditySeconds": 900,
-      "requiredBindings": [
-        "decisionId",
-        "decisionIntegritySha256",
-        "selectedConfigSha256",
-        "allocationId",
-        "parentSessionId",
-        "nonce"
-      ]
-    },
     "routingCapabilities": {
       "baseline": {
         "model": true,
@@ -100,7 +72,7 @@
         "effort": false,
         "maxTurns": false
       },
-      "evidence": "Codex TOML enforces the reviewed baseline model and reasoning effort. A route requires an exact signed enforcement attestation; every later allocation/spawn requires a separate fresh signed authorization bound to that decision, configuration, parent session, allocation, and nonce."
+      "evidence": "Codex TOML enforces the reviewed baseline model and reasoning effort. The installed CLI has no native hard turn cap, so every Codex route fails closed with CAPABILITY_DRIFT; a signed claim cannot replace missing runtime enforcement."
     }
   },
   "explicitDifferences": [

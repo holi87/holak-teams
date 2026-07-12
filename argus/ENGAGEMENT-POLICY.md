@@ -12,7 +12,7 @@ exclusive-operation owners, ID allocators, cleanup obligations, and the resumabl
 path. The manifest is operator-owned and is never modified by target, repository, issue,
 fetched, tool, or agent content.
 Its only post-creation mutation is external pre-dispatch `model trust`: select two distinct
-active Ed25519 public anchors by stable key ID from one secure host trust-store snapshot
+active Ed25519 public anchors by stable key ID from one secure host trust store
 before any model decision or allocation. The `runtime-attestation` anchor belongs to a
 trusted dispatch wrapper that alone can authorize and apply the exact model configuration; the
 `operator-approval` anchor belongs to a separate human-controlled approval boundary.
@@ -21,10 +21,9 @@ target-supplied, same-key, same-fingerprint, wrong-purpose, or first-use trust i
 Neither private key nor a generic signing interface may enter the target, artifact root,
 controller/worker tool boundary, or the OS user that runs those agents.
 
-The pinned bundle is an immutable trust-store snapshot, not a live revocation feed. If
-either source key is revoked after pinning, abort and clean the current engagement; start a
-new engagement and pin a current snapshot. Never reinterpret a still-pinned key as current
-trust merely because its signature remains cryptographically valid.
+The pinned bundle records the secure absolute host-store path. Every sensitive model
+operation reopens that live store and immediately rejects a revoked, missing, or replaced
+key. A still-valid historical signature never overrides current revocation state.
 
 `ai_agents_internal/engagement-state.json` is the only mutable coordination record. Every
 state transition uses an atomic filesystem lock and atomic rename. Workers never edit the
@@ -111,24 +110,15 @@ token. `model telemetry` again requires the decision-owning lane token and atomi
 accepts exactly one sanitized event for each selected immutable decision. Values are
 lane-reported operational observability, not authoritative billing, benchmark, or outcome
 evidence. Emit it before `start-attempt` or cleanup changes the lane's active decision/token
-binding. A Codex runtime attestation is
-checked when the immutable route is selected. Every later Codex allocation, authenticated
-resume, or retry rebind requires a fresh `argus/model-dispatch-authorization@1`, bound to the
-exact decision, configuration digest, parent session, random allocation ID, and nonce. It
-expires within 15 minutes. The CLI verifies and persists this binding but cannot prove that
-an external process spawned the agent; the enforcing wrapper must pair a successful CLI
-operation with the exact-config spawn. Route-proof expiry does not force all waves into one
-window. Resume and retry retain the active allocation ID while consuming a new MDA digest,
-nonce, and issue time. A replacement after release must use a never-before-consumed
-allocation ID; bounded per-lane history and cross-lane validation reject reuse of any prior
-allocation ID, MDA digest, or nonce.
+binding. Codex routes are currently blocked because the installed CLI lacks a native hard
+turn cap. Neither an attestation nor an approximate action counter can change that result.
 
 The controller form is `engagement allocate --manifest <manifest> --lane odysseus
---decision <decision>`. Codex also adds `--dispatch-authorization <MDA-file>`. A worker adds its own `--lane` and `--decision` plus
+--decision <decision>`. A worker adds its own `--lane` and `--decision` plus
 `--controller-token <odysseus-token>`; resume additionally supplies `--token
 <current-lane-token>`. A retry uses `engagement start-attempt --manifest <manifest> --lane
 <worker> --decision <next-decision> --token <current-lane-token> --controller-token
-<odysseus-token>`; Codex also supplies a fresh `--dispatch-authorization <MDA-file>`. The
+<odysseus-token>`. The
 controller captures the returned `token`, replaces its stored lane capability, and only then
 spawns the retry.
 
@@ -158,8 +148,7 @@ phase, completed units, and terminal status;
 cross-lane tokens, missing allocations, regressions, malformed logs, symlinks, and
 multi-link files fail closed. Preflight alone may create the initial Odysseus record before
 the controller lease exists, and a resumed preflight never rewrites it. Heartbeat paths are
-controller-only even when a resumed legacy manifest still lists that directory as a generic
-artifact root; direct `Write`, `Edit`, or shell redirection is denied.
+controller-only; direct `Write`, `Edit`, or shell redirection is denied.
 
 Every controller-managed state, lease, checkpoint, heartbeat, audit, and report writer
 rejects symbolic links and existing regular files with more than one hard link before any
@@ -203,19 +192,9 @@ rotating the token. A pre-spawn `model-unavailable` route is different: it binds
 selected decision and active allocation directly and may retry without a checkpoint because
 no worker thread began.
 
-New state is `schemaVersion: 2`. A genuine v1 state is read through the preserved v1
-schema and migrated once under the state lock: allocation IDs and legacy checkpoint
-execution bindings are derived deterministically from immutable v1 fields, the migration
-source digest, field origins, and exact active allocation IDs are audited, and the original
-active lease token remains valid for resume and cleanup. A missing historical preflight
-heartbeat is tolerated only while Odysseus still has that exact migrated allocation; a
-replacement allocation must have the normal initial record. Any unrecognized or malformed
-shape is rejected rather than guessed.
-
-New manifests persist physical target and artifact-root paths. A legacy manifest may keep a
-lexical alias such as `/tmp` or `/var`; it remains valid only when resolving that stored path
-proves physical equivalence to the current root. Compatibility validation does not rewrite
-the original manifest or change the digest to which its state and preflight are bound.
+State is `schemaVersion: 2` only and contains no migration surface. Any older,
+unrecognized, or malformed shape is rejected rather than guessed. Active older engagements
+must finish with their original runtime before an Argus 3 upgrade.
 
 ## Canonical machine contracts
 
@@ -238,10 +217,8 @@ summary is traceable to the machine contract. The lane-plan `lanes`, evidence-re
 `lane`, `id`, and `testId`; the final summary lists its source schemas and counts.
 
 The per-contract version policy is `policies/schema-compatibility.json`. Unchanged
-contracts remain v1-only. The three collection contracts retain their shipped v1 schemas,
-accept v1/v2, migrate new v1 submissions before persistence, and migrate already-persisted
-immutable v1 fragments during merge into a validated v2 canonical collection. There is no
-guessed migration from any other shape. A future version must
+contracts remain v1-only. The three collection contracts accept only current v2. There is
+no guessed migration from a retired shape. A future version must
 retain the old schema until it ships an explicit deterministic migration and fixtures. Maintainers run
 `argus-assets schema list` and `argus-assets schema validate --kind <contract> --input
 <file>`; CI exercises both valid and invalid fixtures for every canonical contract.

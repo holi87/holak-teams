@@ -118,18 +118,21 @@ diff -u <(jq -S . "$WORK/preflight-json.stdout") <(jq -S . "$json_target/ai_agen
 # required later by model route, after stable dispatch IDs exist.
 codex_target="$WORK/codex-target"
 mkdir -p "$codex_target"
-"$CLI" preflight --target "$codex_target" --mode B --model-runtime codex >/dev/null
+if "$CLI" preflight --target "$codex_target" --mode B --model-runtime codex >/dev/null; then
+  fail 'Codex preflight became dispatchable without a native hard turn cap'
+fi
 codex_report="$codex_target/ai_agents_internal/preflight.json"
 validate_report_schema "$codex_report"
 node - "$codex_report" <<'NODE'
 const fs = require('fs');
 const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-if (report.modelRuntime !== 'codex') throw new Error('Codex preflight did not persist modelRuntime');
+if (report.modelRuntime !== 'codex' || report.status !== 'blocked' || report.summary.dispatchable !== 0) throw new Error('Codex preflight did not fail closed');
+if (!report.checks.some((check) => check.id === 'native-host-execution' && check.status === 'fail')) throw new Error('Codex preflight omitted native-cap failure');
 for (const agent of report.agents) {
   if (agent.model.runtime !== 'codex') throw new Error(`${agent.slug}: preflight hardcoded a non-Codex model preview`);
   if (agent.model.adapterId !== 'codex-custom-agent@1') throw new Error(`${agent.slug}: wrong Codex adapter`);
-  if (agent.model.status !== 'attestation-required' || !agent.model.missingCapabilities.includes('maxTurns')) {
-    throw new Error(`${agent.slug}: Codex parent attestation requirement is not explicit`);
+  if (agent.model.status !== 'blocked' || !agent.model.missingCapabilities.includes('maxTurns') || (agent.selected && agent.status !== 'blocked')) {
+    throw new Error(`${agent.slug}: Codex native turn-cap failure is not explicit`);
   }
 }
 NODE

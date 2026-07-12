@@ -24,6 +24,15 @@
   },
   "assets": [
     {
+      "id": "native-launcher",
+      "kind": "runtime",
+      "source": "argus/bin/argus-launch",
+      "destination": "bin/argus-launch",
+      "files": 1,
+      "bytes": 5025,
+      "sha256": "e5813fe7e0c3120d8a38406b6a19212094db14241a383bdb28744ce9450fef01"
+    },
+    {
       "id": "browser-isolation",
       "kind": "reference",
       "source": "argus/BROWSER-ISOLATION.md",
@@ -47,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 18809,
-      "sha256": "586b84dccfa5ae094952c5829bae54435b224fabcd310108d61429d7de28a768"
+      "bytes": 16838,
+      "sha256": "654658e1918bbd61e5135f6015e2e0f3783217427020c564889ca1d5fcd6b858"
     },
     {
       "id": "canonical-contracts",
@@ -56,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 11599,
-      "sha256": "328812238f6468b722a328ec593eee15fd233e81626c016898e379b17ce36abb"
+      "bytes": 9739,
+      "sha256": "60c2f52f58dc5cfd7a6f0b3d5cf3287ba3a5cd9babee0b28fba89619748a58e9"
     },
     {
       "id": "runner-contract",
@@ -110,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 9678,
-      "sha256": "881ca9dedc6198e23646d6469d1609b7b341a01199911828306a5da8805acb52"
+      "bytes": 9295,
+      "sha256": "9fe305fe53af24cbd1ae49f62a22234a6ca6a58983ef5e03c410df3af1aae383"
     },
     {
       "id": "qa-core-skill",
@@ -163,9 +172,9 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 37,
-      "bytes": 116617,
-      "sha256": "381cf0d47ea1e661f6bde4e482ea4916b100d994be1c20e97a868c7e16f98dda"
+      "files": 31,
+      "bytes": 92696,
+      "sha256": "471e564f202dfea1112051427f993a033cf051e3732a3329bb68b79fce4795a9"
     },
     {
       "id": "capability-matrix",
@@ -209,8 +218,8 @@
       "source": "argus/runtime-adapters.json",
       "destination": "capabilities/runtime-adapters.json",
       "files": 1,
-      "bytes": 4869,
-      "sha256": "b63394cd2032e832d2fe750d79023f5bceea2802887e0bbc07b35fe7443dd19f"
+      "bytes": 3940,
+      "sha256": "1737dae6e11019faba3f24b330e26088fb9fd95e554a613dc002d6ede8f6424c"
     },
     {
       "id": "template-policy",
@@ -236,8 +245,8 @@
       "source": "argus/policies",
       "destination": "policies",
       "files": 4,
-      "bytes": 11707,
-      "sha256": "b5ab751a0972b053c3128c65312081dbb139476e4028ed331127fe9510714227"
+      "bytes": 11473,
+      "sha256": "e70bb5b7b23f5d59f97f50f8b3d43f59fa2c22c2c50589afb089261111c3af93"
     },
     {
       "id": "runtime-library",
@@ -245,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 8,
-      "bytes": 228208,
-      "sha256": "c22f53155084255ee9ffb5007e0eb323acedaf2511cb27f8b8f74834fb0eb0af"
+      "bytes": 210059,
+      "sha256": "5508c22cf64d50aeb76c75762b8e5a851300e5c04938124388fcf2b56fa8d0b7"
     },
     {
       "id": "common-template",
@@ -321,14 +330,6 @@
   ],
   "maintainerOnly": [
     {
-      "source": "argus/SHARED-DOCTRINE.md",
-      "reason": "Compatibility pointer for maintainers; effective runtime doctrine is delivered by capability-scoped skills."
-    },
-    {
-      "source": "argus/shared-skills/qa-doctrine",
-      "reason": "Legacy monolithic doctrine retained as a maintainer comparison source after capability-scoped skill migration."
-    },
-    {
       "source": "argus/COLOR-SCHEME.md",
       "reason": "The runtime color values are embedded in agent frontmatter."
     },
@@ -354,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 54037,
-    "sha256": "060a105974b3d705c8088335e586be872ee2c2b9280dc787eafe67d6d0fd7b81"
+    "bytes": 54422,
+    "sha256": "00854ff9f1c13ca593ceee74cf8ecd12751e217c5e46354209b0c9e034c7f4da"
   }
 }

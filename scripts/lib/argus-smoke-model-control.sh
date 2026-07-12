@@ -3,6 +3,8 @@
 # Shared test-only setup for the production model-control sequence. Callers keep
 # the host root outside the engagement artifact root and own its cleanup.
 
+export ARGUS_NATIVE_LAUNCH_PROOF='argus-launch/1:claude:96:os-native'
+
 argus_smoke_prepare_model_control() {
   local cli="$1"
   local manifest="$2"
@@ -47,6 +49,9 @@ argus_smoke_prepare_model_control() {
     ARGUS_MODEL_TRUST_STORE="$(realpath "$trust_store")" \
       "$cli" model trust --manifest "$manifest" --runtime-key-id "$runtime_key_id" --operator-key-id "$operator_key_id" >/dev/null
   fi
+  trust_store="$control_root/model-trust.json"
+  export ARGUS_MODEL_TRUST_STORE
+  ARGUS_MODEL_TRUST_STORE="$(realpath "$trust_store")"
 
   preflight_output="$control_root/preflight-output.json"
   if ! "$cli" preflight --target "$target" --artifact-root "$artifact_root" --mode "$mode" \
