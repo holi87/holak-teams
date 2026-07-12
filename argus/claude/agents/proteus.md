@@ -65,151 +65,18 @@ Write to disk, then return a summary to Odysseus. Never return findings only in 
 - Sitting on a security-class finding (authz bypass, cross-tenant leak, webhook signature bypass, SSRF) instead of flagging it to Odysseus for the Perseus (in-crew security) route.
 - Hunting low-severity protocol nits first and never reaching the cross-tenant-leak / per-method-authz-bypass class because the clock ran out.
 
-## Technique catalog: argus/technique-catalog/proteus@1
+## Lazy technique catalog: argus/technique-catalog/proteus@1
 
-Reviewed SHA-256: `f81ec23ffad2d618e49663a615bd6a72720190e648ed2e833eb4415d4f8d1184`. Apply every applicable entry or record `not-applicable-with-evidence`; discover target values and never assume them.
-
-### PRO-T01 — GraphQL query-cost amplification
-
-- Applies: surface-present. Scope: graphql, resource-control.
-- Techniques: boundary value analysis, abuse-case testing.
-- Construct: Discover depth, complexity, alias, batch, and connection-size controls; Exceed each limit separately with nested selections, repeated aliases, batched operations, and large first or last values.
-- Oracles: The documented cost control rejects before unbounded resolver execution; one request cannot amplify into uncontrolled work.
-- RACI routes: performance [discover=hermes, automate=nike, validate=minos, report=kleio]; security [discover=perseus, automate=aegis, validate=minos, report=kleio].
-
-### PRO-T02 — GraphQL introspection and error leakage
-
-- Applies: surface-present. Scope: graphql, information-exposure.
-- Techniques: configuration testing, error guessing.
-- Construct: Run schema and type introspection against the declared environment; Trigger typed validation and resolver failures.
-- Oracles: Introspection follows the sourced environment policy; errors disclose no stack, resolver internals, ORM or SQL fragments, paths, secrets, or framework versions.
-- RACI routes: security [discover=perseus, automate=aegis, validate=minos, report=kleio]; contract [discover=proteus, automate=talos, validate=minos, report=kleio].
-
-### PRO-T03 — GraphQL field-level authorization
-
-- Applies: surface-present. Scope: graphql, authorization, tenant-isolation.
-- Techniques: role-operation matrix, object-level access testing.
-- Construct: For an allowed parent query, enumerate sensitive child fields for anonymous, wrong-role, wrong-owner, and cross-tenant actors; Fetch foreign objects by global node ID.
-- Oracles: Every field and edge enforces the sourced role and tenant rule independently of root-operation access.
-- RACI routes: security [discover=perseus, automate=aegis, validate=minos, report=kleio].
-
-### PRO-T04 — GraphQL mutation binding and request integrity
-
-- Applies: surface-present. Scope: graphql, mass-assignment, csrf, persisted-query.
-- Techniques: negative testing, state verification.
-- Construct: Submit privileged extra mutation inputs and re-read state; Where required, send arbitrary non-persisted operations and cross-origin state-changing requests.
-- Oracles: Unauthorized inputs never bind; persisted-query allowlists and CSRF or SameSite controls enforce the sourced posture; rejected requests create no state change.
-- RACI routes: security [discover=perseus, automate=aegis, validate=minos, report=kleio]; contract [discover=proteus, automate=talos, validate=minos, report=kleio].
-
-### PRO-T05 — gRPC protobuf and status conformance
-
-- Applies: surface-present. Scope: grpc, contract.
-- Techniques: schema validation, decision table.
-- Construct: Diff messages against protobuf field numbers, types, optionality, oneof, unknown-field, and response declarations; Exercise invalid, missing, unauthorized, deadline, and capacity states.
-- Oracles: Messages match the declared types and each error returns the exact sourced gRPC status rather than UNKNOWN or INTERNAL masking the cause.
-- RACI routes: contract [discover=proteus, automate=talos, validate=minos, report=kleio].
-
-### PRO-T06 — gRPC method authorization and metadata propagation
-
-- Applies: surface-present. Scope: grpc, authorization, deadline.
-- Techniques: role-operation matrix, negative testing.
-- Construct: Call every service method anonymously, wrong-role, wrong-owner, and cross-tenant; Vary auth, tenant, and trace metadata; set tight deadlines and cancel in-flight work.
-- Oracles: Every method derives identity and tenant from trusted credentials, propagates safe metadata, honors deadlines and cancellation, and returns precise auth statuses.
-- RACI routes: security [discover=perseus, automate=aegis, validate=minos, report=kleio]; resilience [discover=tyche, automate=nike, validate=minos, report=kleio].
-
-### PRO-T07 — gRPC streaming lifecycle and message bounds
-
-- Applies: surface-present. Scope: grpc, streaming, resource-control.
-- Techniques: state transition, boundary value analysis.
-- Construct: Drive unary, client-stream, server-stream, and bidirectional lifecycles through half-close, mid-stream error, cancellation, ordering, and slow-consumer states; Send a message just beyond the discovered size limit.
-- Oracles: Streams terminate, order, and backpressure as documented without silent loss or hangs; oversized input is rejected atomically with RESOURCE_EXHAUSTED or the sourced equivalent.
-- RACI routes: performance [discover=hermes, automate=nike, validate=minos, report=kleio]; resilience [discover=tyche, automate=nike, validate=minos, report=kleio]; contract [discover=proteus, automate=talos, validate=minos, report=kleio].
-
-### PRO-T08 — Realtime handshake and message authorization
-
-- Applies: surface-present. Scope: websocket-sse, authorization.
-- Techniques: state transition, role-operation matrix.
-- Construct: Open each socket or stream anonymously, expired, wrong-role, and cross-tenant; On a legitimate connection, subscribe or command foreign resources and privileged channels.
-- Oracles: Handshake and every message independently enforce identity, authorization, scope, and expiry; connected state never grants blanket access.
-- RACI routes: security [discover=perseus, automate=aegis, validate=minos, report=kleio].
-
-### PRO-T09 — Realtime ordering, deduplication, backpressure, and resume
-
-- Applies: surface-present. Scope: websocket-sse, delivery-semantics, session-isolation.
-- Techniques: state transition, sequence testing.
-- Construct: Send ordered and duplicate events to a slow consumer; Disconnect and reconnect with fresh, resumed, expired, and different-principal sessions.
-- Oracles: Promised order is preserved, duplicates follow the sourced rule, backpressure is bounded and visible, and resume never inherits another identity, subscription, or buffered event.
-- RACI routes: performance [discover=hermes, automate=nike, validate=minos, report=kleio]; resilience [discover=tyche, automate=nike, validate=minos, report=kleio]; security [discover=perseus, automate=aegis, validate=minos, report=kleio].
-
-### PRO-T10 — Realtime cross-tenant broadcast isolation
-
-- Applies: surface-present. Scope: websocket-sse, tenant-isolation, data-exposure.
-- Techniques: pairwise testing, negative testing.
-- Construct: Connect principals from two tenants, trigger each user-, room-, topic-, and tenant-scoped event in one tenant, and observe both channels.
-- Oracles: Only explicitly eligible principals receive the event; foreign channels receive no payload, metadata, timing-derived content, or replay.
-- RACI routes: security [discover=perseus, automate=aegis, validate=minos, report=kleio].
-
-### PRO-T11 — Event schema and redelivery idempotency
-
-- Applies: surface-present. Scope: async-event, contract, exactly-once-effect.
-- Techniques: schema validation, state verification.
-- Construct: Validate every produced event against AsyncAPI, registry, protobuf, or sourced shape including additional fields; Redeliver the same key, ID, or offset.
-- Oracles: Events contain exactly the declared fields and no internal data; at-least-once redelivery produces exactly one business effect.
-- RACI routes: contract [discover=proteus, automate=talos, validate=minos, report=kleio]; resilience [discover=tyche, automate=nike, validate=minos, report=kleio]; data [discover=atalanta, automate=talos, validate=minos, report=kleio].
-
-### PRO-T12 — Event ordering, poison handling, and replay safety
-
-- Applies: surface-present. Scope: async-event, ordering, dead-letter, replay.
-- Techniques: state transition, error guessing.
-- Construct: Interleave messages within and across ordering keys; Inject malformed and unprocessable messages, then replay a bounded historical range.
-- Oracles: Key-local order follows the contract; poison input reaches a bounded dead-letter path without partition stall or crash loop; replay causes no side-effect storm.
-- RACI routes: resilience [discover=tyche, automate=nike, validate=minos, report=kleio]; data [discover=atalanta, automate=talos, validate=minos, report=kleio].
-
-### PRO-T13 — Delivery-semantics claim versus behaviour
-
-- Applies: surface-present. Scope: async-event, delivery-semantics.
-- Techniques: claim verification, fault injection.
-- Construct: Source the exactly-once or at-least-once claim, interrupt delivery at the acknowledgement boundary, and force redelivery.
-- Oracles: Observed duplicate handling matches the stated semantic; an exactly-once claim never leaks a duplicate effect and an at-least-once consumer is demonstrably idempotent.
-- RACI routes: resilience [discover=tyche, automate=nike, validate=minos, report=kleio]; contract [discover=proteus, automate=talos, validate=minos, report=kleio]; data [discover=atalanta, automate=talos, validate=minos, report=kleio].
-
-### PRO-T14 — Inbound webhook authenticity and replay protection
-
-- Applies: surface-present. Scope: webhook-inbound, signature, replay, idempotency.
-- Techniques: decision table, state verification.
-- Construct: Send valid, tampered-body, missing-signature, wrong-secret, wrong-algorithm, stale, nonce-replayed, and duplicate-event-ID deliveries.
-- Oracles: Only a valid fresh signed request is accepted; replay is rejected or deduplicated; duplicate delivery creates exactly one effect and rejected cases create none.
-- RACI routes: security [discover=perseus, automate=aegis, validate=minos, report=kleio]; resilience [discover=tyche, automate=nike, validate=minos, report=kleio].
-
-### PRO-T15 — Outbound webhook destination and retry safety
-
-- Applies: surface-present. Scope: webhook-outbound, ssrf, retry-control, data-exposure.
-- Techniques: abuse-case testing, state transition.
-- Construct: Using an owned sink, test loopback, link-local metadata, internal names, alternate schemes and ports, redirect chains, and rebinding-style destinations; Return bounded failures to observe retry count, delay, payload, and headers.
-- Oracles: Blocked destinations are never fetched; redirects are revalidated; retries are bounded with backoff; payloads and headers contain no secret or cross-tenant data.
-- RACI routes: security [discover=perseus, automate=aegis, validate=minos, report=kleio]; performance [discover=hermes, automate=nike, validate=minos, report=kleio]; resilience [discover=tyche, automate=nike, validate=minos, report=kleio].
+After Kalchas has produced a schema-valid `argus/surface-inventory@1`, run `argus-assets technique select --role proteus --inventory <surface-inventory.json>`. The selector verifies SHA-256 `f81ec23ffad2d618e49663a615bd6a72720190e648ed2e833eb4415d4f8d1184`, loads only the explicitly classified scopes, and returns the full catalog when scopes are absent, unknown, or ambiguous. Apply every returned entry or record its declared gap disposition; discover target values and never assume them. Delivery is `lazy` with `full-catalog` fallback.
 
 <!-- MODEL_ESCALATION_START -->
-## Escalation boundary
+## Execution and escalation binding
 
-- Maximum turns: `48`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
-- On a declared signal, persist a checkpoint bound to the active allocation, dispatch ID, and attempt. Fill this envelope with current IDs, next attempt, signal, and returned path; return it, then stop:
-
-```json
-{
-  "schema": "argus/model-escalation-request@1",
-  "kind": "MODEL_ESCALATION_REQUEST",
-  "engagementId": "engagement-id",
-  "dispatchId": "dispatch-id",
-  "attempt": 2,
-  "agent": "proteus",
-  "signal": "turn-limit",
-  "checkpointRef": "ai_agents_internal/checkpoints/proteus/00000001.json",
-  "resumable": true
-}
-```
-
-Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+- Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
+- Authorization state follows only the manifest; an explicit deny never becomes allow.
+- Structured results include every funded surface, including passing observations.
+- Agent binding: `proteus`. Maximum turns: `48`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `proteus`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract

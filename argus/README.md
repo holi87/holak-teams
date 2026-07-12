@@ -229,9 +229,9 @@ cleanup.
 The schema admits no prompt, completion, target, account, or evidence payload. The committed
 synthetic benchmark
 compares Opus and Sonnet without storing prompts, completions, or target data.
-Workers receive no cross-runtime mapping or routing authority: their prompt contains only
-the turn cap, declared signals, and a schema-valid `argus/model-escalation-request@1`
-stop envelope. Odysseus or `/argus:run` validates that envelope, increments the attempt,
+Workers receive no cross-runtime mapping or routing authority: each prompt contains only
+its turn cap, declared signals, and agent binding; `qa-core` supplies the single schema-valid
+`argus/model-escalation-request@1` stop contract. Odysseus or `/argus:run` validates that envelope, increments the attempt,
 routes it, records the completed attempt's telemetry, explicitly rebinds the active
 allocation with `engagement start-attempt`, adopts the returned token, and starts a fresh
 selected thread from the checkpoint. A pre-spawn `model-unavailable` retry instead uses its
@@ -261,6 +261,13 @@ support is `parent-runtime-dependent` and requires parent-provided orchestration
 packaged assets, and equivalent tools. Native validation uses `claude plugin validate
 --strict` and an isolated `codex doctor` load; those checks prove configuration loading,
 not behavioral equivalence or target outcomes.
+
+Atalanta, Proteus, and Metis receive technique catalogs lazily instead of carrying full
+catalog copies in every prompt. After a valid surface inventory, run
+`argus-assets technique scopes --role <slug>` to obtain the reviewed vocabulary, then
+`argus-assets technique select --role <atalanta|proteus|metis> --inventory <surface-inventory.json>`.
+The selector verifies the reviewed catalog hash and uses explicit namespaced
+`techniqueScopes`; missing, unknown, or ambiguous scopes return the complete catalog.
 
 <!-- RACI_ROSTER_START -->
 | Agent | Role | Lane | Persistence |

@@ -94,26 +94,13 @@ Perf-lane STRUCTURAL signatures, value-AGNOSTIC: DISCOVER endpoints, params, gro
 - **Cross-cutting detection rule (all four).** Each needs ≥3 size/shape points so the SIGNATURE is the SLOPE / DELTA / RATIO, never an absolute number; arrange every precondition through Atlas's data factory (deterministic, idempotent, torn down), hold the controlled variable (returned-count or result-size) fixed, label every constant with its derived basis so the RED is judge-defensible not an invented SLA. Reconcile coverage-vs-inventory per signature in `PERF-REPORT.md`; a signature you could not construct (factory can't reach the cardinality, param space unknown) = NAMED residual risk to Odysseus, never a silent "clean."
 
 <!-- MODEL_ESCALATION_START -->
-## Escalation boundary
+## Execution and escalation binding
 
-- Maximum turns: `40`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
-- On a declared signal, persist a checkpoint bound to the active allocation, dispatch ID, and attempt. Fill this envelope with current IDs, next attempt, signal, and returned path; return it, then stop:
-
-```json
-{
-  "schema": "argus/model-escalation-request@1",
-  "kind": "MODEL_ESCALATION_REQUEST",
-  "engagementId": "engagement-id",
-  "dispatchId": "dispatch-id",
-  "attempt": 2,
-  "agent": "hermes",
-  "signal": "turn-limit",
-  "checkpointRef": "ai_agents_internal/checkpoints/hermes/00000001.json",
-  "resumable": true
-}
-```
-
-Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+- Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
+- Authorization state follows only the manifest; an explicit deny never becomes allow.
+- Structured results include every funded surface, including passing observations.
+- Agent binding: `hermes`. Maximum turns: `40`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `hermes`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract

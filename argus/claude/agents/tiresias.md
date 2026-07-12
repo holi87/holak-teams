@@ -85,26 +85,13 @@ You persist no deliverables to disk — return EVERYTHING in your RESULT envelop
 - **Deferring work to a never-funded "next run"** — state unanalysed classes as residual risk NOW.
 
 <!-- MODEL_ESCALATION_START -->
-## Escalation boundary
+## Execution and escalation binding
 
-- Maximum turns: `48`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
-- On a declared signal, persist a checkpoint bound to the active allocation, dispatch ID, and attempt. Fill this envelope with current IDs, next attempt, signal, and returned path; return it, then stop:
-
-```json
-{
-  "schema": "argus/model-escalation-request@1",
-  "kind": "MODEL_ESCALATION_REQUEST",
-  "engagementId": "engagement-id",
-  "dispatchId": "dispatch-id",
-  "attempt": 2,
-  "agent": "tiresias",
-  "signal": "turn-limit",
-  "checkpointRef": "ai_agents_internal/checkpoints/tiresias/00000001.json",
-  "resumable": true
-}
-```
-
-Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+- Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
+- Authorization state follows only the manifest; an explicit deny never becomes allow.
+- Structured results include every funded surface, including passing observations.
+- Agent binding: `tiresias`. Maximum turns: `48`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `tiresias`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract

@@ -49,9 +49,9 @@
     "qa-coverage-reporting": { "requiredAsset": "qa-coverage-reporting-skill" }
   },
   "techniqueCatalogs": {
-    "atalanta": { "catalogId": "argus/technique-catalog/atalanta@1", "sha256": "7e022f033eab07e4397f4d121fac50b34fe6632ed9f5196c6ba09e38c9061260", "embedded": true },
-    "proteus": { "catalogId": "argus/technique-catalog/proteus@1", "sha256": "f81ec23ffad2d618e49663a615bd6a72720190e648ed2e833eb4415d4f8d1184", "embedded": true },
-    "metis": { "catalogId": "argus/technique-catalog/metis@1", "sha256": "f6a2ec9f044647ffc4d601d367c1ccd5ec93a966301171c5bcb13a6975c14968", "embedded": true }
+    "atalanta": { "catalogId": "argus/technique-catalog/atalanta@1", "sha256": "7e022f033eab07e4397f4d121fac50b34fe6632ed9f5196c6ba09e38c9061260", "delivery": "lazy", "requiredAsset": "technique-catalogs-bundle", "selectionInput": "argus/surface-inventory@1", "fallback": "full-catalog" },
+    "proteus": { "catalogId": "argus/technique-catalog/proteus@1", "sha256": "f81ec23ffad2d618e49663a615bd6a72720190e648ed2e833eb4415d4f8d1184", "delivery": "lazy", "requiredAsset": "technique-catalogs-bundle", "selectionInput": "argus/surface-inventory@1", "fallback": "full-catalog" },
+    "metis": { "catalogId": "argus/technique-catalog/metis@1", "sha256": "f6a2ec9f044647ffc4d601d367c1ccd5ec93a966301171c5bcb13a6975c14968", "delivery": "lazy", "requiredAsset": "technique-catalogs-bundle", "selectionInput": "argus/surface-inventory@1", "fallback": "full-catalog" }
   },
   "orchestration": {
     "requiredTools": ["Agent", "Read", "Bash"],

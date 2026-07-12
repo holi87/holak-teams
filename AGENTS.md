@@ -138,7 +138,9 @@ paths, target-repo paths and host commands referenced by all 27 prompts.
 Installed users can run `argus-assets list`, `argus-assets verify`,
 `argus-assets preflight --target <url-or-path> --mode <A|B|C|D>`,
 `argus-assets model list|trust|request|route|telemetry`,
-`argus-assets template detect|select|scaffold`, the low-level
+`argus-assets template detect|select|scaffold`,
+`argus-assets technique scopes|select --role <atalanta|proteus|metis> [--inventory <surface-inventory.json>]`,
+the low-level
 `argus-assets copy-template <typescript|java|python> <empty-destination>`, or
 `argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 800 KB
 and the complete installed Argus plugin at 1.75 MB. `COLOR-SCHEME.md` and team graphs are
@@ -152,6 +154,10 @@ is packaged but disabled and never preloaded; it requires explicit user opt-in.
 `node scripts/check-argus-prompts.mjs` enforces effective Claude and Codex corpus budgets,
 profile/tool assignments, semantic duplicate detection, default-profile isolation, and a
 representative engagement regression contract.
+
+Atalanta, Proteus, and Metis load their hash-bound technique catalogs lazily after the
+surface inventory. Explicit namespaced `techniqueScopes` select a reviewed subset; missing,
+unknown, or ambiguous scopes fail conservatively to the complete catalog.
 
 Model selection is generated from `argus/model-policy.json`: 10 quality-critical roles
 use Claude `opus` / maximum effort and Codex `sol` / `xhigh`; 17 bounded execution roles

@@ -100,26 +100,13 @@ Bug→test coverage is a **mechanical exit-code gate** (Atlas owns it in `run-te
 - **Rolling pickup, not batch-at-hour-5.** The moment you CONFIRM a defect, flag it to Odysseus as "ready for RED" so the lane's engineer wires it immediately, in parallel with continued hunting — never queued for a final sprint. Track per-bug `confirmed_at` vs `wired` so a growing unwired backlog is visible mid-run.
 
 <!-- MODEL_ESCALATION_START -->
-## Escalation boundary
+## Execution and escalation binding
 
-- Maximum turns: `48`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
-- On a declared signal, persist a checkpoint bound to the active allocation, dispatch ID, and attempt. Fill this envelope with current IDs, next attempt, signal, and returned path; return it, then stop:
-
-```json
-{
-  "schema": "argus/model-escalation-request@1",
-  "kind": "MODEL_ESCALATION_REQUEST",
-  "engagementId": "engagement-id",
-  "dispatchId": "dispatch-id",
-  "attempt": 2,
-  "agent": "minos",
-  "signal": "turn-limit",
-  "checkpointRef": "ai_agents_internal/checkpoints/minos/00000001.json",
-  "resumable": true
-}
-```
-
-Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+- Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
+- Authorization state follows only the manifest; an explicit deny never becomes allow.
+- Structured results include every funded surface, including passing observations.
+- Agent binding: `minos`. Maximum turns: `48`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `minos`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract

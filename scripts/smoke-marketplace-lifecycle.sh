@@ -7,28 +7,21 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/scripts/lib/argus-smoke-model-control.sh"
 CURRENT="$(jq -r '.version' "$ROOT/argus/claude/.claude-plugin/plugin.json")"
-PREVIOUS_REVISION=""
-if [ -n "${ARGUS_PREVIOUS_VERSION:-}" ]; then
-  PREVIOUS="$ARGUS_PREVIOUS_VERSION"
-  while read -r revision; do
-    candidate="$(git -C "$ROOT" show "$revision:argus/claude/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version' || true)"
-    if [ "$candidate" = "$PREVIOUS" ]; then PREVIOUS_REVISION="$revision"; break; fi
-  done < <(git -C "$ROOT" rev-list --all)
-else
-  PREVIOUS_REVISION="${ARGUS_PREVIOUS_REVISION:-origin/master}"
-  PREVIOUS="$(git -C "$ROOT" show "$PREVIOUS_REVISION:argus/claude/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version' || true)"
-  if [ -z "$PREVIOUS" ] || [ "$PREVIOUS" = null ] || [ "$PREVIOUS" = "$CURRENT" ]; then
-    PREVIOUS=""
-    PREVIOUS_REVISION=""
-    while read -r revision; do
-      candidate="$(git -C "$ROOT" show "$revision:argus/claude/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version' || true)"
-      if [ -n "$candidate" ] && [ "$candidate" != null ] && [ "$candidate" != "$CURRENT" ]; then
-        PREVIOUS="$candidate"
-        PREVIOUS_REVISION="$revision"
-        break
-      fi
-    done < <(git -C "$ROOT" rev-list --first-parent HEAD)
+# This smoke proves the retained v1 preflight/state compatibility reader, so its source
+# must remain the last genuine v1 release rather than merely the immediately prior release.
+PREVIOUS="${ARGUS_PREVIOUS_VERSION:-1.18.0}"
+PREVIOUS_REVISION="${ARGUS_PREVIOUS_REVISION:-}"
+if [ -n "$PREVIOUS_REVISION" ]; then
+  candidate="$(git -C "$ROOT" show "${PREVIOUS_REVISION}:argus/claude/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version' || true)"
+  if [ "$candidate" != "$PREVIOUS" ]; then
+    printf 'FAIL  requested legacy revision is Argus %s, expected %s\n' "$candidate" "$PREVIOUS" >&2
+    exit 1
   fi
+else
+  while read -r revision; do
+    candidate="$(git -C "$ROOT" show "${revision}:argus/claude/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version' || true)"
+    if [ "$candidate" = "$PREVIOUS" ]; then PREVIOUS_REVISION="$revision"; break; fi
+  done < <(git -C "$ROOT" rev-list --first-parent HEAD)
 fi
 WORK="$(mktemp -d)"
 SOURCE="$WORK/marketplace"

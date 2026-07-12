@@ -50,11 +50,14 @@
         "^(atalanta|proteus|metis)$": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["catalogId", "sha256", "embedded"],
+          "required": ["catalogId", "sha256", "delivery", "requiredAsset", "selectionInput", "fallback"],
           "properties": {
             "catalogId": { "type": "string", "pattern": "^argus/technique-catalog/(atalanta|proteus|metis)@1$" },
             "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-            "embedded": { "const": true }
+            "delivery": { "const": "lazy" },
+            "requiredAsset": { "const": "technique-catalogs-bundle" },
+            "selectionInput": { "const": "argus/surface-inventory@1" },
+            "fallback": { "const": "full-catalog" }
           }
         }
       }
