@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holak-teams.local/argus/model-runtime-attestation.schema.json",
+  "title": "External Codex parent runtime capability attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "kind", "engagementId", "dispatchId", "attempt", "agent", "runtime",
+    "parentRuntime", "parentSessionId", "adapterContractId", "adapterId", "selectedConfig",
+    "enforcements", "issuedBy", "issuedAt", "expiresAt", "reason", "authentication"
+  ],
+  "properties": {
+    "schema": { "const": "argus/model-runtime-attestation@1" },
+    "kind": { "const": "MODEL_RUNTIME_ATTESTATION" },
+    "engagementId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "dispatchId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "agent": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "runtime": { "const": "codex" },
+    "parentRuntime": { "const": "codex" },
+    "parentSessionId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "adapterContractId": { "const": "argus/runtime-adapters@3" },
+    "adapterId": { "const": "codex-custom-agent@1" },
+    "selectedConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "model", "effort", "maxTurns"],
+      "properties": {
+        "tier": { "enum": ["frontier", "standard"] },
+        "model": { "enum": ["sol", "terra"] },
+        "effort": { "enum": ["medium", "xhigh"] },
+        "maxTurns": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "enforcements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "effort", "maxTurns"],
+      "properties": {
+        "model": { "const": true },
+        "effort": { "const": true },
+        "maxTurns": { "const": true }
+      }
+    },
+    "issuedBy": { "type": "string", "minLength": 1 },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "reason": { "type": "string", "minLength": 1 },
+    "authentication": { "$ref": "#/$defs/authentication" }
+  },
+  "$defs": {
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "purpose", "keyFingerprintSha256", "signatureBase64"],
+      "properties": {
+        "algorithm": { "const": "Ed25519" },
+        "keyId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "purpose": { "const": "runtime-attestation" },
+        "keyFingerprintSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "signatureBase64": { "type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$" }
+      }
+    }
+  }
+}

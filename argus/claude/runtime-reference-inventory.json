@@ -5,7 +5,7 @@
   "skillsScanned": 7,
   "entrypointsScanned": 1,
   "runtimeFilesScanned": 8,
-  "runtimeImportsScanned": 11,
+  "runtimeImportsScanned": 13,
   "hooksScanned": 1,
   "pluginAssetReferences": [
     {
@@ -143,6 +143,25 @@
       "value": "ai_agents_internal/",
       "consumers": [
         "kleio"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/",
+      "consumers": [
+        "skill:orchestration-core"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/heartbeat/<slug>.log",
+      "consumers": [
+        "skill:qa-core"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/orchestration-plan.json",
+      "consumers": [
+        "odysseus",
+        "skill:orchestration-core"
       ]
     },
     {
@@ -2128,6 +2147,12 @@
           "consumer": "lib/contracts.mjs",
           "kind": "runtime",
           "mechanism": "runtime-import",
+          "reference": "./coverage.mjs"
+        },
+        {
+          "consumer": "lib/contracts.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
           "reference": "./json-schema.mjs"
         },
         {
@@ -2135,6 +2160,12 @@
           "kind": "runtime",
           "mechanism": "runtime-import",
           "reference": "./contracts.mjs"
+        },
+        {
+          "consumer": "lib/engagement.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./model-policy.mjs"
         },
         {
           "consumer": "lib/orchestration-plan.mjs",

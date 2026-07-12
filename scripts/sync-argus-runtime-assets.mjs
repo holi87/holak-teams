@@ -1388,15 +1388,6 @@ function treeStats(path) {
   const files = isFile ? [path] : walkFiles(path);
   const hash = createHash('sha256');
   let bytes = 0;
-  if (!isFile) {
-    for (const directory of walkDirectories(path).sort()) {
-      hash.update('directory\0');
-      hash.update(relative(path, directory).split(sep).join('/'));
-      hash.update('\0');
-      hash.update((lstatSync(directory).mode & 0o777).toString(8));
-      hash.update('\0');
-    }
-  }
   for (const file of files.sort()) {
     const rel = isFile ? file.split(sep).at(-1) : relative(path, file).split(sep).join('/');
     const content = readFileSync(file);
@@ -1404,7 +1395,7 @@ function treeStats(path) {
     hash.update('file\0');
     hash.update(rel);
     hash.update('\0');
-    hash.update((statSync(file).mode & 0o777).toString(8));
+    hash.update(statSync(file).mode & 0o111 ? 'x' : '-');
     hash.update('\0');
     hash.update(content);
   }

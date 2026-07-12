@@ -1,18 +1,20 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   accessSync,
-  appendFileSync,
   chmodSync,
+  closeSync,
   copyFileSync,
   constants,
   existsSync,
+  fstatSync,
   linkSync,
   lstatSync,
   mkdtempSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -23,6 +25,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
   buildAuditEvent,
@@ -40,18 +43,23 @@ import {
   advanceBarrier,
   allocateId,
   allocateWorker,
+  appendHeartbeat,
   arriveBarrier,
+  bindLegacyAllocationDecision,
+  bindDispatchableAgents,
   buildGuardAudit,
   claimExclusive,
   cleanupWorker,
   createDefaultEngagement,
   evaluateWriteGuard,
+  ensurePreflightHeartbeat,
   getBarrierStatus,
   getEngagementStatus,
   initializeEngagementState,
   locateEngagementManifest,
   mergeCanonical,
   releaseExclusive,
+  startWorkerAttempt,
   validateEngagementManifest,
   writeCheckpoint,
   writeFragment,
@@ -60,9 +68,15 @@ import { CONTRACT_KINDS, schemaId, validateCanonicalDocument } from '../lib/cont
 import { calculateCoverage, validateCoverageObservations, validateSurfaceInventory } from '../lib/coverage.mjs';
 import { compileJsonSchema } from '../lib/json-schema.mjs';
 import {
+  adapterSnapshotSha256,
   buildModelRoutingPreview,
   buildModelTelemetryEvent,
+  modelAuthenticatedDocumentSha256,
+  modelConfigSha256,
+  modelAuthenticationPayload,
+  modelPublicKeyFingerprint,
   resolveModelDecision,
+  verifyModelDocumentAuthentication,
   validateModelDecisionBinding,
   validateModelPolicy,
 } from '../lib/model-policy.mjs';
@@ -88,7 +102,13 @@ const MODEL_BENCHMARK_PATH = join(ROOT, 'capabilities', 'model-policy.benchmark.
 const RUNTIME_ADAPTERS_PATH = join(ROOT, 'capabilities', 'runtime-adapters.json');
 const RUNTIME_ADAPTERS_SCHEMA_PATH = join(ROOT, 'schemas', 'runtime-adapters.schema.json');
 const MODEL_DECISION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-decision.schema.json');
+const MODEL_DISPATCH_AUTHORIZATION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-dispatch-authorization.schema.json');
+const MODEL_OPERATOR_DECISION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-operator-decision.schema.json');
+const MODEL_RUNTIME_ATTESTATION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-runtime-attestation.schema.json');
+const MODEL_TRUST_STORE_SCHEMA_PATH = join(ROOT, 'schemas', 'model-trust-store.schema.json');
 const MODEL_TELEMETRY_SCHEMA_PATH = join(ROOT, 'schemas', 'model-telemetry-event.schema.json');
+const PREFLIGHT_REPORT_SCHEMA_PATH = join(ROOT, 'schemas', 'preflight-report.schema.json');
+const PREFLIGHT_REPORT_V1_SCHEMA_PATH = join(ROOT, 'schemas', 'preflight-report-v1.schema.json');
 const ORCHESTRATION_PLAN_PATH = join(ROOT, 'capabilities', 'orchestration-plan.json');
 const TEMPLATE_CONTRACT_PATH = join(ROOT, 'capabilities', 'template-contract.json');
 const AUTHORIZATION_TEMPLATE_PATH = join(ROOT, 'policies', 'authorization.template.json');
@@ -110,7 +130,14 @@ const validateRuntimeAdapters = compileJsonSchema(readJson(RUNTIME_ADAPTERS_SCHE
 const runtimeAdapterErrors = validateRuntimeAdapters(runtimeAdapters);
 if (runtimeAdapterErrors.length) fail(`runtime adapter snapshot invalid: ${formatSchemaErrors(runtimeAdapterErrors)}`);
 const validateModelDecisionSchema = compileJsonSchema(readJson(MODEL_DECISION_SCHEMA_PATH));
+const validateModelDispatchAuthorizationSchema = compileJsonSchema(readJson(MODEL_DISPATCH_AUTHORIZATION_SCHEMA_PATH));
+const validateModelOperatorDecisionSchema = compileJsonSchema(readJson(MODEL_OPERATOR_DECISION_SCHEMA_PATH));
+const validateModelRuntimeAttestationSchema = compileJsonSchema(readJson(MODEL_RUNTIME_ATTESTATION_SCHEMA_PATH));
+const validateModelTrustStoreSchema = compileJsonSchema(readJson(MODEL_TRUST_STORE_SCHEMA_PATH));
 const validateModelTelemetrySchema = compileJsonSchema(readJson(MODEL_TELEMETRY_SCHEMA_PATH));
+const preflightReportSchema = readJson(PREFLIGHT_REPORT_SCHEMA_PATH);
+const validatePreflightReportSchema = compileJsonSchema(preflightReportSchema);
+const validatePreflightReportV1Schema = compileJsonSchema(readJson(PREFLIGHT_REPORT_V1_SCHEMA_PATH));
 const orchestrationPlan = readJson(ORCHESTRATION_PLAN_PATH);
 const orchestrationPlanErrors = validateOrchestrationPlan(orchestrationPlan, matrix, raciContract);
 if (orchestrationPlanErrors.length) fail(`orchestration plan invalid: ${orchestrationPlanErrors.join('; ')}`);
@@ -193,15 +220,20 @@ Usage:
   argus-assets preflight --target <url-or-path> --mode <A|B|C|D> [options]
   argus-assets authorization init --target <url-or-path> [options]
   argus-assets authorization check --manifest <path> --lane <slug> --action <action> --target <target> [options]
-  argus-assets engagement <init|validate|allocate|status|claim|release|fragment|merge|id|checkpoint|barrier|cleanup> [options]
+  argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup> [options]
+  argus-assets engagement allocate --manifest <engagement.json> --lane <slug> --decision <model-decision.json> [--dispatch-authorization <MDA-file>] [--token <lane-token>] [--controller-token <odysseus-token>]
+  argus-assets engagement start-attempt --manifest <engagement.json> --lane <slug> --decision <model-decision.json> --token <lane-token> [--controller-token <odysseus-token>] [--dispatch-authorization <MDA-file>]
   argus-assets schema <list|validate> [options]
   argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]
   argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
   argus-assets model list
   argus-assets model benchmark
-  argus-assets model route --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n>
-  argus-assets model telemetry --manifest <engagement.json> --decision <model-decision.json> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false> [options]
-  argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--output <json|->]
+  argus-assets model trust --manifest <engagement.json> --runtime-key-id <key> --operator-key-id <key> [--legacy-lane <slug> --legacy-lease-token <token>]
+  argus-assets model payload --document <unsigned-or-signed.json>
+  argus-assets model request --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n> --checkpoint-ref <path> --token <lane-token>
+  argus-assets model route --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n> [--request <escalation.json>] [--operator-decision <json>] [--runtime-attestation <json>] [--controller-token <odysseus-token>] [--legacy-lease-token <token>]
+  argus-assets model telemetry --manifest <engagement.json> --decision <model-decision.json> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false> [options]
+  argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--artifact-root <path>] [--output <json|->]
   argus-assets template <detect|select|scaffold> [options]
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
@@ -215,6 +247,7 @@ Preflight options:
   --engagement <path>         Existing engagement manifest under artifact root
   --environment <name>        unknown|development|test|staging|production
   --engagement-id <id>        Stable authorization/audit correlation identifier
+  --model-runtime <name>      claude|codex model-routing preview (default: claude)
   --feature <capability>       Confirm a target capability; repeat as needed
   --profile <json>             Deterministic capability override for CI
   --json                       Print the complete report to stdout
@@ -239,7 +272,8 @@ Engagement coordination:
   merge --manifest <path> --owner <slug> --token <lease> --canonical <path>
   claim|release --manifest <path> --lane <slug> --token <lease> --resource <reset|fault>
   id --manifest <path> --lane <slug> --token <lease> --kind <kind> --identity <stable-key>
-  checkpoint --manifest <path> --lane <slug> --token <lease> --phase <phase> --sequence <n> --input <json-file|->
+  checkpoint --manifest <path> --lane <slug> --token <lease> --phase <phase> --sequence <n> --dispatch-id <id> --attempt <n> --input <json-file|->
+  heartbeat --manifest <path> --lane <slug> --token <lease> --phase <phase> --completed <n> --total <n> --status <status>
   barrier arrive|status|advance --manifest <path> [lease options]
   cleanup --manifest <path> --lane <slug> --token <lease> --outcome <success|failure|interrupted>
 
@@ -291,6 +325,7 @@ function templateCommand(args) {
     if (selection.unsupported?.length) fail(`template scaffold has unsupported capabilities: ${selection.unsupported.join(', ')}`);
     const entries = prepareTemplateComposition(selection.runtime);
     try {
+      assertActiveEngagementWrites([resolve(options.destination)], 'template scaffold');
       scaffoldTemplateAtomically(selection, options.destination, entries);
     } catch (error) {
       fail(`template scaffold failed: ${error.message}`);
@@ -306,9 +341,9 @@ function writeTemplateOutput(document, output) {
   if (output === '-') process.stdout.write(serialized);
   else {
     const path = resolve(output);
+    assertActiveEngagementWrites([path], 'template output');
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, serialized, { mode: 0o600 });
-    chmodSync(path, 0o600);
+    atomicPrivateWrite(path, serialized);
     console.log(`WROTE  ${path}`);
   }
 }
@@ -331,13 +366,50 @@ function modelCommand(args) {
     console.log(JSON.stringify(modelBenchmark, null, 2));
     return 0;
   }
+  if (operation === 'trust') {
+    const options = parseNamedOptions(rest, new Set(['--manifest', '--runtime-key-id', '--operator-key-id', '--legacy-lane', '--legacy-lease-token']));
+    requireOptions(options, ['manifest', 'runtimeKeyId', 'operatorKeyId'], 'model trust');
+    assertTrustedModelRoutingAssets();
+    return pinModelTrust(options);
+  }
+  if (operation === 'payload') {
+    const options = parseNamedOptions(rest, new Set(['--document']));
+    requireOptions(options, ['document'], 'model payload');
+    assertTrustedModelRoutingAssets();
+    const path = resolveExistingPhysicalInput(options.document);
+    if (!statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) fail('model payload document must be a non-aliased real file');
+    const document = readSecureJson(path, 'model payload document');
+    if (!['argus/model-operator-decision@1', 'argus/model-runtime-attestation@1', 'argus/model-dispatch-authorization@1'].includes(document.schema)) fail('model payload document has an unsupported schema');
+    process.stdout.write(modelAuthenticationPayload(document));
+    return 0;
+  }
+  if (operation === 'request') {
+    const options = parseNamedOptions(rest, new Set(['--manifest', '--agent', '--runtime', '--signal', '--dispatch-id', '--attempt', '--checkpoint-ref', '--token']));
+    requireOptions(options, ['manifest', 'agent', 'runtime', 'signal', 'dispatchId', 'attempt', 'checkpointRef'], 'model request');
+    assertTrustedModelRoutingAssets();
+    const engagementContext = loadModelEngagement(options.manifest, options.agent);
+    requirePinnedModelTrust(engagementContext.engagement);
+    requireCurrentModelPreflight(engagementContext, options.agent, options.runtime);
+    requireActiveLaneCapability(engagementContext, options.agent, laneCapabilityToken(options));
+    const request = persistModelEscalationRequest(engagementContext, options, positiveInteger(options.attempt, '--attempt'));
+    console.log(`MODEL_REQUEST  persisted path=${request.path} sha256=${request.sha256}`);
+    return 0;
+  }
   if (operation === 'route') {
-    const options = parseNamedOptions(rest, new Set(['--manifest', '--agent', '--runtime', '--signal', '--dispatch-id', '--attempt']));
+    const options = parseNamedOptions(rest, new Set(['--manifest', '--agent', '--runtime', '--signal', '--dispatch-id', '--attempt', '--request', '--operator-decision', '--runtime-attestation', '--controller-token', '--legacy-lease-token']));
     requireOptions(options, ['manifest', 'agent', 'runtime', 'signal', 'dispatchId', 'attempt'], 'model route');
     assertTrustedModelRoutingAssets();
     const engagementContext = loadModelEngagement(options.manifest, options.agent);
     const attempt = positiveInteger(options.attempt, '--attempt');
-    const candidate = resolveModelDecision(policy, runtimeAdapters, {
+    requirePinnedModelTrust(engagementContext.engagement);
+    requireCurrentModelPreflight(engagementContext, options.agent, options.runtime);
+    requireModelRouteAuthority(engagementContext, options);
+    const legacyResumeBinding = requirePreAllocationInitialRoute(engagementContext, options, attempt);
+    const escalationBinding = bindModelEscalation(engagementContext, options, attempt);
+    const availabilityBinding = bindModelUnavailable(engagementContext, options, attempt);
+    const operatorDecision = bindOperatorDecision(engagementContext, options, attempt, escalationBinding, availabilityBinding);
+    const createdAt = new Date().toISOString();
+    const routingInput = {
       slug: options.agent,
       runtime: options.runtime,
       signal: options.signal,
@@ -345,39 +417,60 @@ function modelCommand(args) {
       engagementManifestSha256: engagementContext.sha256,
       dispatchId: options.dispatchId,
       attempt,
+      escalationBinding,
+      availabilityBinding,
+      legacyResumeBinding,
+      operatorDecision,
+      createdAt,
+    };
+    const preview = resolveModelDecision(policy, runtimeAdapters, routingInput);
+    const runtimeAttestation = bindRuntimeAttestation(engagementContext, options, attempt, preview.selectedConfig, createdAt);
+    const candidate = resolveModelDecision(policy, runtimeAdapters, {
+      ...routingInput,
+      runtimeAttestation,
     });
     assertSchemaDocument(validateModelDecisionSchema, candidate, 'model decision');
     const decision = persistModelDecision(policy, candidate, engagementContext);
+    if (decision.status === 'selected' && legacyResumeBinding) {
+      bindLegacyAllocationDecision(
+        engagementContext.engagement,
+        options.agent,
+        options.legacyLeaseToken,
+        executionBindingForDecision(decision),
+      );
+    }
     console.log(JSON.stringify(decision));
     return decision.status === 'blocked' ? 2 : 0;
   }
   if (operation === 'telemetry') {
     const options = parseNamedOptions(rest, new Set([
-      '--manifest', '--decision', '--input-tokens', '--output-tokens', '--duration-ms',
+      '--manifest', '--decision', '--token', '--input-tokens', '--output-tokens', '--duration-ms',
       '--reported-cost-usd', '--success',
     ]));
     requireOptions(options, ['manifest', 'decision', 'inputTokens', 'outputTokens', 'durationMs', 'success'], 'model telemetry');
     assertTrustedModelRoutingAssets();
     const engagementContext = loadModelEngagement(options.manifest);
-    const decisionPath = resolve(engagementContext.artifactRoot, options.decision);
+    const decisionPath = resolveExistingPhysicalInput(options.decision, engagementContext.artifactRoot);
     const decisionDirectory = resolve(engagementContext.artifactRoot, policy.routing.decisionDirectory);
     if (!isWithin(engagementContext.artifactRoot, decisionPath) || dirname(decisionPath) !== decisionDirectory) {
       fail('model telemetry decision must be an exact file under ai_agents_internal/model-decisions');
     }
     assertPhysicalWithin(engagementContext.artifactRoot, decisionPath, 'model telemetry decision');
-    if (existsSync(decisionPath) && lstatSync(decisionPath).isSymbolicLink()) fail('model telemetry decision cannot be a symbolic link');
+    if (existsSync(decisionPath) && (lstatSync(decisionPath).isSymbolicLink() || lstatSync(decisionPath).nlink !== 1)) fail('model telemetry decision cannot be a symbolic link or hard-link alias');
     if (!existsSync(decisionPath) || !statSync(decisionPath).isFile()) fail(`model telemetry decision is missing: ${decisionPath}`);
-    const decision = readJson(decisionPath);
+    const decision = readSecureJson(decisionPath, 'model telemetry decision');
     assertSchemaDocument(validateModelDecisionSchema, decision, 'model telemetry decision');
     const bindingErrors = validateModelDecisionBinding(policy, runtimeAdapters, decision, {
       engagementId: engagementContext.engagement.engagementId,
       engagementManifestSha256: engagementContext.sha256,
       decisionPath,
       artifactRoot: engagementContext.artifactRoot,
+      modelTrust: engagementContext.engagement.modelTrust,
     });
     if (bindingErrors.length) fail(`model telemetry decision binding invalid: ${bindingErrors.join('; ')}`);
     if (!engagementContext.engagement.selectedAgents.includes(decision.agent)) fail(`model telemetry decision agent ${decision.agent} is not selected for the engagement`);
     if (decision.status === 'blocked') fail('model telemetry cannot record a blocked model decision');
+    requireActiveLaneCapability(engagementContext, decision.agent, laneCapabilityToken(options), executionBindingForDecision(decision));
     const event = buildModelTelemetryEvent(policy, decision, {
       inputTokens: nonNegativeNumber(options.inputTokens, '--input-tokens'),
       outputTokens: nonNegativeNumber(options.outputTokens, '--output-tokens'),
@@ -394,21 +487,27 @@ function modelCommand(args) {
     if (!isWithin(engagementContext.artifactRoot, output)) fail('model telemetry output escapes the engagement artifact root');
     mkdirSync(dirname(output), { recursive: true });
     assertPhysicalWithin(engagementContext.artifactRoot, output, 'model telemetry output');
-    if (existsSync(output) && lstatSync(output).isSymbolicLink()) fail('model telemetry output cannot be a symbolic link');
-    appendFileSync(output, `${JSON.stringify(event)}\n`, { mode: 0o600 });
-    chmodSync(output, 0o600);
+    if (existsSync(output) && (lstatSync(output).isSymbolicLink() || lstatSync(output).nlink !== 1 || !statSync(output).isFile())) fail('model telemetry output must be a non-aliased real file');
+    try {
+      atomicPrivateAppend(output, `${JSON.stringify(event)}\n`, (current) => {
+        const prior = current.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+        if (prior.some((record) => record.decisionId === decision.decisionId)) throw new Error('model telemetry already contains an event for this immutable decision');
+      });
+    } catch (error) {
+      fail(`model telemetry append failed: ${error.message}`);
+    }
     console.log(`MODEL_TELEMETRY  recorded output=${output} event=${event.eventId}`);
     return 0;
   }
-  fail('usage: argus-assets model <list|route|telemetry> [options]');
+  fail('usage: argus-assets model <list|benchmark|trust|payload|request|route|telemetry> [options]');
 }
 
 function orchestrationCommand(args) {
   const [operation, ...rest] = args;
   if (operation !== 'plan') {
-    fail('usage: argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--output <json|->]');
+    fail('usage: argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--artifact-root <path>] [--output <json|->]');
   }
-  const options = parseNamedOptions(rest, new Set(['--mode', '--dispatchable', '--output']));
+  const options = parseNamedOptions(rest, new Set(['--mode', '--dispatchable', '--artifact-root', '--output']));
   requireOptions(options, ['mode'], 'orchestration plan');
   const dispatchable = options.dispatchable === undefined
     ? undefined
@@ -421,13 +520,14 @@ function orchestrationCommand(args) {
   if (options.output === undefined || options.output === '-') {
     process.stdout.write(serialized);
   } else {
-    const output = resolve(options.output);
-    const controlRoot = resolve('ai_agents_internal');
+    const artifactRoot = resolve(options.artifactRoot ?? process.cwd());
+    if (!statSafe(artifactRoot)?.isDirectory()) fail('orchestration plan artifact root must be an existing directory');
+    const output = resolve(artifactRoot, options.output);
+    const controlRoot = join(artifactRoot, 'ai_agents_internal');
     const expectedOutput = join(controlRoot, 'orchestration-plan.json');
     if (output !== expectedOutput) fail('orchestration plan output must be ai_agents_internal/orchestration-plan.json');
-    if (existsSync(controlRoot) && lstatSync(controlRoot).isSymbolicLink()) fail('orchestration plan control root cannot be a symbolic link');
+    if (!safePhysicalPath(artifactRoot, output)) fail('orchestration plan output escapes its physical artifact root or crosses a symbolic link');
     mkdirSync(controlRoot, { recursive: true });
-    assertPhysicalWithin(realpathSync(process.cwd()), output, 'orchestration plan output');
     if (existsSync(output)) {
       if (lstatSync(output).isSymbolicLink() || !statSync(output).isFile()) fail('existing orchestration plan output must be a real file');
       if (readFileSync(output, 'utf8') !== serialized) fail(`existing orchestration plan conflicts with requested projection: ${output}`);
@@ -441,17 +541,645 @@ function orchestrationCommand(args) {
   return 0;
 }
 
+function persistPreflightOrchestrationPlan(artifactRoot, mode, dispatchable) {
+  const projection = projectOrchestrationPlan(orchestrationPlan, matrix, mode, dispatchable, raciContract);
+  const path = join(artifactRoot, 'ai_agents_internal', 'orchestration-plan.json');
+  if (!safePhysicalPath(artifactRoot, path)) throw new Error('orchestration plan output is not physically safe');
+  if (existsSync(path)) {
+    const current = readSecureJson(path, 'orchestration plan');
+    if (current.mode !== mode) throw new Error(`existing orchestration plan belongs to Mode ${current.mode}, not ${mode}`);
+  }
+  const serialized = `${JSON.stringify(projection, null, 2)}\n`;
+  atomicPrivateWrite(path, serialized);
+  return {
+    path,
+    sha256: createHash('sha256').update(serialized).digest('hex'),
+    specialists: projection.waves.reduce((count, wave) => count + wave.roles.length, 0),
+  };
+}
+
 function loadModelEngagement(explicitPath, requiredAgent) {
-  const manifestPath = locateEngagementManifest(process.cwd(), explicitPath);
-  if (!manifestPath) fail(`model routing engagement manifest is missing: ${resolve(explicitPath)}`);
-  const engagement = readJson(manifestPath);
+  const locatedManifestPath = locateEngagementManifest(process.cwd(), explicitPath);
+  if (!locatedManifestPath) fail(`model routing engagement manifest is missing: ${resolve(explicitPath)}`);
+  if (lstatSync(locatedManifestPath).isSymbolicLink()) fail('model routing engagement manifest may not be a symbolic link');
+  const manifestPath = realpathSync(locatedManifestPath);
+  const engagement = readSecureJson(manifestPath, 'model routing engagement manifest');
   const errors = validateEngagementManifest(engagement);
   if (errors.length) fail(`model routing engagement manifest invalid: ${errors.join('; ')}`);
-  const artifactRoot = resolve(engagement.artifactRoot);
+  const declaredArtifactRoot = resolve(engagement.artifactRoot);
+  if (!statSafe(declaredArtifactRoot)?.isDirectory()) fail('model routing artifactRoot must be an existing directory');
+  const artifactRoot = realpathSync(declaredArtifactRoot);
   if (!isWithin(artifactRoot, manifestPath)) fail('model routing engagement manifest must stay under its artifactRoot');
   assertPhysicalWithin(artifactRoot, manifestPath, 'model routing engagement manifest');
   if (requiredAgent && !engagement.selectedAgents.includes(requiredAgent)) fail(`${requiredAgent} is not selected for engagement ${engagement.engagementId}`);
   return { engagement, manifestPath, artifactRoot, sha256: manifestSha256(engagement) };
+}
+
+function pinModelTrust(options) {
+  const context = loadModelEngagement(options.manifest);
+  const runtimeTrust = loadHostModelTrust(options.runtimeKeyId, 'runtime-attestation', context);
+  const operatorTrust = loadHostModelTrust(options.operatorKeyId, 'operator-approval', context);
+  if (runtimeTrust.sha256 !== operatorTrust.sha256) fail('model trust keys must come from the same secure host trust-store snapshot');
+  const runtimeKey = pinnedTrustKey(runtimeTrust.record);
+  const operatorKey = pinnedTrustKey(operatorTrust.record);
+  if (runtimeKey.keyId === operatorKey.keyId || runtimeKey.keyFingerprintSha256 === operatorKey.keyFingerprintSha256) {
+    fail('runtime-attestation and operator-approval trust anchors must be distinct');
+  }
+  const existing = context.engagement.modelTrust;
+  if (existing) {
+    if (existing.keys?.runtimeAttestation?.keyId === runtimeKey.keyId && existing.keys?.operatorApproval?.keyId === operatorKey.keyId && existing.trustStoreSha256 === runtimeTrust.sha256) {
+      console.log(`MODEL_TRUST  unchanged runtime=${runtimeKey.keyFingerprintSha256} operator=${operatorKey.keyFingerprintSha256}`);
+      return 0;
+    }
+    fail('model trust is immutable once pinned');
+  }
+  const state = getEngagementStatus(context.engagement);
+  const legacyBootstrap = authorizeLegacyTrustBootstrap(context, state, options);
+  const decisionDirectory = join(context.artifactRoot, modelPolicy.routing.decisionDirectory);
+  if (statSafe(decisionDirectory)?.isDirectory() && readdirSync(decisionDirectory).some((name) => /^MDR-[a-f0-9]{24}\.json$/.test(name))) {
+    fail('model trust must be pinned before any model decision');
+  }
+  const updated = structuredClone(context.engagement);
+  updated.modelTrust = {
+    schema: 'argus/model-trust-bundle@1',
+    source: 'host-trust-store',
+    trustStoreSha256: runtimeTrust.sha256,
+    pinnedAt: new Date().toISOString(),
+    keys: { runtimeAttestation: runtimeKey, operatorApproval: operatorKey },
+    legacyBootstrap,
+  };
+  const errors = validateEngagementManifest(updated);
+  if (errors.length) fail(`pinned model trust makes engagement invalid: ${errors.join('; ')}`);
+  atomicPrivateWrite(context.manifestPath, `${JSON.stringify(updated, null, 2)}\n`);
+  console.log(`MODEL_TRUST  pinned runtimeKeyId=${runtimeKey.keyId} operatorKeyId=${operatorKey.keyId}`);
+  return 0;
+}
+
+function loadHostModelTrust(keyId, expectedPurpose, context) {
+  if (typeof keyId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(keyId)) fail('model trust key IDs must be stable identifiers');
+  const configured = process.env.ARGUS_MODEL_TRUST_STORE;
+  const storePath = configured ? resolve(configured) : join(userInfo().homedir, '.config', 'argus', 'model-trust.json');
+  if (configured && configured !== resolve(configured)) fail('ARGUS_MODEL_TRUST_STORE must be an absolute host path');
+  if (isWithin(context.artifactRoot, storePath)) fail('host model trust store must stay outside the engagement artifact root');
+  const declaredTargetRoot = context.engagement.target?.root && resolve(context.engagement.target.root);
+  const targetRoot = declaredTargetRoot && statSafe(declaredTargetRoot)?.isDirectory() ? realpathSync(declaredTargetRoot) : declaredTargetRoot;
+  if (targetRoot && isWithin(targetRoot, storePath)) fail('host model trust store must stay outside the target root');
+  const directory = dirname(storePath);
+  let directoryStat;
+  let pathStat;
+  try {
+    directoryStat = lstatSync(directory);
+    pathStat = lstatSync(storePath);
+  } catch (error) {
+    fail(`host model trust store is unavailable: ${error.message}`);
+  }
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink() || (uid !== null && directoryStat.uid !== uid) || (directoryStat.mode & 0o022) !== 0) {
+    fail('host model trust store directory must be a real, current-user-owned, non-group/world-writable directory');
+  }
+  if (!pathStat.isFile() || pathStat.isSymbolicLink() || pathStat.nlink !== 1 || (uid !== null && pathStat.uid !== uid) || (pathStat.mode & 0o133) !== 0) {
+    fail('host model trust store must be a real, single-link, current-user-owned, non-writable-by-others, non-executable file');
+  }
+  if (realpathSync(storePath) !== storePath) fail('host model trust store path may not traverse symbolic links');
+  let descriptor;
+  let raw;
+  try {
+    descriptor = openSync(storePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const opened = fstatSync(descriptor);
+    if (opened.dev !== pathStat.dev || opened.ino !== pathStat.ino || !opened.isFile() || opened.nlink !== 1) fail('host model trust store changed during secure open');
+    raw = readFileSync(descriptor);
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+  let document;
+  try { document = JSON.parse(raw.toString('utf8')); }
+  catch (error) { fail(`host model trust store is not valid JSON: ${error.message}`); }
+  assertSchemaDocument(validateModelTrustStoreSchema, document, 'host model trust store');
+  const keyIds = document.keys.map((record) => record.keyId);
+  if (new Set(keyIds).size !== keyIds.length) fail('host model trust store keyIds must be unique');
+  const record = document.keys.find((candidate) => candidate.keyId === keyId);
+  if (!record) fail(`host model trust store has no keyId ${keyId}`);
+  if (record.status !== 'active') fail(`host model trust key ${keyId} is not active`);
+  if (record.purpose !== expectedPurpose) fail(`host model trust key ${keyId} is not authorized for ${expectedPurpose}`);
+  return { record, sha256: createHash('sha256').update(raw).digest('hex'), path: storePath };
+}
+
+function pinnedTrustKey(record) {
+  let keyFingerprintSha256;
+  try { keyFingerprintSha256 = modelPublicKeyFingerprint(record.publicKeyPem); }
+  catch (error) { fail(`model trust public key invalid: ${error.message}`); }
+  return {
+    keyId: record.keyId,
+    purpose: record.purpose,
+    subjectId: record.subjectId,
+    algorithm: 'Ed25519',
+    publicKeyPem: record.publicKeyPem,
+    keyFingerprintSha256,
+  };
+}
+
+function authorizeLegacyTrustBootstrap(context, state, options) {
+  const active = Object.values(state.allocations).filter((allocation) => allocation.status === 'active');
+  const hasLegacyOptions = options.legacyLane !== undefined || options.legacyLeaseToken !== undefined;
+  if (active.length === 0) {
+    if (hasLegacyOptions) fail('legacy trust bootstrap options require a migration-proven active allocation');
+    return null;
+  }
+  if (!options.legacyLane || !options.legacyLeaseToken) fail('active allocations require --legacy-lane and --legacy-lease-token for authenticated legacy trust bootstrap');
+  const migration = legacyStateMigration(state);
+  for (const allocation of active) {
+    if (migration.activeAllocationIdsAtMigration?.[allocation.lane] !== allocation.allocationId) {
+      fail('model trust cannot be pinned after a non-legacy allocation becomes active');
+    }
+  }
+  const allocation = state.allocations[options.legacyLane];
+  if (!allocation || allocation.status !== 'active' || migration.activeAllocationIdsAtMigration?.[options.legacyLane] !== allocation.allocationId) {
+    fail('legacy trust bootstrap lane is not the exact migration-proven active allocation');
+  }
+  requireExactLegacyLease(context, allocation, options.legacyLeaseToken);
+  return {
+    kind: 'legacy-v1-active-allocation',
+    authenticatedLane: allocation.lane,
+    allocationId: allocation.allocationId,
+    migrationId: migration.migrationId,
+    migrationSourceSha256: migration.sourceSha256,
+  };
+}
+
+function requirePinnedModelTrust(engagement) {
+  const trust = engagement.modelTrust;
+  if (!trust || trust.schema !== 'argus/model-trust-bundle@1' || trust.source !== 'host-trust-store' || !/^[a-f0-9]{64}$/.test(trust.trustStoreSha256 ?? '')) {
+    fail('model routing requires a complete purpose-separated host trust bundle');
+  }
+  const expected = { runtimeAttestation: 'runtime-attestation', operatorApproval: 'operator-approval' };
+  for (const [slot, purpose] of Object.entries(expected)) {
+    const key = trust.keys?.[slot];
+    let fingerprint;
+    try { fingerprint = modelPublicKeyFingerprint(key?.publicKeyPem); }
+    catch (error) { fail(`model trust ${slot} key invalid: ${error.message}`); }
+    if (key?.algorithm !== 'Ed25519' || key.purpose !== purpose || !nonEmptyString(key.subjectId) ||
+        !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(key.keyId ?? '') || key.keyFingerprintSha256 !== fingerprint) {
+      fail(`model trust ${slot} binding is incomplete`);
+    }
+  }
+  if (trust.keys.runtimeAttestation.keyId === trust.keys.operatorApproval.keyId ||
+      trust.keys.runtimeAttestation.keyFingerprintSha256 === trust.keys.operatorApproval.keyFingerprintSha256) {
+    fail('model trust purposes must use distinct keys');
+  }
+}
+
+function requireCurrentModelPreflight(context, agent, runtime) {
+  const path = join(context.artifactRoot, 'ai_agents_internal', 'preflight.json');
+  if (!safePhysicalPath(context.artifactRoot, path) || !statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) {
+    fail('model routing requires a current, non-aliased ai_agents_internal/preflight.json');
+  }
+  const raw = readSecureSingleLink(path, 'model routing preflight report');
+  let report;
+  try { report = JSON.parse(raw.toString('utf8')); }
+  catch (error) { fail(`model routing preflight report is not valid JSON: ${error.message}`); }
+  assertSchemaDocument(validatePreflightReportSchema, report, 'model routing preflight report');
+  if (!['ready', 'degraded'].includes(report.status)) fail(`model routing preflight status is not dispatchable: ${report.status}`);
+  if (report.modelRuntime !== runtime) fail(`model routing preflight runtime ${report.modelRuntime} differs from ${runtime}`);
+  if (resolve(report.artifactRoot.path) !== context.artifactRoot || resolve(report.engagement.manifestPath) !== context.manifestPath) {
+    fail('model routing preflight is bound to a different artifact root or engagement manifest');
+  }
+  if (report.engagement.sha256 !== context.sha256) fail('model routing preflight engagement digest is stale; rerun preflight after every manifest change');
+  if (report.mode !== context.engagement.mode) fail('model routing preflight mode differs from the engagement');
+  const disposition = report.agents.find((entry) => entry.slug === agent);
+  if (!disposition?.selected || !['ready', 'degraded'].includes(disposition.status) || (agent !== 'odysseus' && disposition.dispatchAllowed !== true)) {
+    fail(`${agent} is not dispatchable in the current model routing preflight`);
+  }
+  return { report, path, sha256: createHash('sha256').update(raw).digest('hex') };
+}
+
+function requirePreAllocationInitialRoute(context, options, attempt) {
+  if (options.signal !== 'normal' || attempt !== 1) {
+    if (options.legacyLeaseToken !== undefined) fail('--legacy-lease-token is valid only for a normal attempt 1 legacy resume');
+    return null;
+  }
+  const existing = selectedModelDecisions(context, options.agent, options.runtime, options.dispatchId, attempt);
+  if (existing.length > 1) fail('multiple selected model decisions already exist for the exact dispatch attempt');
+  if (existing.length === 1) return existing[0].legacyResumeBinding;
+  const state = getEngagementStatus(context.engagement);
+  const active = Object.values(state.allocations).filter((allocation) => allocation.status === 'active');
+  if (active.length === 0) {
+    if (options.legacyLeaseToken !== undefined) fail('--legacy-lease-token requires a migration-proven active allocation');
+    return null;
+  }
+  if (!options.legacyLeaseToken) fail('normal attempt 1 must be selected before any worker allocation becomes active, except an authenticated legacy-v1 resume');
+  const migration = legacyStateMigration(state);
+  const allocation = state.allocations[options.agent];
+  if (!allocation || allocation.status !== 'active' || migration.activeAllocationIdsAtMigration?.[options.agent] !== allocation.allocationId) {
+    fail('legacy resume requires the exact migration-proven active allocation for the routed agent');
+  }
+  if (active.some((candidate) => migration.activeAllocationIdsAtMigration?.[candidate.lane] !== candidate.allocationId)) {
+    fail('legacy resume is forbidden after any non-legacy allocation becomes active');
+  }
+  const bootstrap = context.engagement.modelTrust?.legacyBootstrap;
+  if (!bootstrap || bootstrap.migrationId !== migration.migrationId || bootstrap.migrationSourceSha256 !== migration.sourceSha256) {
+    fail('legacy resume trust anchor is not bound to the active state migration');
+  }
+  requireExactLegacyLease(context, allocation, options.legacyLeaseToken);
+  const checkpoint = state.checkpoints[options.agent];
+  if (checkpoint && (!['migrated-v1', 'runtime-v1'].includes(checkpoint.bindingOrigin) || checkpoint.allocationId !== allocation.allocationId ||
+      checkpoint.dispatchId !== options.dispatchId || checkpoint.attempt !== 1)) {
+    fail('legacy resume route must use the exact migrated checkpoint dispatch and attempt');
+  }
+  return {
+    kind: 'legacy-v1-active-allocation',
+    lane: allocation.lane,
+    allocationId: allocation.allocationId,
+    allocationSha256: legacyAllocationSha256(allocation),
+    checkpointRef: checkpoint?.path ?? null,
+    checkpointSha256: checkpoint?.sha256 ?? null,
+    migrationId: migration.migrationId,
+    migrationSourceSha256: migration.sourceSha256,
+  };
+}
+
+function legacyStateMigration(state) {
+  const migrations = state.migrations?.filter((entry) => entry.fromVersion === 1 && entry.toVersion === 2) ?? [];
+  if (migrations.length !== 1 || !migrations[0].activeAllocationIdsAtMigration || !/^[a-f0-9]{64}$/.test(migrations[0].sourceSha256 ?? '')) {
+    fail('active allocation is not backed by exactly one authenticated legacy-v1 migration record');
+  }
+  return migrations[0];
+}
+
+function requireExactLegacyLease(context, allocation, token) {
+  if (!nonEmptyString(token) || createHash('sha256').update(token).digest('hex') !== allocation.leaseTokenSha256) fail(`invalid legacy lease token for ${allocation.lane}`);
+  const path = join(context.artifactRoot, context.engagement.writePolicy.workerRoot, allocation.lane, '.lease');
+  const expectedMarker = `allocation:${allocation.allocationId}`;
+  if (!safePhysicalPath(context.artifactRoot, path) || !statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) {
+    fail(`legacy lease file is missing, aliased, or differs from the supplied token for ${allocation.lane}`);
+  }
+  const content = readSecureSingleLink(path, `${allocation.lane} legacy lease`).toString('utf8').trim();
+  if (![token, expectedMarker].includes(content)) fail(`legacy lease file differs from the supplied token for ${allocation.lane}`);
+}
+
+function laneCapabilityToken(options) {
+  const token = options.token ?? process.env.ARGUS_ENGAGEMENT_LEASE_TOKEN;
+  if (!nonEmptyString(token)) fail('model operation requires --token or ARGUS_ENGAGEMENT_LEASE_TOKEN for the active lane');
+  return token;
+}
+
+function controllerCapabilityToken(options) {
+  return options.controllerToken ?? process.env.ARGUS_ENGAGEMENT_CONTROLLER_TOKEN ??
+    (options.agent === 'odysseus' ? options.legacyLeaseToken : null);
+}
+
+function requireModelRouteAuthority(context, options) {
+  const state = getEngagementStatus(context.engagement);
+  if (!Object.values(state.allocations).some((allocation) => allocation.status === 'active')) return;
+  const token = controllerCapabilityToken(options);
+  if (!nonEmptyString(token)) fail('model route requires the active Odysseus controller token after allocation starts');
+  requireActiveLaneCapability(context, 'odysseus', token);
+}
+
+function requireActiveLaneCapability(context, lane, token, expectedBinding) {
+  const state = getEngagementStatus(context.engagement);
+  const allocation = state.allocations?.[lane];
+  if (!allocation || allocation.status !== 'active' || !nonEmptyString(token) ||
+      createHash('sha256').update(token).digest('hex') !== allocation.leaseTokenSha256) {
+    fail(`model operation requires the exact active ${lane} lane capability`);
+  }
+  if (expectedBinding && Object.entries(expectedBinding).some(([field, value]) => allocation[field] !== value)) {
+    fail(`model operation decision differs from the active ${lane} allocation`);
+  }
+  const path = join(context.artifactRoot, context.engagement.writePolicy.workerRoot, lane, '.lease');
+  if (!safePhysicalPath(context.artifactRoot, path) || !statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) {
+    fail(`model operation requires the live non-aliased ${lane} lease marker`);
+  }
+  const content = readSecureSingleLink(path, `${lane} lease marker`).toString('utf8').trim();
+  const migratedId = state.migrations?.find((item) => item.fromVersion === 1 && item.toVersion === 2)?.activeAllocationIdsAtMigration?.[lane];
+  if (content !== `allocation:${allocation.allocationId}` && !(allocation.allocationId === migratedId && content === token)) {
+    fail(`model operation ${lane} lease marker differs from the active allocation`);
+  }
+  return allocation;
+}
+
+function legacyAllocationSha256(allocation) {
+  return createHash('sha256').update(JSON.stringify({
+    lane: allocation.lane,
+    status: allocation.status,
+    allocationId: allocation.allocationId,
+    leaseTokenSha256: allocation.leaseTokenSha256,
+    allocatedAt: allocation.allocatedAt,
+  })).digest('hex');
+}
+
+function persistModelEscalationRequest(context, options, attempt) {
+  const role = modelPolicy.roles.find((item) => item.slug === options.agent);
+  if (!role) fail(`unknown model-policy role: ${options.agent}`);
+  if (!['claude', 'codex'].includes(options.runtime)) fail('model request --runtime must be claude or codex');
+  if (!modelPolicy.escalationProfiles[role.escalationProfile].includes(options.signal)) {
+    fail(`model request signal is not declared for ${options.agent}: ${options.signal}`);
+  }
+  const request = {
+    schema: 'argus/model-escalation-request@1',
+    kind: 'MODEL_ESCALATION_REQUEST',
+    engagementId: context.engagement.engagementId,
+    dispatchId: options.dispatchId,
+    attempt,
+    agent: options.agent,
+    signal: options.signal,
+    checkpointRef: options.checkpointRef,
+    resumable: true,
+  };
+  const errors = validateCanonicalDocument('model-escalation-request', request);
+  if (errors.length > 0) fail(`model escalation request is invalid: ${errors.join('; ')}`);
+  const serialized = `${JSON.stringify(request, null, 2)}\n`;
+  validateModelEscalationState(context, request, options.runtime, serialized);
+  const sha256 = createHash('sha256').update(serialized).digest('hex');
+  const path = join(context.artifactRoot, 'ai_agents_internal', 'model-requests', `MER-${sha256.slice(0, 24)}.json`);
+  if (!safePhysicalPath(context.artifactRoot, path)) fail('model escalation request output is physically unsafe');
+  if (existsSync(path)) {
+    if (lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1 || !statSync(path).isFile() || readFileSync(path, 'utf8') !== serialized) {
+      fail('existing model escalation request differs from its deterministic identity');
+    }
+  } else atomicPrivateWrite(path, serialized);
+  return { path, relativePath: relative(context.artifactRoot, path).split(sep).join('/'), sha256 };
+}
+
+function bindModelEscalation(context, options, attempt) {
+  const role = modelPolicy.roles.find((item) => item.slug === options.agent);
+  if (!role) fail(`unknown model-policy role: ${options.agent}`);
+  const workerSignal = modelPolicy.escalationProfiles[role.escalationProfile].includes(options.signal);
+  if (!workerSignal) {
+    if (options.request) fail('model route --request is valid only for a declared worker escalation signal');
+    if (options.signal === 'normal' && attempt !== 1) fail('normal model routing is valid only for attempt 1');
+    return null;
+  }
+  if (!options.request) fail('declared worker escalation requires --request <model-escalation-request.json>');
+  const requestPath = resolveExistingPhysicalInput(options.request, context.artifactRoot);
+  const requestDirectory = join(context.artifactRoot, 'ai_agents_internal', 'model-requests');
+  if (dirname(requestPath) !== requestDirectory || !safePhysicalPath(context.artifactRoot, requestPath) || !statSafe(requestPath)?.isFile() || lstatSync(requestPath).isSymbolicLink() || lstatSync(requestPath).nlink !== 1) {
+    fail('model escalation request must be an exact non-aliased file under ai_agents_internal/model-requests');
+  }
+  const raw = readSecureSingleLink(requestPath, 'model escalation request');
+  const requestSha256 = createHash('sha256').update(raw).digest('hex');
+  if (basename(requestPath) !== `MER-${requestSha256.slice(0, 24)}.json`) fail('model escalation request filename differs from its deterministic content digest');
+  let request;
+  try { request = JSON.parse(raw); }
+  catch { fail('model escalation request is not valid JSON'); }
+  const requestErrors = validateCanonicalDocument('model-escalation-request', request);
+  if (requestErrors.length > 0) fail(`model escalation request is invalid: ${requestErrors.join('; ')}`);
+  for (const [field, expected] of Object.entries({
+    engagementId: context.engagement.engagementId,
+    dispatchId: options.dispatchId,
+    attempt,
+    agent: options.agent,
+    signal: options.signal,
+  })) {
+    if (request[field] !== expected) fail(`model escalation request ${field} does not match the route`);
+  }
+  return validateModelEscalationState(context, request, options.runtime, raw);
+}
+
+function bindModelUnavailable(context, options, attempt) {
+  if (options.signal !== 'model-unavailable') return null;
+  if (options.request) fail('model-unavailable is bound to a prior selected decision and does not accept --request');
+  if (attempt < 2) fail('model-unavailable requires an attempt after a selected route');
+  const state = getEngagementStatus(context.engagement);
+  const allocation = state.allocations[options.agent];
+  if (!allocation || allocation.status !== 'active') fail('model-unavailable requires an active allocation for the exact agent');
+  const previous = findPreviousModelDecision(context, {
+    agent: options.agent,
+    dispatchId: options.dispatchId,
+    attempt,
+  }, options.runtime);
+  requireAllocationExecutionAncestor(allocation, previous, 'model-unavailable');
+  const statePath = resolve(context.artifactRoot, context.engagement.statePath);
+  if (!isWithin(context.artifactRoot, statePath) || !safePhysicalPath(context.artifactRoot, statePath) || !statSafe(statePath)?.isFile() || lstatSync(statePath).isSymbolicLink() || lstatSync(statePath).nlink !== 1) {
+    fail('model-unavailable engagement state is missing, aliased, or physically unsafe');
+  }
+  return {
+    previousDecisionId: previous.decisionId,
+    previousDecisionIntegritySha256: previous.integritySha256,
+    allocationId: allocation.allocationId,
+    allocationSha256: createHash('sha256').update(JSON.stringify(allocation)).digest('hex'),
+  };
+}
+
+function validateModelEscalationState(context, request, runtime, raw) {
+  const state = getEngagementStatus(context.engagement);
+  const checkpoint = state.checkpoints[request.agent];
+  const allocation = state.allocations[request.agent];
+  if (!checkpoint || !allocation || allocation.status !== 'active') fail('model escalation requires an active allocation and current checkpoint');
+  if (checkpoint.path !== request.checkpointRef || checkpoint.dispatchId !== request.dispatchId || checkpoint.attempt !== request.attempt - 1 || checkpoint.allocationId !== allocation.allocationId) {
+    fail('model escalation checkpoint is stale or belongs to another execution');
+  }
+  const checkpointPath = resolve(context.artifactRoot, checkpoint.path);
+  if (!isWithin(context.artifactRoot, checkpointPath) || !safePhysicalPath(context.artifactRoot, checkpointPath) || !statSafe(checkpointPath)?.isFile() || lstatSync(checkpointPath).isSymbolicLink() || lstatSync(checkpointPath).nlink !== 1) {
+    fail('model escalation checkpoint is missing, aliased, or physically unsafe');
+  }
+  const checkpointSha256 = createHash('sha256').update(readFileSync(checkpointPath)).digest('hex');
+  if (checkpointSha256 !== checkpoint.sha256) fail('model escalation checkpoint digest differs from engagement state');
+  const previous = findPreviousModelDecision(context, request, runtime);
+  requireAllocationExecutionAncestor(allocation, previous, 'model escalation');
+  return {
+    requestSha256: createHash('sha256').update(raw).digest('hex'),
+    checkpointRef: checkpoint.path,
+    checkpointSha256,
+    previousDecisionId: previous.decisionId,
+  };
+}
+
+function requireAllocationExecutionAncestor(allocation, previous, label) {
+  if (allocation.modelDecisionId !== previous.decisionId ||
+      allocation.modelDecisionIntegritySha256 !== previous.integritySha256 ||
+      allocation.dispatchId !== previous.dispatchId ||
+      allocation.attempt !== previous.attempt ||
+      allocation.runtime !== previous.runtime) {
+    fail(`${label} attempt-1 ancestor differs from the active allocation model decision`);
+  }
+}
+
+function bindOperatorDecision(context, options, attempt, escalationBinding, availabilityBinding) {
+  if (!options.operatorDecision) return null;
+  const role = modelPolicy.roles.find((item) => item.slug === options.agent);
+  const unavailable = options.signal === 'model-unavailable';
+  const declared = role && modelPolicy.escalationProfiles[role.escalationProfile].includes(options.signal);
+  if (role?.tier !== 'frontier' || (!declared && !unavailable)) fail('operator decision is valid only for a declared or unavailable frontier escalation');
+  if (unavailable && (!availabilityBinding || escalationBinding || options.request)) fail('frontier unavailability requires the exact prior-decision/allocation binding');
+  if (!unavailable && (!escalationBinding || !options.request || availabilityBinding)) fail('declared frontier escalation requires a validated worker escalation request');
+  const path = resolveExistingPhysicalInput(options.operatorDecision);
+  const directory = join(context.artifactRoot, 'ai_agents_internal', 'operator-decisions');
+  if (dirname(path) !== directory || !safePhysicalPath(context.artifactRoot, path) || !statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) {
+    fail('operator decision must be a non-aliased real file directly under ai_agents_internal/operator-decisions');
+  }
+  const raw = readSecureSingleLink(path, 'operator decision');
+  let document;
+  try { document = JSON.parse(raw); }
+  catch { fail('operator decision is not valid JSON'); }
+  assertSchemaDocument(validateModelOperatorDecisionSchema, document, 'operator decision');
+  let authentication;
+  try { authentication = verifyModelDocumentAuthentication(document, context.engagement.modelTrust); }
+  catch (error) { fail(`operator decision authentication failed: ${error.message}`); }
+  if (unavailable && !['retry-frontier', 'abort'].includes(document.action)) fail('model-unavailable operator action must be retry-frontier or abort');
+  if (!unavailable && !['continue-frontier', 'abort'].includes(document.action)) fail('declared frontier escalation operator action must be continue-frontier or abort');
+  for (const [field, expected] of Object.entries({
+    engagementId: context.engagement.engagementId,
+    dispatchId: options.dispatchId,
+    attempt,
+    agent: options.agent,
+    signal: options.signal,
+  })) {
+    if (document[field] !== expected) fail(`operator decision ${field} does not match the route`);
+  }
+  const blockedPath = join(context.artifactRoot, modelPolicy.routing.decisionDirectory, `${document.blockedDecisionId}.json`);
+  if (!safePhysicalPath(context.artifactRoot, blockedPath) || !statSafe(blockedPath)?.isFile() || lstatSync(blockedPath).isSymbolicLink() || lstatSync(blockedPath).nlink !== 1) {
+    fail('operator decision references a missing, aliased, or unsafe blocked decision');
+  }
+  const blocked = readSecureJson(blockedPath, 'operator-blocked model decision');
+  assertSchemaDocument(validateModelDecisionSchema, blocked, 'operator-blocked model decision');
+  const bindingErrors = validateModelDecisionBinding(modelPolicy, runtimeAdapters, blocked, {
+    engagementId: context.engagement.engagementId,
+    engagementManifestSha256: context.sha256,
+    decisionPath: blockedPath,
+    artifactRoot: context.artifactRoot,
+    modelTrust: context.engagement.modelTrust,
+  });
+  if (bindingErrors.length > 0) fail(`operator-blocked decision binding invalid: ${bindingErrors.join('; ')}`);
+  const expectedBlockedReason = unavailable ? 'FRONTIER_UNAVAILABLE' : 'OPERATOR_ESCALATION_REQUIRED';
+  const exactRouteBinding = unavailable
+    ? JSON.stringify(blocked.availabilityBinding) === JSON.stringify(availabilityBinding) && blocked.escalationBinding === null
+    : JSON.stringify(blocked.escalationBinding) === JSON.stringify(escalationBinding) && blocked.availabilityBinding === null;
+  if (blocked.status !== 'blocked' || blocked.reasonCode !== expectedBlockedReason || blocked.operatorEscalation !== true ||
+      blocked.dispatchId !== options.dispatchId || blocked.attempt !== attempt || blocked.agent !== options.agent || blocked.runtime !== options.runtime || blocked.signal !== options.signal ||
+      !exactRouteBinding) {
+    fail('operator decision does not reference the exact pending frontier escalation');
+  }
+  if (Date.parse(document.approvedAt) < Date.parse(blocked.createdAt)) fail('operator decision predates the blocked escalation');
+  if (Date.parse(document.approvedAt) > Date.now() + 300_000) fail('operator decision approval time is unreasonably far in the future');
+  const binding = {
+    action: document.action,
+    documentSha256: modelAuthenticatedDocumentSha256(document),
+    blockedDecisionId: blocked.decisionId,
+    approvedBy: document.approvedBy,
+    approvedAt: document.approvedAt,
+    reason: document.reason,
+    authentication,
+  };
+  persistOperatorResolution(context, binding);
+  return binding;
+}
+
+function bindRuntimeAttestation(context, options, attempt, selectedConfig, createdAt) {
+  if (!options.runtimeAttestation) return null;
+  if (options.runtime !== 'codex') fail('runtime attestation is valid only for Codex routing');
+  const path = resolveExistingPhysicalInput(options.runtimeAttestation);
+  const directory = join(context.artifactRoot, runtimeAdapters.codex.capabilityAttestation.directory);
+  if (dirname(path) !== directory || !safePhysicalPath(context.artifactRoot, path) || !statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) {
+    fail('runtime attestation must be a non-aliased real file directly under ai_agents_internal/operator-decisions');
+  }
+  const raw = readSecureSingleLink(path, 'runtime attestation');
+  let document;
+  try { document = JSON.parse(raw); }
+  catch { fail('runtime attestation is not valid JSON'); }
+  assertSchemaDocument(validateModelRuntimeAttestationSchema, document, 'runtime attestation');
+  let authentication;
+  try { authentication = verifyModelDocumentAuthentication(document, context.engagement.modelTrust); }
+  catch (error) { fail(`runtime attestation authentication failed: ${error.message}`); }
+  for (const [field, expected] of Object.entries({
+    engagementId: context.engagement.engagementId,
+    dispatchId: options.dispatchId,
+    attempt,
+    agent: options.agent,
+    runtime: options.runtime,
+    parentRuntime: 'codex',
+    adapterContractId: runtimeAdapters.contractId,
+    adapterId: runtimeAdapters.codex.adapterId,
+  })) {
+    if (document[field] !== expected) fail(`runtime attestation ${field} does not match the route`);
+  }
+  for (const field of ['tier', 'model', 'effort', 'maxTurns']) {
+    if (document.selectedConfig[field] !== selectedConfig[field]) fail(`runtime attestation selectedConfig.${field} does not match the selected route`);
+  }
+  const binding = {
+    engagementId: document.engagementId,
+    dispatchId: document.dispatchId,
+    attempt: document.attempt,
+    agent: document.agent,
+    runtime: document.runtime,
+    parentRuntime: document.parentRuntime,
+    adapterContractId: document.adapterContractId,
+    adapterId: document.adapterId,
+    documentSha256: modelAuthenticatedDocumentSha256(document),
+    parentSessionId: document.parentSessionId,
+    adapterSnapshotSha256: adapterSnapshotSha256(runtimeAdapters),
+    selectedConfigSha256: modelConfigSha256(selectedConfig),
+    enforcements: document.enforcements,
+    issuedBy: document.issuedBy,
+    issuedAt: document.issuedAt,
+    expiresAt: document.expiresAt,
+    authentication,
+  };
+  // Reuse the pure resolver's expiry and exact-capability checks before any
+  // selected decision can be persisted.
+  const issuedAt = Date.parse(binding.issuedAt);
+  const expiresAt = Date.parse(binding.expiresAt);
+  const routedAt = Date.parse(createdAt);
+  if (![issuedAt, expiresAt, routedAt].every(Number.isFinite) || routedAt < issuedAt || routedAt > expiresAt ||
+      expiresAt - issuedAt > runtimeAdapters.codex.capabilityAttestation.maxValiditySeconds * 1000) {
+    fail('runtime attestation is expired, not yet valid, or exceeds the adapter validity window');
+  }
+  return binding;
+}
+
+function persistOperatorResolution(context, binding) {
+  const output = join(context.artifactRoot, modelPolicy.routing.decisionDirectory, `OPR-${binding.blockedDecisionId.slice(4)}.json`);
+  if (!safePhysicalPath(context.artifactRoot, output)) fail('operator resolution output is physically unsafe');
+  const serialized = `${JSON.stringify(binding, null, 2)}\n`;
+  mkdirSync(dirname(output), { recursive: true });
+  const temporary = `${output}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+  writeFileSync(temporary, serialized, { flag: 'wx', mode: 0o600 });
+  let created = false;
+  try {
+    linkSync(temporary, output);
+    created = true;
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    if (lstatSync(output).isSymbolicLink() || lstatSync(output).nlink !== 1 || !statSync(output).isFile() || readFileSync(output, 'utf8') !== serialized) {
+      fail('frontier escalation already has a different immutable operator resolution');
+    }
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+  if (created) chmodSync(output, 0o600);
+}
+
+function findPreviousModelDecision(context, request, runtime) {
+  const matches = selectedModelDecisions(context, request.agent, runtime, request.dispatchId, request.attempt - 1);
+  if (matches.length !== 1) fail(`model escalation requires exactly one selected decision for attempt ${request.attempt - 1}`);
+  return matches[0];
+}
+
+function selectedModelDecisions(context, agent, runtime, dispatchId, attempt) {
+  const directory = join(context.artifactRoot, modelPolicy.routing.decisionDirectory);
+  if (!existsSync(directory)) return [];
+  if (!safePhysicalPath(context.artifactRoot, directory) || !statSafe(directory)?.isDirectory() || lstatSync(directory).isSymbolicLink()) fail('model decision directory is unsafe');
+  const matches = [];
+  for (const name of readdirSync(directory).filter((item) => /^MDR-[a-f0-9]{24}\.json$/.test(item))) {
+    const path = join(directory, name);
+    if (!safePhysicalPath(context.artifactRoot, path) || !statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) fail(`model decision path is unsafe or aliased: ${name}`);
+    const decision = readSecureJson(path, 'previous model decision');
+    assertSchemaDocument(validateModelDecisionSchema, decision, 'previous model decision');
+    if ((agent !== undefined && decision.agent !== agent) ||
+        (runtime !== undefined && decision.runtime !== runtime) ||
+        (dispatchId !== undefined && decision.dispatchId !== dispatchId) ||
+        (attempt !== undefined && decision.attempt !== attempt) ||
+        decision.status !== 'selected') continue;
+    const errors = validateModelDecisionBinding(modelPolicy, runtimeAdapters, decision, {
+      engagementId: context.engagement.engagementId,
+      engagementManifestSha256: context.sha256,
+      decisionPath: path,
+      artifactRoot: context.artifactRoot,
+      modelTrust: context.engagement.modelTrust,
+    });
+    if (errors.length > 0) fail(`previous model decision binding invalid: ${errors.join('; ')}`);
+    matches.push(decision);
+  }
+  return matches;
 }
 
 function assertTrustedModelRoutingAssets() {
@@ -463,11 +1191,95 @@ function assertTrustedModelRoutingAssets() {
 }
 
 function persistModelDecision(policy, candidate, context) {
+  if (candidate.status === 'selected' && candidate.signal === 'normal' && candidate.attempt === 1) {
+    return withInitialModelControlLock(context, () => {
+      const exact = selectedModelDecisions(context, candidate.agent, candidate.runtime, candidate.dispatchId, candidate.attempt);
+      const allInitial = selectedModelDecisions(context, candidate.agent, undefined, undefined, candidate.attempt)
+        .filter((decision) => decision.signal === 'normal');
+      if (allInitial.some((decision) => !sameSelectedExecution(decision, candidate))) {
+        fail('a different selected normal attempt-1 decision already exists for this agent in the engagement');
+      }
+      if (exact.length === 0) {
+        if (loadModelControlSeal(context, { required: false })) fail('normal attempt 1 cannot be added after the initial model-control set was sealed');
+        const state = getEngagementStatus(context.engagement);
+        const allocation = state.allocations[candidate.agent];
+        if (candidate.legacyResumeBinding !== null && allocation && hasAllocationExecutionBinding(allocation) &&
+            (allocation.modelDecisionId !== candidate.decisionId || allocation.modelDecisionIntegritySha256 !== candidate.integritySha256 ||
+             allocation.dispatchId !== candidate.dispatchId || allocation.attempt !== candidate.attempt || allocation.runtime !== candidate.runtime)) {
+          fail('legacy normal attempt-1 route differs from the model decision already bound to the active allocation');
+        }
+        if (Object.values(state.allocations).some((allocation) => allocation.status === 'active') && candidate.legacyResumeBinding === null) {
+          fail('normal attempt 1 must be selected before any allocation becomes active');
+        }
+      }
+      return persistModelDecisionUnlocked(policy, candidate, context);
+    });
+  }
+  return persistModelDecisionUnlocked(policy, candidate, context);
+}
+
+function hasAllocationExecutionBinding(allocation) {
+  return /^MDR-[a-f0-9]{24}$/.test(allocation?.modelDecisionId ?? '') &&
+    /^[a-f0-9]{64}$/.test(allocation?.modelDecisionIntegritySha256 ?? '') &&
+    typeof allocation?.dispatchId === 'string' && Number.isInteger(allocation?.attempt) &&
+    ['claude', 'codex'].includes(allocation?.runtime);
+}
+
+function persistModelDecisionUnlocked(policy, candidate, context) {
+  if (candidate.status !== 'selected') return persistModelDecisionFile(policy, candidate, context);
+  const directory = resolve(context.artifactRoot, policy.routing.decisionDirectory);
+  if (!safePhysicalPath(context.artifactRoot, directory)) fail('model selection directory is physically unsafe');
+  mkdirSync(directory, { recursive: true });
+  if (lstatSync(directory).isSymbolicLink() || !statSync(directory).isDirectory()) fail('model selection directory must be a real directory');
+  const key = createHash('sha256').update(`${candidate.engagementId}\0${candidate.agent}\0${candidate.runtime}\0${candidate.dispatchId}\0${candidate.attempt}`).digest('hex').slice(0, 24);
+  const lock = join(directory, `.selection-${key}.lock`);
+  let acquired = false;
+  for (let attempt = 0; attempt < 6000; attempt += 1) {
+    try {
+      mkdirSync(lock, { mode: 0o700 });
+      writeFileSync(join(lock, 'owner.json'), `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`, { flag: 'wx', mode: 0o600 });
+      acquired = true;
+      break;
+    }
+    catch (error) {
+      if (error.code !== 'EEXIST') {
+        rmSync(lock, { recursive: true, force: true });
+        fail(`cannot acquire unique model selection lock: ${error.message}`);
+      }
+      const current = lstatSync(lock);
+      if (current.isSymbolicLink() || !current.isDirectory()) fail('model selection lock is unsafe');
+      reclaimAbandonedModelControlLock(lock);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+  if (!acquired) fail('timed out acquiring unique model selection lock');
+  try {
+    const existing = selectedModelDecisions(context, candidate.agent, candidate.runtime, candidate.dispatchId, candidate.attempt);
+    if (existing.length > 1) fail('multiple selected model decisions exist for the exact dispatch attempt');
+    if (existing.length === 1) {
+      if (!sameSelectedExecution(existing[0], candidate)) fail('a conflicting selected model decision already exists for the exact dispatch attempt');
+      return existing[0];
+    }
+    return persistModelDecisionFile(policy, candidate, context);
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
+}
+
+function sameSelectedExecution(left, right) {
+  const select = (decision) => {
+    const { createdAt, decisionId, integritySha256, relativePath, ...immutableExecution } = decision;
+    return immutableExecution;
+  };
+  return JSON.stringify(select(left)) === JSON.stringify(select(right));
+}
+
+function persistModelDecisionFile(policy, candidate, context) {
   const output = resolve(context.artifactRoot, candidate.relativePath);
   if (!isWithin(context.artifactRoot, output)) fail('model decision path escapes the engagement artifact root');
   mkdirSync(dirname(output), { recursive: true });
   assertPhysicalWithin(context.artifactRoot, output, 'model decision output');
-  if (existsSync(output) && lstatSync(output).isSymbolicLink()) fail('model decision output cannot be a symbolic link');
+  if (existsSync(output) && (lstatSync(output).isSymbolicLink() || lstatSync(output).nlink !== 1 || !statSync(output).isFile())) fail('model decision output must be a non-aliased real file');
   if (existsSync(output)) {
     const existing = readJson(output);
     assertSchemaDocument(validateModelDecisionSchema, existing, 'persisted model decision');
@@ -476,6 +1288,7 @@ function persistModelDecision(policy, candidate, context) {
       engagementManifestSha256: context.sha256,
       decisionPath: output,
       artifactRoot: context.artifactRoot,
+      modelTrust: context.engagement.modelTrust,
     });
     if (errors.length) fail(`persisted model decision binding invalid: ${errors.join('; ')}`);
     if (existing.decisionId !== candidate.decisionId) fail('model decision identity collision');
@@ -484,22 +1297,28 @@ function persistModelDecision(policy, candidate, context) {
   const serialized = `${JSON.stringify(candidate, null, 2)}\n`;
   const temporary = `${output}.${process.pid}.${createHash('sha256').update(`${candidate.decisionId}:${Date.now()}`).digest('hex').slice(0, 12)}.tmp`;
   writeFileSync(temporary, serialized, { flag: 'wx', mode: 0o600 });
+  let created = false;
   try {
     linkSync(temporary, output);
+    created = true;
   } catch (error) {
     if (error.code !== 'EEXIST') throw error;
+    if (lstatSync(output).isSymbolicLink() || lstatSync(output).nlink !== 1 || !statSync(output).isFile() || readFileSync(output, 'utf8') !== serialized) {
+      fail('concurrent model decision differs from the immutable candidate or uses an aliased inode');
+    }
     const existing = readJson(output);
     if (existing.decisionId !== candidate.decisionId) fail('concurrent model decision identity collision');
   } finally {
     rmSync(temporary, { force: true });
   }
-  chmodSync(output, 0o600);
+  if (created) chmodSync(output, 0o600);
   const persisted = readJson(output);
   const errors = validateModelDecisionBinding(policy, runtimeAdapters, persisted, {
     engagementId: context.engagement.engagementId,
     engagementManifestSha256: context.sha256,
     decisionPath: output,
     artifactRoot: context.artifactRoot,
+    modelTrust: context.engagement.modelTrust,
   });
   if (errors.length) fail(`persisted model decision binding invalid: ${errors.join('; ')}`);
   return persisted;
@@ -521,6 +1340,13 @@ function positiveInteger(value, label) {
   return parsed;
 }
 
+function nonNegativeInteger(value, label) {
+  if (!/^(?:0|[1-9][0-9]*)$/.test(String(value))) fail(`${label} must be a non-negative integer`);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) fail(`${label} must be a safe non-negative integer`);
+  return parsed;
+}
+
 function nonNegativeNumber(value, label) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) fail(`${label} must be a non-negative number`);
@@ -528,9 +1354,34 @@ function nonNegativeNumber(value, label) {
 }
 
 function assertPhysicalWithin(root, path, label) {
-  const physicalRoot = realpathSync(root);
-  const physicalParent = realpathSync(dirname(path));
-  if (!isWithin(physicalRoot, physicalParent)) fail(`${label} escapes the physical engagement artifact root`);
+  if (!safePhysicalPath(root, path)) fail(`${label} escapes the physical engagement artifact root or crosses a symbolic link`);
+}
+
+function safePhysicalPath(root, path) {
+  try {
+    const lexicalRoot = resolve(root);
+    const lexicalPath = resolve(path);
+    if (!isWithin(lexicalRoot, lexicalPath)) return false;
+    let cursor = lexicalPath;
+    const suffix = [];
+    while (!existsSync(cursor)) {
+      const parent = dirname(cursor);
+      if (parent === cursor) return false;
+      suffix.unshift(basename(cursor));
+      cursor = parent;
+    }
+    const physical = resolve(realpathSync(cursor), ...suffix);
+    if (!isWithin(realpathSync(lexicalRoot), physical)) return false;
+    cursor = lexicalRoot;
+    for (const part of relative(lexicalRoot, lexicalPath).split(sep).filter(Boolean)) {
+      cursor = join(cursor, part);
+      if (!existsSync(cursor)) break;
+      if (lstatSync(cursor).isSymbolicLink()) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function raciCommand(args) {
@@ -595,9 +1446,11 @@ function coverageCommand(args) {
   const content = `${JSON.stringify(calculateCoverage(inventory, observations), null, 2)}\n`;
   if (output === '-') process.stdout.write(content);
   else {
-    mkdirSync(dirname(resolve(output)), { recursive: true });
-    writeFileSync(resolve(output), content);
-    console.log(`COVERAGE  calculated output=${resolve(output)}`);
+    const outputPath = resolve(output);
+    assertActiveEngagementWrites([outputPath], 'coverage output');
+    mkdirSync(dirname(outputPath), { recursive: true });
+    atomicPrivateWrite(outputPath, content);
+    console.log(`COVERAGE  calculated output=${outputPath}`);
   }
   return 0;
 }
@@ -606,15 +1459,31 @@ function schemaCommand(args) {
   const [operation, ...rest] = args;
   if (operation === 'list') {
     for (const kind of CONTRACT_KINDS) console.log(`${kind}\t${schemaId(kind)}`);
+    console.log(`preflight-report\t${preflightReportSchema.properties.$schema.const}\tschemaVersion=2\treadCompatible=1,2\treport-only`);
     return 0;
   }
   if (operation === 'validate') {
     const options = parseNamedOptions(rest, new Set(['--kind', '--input']));
     requireOptions(options, ['kind', 'input'], 'schema validate');
-    if (!CONTRACT_KINDS.includes(options.kind)) fail(`schema validate --kind must be one of: ${CONTRACT_KINDS.join(', ')}`);
+    const supportedKinds = [...CONTRACT_KINDS, 'preflight-report'];
+    if (!supportedKinds.includes(options.kind)) fail(`schema validate --kind must be one of: ${supportedKinds.join(', ')}`);
     let document;
     try { document = JSON.parse(readTextInput(options.input)); }
     catch (error) { fail(`schema validate: input is not valid JSON: ${error.message}`); }
+    if (options.kind === 'preflight-report') {
+      const version = document?.schemaVersion;
+      const validate = version === 1
+        ? validatePreflightReportV1Schema
+        : version === 2
+          ? validatePreflightReportSchema
+          : null;
+      if (!validate) fail(`schema validate preflight-report: unsupported schemaVersion ${String(version)}; expected 1 or 2`);
+      const errors = validate(document);
+      if (errors.length) fail(`schema validate preflight-report@${version}: ${formatSchemaErrors(errors)}`);
+      const validatorIdentity = version === 1 ? 'preflight-report-v1.schema.json' : document.$schema;
+      console.log(`PASS  schema preflight-report schemaVersion=${version} validator=${validatorIdentity} report-only input=${options.input}`);
+      return 0;
+    }
     const errors = validateCanonicalDocument(options.kind, document);
     if (errors.length) fail(`schema validate ${options.kind}: ${errors.join('; ')}`);
     console.log(`PASS  schema ${schemaId(options.kind)} input=${options.input}`);
@@ -636,6 +1505,7 @@ function engagementCommand(args) {
     if (operation === 'init') return initializeEngagement(rest);
     if (operation === 'validate') return validateEngagement(rest);
     if (operation === 'allocate') return engagementAllocate(rest);
+    if (operation === 'start-attempt') return engagementStartAttempt(rest);
     if (operation === 'status') return engagementStatus(rest);
     if (operation === 'claim') return engagementClaim(rest);
     if (operation === 'release') return engagementRelease(rest);
@@ -643,27 +1513,29 @@ function engagementCommand(args) {
     if (operation === 'merge') return engagementMerge(rest);
     if (operation === 'id') return engagementId(rest);
     if (operation === 'checkpoint') return engagementCheckpoint(rest);
+    if (operation === 'heartbeat') return engagementHeartbeat(rest);
     if (operation === 'barrier') return engagementBarrier(rest);
     if (operation === 'cleanup') return engagementCleanup(rest);
   } catch (error) {
     fail(`engagement ${operation ?? '(missing)'}: ${error.message}`);
   }
-  fail('usage: argus-assets engagement <init|validate|allocate|status|claim|release|fragment|merge|id|checkpoint|barrier|cleanup> [options]');
+  fail('usage: argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup> [options]');
 }
 
 function initializeEngagement(args) {
   const options = parseNamedOptions(args, new Set(['--target', '--artifact-root', '--mode', '--output', '--engagement-id', '--browser-support', '--accessibility-requirement']));
   for (const required of ['target', 'artifactRoot', 'mode']) if (!options[required]) fail(`engagement init requires --${camelToKebab(required)}`);
   if (!['A', 'B', 'C', 'D'].includes(options.mode)) fail('engagement init --mode must be A, B, C, or D');
-  const artifactRoot = resolve(options.artifactRoot);
+  const artifactRoot = realpathSync(resolve(options.artifactRoot));
   const output = resolve(artifactRoot, options.output ?? 'ai_agents_internal/engagement.json');
-  if (!isWithin(artifactRoot, output)) fail('engagement manifest path escapes artifact root');
+  if (!statSafe(artifactRoot)?.isDirectory() || !safePhysicalPath(artifactRoot, output)) fail('engagement manifest path escapes its physical artifact root or crosses a symbolic link');
   if (existsSync(output)) fail(`refusing to overwrite existing engagement manifest: ${output}`);
   const selectedAgents = matrix.agents.filter((agent) => agent.modes.includes(options.mode)).map((agent) => agent.slug);
-  const targetPath = statSafe(resolve(options.target)) ? resolve(options.target) : null;
+  const targetPath = statSafe(resolve(options.target)) ? realpathSync(resolve(options.target)) : null;
+  const targetIdentifier = targetPath ?? (/^https?:\/\//i.test(options.target) ? new URL(options.target).toString() : options.target);
   const engagement = createDefaultEngagement({
     template: readJson(ENGAGEMENT_TEMPLATE_PATH),
-    target: options.target,
+    target: targetIdentifier,
     targetRoot: targetPath,
     artifactRoot,
     mode: options.mode,
@@ -691,11 +1563,381 @@ function validateEngagement(args) {
 }
 
 function engagementAllocate(args) {
-  const options = parseNamedOptions(args, new Set(['--manifest', '--lane']));
-  requireOptions(options, ['manifest', 'lane'], 'engagement allocate');
-  const { manifest: engagement } = loadEngagement(options);
-  console.log(JSON.stringify(allocateWorker(engagement, options.lane)));
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--decision', '--dispatch-authorization', '--token', '--controller-token']));
+  requireOptions(options, ['manifest', 'lane', 'decision'], 'engagement allocate');
+  assertTrustedModelRoutingAssets();
+  const initialContext = loadModelEngagement(options.manifest, options.lane);
+  withInitialModelControlLock(initialContext, () => {
+    const context = loadModelEngagement(options.manifest, options.lane);
+    requirePinnedModelTrust(context.engagement);
+    const initialState = getEngagementStatus(context.engagement);
+    const activeAllocation = initialState.allocations?.[options.lane];
+    const resumingBoundAttempt = activeAllocation?.status === 'active' &&
+      ['modelDecisionId', 'modelDecisionIntegritySha256', 'dispatchId', 'attempt', 'runtime'].every((field) => Object.hasOwn(activeAllocation, field));
+    const decision = resumingBoundAttempt
+      ? loadSelectedDecision(context, options.lane, options.decision, 'resume')
+      : loadSelectedAllocationDecision(context, options.lane, options.decision);
+    const dispatchAuthorization = loadDispatchAuthorization(context, options.dispatchAuthorization, decision);
+    const preflight = requireCurrentModelPreflight(context, options.lane, decision.runtime);
+    const state = getEngagementStatus(context.engagement);
+    let seal;
+    if (Object.keys(state.allocations).length === 0) {
+      if (options.lane !== 'odysseus') fail('the first allocation must be Odysseus');
+      seal = createModelControlSeal(context, decision.runtime, preflight);
+    } else {
+      seal = loadModelControlSeal(context, { required: decision.legacyResumeBinding === null });
+      if (seal && seal.preflightSha256 !== preflight.sha256) {
+        fail('engagement allocation preflight differs from the sealed model-control report');
+      }
+    }
+    if (seal && resumingBoundAttempt) requireActiveAllocationDecision(state, options.lane, seal, decision);
+    else if (seal) requireSealedAllocationDecision(seal, decision);
+    else requireExactLegacyResumeAllocation(state, options, decision);
+    console.log(JSON.stringify(allocateWorker(context.engagement, options.lane, {
+      resumeToken: options.token,
+      controllerToken: options.controllerToken,
+      executionBinding: executionBindingForDecision(decision),
+      dispatchAuthorization,
+    })));
+  });
   return 0;
+}
+
+function engagementStartAttempt(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--decision', '--dispatch-authorization', '--token', '--controller-token']));
+  requireOptions(options, ['manifest', 'lane', 'decision', 'token'], 'engagement start-attempt');
+  assertTrustedModelRoutingAssets();
+  const context = loadModelEngagement(options.manifest, options.lane);
+  requirePinnedModelTrust(context.engagement);
+  const decision = loadSelectedRetryDecision(context, options.lane, options.decision);
+  const dispatchAuthorization = loadDispatchAuthorization(context, options.dispatchAuthorization, decision);
+  const preflight = requireCurrentModelPreflight(context, options.lane, decision.runtime);
+  const seal = loadModelControlSeal(context);
+  if (seal.runtime !== decision.runtime || seal.preflightSha256 !== preflight.sha256 || !seal.decisions[options.lane]) {
+    fail('retry decision is outside the sealed dispatchable model-control set');
+  }
+  console.log(JSON.stringify(startWorkerAttempt(context.engagement, options.lane, {
+    token: options.token,
+    controllerToken: options.controllerToken,
+    executionBinding: executionBindingForDecision(decision),
+    dispatchAuthorization,
+  })));
+  return 0;
+}
+
+function loadDispatchAuthorization(context, explicitPath, decision) {
+  if (decision.runtime !== 'codex') {
+    if (explicitPath) fail('--dispatch-authorization is valid only for Codex decisions');
+    return undefined;
+  }
+  if (!explicitPath) fail('Codex allocation or retry requires --dispatch-authorization from the trusted JIT dispatch wrapper');
+  const path = resolveExistingPhysicalInput(explicitPath, context.artifactRoot);
+  const directory = join(context.artifactRoot, 'ai_agents_internal', 'operator-decisions');
+  if (dirname(path) !== directory || !safePhysicalPath(context.artifactRoot, path) || !statSafe(path)?.isFile() ||
+      lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) {
+    fail('dispatch authorization must be a non-aliased real file directly under ai_agents_internal/operator-decisions');
+  }
+  const raw = readSecureSingleLink(path, 'dispatch authorization');
+  const digest = createHash('sha256').update(raw).digest('hex');
+  if (basename(path) !== `MDA-${digest.slice(0, 24)}.json`) fail('dispatch authorization filename differs from its deterministic content digest');
+  let document;
+  try { document = JSON.parse(raw); }
+  catch { fail('dispatch authorization is not valid JSON'); }
+  assertSchemaDocument(validateModelDispatchAuthorizationSchema, document, 'dispatch authorization');
+  try { verifyModelDocumentAuthentication(document, context.engagement.modelTrust); }
+  catch (error) { fail(`dispatch authorization authentication failed: ${error.message}`); }
+  return document;
+}
+
+function loadSelectedAllocationDecision(context, lane, explicitPath) {
+  const decision = loadSelectedDecision(context, lane, explicitPath, 'allocation');
+  if (decision.signal !== 'normal' || decision.attempt !== 1) {
+    fail('engagement allocation requires a selected normal attempt-1 model decision');
+  }
+  return decision;
+}
+
+function loadSelectedRetryDecision(context, lane, explicitPath) {
+  const decision = loadSelectedDecision(context, lane, explicitPath, 'retry');
+  if (decision.signal === 'normal' || decision.attempt < 2) {
+    fail('engagement start-attempt requires a selected non-normal decision after attempt 1');
+  }
+  return decision;
+}
+
+function loadSelectedDecision(context, lane, explicitPath, operation) {
+  const decisionPath = resolveExistingPhysicalInput(explicitPath, context.artifactRoot);
+  const decisionDirectory = resolve(context.artifactRoot, modelPolicy.routing.decisionDirectory);
+  if (!isWithin(context.artifactRoot, decisionPath) || dirname(decisionPath) !== decisionDirectory || !/^MDR-[a-f0-9]{24}\.json$/.test(basename(decisionPath))) {
+    fail(`engagement ${operation} decision must be an exact model-decision file under ai_agents_internal/model-decisions`);
+  }
+  assertPhysicalWithin(context.artifactRoot, decisionPath, `engagement ${operation} model decision`);
+  if (!existsSync(decisionPath) || !statSync(decisionPath).isFile() || lstatSync(decisionPath).isSymbolicLink() || lstatSync(decisionPath).nlink !== 1) {
+    fail(`engagement ${operation} model decision must be a non-aliased real file`);
+  }
+  const decision = readSecureJson(decisionPath, `engagement ${operation} model decision`);
+  assertSchemaDocument(validateModelDecisionSchema, decision, `engagement ${operation} model decision`);
+  const bindingErrors = validateModelDecisionBinding(modelPolicy, runtimeAdapters, decision, {
+    engagementId: context.engagement.engagementId,
+    engagementManifestSha256: context.sha256,
+    decisionPath,
+    artifactRoot: context.artifactRoot,
+    modelTrust: context.engagement.modelTrust,
+  });
+  if (bindingErrors.length) fail(`engagement ${operation} model decision binding invalid: ${bindingErrors.join('; ')}`);
+  if (decision.agent !== lane) fail(`engagement ${operation} model decision belongs to ${decision.agent}, not ${lane}`);
+  if (decision.status !== 'selected') fail(`engagement ${operation} requires a selected model decision`);
+  return decision;
+}
+
+function executionBindingForDecision(decision) {
+  return {
+    modelDecisionId: decision.decisionId,
+    modelDecisionIntegritySha256: decision.integritySha256,
+    dispatchId: decision.dispatchId,
+    attempt: decision.attempt,
+    runtime: decision.runtime,
+  };
+}
+
+function createModelControlSeal(context, runtime, preflight) {
+  const existingSeal = loadModelControlSeal(context, { required: false });
+  if (existingSeal) {
+    if (existingSeal.runtime !== runtime || existingSeal.preflightSha256 !== preflight.sha256) {
+      fail('existing initial model-control seal differs from the current runtime or preflight report');
+    }
+    bindDispatchableAgents(context.engagement, existingSeal.dispatchableAgents);
+    return existingSeal;
+  }
+  const decisions = {};
+  const errors = [];
+  const dispatchableAgents = dispatchablePreflightAgents(context.engagement, preflight.report);
+  if (!dispatchableAgents.includes('odysseus')) errors.push('odysseus: current preflight is not dispatchable');
+  for (const agent of dispatchableAgents) {
+    const selected = selectedModelDecisions(context, agent, runtime, undefined, 1)
+      .filter((decision) => decision.signal === 'normal');
+    if (selected.length !== 1) {
+      errors.push(`${agent}: expected exactly one selected normal attempt-1 decision, found ${selected.length}`);
+      continue;
+    }
+    decisions[agent] = executionBindingForDecision(selected[0]);
+  }
+  if (errors.length > 0) fail(`Odysseus bootstrap cannot seal the initial model-control set: ${errors.join('; ')}`);
+  bindDispatchableAgents(context.engagement, dispatchableAgents);
+  const seal = {
+    schema: 'argus/model-control-seal@1',
+    schemaVersion: 1,
+    engagementId: context.engagement.engagementId,
+    engagementManifestSha256: context.sha256,
+    runtime,
+    preflightSha256: preflight.sha256,
+    dispatchableAgents,
+    decisions: Object.fromEntries(Object.entries(decisions).sort(([left], [right]) => left.localeCompare(right))),
+    sealedAt: new Date().toISOString(),
+  };
+  seal.integritySha256 = modelControlSealSha256(seal);
+  const path = modelControlSealPath(context);
+  const serialized = `${JSON.stringify(seal, null, 2)}\n`;
+  atomicPrivateWrite(path, serialized);
+  return loadModelControlSeal(context);
+}
+
+function loadModelControlSeal(context, { required = true } = {}) {
+  const path = modelControlSealPath(context);
+  if (!existsSync(path)) {
+    if (required) fail('engagement allocation requires the immutable initial model-control seal');
+    return null;
+  }
+  if (!safePhysicalPath(context.artifactRoot, path) || !statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) {
+    fail('initial model-control seal must be a non-aliased real file');
+  }
+  const seal = readSecureJson(path, 'initial model-control seal');
+  if (seal?.schema !== 'argus/model-control-seal@1' || seal.schemaVersion !== 1 || seal.engagementId !== context.engagement.engagementId ||
+      seal.engagementManifestSha256 !== context.sha256 || !['claude', 'codex'].includes(seal.runtime) ||
+      !/^[a-f0-9]{64}$/.test(seal.preflightSha256 ?? '') || !Array.isArray(seal.dispatchableAgents) ||
+      !seal.dispatchableAgents.every((agent) => typeof agent === 'string') || new Set(seal.dispatchableAgents).size !== seal.dispatchableAgents.length ||
+      !plainObject(seal.decisions) ||
+      !validDateTime(seal.sealedAt) || seal.integritySha256 !== modelControlSealSha256(seal)) {
+    fail('initial model-control seal is malformed or stale');
+  }
+  const preflightPath = join(context.artifactRoot, 'ai_agents_internal', 'preflight.json');
+  const preflightRaw = readSecureSingleLink(preflightPath, 'sealed model-control preflight report');
+  let preflight;
+  try { preflight = JSON.parse(preflightRaw.toString('utf8')); }
+  catch { fail('sealed model-control preflight report is not valid JSON'); }
+  assertSchemaDocument(validatePreflightReportSchema, preflight, 'sealed model-control preflight report');
+  if (createHash('sha256').update(preflightRaw).digest('hex') !== seal.preflightSha256) fail('initial model-control seal preflight digest is stale');
+  const expectedAgents = dispatchablePreflightAgents(context.engagement, preflight);
+  if (JSON.stringify([...seal.dispatchableAgents].sort()) !== JSON.stringify(expectedAgents)) fail('initial model-control seal dispatchable agent set differs from preflight');
+  if (JSON.stringify(Object.keys(seal.decisions).sort()) !== JSON.stringify(expectedAgents)) fail('initial model-control seal agent set differs from the engagement');
+  const state = getEngagementStatus(context.engagement);
+  if (Array.isArray(state.dispatchableAgents) && JSON.stringify(state.dispatchableAgents) !== JSON.stringify(expectedAgents)) {
+    fail('engagement state dispatchable projection differs from the model-control seal');
+  }
+  if (state.dispatchableAgents === null && Object.keys(state.allocations).length > 0) {
+    fail('allocated engagement state has no sealed dispatchable projection');
+  }
+  for (const [agent, binding] of Object.entries(seal.decisions)) {
+    if (agent !== binding.agent && binding.agent !== undefined) fail(`initial model-control seal decision key differs for ${agent}`);
+    executionBindingForSeal(binding, agent, seal.runtime);
+  }
+  return seal;
+}
+
+function dispatchablePreflightAgents(engagement, report) {
+  const selected = new Set(engagement.selectedAgents);
+  return report.agents
+    .filter((entry) => selected.has(entry.slug) && entry.selected && ['ready', 'degraded'].includes(entry.status) &&
+      (entry.slug === 'odysseus' || entry.dispatchAllowed === true))
+    .map((entry) => entry.slug)
+    .sort();
+}
+
+function requireSealedAllocationDecision(seal, decision) {
+  if (seal.runtime !== decision.runtime) fail('allocation decision runtime differs from the sealed model-control runtime');
+  const expected = seal.decisions[decision.agent];
+  if (!expected || JSON.stringify(expected) !== JSON.stringify(executionBindingForDecision(decision))) {
+    fail(`${decision.agent} allocation decision differs from the immutable model-control seal`);
+  }
+}
+
+function requireActiveAllocationDecision(state, lane, seal, decision) {
+  const allocation = state.allocations?.[lane];
+  const binding = executionBindingForDecision(decision);
+  if (allocation?.status !== 'active' || seal.runtime !== decision.runtime || !seal.decisions[lane] ||
+      !Object.entries(binding).every(([field, value]) => allocation[field] === value)) {
+    fail(`${lane} resume decision differs from the active allocation or sealed dispatchable set`);
+  }
+}
+
+function requireExactLegacyResumeAllocation(state, options, decision) {
+  const legacy = decision.legacyResumeBinding;
+  const allocation = state.allocations?.[options.lane];
+  const migrations = state.migrations?.filter((entry) =>
+    entry.fromVersion === 1 && entry.toVersion === 2 &&
+    entry.migrationId === legacy?.migrationId && entry.sourceSha256 === legacy?.migrationSourceSha256,
+  ) ?? [];
+  const migration = migrations.length === 1 ? migrations[0] : null;
+  if (!legacy || legacy.lane !== options.lane || allocation?.status !== 'active' ||
+      allocation.allocationId !== legacy.allocationId || !options.token || !migration ||
+      migration.activeAllocationIdsAtMigration?.[options.lane] !== allocation.allocationId) {
+    fail('legacy allocation bypass is valid only for the exact active migration-proven allocation with its retained lane token');
+  }
+}
+
+function executionBindingForSeal(binding, agent, runtime) {
+  if (!plainObject(binding) || !/^MDR-[a-f0-9]{24}$/.test(binding.modelDecisionId ?? '') ||
+      !/^[a-f0-9]{64}$/.test(binding.modelDecisionIntegritySha256 ?? '') ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(binding.dispatchId ?? '') ||
+      binding.attempt !== 1 || binding.runtime !== runtime || Object.keys(binding).length !== 5) {
+    fail(`initial model-control seal has an invalid execution binding for ${agent}`);
+  }
+}
+
+function modelControlSealPath(context) {
+  return join(context.artifactRoot, 'ai_agents_internal', 'model-control-seal.json');
+}
+
+function modelControlSealSha256(seal) {
+  const copy = structuredClone(seal);
+  copy.integritySha256 = '';
+  return createHash('sha256').update(stableCanonicalJson(copy)).digest('hex');
+}
+
+function withInitialModelControlLock(context, operation) {
+  const directory = resolve(context.artifactRoot, modelPolicy.routing.decisionDirectory);
+  if (!safePhysicalPath(context.artifactRoot, directory)) fail('initial model-control directory is physically unsafe');
+  mkdirSync(directory, { recursive: true });
+  const lock = join(directory, '.initial-control.lock');
+  let acquired = false;
+  for (let attempt = 0; attempt < 6000; attempt += 1) {
+    try {
+      mkdirSync(lock, { mode: 0o700 });
+      writeFileSync(join(lock, 'owner.json'), `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`, { flag: 'wx', mode: 0o600 });
+      acquired = true;
+      break;
+    } catch (error) {
+      if (error.code !== 'EEXIST') {
+        rmSync(lock, { recursive: true, force: true });
+        fail(`cannot acquire initial model-control lock: ${error.message}`);
+      }
+      reclaimAbandonedModelControlLock(lock);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+  if (!acquired) fail('timed out acquiring initial model-control lock');
+  try { return operation(); }
+  finally { rmSync(lock, { recursive: true, force: true }); }
+}
+
+function modelControlLockIsAbandoned(lock) {
+  try {
+    const ownerPath = join(lock, 'owner.json');
+    if (!existsSync(ownerPath)) return Date.now() - statSync(lock).mtimeMs > 30_000;
+    const ownerStat = lstatSync(ownerPath);
+    if (!ownerStat.isFile() || ownerStat.isSymbolicLink() || ownerStat.nlink !== 1) return false;
+    let owner;
+    try { owner = JSON.parse(readFileSync(ownerPath, 'utf8')); }
+    catch { return Date.now() - statSync(lock).mtimeMs > 30_000; }
+    if (!Number.isInteger(owner.pid) || owner.pid < 1) return Date.now() - statSync(lock).mtimeMs > 30_000;
+    try {
+      process.kill(owner.pid, 0);
+      return false;
+    } catch (error) {
+      if (error.code === 'EPERM') return false;
+      return error.code === 'ESRCH';
+    }
+  } catch {
+    return false;
+  }
+}
+
+function reclaimAbandonedModelControlLock(lock) {
+  let lockEntry;
+  try { lockEntry = lstatSync(lock); }
+  catch (error) {
+    if (error.code === 'ENOENT') return true;
+    throw error;
+  }
+  if (lockEntry.isSymbolicLink() || !lockEntry.isDirectory()) throw new Error(`model-control lock path is unsafe: ${lock}`);
+  if (!modelControlLockIsAbandoned(lock)) return false;
+  const ownerEntry = lstatSafe(join(lock, 'owner.json'));
+  const claim = join(lock, '.reclaim');
+  try {
+    mkdirSync(claim, { mode: 0o700 });
+    writeFileSync(join(claim, 'owner.json'), `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`, { flag: 'wx', mode: 0o600 });
+  } catch (error) {
+    if (error.code === 'EEXIST') return false;
+    throw error;
+  }
+  let quarantine = null;
+  try {
+    if (!sameDirectoryIdentity(lockEntry, lstatSafe(lock)) ||
+        !sameFilesystemEntry(ownerEntry, lstatSafe(join(lock, 'owner.json')))) return false;
+    quarantine = `${lock}.stale-${process.pid}-${randomBytes(6).toString('hex')}`;
+    renameSync(lock, quarantine);
+    rmSync(quarantine, { recursive: true, force: true });
+    return true;
+  } finally {
+    if (!quarantine && sameDirectoryIdentity(lockEntry, lstatSafe(lock))) rmSync(claim, { recursive: true, force: true });
+  }
+}
+
+function lstatSafe(path) {
+  try { return lstatSync(path); }
+  catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+function sameDirectoryIdentity(left, right) {
+  return Boolean(left && right && left.dev === right.dev && left.ino === right.ino);
+}
+
+function sameFilesystemEntry(left, right) {
+  if (!left || !right) return left === right;
+  return left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeMs === right.mtimeMs;
 }
 
 function engagementStatus(args) {
@@ -747,15 +1989,26 @@ function engagementId(args) {
 }
 
 function engagementCheckpoint(args) {
-  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--phase', '--sequence', '--input']));
-  requireOptions(options, ['manifest', 'lane', 'phase', 'sequence', 'input'], 'engagement checkpoint');
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--phase', '--sequence', '--dispatch-id', '--attempt', '--input']));
+  requireOptions(options, ['manifest', 'lane', 'phase', 'sequence', 'dispatchId', 'attempt', 'input'], 'engagement checkpoint');
   const sequence = Number(options.sequence);
+  const attempt = positiveInteger(options.attempt, '--attempt');
   const raw = readTextInput(options.input);
   let payload;
   try { payload = JSON.parse(raw); }
   catch { payload = { text: raw }; }
   const { manifest: engagement } = loadEngagement(options);
-  console.log(JSON.stringify(writeCheckpoint(engagement, options.lane, leaseToken(options), options.phase, sequence, payload)));
+  console.log(JSON.stringify(writeCheckpoint(engagement, options.lane, leaseToken(options), options.phase, sequence, options.dispatchId, attempt, payload)));
+  return 0;
+}
+
+function engagementHeartbeat(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--phase', '--completed', '--total', '--status']));
+  requireOptions(options, ['manifest', 'lane', 'phase', 'completed', 'total', 'status'], 'engagement heartbeat');
+  const { manifest: engagement } = loadEngagement(options);
+  const completed = nonNegativeInteger(options.completed, '--completed');
+  const total = positiveInteger(options.total, '--total');
+  console.log(JSON.stringify(appendHeartbeat(engagement, options.lane, leaseToken(options), options.phase, completed, total, options.status)));
   return 0;
 }
 
@@ -813,10 +2066,9 @@ function guardCommand(args) {
     const patterns = readJson(REDACTION_PATTERNS_PATH);
     const event = redactValue(buildGuardAudit({ manifest: engagement, payload, decision, timestamp: new Date().toISOString() }), patterns).value;
     const auditPath = resolve(engagement.artifactRoot, engagement.writePolicy.auditPath);
-    if (!isWithin(engagement.artifactRoot, auditPath)) return denyHook('GUARD-MANIFEST-INVALID', 'guard audit path escapes artifact root');
+    if (!safePhysicalPath(engagement.artifactRoot, auditPath)) return denyHook('GUARD-MANIFEST-INVALID', 'guard audit path escapes its physical artifact root or crosses a symbolic link');
     mkdirSync(dirname(auditPath), { recursive: true });
-    appendFileSync(auditPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
-    chmodSync(auditPath, 0o600);
+    atomicPrivateAppend(auditPath, `${JSON.stringify(event)}\n`);
   }
   if (decision.decision === 'deny') return denyHook(decision.ruleId, `${decision.reason}; audit=${engagement.writePolicy.auditPath}`);
   return 0;
@@ -841,11 +2093,14 @@ function initializeAuthorization(args) {
     fail('authorization init --environment must be unknown, development, test, staging, or production');
   }
   const output = resolve(options.output ?? 'ai_agents_internal/authorization.json');
+  if (!safePhysicalPath(process.cwd(), output)) fail('authorization manifest path escapes the physical working root or crosses a symbolic link');
   if (existsSync(output)) fail(`refusing to overwrite existing authorization manifest: ${output}`);
   const template = readJson(AUTHORIZATION_TEMPLATE_PATH);
+  const targetPath = statSafe(resolve(options.target)) ? resolve(options.target) : null;
+  const targetIdentifier = targetPath ?? (/^https?:\/\//i.test(options.target) ? new URL(options.target).toString() : options.target);
   const authorization = createDefaultAuthorization({
     template,
-    target: options.target,
+    target: targetIdentifier,
     environment,
     engagementId: options.engagementId,
   });
@@ -868,7 +2123,8 @@ function checkAuthorization(args) {
     if (!options[required]) fail(`authorization check requires --${camelToKebab(required)}`);
   }
   const manifestPath = resolve(options.manifest);
-  const authorization = readJson(manifestPath);
+  if (!statSafe(manifestPath)?.isFile() || lstatSync(manifestPath).isSymbolicLink()) fail('authorization manifest must be a real file');
+  const authorization = readSecureJson(manifestPath, 'authorization manifest');
   const patterns = readJson(REDACTION_PATTERNS_PATH);
   const patternErrors = validateRedactionPatterns(patterns);
   if (patternErrors.length > 0) fail(`packaged redaction patterns are invalid: ${patternErrors.join('; ')}`);
@@ -894,10 +2150,10 @@ function checkAuthorization(args) {
     ? authorization.audit.path
     : 'authorization-audit.jsonl';
   const auditPath = resolve(dirname(manifestPath), auditName);
+  if (!safePhysicalPath(dirname(manifestPath), auditPath)) fail('authorization audit path crosses a symbolic link');
   const auditManifest = { ...authorization, engagementId: authorization.engagementId ?? 'INVALID-MANIFEST' };
   const event = buildAuditEvent({ manifest: auditManifest, request, decision, timestamp, patterns });
-  appendFileSync(auditPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
-  chmodSync(auditPath, 0o600);
+  atomicPrivateAppend(auditPath, `${JSON.stringify(event)}\n`);
   const safeReason = redactText(decision.reason, patterns).text.replace(/[\r\n]+/g, ' ');
   console.log(`AUTHORIZATION  ${decision.decision.toUpperCase()} rule=${decision.ruleId} reason=${safeReason} audit=${auditPath}`);
   return decision.decision === 'allow' ? 0 : 3;
@@ -932,9 +2188,9 @@ function redactCommand(args) {
     process.stdout.write(redacted);
   } else {
     const outputPath = resolve(output);
+    assertActiveEngagementWrites([outputPath], 'redaction output');
     mkdirSync(dirname(outputPath), { recursive: true });
-    writeFileSync(outputPath, redacted, { mode: 0o600 });
-    chmodSync(outputPath, 0o600);
+    atomicPrivateWrite(outputPath, redacted);
     console.log(`REDACTION  wrote=${outputPath} findings=${findings.length}`);
   }
   return 0;
@@ -1059,28 +2315,39 @@ async function preflight(argv) {
   }
   const profile = options.profile ? readJson(resolve(options.profile)) : {};
   const mode = options.mode ?? 'A';
+  const modelRuntime = options.modelRuntime ?? 'claude';
   if (!['A', 'B', 'C', 'D'].includes(mode)) fail('preflight --mode must be A, B, C, or D');
+  if (!['claude', 'codex'].includes(modelRuntime)) fail('preflight --model-runtime must be claude or codex');
   if (!options.target) fail('preflight requires --target <url-or-path>');
   const selectedSlugs = new Set(matrix.agents.filter((agent) => agent.modes.includes(mode)).map((agent) => agent.slug));
   for (const feature of options.features) {
     if (!Object.hasOwn(matrix.capabilities, feature)) fail(`unknown preflight feature: ${feature}`);
   }
 
-  const target = await inspectTarget(options.target, profile);
-  const targetPath = target.kind === 'path' ? resolve(options.target) : null;
-  const artifactRootPath = resolve(options.artifactRoot ?? (targetPath && statSafe(targetPath)?.isDirectory() ? targetPath : process.cwd()));
+  const targetDescriptor = identifyTarget(options.target);
+  const { kind: targetKind, targetPath, targetIdentity } = targetDescriptor;
+  let target = {
+    value: targetIdentity,
+    kind: targetKind,
+    reachable: false,
+    evidence: 'target probe deferred until authorization and engagement controls are persisted',
+  };
+  const artifactRootCandidate = resolve(options.artifactRoot ?? targetPath ?? process.cwd());
+  const artifactRootPath = statSafe(artifactRootCandidate)?.isDirectory() ? realpathSync(artifactRootCandidate) : artifactRootCandidate;
   const outputRelative = options.output ?? 'ai_agents_internal/preflight.json';
   const requestedOutputPath = resolve(artifactRootPath, outputRelative);
   const fallbackOutputPath = resolve(artifactRootPath, 'ai_agents_internal/preflight.json');
-  const requestedOutputSafe = isWithin(artifactRootPath, requestedOutputPath);
+  const requestedOutputSafe = isWithin(artifactRootPath, requestedOutputPath) && safePhysicalPath(artifactRootPath, requestedOutputPath);
   const outputPath = requestedOutputSafe ? requestedOutputPath : fallbackOutputPath;
+  const outputPathSafe = isWithin(artifactRootPath, outputPath) && safePhysicalPath(artifactRootPath, outputPath);
   const contractedArtifactPaths = [
     ...matrix.orchestration.artifactPaths,
     ...matrix.agents.flatMap((agent) => agent.artifactPaths),
   ];
   const safePaths = requestedOutputSafe && contractedArtifactPaths.every((path) => {
     const stablePrefix = path.replace(/[*?].*$/, '').replace(/\/$/, '');
-    return isWithin(artifactRootPath, resolve(artifactRootPath, stablePrefix));
+    const resolvedPath = resolve(artifactRootPath, stablePrefix);
+    return isWithin(artifactRootPath, resolvedPath) && safePhysicalPath(artifactRootPath, resolvedPath);
   });
   const artifactWritable = typeof profile.artifactWritable === 'boolean'
     ? profile.artifactWritable
@@ -1090,8 +2357,10 @@ async function preflight(argv) {
   if (!['unknown', 'development', 'test', 'staging', 'production'].includes(authorizationEnvironment)) {
     fail('preflight --environment must be unknown, development, test, staging, or production');
   }
-  const requestedAuthorizationPath = resolve(artifactRootPath, options.authorization ?? 'ai_agents_internal/authorization.json');
-  const authorizationPathSafe = isWithin(artifactRootPath, requestedAuthorizationPath);
+  const authorizationCandidate = resolve(artifactRootPath, options.authorization ?? 'ai_agents_internal/authorization.json');
+  const requestedAuthorizationPath = existsSync(authorizationCandidate) && !lstatSync(authorizationCandidate).isSymbolicLink()
+    ? realpathSync(authorizationCandidate) : authorizationCandidate;
+  const authorizationPathSafe = isWithin(artifactRootPath, requestedAuthorizationPath) && safePhysicalPath(artifactRootPath, requestedAuthorizationPath);
   let authorization = null;
   let authorizationCreated = false;
   const authorizationErrors = [];
@@ -1110,7 +2379,7 @@ async function preflight(argv) {
   } else {
     authorization = createDefaultAuthorization({
       template: readJson(AUTHORIZATION_TEMPLATE_PATH),
-      target: options.target,
+      target: targetIdentity,
       environment: authorizationEnvironment,
       engagementId: options.engagementId,
     });
@@ -1119,11 +2388,13 @@ async function preflight(argv) {
     chmodSync(requestedAuthorizationPath, 0o600);
     authorizationCreated = true;
   }
-  if (authorization) authorizationErrors.push(...validateAuthorizationManifest(authorization));
+  if (authorization) {
+    authorizationErrors.push(...validateAuthorizationManifest(authorization));
+  }
   const authorizationAuditPath = authorization && nonEmptyString(authorization.audit?.path)
     ? resolve(dirname(requestedAuthorizationPath), authorization.audit.path)
     : resolve(dirname(requestedAuthorizationPath), 'authorization-audit.jsonl');
-  const authorizationAuditPathSafe = isWithin(artifactRootPath, authorizationAuditPath);
+  const authorizationAuditPathSafe = isWithin(artifactRootPath, authorizationAuditPath) && safePhysicalPath(artifactRootPath, authorizationAuditPath);
   if (!authorizationAuditPathSafe) authorizationErrors.push('authorization audit path escapes the artifact root');
   const production = authorization
     ? detectProductionLike(authorization.target, options.target)
@@ -1139,8 +2410,10 @@ async function preflight(argv) {
     defaultReadOnly: !authorization || Object.values(authorization.actionGrants ?? {}).every((grant) => !grant.enabled),
   };
 
-  const requestedEngagementPath = resolve(artifactRootPath, options.engagement ?? 'ai_agents_internal/engagement.json');
-  const engagementPathSafe = isWithin(artifactRootPath, requestedEngagementPath);
+  const engagementCandidate = resolve(artifactRootPath, options.engagement ?? 'ai_agents_internal/engagement.json');
+  const requestedEngagementPath = existsSync(engagementCandidate) && !lstatSync(engagementCandidate).isSymbolicLink()
+    ? realpathSync(engagementCandidate) : engagementCandidate;
+  const engagementPathSafe = isWithin(artifactRootPath, requestedEngagementPath) && safePhysicalPath(artifactRootPath, requestedEngagementPath);
   let engagement = null;
   let engagementCreated = false;
   let engagementState = null;
@@ -1159,7 +2432,7 @@ async function preflight(argv) {
   } else {
     engagement = createDefaultEngagement({
       template: readJson(ENGAGEMENT_TEMPLATE_PATH),
-      target: options.target,
+      target: targetIdentity,
       targetRoot: targetPath,
       artifactRoot: artifactRootPath,
       mode,
@@ -1176,7 +2449,8 @@ async function preflight(argv) {
   if (engagement) {
     engagementErrors.push(...validateEngagementManifest(engagement));
     if (engagement.mode !== mode) engagementErrors.push(`engagement mode ${engagement.mode} does not match preflight mode ${mode}`);
-    if (typeof engagement.artifactRoot !== 'string' || resolve(engagement.artifactRoot) !== artifactRootPath) engagementErrors.push('engagement artifactRoot does not match preflight artifact root');
+    if (typeof engagement.artifactRoot !== 'string' || !physicalPathsEquivalent(engagement.artifactRoot, artifactRootPath)) engagementErrors.push('engagement artifactRoot does not match preflight artifact root');
+    if (!targetIdentitiesEquivalent(engagement.target?.identifier, targetIdentity) || !nullablePhysicalPathsEquivalent(engagement.target?.root, targetPath)) engagementErrors.push('engagement target does not match the inspected target');
     if (engagement.engagementId !== authorization?.engagementId) engagementErrors.push('engagementId does not match authorization manifest');
     if (!Array.isArray(engagement.selectedAgents) || JSON.stringify([...engagement.selectedAgents].sort()) !== JSON.stringify([...selectedSlugs].sort())) engagementErrors.push('engagement selectedAgents do not match the selected mode');
     if (engagementErrors.length === 0) {
@@ -1185,11 +2459,12 @@ async function preflight(argv) {
     }
   }
   const engagementUsable = engagement && engagementErrors.length === 0;
+  const authorizationTargetIdentity = engagementUsable ? engagement.target.identifier : targetIdentity;
   const engagementSummary = {
     manifestPath: requestedEngagementPath,
     statePath: engagementUsable ? resolve(engagement.artifactRoot, engagement.statePath) : resolve(artifactRootPath, 'ai_agents_internal/engagement-state.json'),
     immutabilityAuditPath: engagementUsable ? resolve(engagement.artifactRoot, engagement.writePolicy.auditPath) : resolve(artifactRootPath, 'ai_agents_internal/immutability-audit.jsonl'),
-    sha256: engagementUsable ? createHash('sha256').update(JSON.stringify(engagement)).digest('hex') : null,
+    sha256: engagementUsable ? manifestSha256(engagement) : null,
     created: engagementCreated,
     stateCreated: engagementState?.created ?? false,
     phase: engagementState?.state.currentPhase ?? null,
@@ -1201,11 +2476,58 @@ async function preflight(argv) {
     hookPackaged: existsSync(HOOKS_PATH),
   };
 
+  let preflightHeartbeatError = null;
+  let preflightHeartbeatEvidence = null;
+  if (engagementUsable) {
+    try {
+      const heartbeat = ensurePreflightHeartbeat(engagement, profile.generatedAt ?? new Date().toISOString());
+      preflightHeartbeatEvidence = heartbeat.disposition === 'created'
+        ? 'initial controller heartbeat persisted before target probe'
+        : heartbeat.disposition === 'existing'
+          ? `validated existing controller heartbeat; engagement state revision=${engagementState.state.revision}`
+          : heartbeat.disposition === 'legacy-migrated-existing'
+            ? `validated migrated v1 controller heartbeat beginning at ${heartbeat.record.phase}; engagement state revision=${engagementState.state.revision}`
+            : `resumed migrated v1 engagement without a historical heartbeat; engagement state revision=${engagementState.state.revision}`;
+    } catch (error) { preflightHeartbeatError = error.message; }
+  } else {
+    preflightHeartbeatError = 'engagement controls are unavailable';
+  }
+
+  const probeTimestamp = profile.generatedAt ?? new Date().toISOString();
+  const probeRequest = { lane: 'odysseus', action: 'read', target: authorizationTargetIdentity, sourceTrust: 'manifest' };
+  const boundaryDecision = authorization && authorizationErrors.length === 0
+    ? evaluateAuthorization({ manifest: authorization, request: probeRequest, now: probeTimestamp })
+    : null;
+  let boundaryAuditError = null;
+  if (boundaryDecision && authorizationAuditPathSafe) {
+    try {
+      const patterns = readJson(REDACTION_PATTERNS_PATH);
+      const patternErrors = validateRedactionPatterns(patterns);
+      if (patternErrors.length > 0) throw new Error(patternErrors.join('; '));
+      const event = buildAuditEvent({ manifest: authorization, request: probeRequest, decision: boundaryDecision, timestamp: probeTimestamp, patterns });
+      atomicPrivateAppend(authorizationAuditPath, `${JSON.stringify(event)}\n`);
+    } catch (error) {
+      boundaryAuditError = `authorization probe audit failed: ${error.message}`;
+    }
+  } else if (boundaryDecision) {
+    boundaryAuditError = 'authorization probe audit path is unsafe';
+  }
+  const probeAllowed = boundaryDecision?.decision === 'allow' && boundaryAuditError === null && engagementErrors.length === 0 && preflightHeartbeatError === null;
+  if (probeAllowed) {
+    target = await inspectTarget(options.target, profile);
+    target.value = targetIdentity;
+  } else {
+    const reason = boundaryAuditError ?? (boundaryDecision
+      ? `${boundaryDecision.ruleId}: ${boundaryDecision.reason}`
+      : 'authorization or engagement controls are unavailable');
+    target.evidence = `target probe skipped: ${reason}`;
+  }
+
   const availableTools = new Set(profile.availableTools ?? matrix.supportedBuiltinTools);
   const commandAvailability = detectCommands(inventory, profile);
   const mcpServers = profile.mcpServers ?? detectMcpServers();
   const detectedFeatures = new Set([
-    ...(Array.isArray(profile.features) ? profile.features : detectTargetFeatures(targetPath)),
+    ...(Array.isArray(profile.features) ? profile.features : (probeAllowed ? detectTargetFeatures(targetPath) : [])),
     ...options.features,
   ]);
 
@@ -1218,7 +2540,7 @@ async function preflight(argv) {
       available = Boolean(match);
       evidence = match ? `connected MCP server: ${match}` : `no connected MCP server matched ${definition.serverPatterns.join(', ')}`;
     }
-    if (id === 'browser-runtime' && !available) {
+    if (id === 'browser-runtime' && !available && probeAllowed) {
       available = hasBrowserRuntime(targetPath);
       evidence = available
         ? 'target has an installed Playwright runtime and packaged isolated driver is available'
@@ -1256,13 +2578,17 @@ async function preflight(argv) {
     engagementSummary.hookPackaged,
     engagementSummary.hookPackaged ? `packaged PreToolUse hook: ${HOOKS_PATH}` : 'plugin hooks/hooks.json is missing',
   );
-  if (authorization && authorizationErrors.length === 0) {
-    const boundaryDecision = evaluateAuthorization({
-      manifest: authorization,
-      request: { lane: 'odysseus', action: 'read', target: options.target, sourceTrust: 'manifest' },
-      now: profile.generatedAt ?? new Date().toISOString(),
-    });
-    addCheck(checks, 'authorization-target-boundary', true, boundaryDecision.decision === 'allow', `${boundaryDecision.ruleId}: ${boundaryDecision.reason}`);
+  addCheck(
+    checks,
+    'controller-heartbeat',
+    true,
+    preflightHeartbeatError === null,
+    preflightHeartbeatError ?? preflightHeartbeatEvidence,
+  );
+  if (boundaryDecision) {
+    const passed = boundaryDecision.decision === 'allow' && boundaryAuditError === null;
+    const evidence = boundaryAuditError ?? `${boundaryDecision.ruleId}: ${boundaryDecision.reason}; audit=${authorizationAuditPath}`;
+    addCheck(checks, 'authorization-target-boundary', true, passed, evidence);
   } else {
     addCheck(checks, 'authorization-target-boundary', true, false, 'authorization manifest unavailable or invalid');
   }
@@ -1286,12 +2612,12 @@ async function preflight(argv) {
   }
 
   const commandConsumers = new Map(inventory.commandReferences.map((item) => [item.value, new Set(item.consumers)]));
-  const mandatoryFailure = checks.some((check) => check.mandatory && check.status === 'fail');
+  const prerequisiteFailure = checks.some((check) => check.mandatory && check.status === 'fail');
   const authorizationByAgent = new Map(matrix.agents.map((contract) => [
     contract.slug,
-    evaluateRiskAuthorizations(contract, authorization, options.target, profile.generatedAt ?? new Date().toISOString()),
+    evaluateRiskAuthorizations(contract, authorization, authorizationTargetIdentity, profile.generatedAt ?? new Date().toISOString()),
   ]));
-  const agents = matrix.agents.map((contract) => evaluateAgent({
+  let agents = matrix.agents.map((contract) => evaluateAgent({
     contract,
     mode,
     availableTools,
@@ -1299,9 +2625,31 @@ async function preflight(argv) {
     commandAvailability,
     commandConsumers,
     matrix,
-    mandatoryFailure,
+    modelRuntime,
+    mandatoryFailure: prerequisiteFailure,
     authorizationDecisions: authorizationByAgent.get(contract.slug),
   }));
+  let orchestration = { path: join(artifactRootPath, 'ai_agents_internal', 'orchestration-plan.json'), sha256: null, specialists: 0 };
+  let orchestrationError = null;
+  try {
+    if (prerequisiteFailure) throw new Error('preflight prerequisites failed; projection was not persisted');
+    const dispatchable = agents.filter((agent) => agent.slug !== 'odysseus' && agent.selected && agent.dispatchAllowed).map((agent) => agent.slug);
+    orchestration = persistPreflightOrchestrationPlan(artifactRootPath, mode, dispatchable);
+  } catch (error) {
+    orchestrationError = error.message;
+  }
+  addCheck(
+    checks,
+    'orchestration-plan',
+    true,
+    orchestrationError === null,
+    orchestrationError ?? `persisted ${orchestration.specialists} dispatchable specialists sha256=${orchestration.sha256}`,
+  );
+  if (orchestrationError !== null) {
+    agents = agents.map((agent) => agent.selected
+      ? { ...agent, status: 'blocked', dispatchAllowed: false, actions: [...agent.actions, `Orchestration projection failed: ${orchestrationError}`] }
+      : agent);
+  }
   const selectedAgents = agents.filter((agent) => agent.selected);
   const summary = {
     selected: selectedAgents.length,
@@ -1312,6 +2660,7 @@ async function preflight(argv) {
     blocked: selectedAgents.filter((agent) => agent.status === 'blocked').length,
     dispatchable: selectedAgents.filter((agent) => agent.dispatchAllowed).length,
   };
+  const mandatoryFailure = checks.some((check) => check.mandatory && check.status === 'fail');
   const status = mandatoryFailure || summary.blocked > 0
     ? 'blocked'
     : summary.degraded + summary.deferred + summary.skipped > 0
@@ -1320,14 +2669,16 @@ async function preflight(argv) {
 
   const report = {
     $schema: 'https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/preflight-report.schema.json',
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: profile.generatedAt ?? new Date().toISOString(),
     mode,
+    modelRuntime,
     status,
     target,
     artifactRoot: { path: artifactRootPath, writable: artifactWritable, safePaths },
     authorization: authorizationSummary,
     engagement: engagementSummary,
+    orchestration,
     checks,
     capabilities: Object.entries(capabilityState).map(([id, state]) => ({ id, ...state })),
     agents,
@@ -1335,25 +2686,28 @@ async function preflight(argv) {
   };
 
   let persisted = false;
-  if (artifactWritable && isWithin(artifactRootPath, outputPath)) {
+  if (artifactWritable && outputPathSafe) {
     mkdirSync(dirname(outputPath), { recursive: true });
-    writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`);
+    atomicPrivateWrite(outputPath, `${JSON.stringify(report, null, 2)}\n`);
     persisted = true;
   }
-  if (options.json) console.log(JSON.stringify(report, null, 2));
-  console.log(
-    `PREFLIGHT  ${status} mode=${mode} selected=${summary.selected} dispatchable=${summary.dispatchable} ` +
-    `degraded=${summary.degraded} deferred=${summary.deferred} skipped=${summary.skipped} blocked=${summary.blocked} ` +
-    `report=${persisted ? outputPath : 'NOT_PERSISTED'}`,
-  );
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    console.log(
+      `PREFLIGHT  ${status} mode=${mode} selected=${summary.selected} dispatchable=${summary.dispatchable} ` +
+      `degraded=${summary.degraded} deferred=${summary.deferred} skipped=${summary.skipped} blocked=${summary.blocked} ` +
+      `report=${persisted ? outputPath : 'NOT_PERSISTED'}`,
+    );
+  }
   return status === 'blocked' ? 2 : 0;
 }
 
-function evaluateAgent({ contract, mode, availableTools, capabilityState, commandAvailability, commandConsumers, matrix, mandatoryFailure, authorizationDecisions }) {
+function evaluateAgent({ contract, mode, availableTools, capabilityState, commandAvailability, commandConsumers, matrix, modelRuntime, mandatoryFailure, authorizationDecisions }) {
   const selected = contract.modes.includes(mode);
-  if (!selected) return agentResult(contract, false, 'not-selected', false, [], [], [], contract.artifactPaths, authorizationDecisions);
+  if (!selected) return agentResult(contract, false, 'not-selected', false, [], [], [], contract.artifactPaths, authorizationDecisions, modelRuntime);
   if (mandatoryFailure) {
-    return agentResult(contract, true, 'blocked', false, [], [], ['Orchestration preflight failed; no specialist may be dispatched.'], contract.artifactPaths, authorizationDecisions);
+    return agentResult(contract, true, 'blocked', false, [], [], ['Orchestration preflight failed; no specialist may be dispatched.'], contract.artifactPaths, authorizationDecisions, modelRuntime);
   }
 
   const missingTools = contract.requiredTools.filter((tool) => !availableTools.has(tool));
@@ -1366,7 +2720,7 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
 
   if (missingTools.length > 0) {
     actions.push(`Mandatory tools unavailable: ${missingTools.join(', ')}. Stop before dispatch.`);
-    return agentResult(contract, true, 'blocked', false, missingTools, [...missingRequired, ...missingOptional, ...missingCommands], actions, contract.artifactPaths, authorizationDecisions);
+    return agentResult(contract, true, 'blocked', false, missingTools, [...missingRequired, ...missingOptional, ...missingCommands], actions, contract.artifactPaths, authorizationDecisions, modelRuntime);
   }
 
   let status = 'ready';
@@ -1401,12 +2755,13 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
     actions,
     contract.artifactPaths,
     authorizationDecisions,
+    modelRuntime,
   );
 }
 
-function agentResult(contract, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths, authorization) {
-  const model = buildModelRoutingPreview(modelPolicy, runtimeAdapters, { slug: contract.slug, runtime: 'claude' });
-  return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed, model, missingTools, missingCapabilities, actions, artifactPaths, authorization };
+function agentResult(contract, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths, authorization, modelRuntime) {
+  const model = buildModelRoutingPreview(modelPolicy, runtimeAdapters, { slug: contract.slug, runtime: modelRuntime });
+  return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed: contract.slug === 'odysseus' ? false : dispatchAllowed, model, missingTools, missingCapabilities, actions, artifactPaths, authorization };
 }
 
 function evaluateRiskAuthorizations(contract, authorization, target, now) {
@@ -1463,6 +2818,7 @@ function parsePreflightOptions(args) {
     else if (name === '--engagement') options.engagement = value;
     else if (name === '--environment') options.environment = value;
     else if (name === '--engagement-id') options.engagementId = value;
+    else if (name === '--model-runtime') options.modelRuntime = value.toLowerCase();
     else if (name === '--profile') options.profile = value;
     else if (name === '--feature') options.features.push(value);
     else fail(`unknown preflight option: ${name}`);
@@ -1499,6 +2855,34 @@ async function inspectTarget(value, profile) {
       ? `profile override: reachable=${profile.targetReachable}`
       : reachable ? `local path exists and is readable: ${path}` : `local path is missing or unreadable: ${path}`,
   };
+}
+
+function identifyTarget(value) {
+  if (/^https?:\/\//i.test(value)) {
+    let url;
+    try { url = new URL(value); }
+    catch (error) { fail(`preflight target URL is invalid: ${error.message}`); }
+    if (!['http:', 'https:'].includes(url.protocol)) fail('preflight target URL must use HTTP or HTTPS');
+    return { kind: 'url', targetPath: null, targetIdentity: url.toString() };
+  }
+  const candidate = resolve(value);
+  const targetPath = statSafe(candidate) ? realpathSync(candidate) : candidate;
+  return { kind: 'path', targetPath, targetIdentity: targetPath };
+}
+
+function targetIdentitiesEquivalent(stored, inspected) {
+  if (stored === inspected) return true;
+  if (!nonEmptyString(stored) || !nonEmptyString(inspected)) return false;
+  if (!/^https?:\/\//i.test(stored) && !/^https?:\/\//i.test(inspected)) return physicalPathsEquivalent(stored, inspected);
+  if (!/^https?:\/\//i.test(stored) || !/^https?:\/\//i.test(inspected)) return false;
+  try {
+    const storedUrl = new URL(stored);
+    const inspectedUrl = new URL(inspected);
+    if (!['http:', 'https:'].includes(storedUrl.protocol) || !['http:', 'https:'].includes(inspectedUrl.protocol)) return false;
+    return storedUrl.toString() === inspectedUrl.toString();
+  } catch {
+    return false;
+  }
 }
 
 function detectCommands(inventory, profile) {
@@ -1585,17 +2969,34 @@ function parseNamedOptions(args, allowed) {
     const value = args[index + 1];
     if (value == null || value.startsWith('--')) fail(`${name} requires a value`);
     index += 1;
-    options[kebabToCamel(name.slice(2))] = value;
+    const key = kebabToCamel(name.slice(2));
+    if (Object.hasOwn(options, key)) fail(`duplicate option: ${name}`);
+    options[key] = value;
   }
   return options;
 }
 
 function loadEngagement(options) {
-  const path = resolve(options.manifest ?? process.env.ARGUS_ENGAGEMENT_MANIFEST ?? 'ai_agents_internal/engagement.json');
-  const engagement = readJson(path);
+  const candidate = resolve(options.manifest ?? process.env.ARGUS_ENGAGEMENT_MANIFEST ?? 'ai_agents_internal/engagement.json');
+  if (!statSafe(candidate)?.isFile() || lstatSync(candidate).isSymbolicLink()) throw new Error(`engagement manifest must be a real file: ${candidate}`);
+  const path = realpathSync(candidate);
+  const engagement = readSecureJson(path, 'engagement manifest');
   const errors = validateEngagementManifest(engagement);
   if (errors.length > 0) throw new Error(`invalid manifest ${path}: ${errors.join('; ')}`);
+  if (!statSafe(engagement.artifactRoot)?.isDirectory()) throw new Error(`engagement artifactRoot must be an existing directory: ${engagement.artifactRoot}`);
+  const physicalArtifactRoot = realpathSync(engagement.artifactRoot);
+  if (!safePhysicalPath(physicalArtifactRoot, path)) throw new Error(`engagement manifest escapes its physical artifact root: ${path}`);
   return { manifest: engagement, path };
+}
+
+function physicalPathsEquivalent(left, right) {
+  try { return realpathSync(resolve(left)) === realpathSync(resolve(right)); }
+  catch { return resolve(left) === resolve(right); }
+}
+
+function nullablePhysicalPathsEquivalent(left, right) {
+  if (left === null || left === undefined || right === null || right === undefined) return left == null && right == null;
+  return physicalPathsEquivalent(left, right);
 }
 
 function requireOptions(options, required, command) {
@@ -1638,11 +3039,28 @@ function nonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function plainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validDateTime(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function stableCanonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableCanonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableCanonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function copyTemplate(runtime, destination) {
   const entries = prepareTemplateComposition(runtime);
   if (!destination) fail('copy-template requires an empty destination path');
   const target = resolve(destination);
   try {
+    assertActiveEngagementWrites([target], 'copy-template');
     inspectEmptyDestination(target);
     writeTemplateEntries(entries, target);
   } catch (error) {
@@ -1834,6 +3252,11 @@ function copyBrowserDriver(destination) {
     ['scripts/hunt-driver.mjs', 'hunt-driver.mjs'],
     ['scripts/driver.config.example.json', 'driver.config.example.json'],
   ];
+  const outputs = [
+    ...files.map(([, targetName]) => join(scriptsDir, targetName)),
+    join(scriptsDir, 'driver-config.schema.json'),
+  ];
+  assertActiveEngagementWrites(outputs, 'copy-browser-driver');
   for (const [sourceRelative, targetName] of files) {
     const target = join(scriptsDir, targetName);
     if (existsSync(target)) fail(`refusing to overwrite existing file: ${target}`);
@@ -1859,6 +3282,102 @@ function assetPath(asset, child = '') {
   return path;
 }
 
+function atomicPrivateWrite(path, content) {
+  mkdirSync(dirname(path), { recursive: true });
+  if (existsSync(path)) {
+    const existing = lstatSync(path);
+    if (existing.isSymbolicLink() || !existing.isFile() || existing.nlink !== 1) {
+      throw new Error(`private output must be a single-link regular file: ${path}`);
+    }
+  }
+  const temporary = join(dirname(path), `.${basename(path)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`);
+  try {
+    writeFileSync(temporary, content, { mode: 0o600, flag: 'wx' });
+    if (existsSync(path)) {
+      const current = lstatSync(path);
+      if (current.isSymbolicLink() || !current.isFile() || current.nlink !== 1) {
+        throw new Error(`private output changed to an unsafe filesystem entry: ${path}`);
+      }
+    }
+    renameSync(temporary, path);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
+
+function atomicPrivateAppend(path, content, validateCurrent = undefined) {
+  mkdirSync(dirname(path), { recursive: true });
+  const lockPath = `${path}.append-lock`;
+  let acquired = false;
+  for (let attempt = 0; attempt < 6000; attempt += 1) {
+    try {
+      mkdirSync(lockPath, { mode: 0o700 });
+      writeFileSync(join(lockPath, 'owner.json'), `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`, { flag: 'wx', mode: 0o600 });
+      acquired = true;
+      break;
+    } catch (error) {
+      if (error.code !== 'EEXIST') {
+        rmSync(lockPath, { recursive: true, force: true });
+        throw new Error(`cannot acquire private append lock for ${path}: ${error.message}`);
+      }
+      const lock = lstatSync(lockPath);
+      if (lock.isSymbolicLink() || !lock.isDirectory()) throw new Error(`private append lock is unsafe: ${lockPath}`);
+      reclaimAbandonedModelControlLock(lockPath);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+  if (!acquired) throw new Error(`timed out acquiring private append lock for ${path}`);
+  try {
+    let current = '';
+    if (existsSync(path)) {
+      let descriptor;
+      try {
+        descriptor = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+        const info = fstatSync(descriptor);
+        if (!info.isFile() || info.nlink !== 1) throw new Error(`private append target must be a single-link regular file: ${path}`);
+        current = readFileSync(descriptor, 'utf8');
+      } finally {
+        if (descriptor !== undefined) closeSync(descriptor);
+      }
+    }
+    if (validateCurrent) validateCurrent(current);
+    atomicPrivateWrite(path, `${current}${content}`);
+  } finally {
+    rmSync(lockPath, { recursive: true, force: true });
+  }
+}
+
+function assertActiveEngagementWrites(paths, label) {
+  const discovered = locateEngagementManifest(process.cwd());
+  const explicit = process.env.ARGUS_ENGAGEMENT_MANIFEST
+    ? locateEngagementManifest(process.cwd(), process.env.ARGUS_ENGAGEMENT_MANIFEST)
+    : null;
+  if (process.env.ARGUS_ENGAGEMENT_MANIFEST && !explicit) fail(`${label} denied because ARGUS_ENGAGEMENT_MANIFEST does not name an existing manifest`);
+  if (discovered && explicit && discovered !== explicit) fail(`${label} denied because the explicit engagement differs from the active working-tree engagement`);
+  const manifestPath = explicit ?? discovered;
+  if (!manifestPath) return;
+  const engagement = readSecureJson(manifestPath, 'active engagement manifest');
+  const errors = validateEngagementManifest(engagement);
+  if (errors.length > 0) fail(`${label} denied because the active engagement manifest is invalid: ${errors.join('; ')}`);
+  for (const candidate of paths) {
+    const payload = { tool_name: 'Write', tool_input: { file_path: resolve(candidate) } };
+    const decision = evaluateWriteGuard({ manifest: engagement, manifestPath, payload, cwd: process.cwd() });
+    if (decision.decision !== 'deny') continue;
+    const patterns = readJson(REDACTION_PATTERNS_PATH);
+    const patternErrors = validateRedactionPatterns(patterns);
+    if (patternErrors.length > 0) fail(`${label} denied and guard audit patterns are invalid: ${patternErrors.join('; ')}`);
+    const event = redactValue(buildGuardAudit({ manifest: engagement, payload, decision, timestamp: new Date().toISOString() }), patterns).value;
+    const auditPath = resolve(engagement.artifactRoot, engagement.writePolicy.auditPath);
+    if (!safePhysicalPath(engagement.artifactRoot, auditPath)) fail(`${label} denied and the guard audit path is unsafe`);
+    try {
+      atomicPrivateAppend(auditPath, `${JSON.stringify(event)}\n`);
+    } catch (error) {
+      fail(`${label} denied and guard audit failed closed: ${error.message}`);
+    }
+    fail(`${label} denied by active engagement rule ${decision.ruleId}: ${decision.reason}`);
+  }
+}
+
 function inspectEmptyDestination(path) {
   if (!existsSync(path)) return { existed: false, mode: null };
   const info = lstatSync(path);
@@ -1873,15 +3392,6 @@ function treeStats(path) {
   const files = isFile ? [path] : walkFiles(path);
   const hash = createHash('sha256');
   let bytes = 0;
-  if (!isFile) {
-    for (const directory of walkDirectories(path).sort()) {
-      hash.update('directory\0');
-      hash.update(relative(path, directory).split(sep).join('/'));
-      hash.update('\0');
-      hash.update((lstatSync(directory).mode & 0o777).toString(8));
-      hash.update('\0');
-    }
-  }
   for (const file of files.sort()) {
     const rel = isFile ? file.split(sep).at(-1) : relative(path, file).split(sep).join('/');
     const content = readFileSync(file);
@@ -1889,7 +3399,7 @@ function treeStats(path) {
     hash.update('file\0');
     hash.update(rel);
     hash.update('\0');
-    hash.update((statSync(file).mode & 0o777).toString(8));
+    hash.update(statSync(file).mode & 0o111 ? 'x' : '-');
     hash.update('\0');
     hash.update(content);
   }
@@ -1909,16 +3419,10 @@ function walkFiles(dir) {
   return out;
 }
 
-function walkDirectories(dir) {
-  const out = [];
-  for (const name of readdirSync(dir).sort()) {
-    const path = join(dir, name);
-    const stat = lstatSync(path);
-    if (stat.isSymbolicLink()) fail(`unsupported symbolic link in plugin: ${path}`);
-    if (stat.isDirectory()) out.push(path, ...walkDirectories(path));
-    else if (!stat.isFile()) fail(`unsupported filesystem entry in plugin: ${path}`);
-  }
-  return out;
+function resolveExistingPhysicalInput(input, base = process.cwd()) {
+  const candidate = resolve(base, input);
+  if (!existsSync(candidate) || lstatSync(candidate).isSymbolicLink()) return candidate;
+  return realpathSync(candidate);
 }
 
 function readJson(path) {
@@ -1927,6 +3431,35 @@ function readJson(path) {
   } catch (error) {
     fail(`cannot parse ${path}: ${error.message}`);
   }
+}
+
+function readSecureSingleLink(path, label) {
+  let before;
+  try { before = lstatSync(path); }
+  catch (error) { fail(`${label} is unavailable: ${error.message}`); }
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1) fail(`${label} must be a non-aliased regular file`);
+  let descriptor;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const opened = fstatSync(descriptor);
+    if (!opened.isFile() || opened.nlink !== 1 || opened.dev !== before.dev || opened.ino !== before.ino) fail(`${label} changed during secure open`);
+    const raw = readFileSync(descriptor);
+    const after = fstatSync(descriptor);
+    const linked = lstatSync(path);
+    if (!linked.isFile() || linked.isSymbolicLink() || linked.nlink !== 1 || linked.dev !== opened.dev || linked.ino !== opened.ino ||
+        after.dev !== opened.dev || after.ino !== opened.ino || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) {
+      fail(`${label} changed during secure read`);
+    }
+    return raw;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function readSecureJson(path, label) {
+  const raw = readSecureSingleLink(path, label);
+  try { return JSON.parse(raw.toString('utf8')); }
+  catch (error) { fail(`${label} is not valid JSON: ${error.message}`); }
 }
 
 function fail(message) {

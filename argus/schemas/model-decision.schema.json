@@ -9,7 +9,7 @@
     "engagementId", "engagementManifestSha256", "dispatchId", "attempt",
     "agent", "runtime", "signal", "status", "reasonCode", "baselineConfig",
     "selectedConfig", "requiredOverrides", "requiredEnforcements", "adapter", "missingCapabilities", "fallbackUsed",
-    "operatorEscalation", "weakerFallbackAllowed", "reason"
+    "operatorEscalation", "escalationBinding", "availabilityBinding", "legacyResumeBinding", "operatorDecision", "runtimeAttestation", "weakerFallbackAllowed", "reason"
   ],
   "properties": {
     "schema": { "const": "argus/model-decision@2" },
@@ -34,6 +34,10 @@
         "SIGNAL_NOT_ALLOWED",
         "MECHANICAL_FULL_ROLE_FORBIDDEN",
         "FRONTIER_UNAVAILABLE",
+        "OPERATOR_ESCALATION_REQUIRED",
+        "OPERATOR_APPROVAL_SELECTED",
+        "OPERATOR_RETRY_SELECTED",
+        "OPERATOR_ABORTED",
         "CAPABILITY_DRIFT"
       ]
     },
@@ -70,6 +74,105 @@
     },
     "fallbackUsed": { "type": "boolean" },
     "operatorEscalation": { "type": "boolean" },
+    "escalationBinding": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["requestSha256", "checkpointRef", "checkpointSha256", "previousDecisionId"],
+      "properties": {
+        "requestSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "checkpointRef": { "type": ["string", "null"], "minLength": 1 },
+        "checkpointSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "previousDecisionId": { "type": "string", "pattern": "^MDR-[a-f0-9]{24}$" }
+      }
+    },
+    "availabilityBinding": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["previousDecisionId", "previousDecisionIntegritySha256", "allocationId", "allocationSha256"],
+      "properties": {
+        "previousDecisionId": { "type": "string", "pattern": "^MDR-[a-f0-9]{24}$" },
+        "previousDecisionIntegritySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "allocationId": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+        "allocationSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "legacyResumeBinding": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["kind", "lane", "allocationId", "allocationSha256", "checkpointRef", "checkpointSha256", "migrationId", "migrationSourceSha256"],
+      "properties": {
+        "kind": { "const": "legacy-v1-active-allocation" },
+        "lane": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "allocationId": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+        "allocationSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "checkpointRef": { "type": ["string", "null"], "minLength": 1 },
+        "checkpointSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "migrationId": { "type": "string", "pattern": "^state-v1-[a-f0-9]{24}$" },
+        "migrationSourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "checkpointRef": { "type": "null" } }, "required": ["checkpointRef"] },
+          "then": { "properties": { "checkpointSha256": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "checkpointSha256": { "type": "null" } }, "required": ["checkpointSha256"] },
+          "then": { "properties": { "checkpointRef": { "type": "null" } } }
+        }
+      ]
+    },
+    "operatorDecision": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["action", "documentSha256", "blockedDecisionId", "approvedBy", "approvedAt", "reason", "authentication"],
+      "properties": {
+        "action": { "enum": ["continue-frontier", "retry-frontier", "abort"] },
+        "documentSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "blockedDecisionId": { "type": "string", "pattern": "^MDR-[a-f0-9]{24}$" },
+        "approvedBy": { "type": "string", "minLength": 1 },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "reason": { "type": "string", "minLength": 1 },
+        "authentication": {
+          "allOf": [
+            { "$ref": "#/$defs/authenticationProof" },
+            { "properties": { "purpose": { "const": "operator-approval" } } }
+          ]
+        }
+      }
+    },
+    "runtimeAttestation": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "engagementId", "dispatchId", "attempt", "agent", "runtime", "parentRuntime", "adapterContractId", "adapterId",
+        "documentSha256", "parentSessionId", "adapterSnapshotSha256", "selectedConfigSha256",
+        "enforcements", "issuedBy", "issuedAt", "expiresAt", "authentication"
+      ],
+      "properties": {
+        "engagementId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "dispatchId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "agent": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "runtime": { "const": "codex" },
+        "parentRuntime": { "const": "codex" },
+        "adapterContractId": { "const": "argus/runtime-adapters@3" },
+        "adapterId": { "const": "codex-custom-agent@1" },
+        "parentSessionId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "adapterSnapshotSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "selectedConfigSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "enforcements": { "$ref": "#/$defs/requiredEnforcements" },
+        "issuedBy": { "type": "string", "minLength": 1 },
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "documentSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "authentication": {
+          "allOf": [
+            { "$ref": "#/$defs/authenticationProof" },
+            { "properties": { "purpose": { "const": "runtime-attestation" } } }
+          ]
+        }
+      }
+    },
     "weakerFallbackAllowed": { "const": false },
     "reason": { "type": "string", "minLength": 1 }
   },
@@ -93,6 +196,29 @@
         "model": { "type": "boolean" },
         "effort": { "type": "boolean" },
         "maxTurns": { "type": "boolean" }
+      }
+    },
+    "requiredEnforcements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "effort", "maxTurns"],
+      "properties": {
+        "model": { "const": true },
+        "effort": { "const": true },
+        "maxTurns": { "const": true }
+      }
+    },
+    "authenticationProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "purpose", "keyFingerprintSha256", "signatureBase64", "canonicalPayloadBase64"],
+      "properties": {
+        "algorithm": { "const": "Ed25519" },
+        "keyId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "purpose": { "enum": ["runtime-attestation", "operator-approval"] },
+        "keyFingerprintSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "signatureBase64": { "type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$" },
+        "canonicalPayloadBase64": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" }
       }
     }
   }

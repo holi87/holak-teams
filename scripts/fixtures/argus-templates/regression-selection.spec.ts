@@ -1,7 +1,7 @@
 import { appendFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 
-test('@regression @bug:ATA-001 origin alias selection sentinel', async () => {
+test('origin alias selection sentinel', { tag: ['@regression', '@bug:ATA-001'] }, async () => {
   const marker = process.env.ARGUS_SELECTION_MARKER;
   const mode = process.env.ARGUS_SELECTION_EXPECT;
   if (!marker || !mode) throw new Error('selection smoke environment is missing');

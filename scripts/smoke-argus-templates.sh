@@ -108,6 +108,8 @@ expect_selection_failure() {
   [ ! -e "$output" ] || fail "$label persisted an invalid layout selection"
 }
 
+"$ROOT/scripts/smoke-argus-bug-coverage-parser.sh"
+
 # The supported materialisation interface composes common + runtime layers into a byte-
 # and mode-exact copy of each complete maintainer source tree.
 for runtime in typescript java python; do
@@ -130,7 +132,8 @@ expect_copy_failure corrupt-layer "$WORK/plugin-corrupt/bin/argus-assets" typesc
 
 cp -R "$ROOT/argus/claude" "$WORK/plugin-directory-mode"
 chmod 700 "$WORK/plugin-directory-mode/templates/common/bugs"
-expect_copy_failure directory-mode-drift "$WORK/plugin-directory-mode/bin/argus-assets" python "$WORK/rejected-directory-mode"
+"$WORK/plugin-directory-mode/bin/argus-assets" copy-template python "$WORK/portable-directory-mode" >/dev/null
+test -f "$WORK/portable-directory-mode/bugs/_TEMPLATE.md" || fail "directory permission normalization changed template content"
 
 cp -R "$ROOT/argus/claude" "$WORK/plugin-symlink"
 rm "$WORK/plugin-symlink/templates/common/bugs/_TEMPLATE.md"

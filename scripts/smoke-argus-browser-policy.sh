@@ -8,7 +8,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLI="$ROOT/argus/claude/bin/argus-assets"
 FIXTURES="$ROOT/scripts/fixtures/argus-browser"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+HOST="$(mktemp -d)"
+trap 'rm -rf "$WORK" "$HOST"' EXIT
+
+source "$ROOT/scripts/lib/argus-smoke-model-control.sh"
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 
@@ -23,6 +26,7 @@ init_target() {
 # New engagements default to WCAG 2.2 AA and record conservative risk-derived coverage.
 init_target default
 DEFAULT="$WORK/default/ai_agents_internal/engagement.json"
+DEFAULT_PHYSICAL="$(cd "$WORK/default" && pwd -P)"
 jq -e '.accessibilityPolicy == {standard:"WCAG",version:"2.2",level:"AA",exception:null}' "$DEFAULT" >/dev/null || fail "default accessibility policy is not WCAG 2.2 AA"
 jq -e '.browserPolicy.coverage.derivation == "target-support-and-risk" and .browserPolicy.coverage.supportSource == "conservative-unknown" and (.browserPolicy.coverage.matrix | length) > 0' "$DEFAULT" >/dev/null || fail "default browser coverage lacks risk derivation"
 
@@ -42,13 +46,16 @@ if "$CLI" engagement init --target "$WORK/invalid" --artifact-root "$WORK/invali
 fi
 
 # Isolated allocations own unique profiles and browser-artifact roots inside the boundary.
-ODYSSEUS="$($CLI engagement allocate --manifest "$DEFAULT" --lane odysseus)"
-KALCHAS="$($CLI engagement allocate --manifest "$DEFAULT" --lane kalchas)"
+argus_smoke_prepare_model_control "$CLI" "$DEFAULT" "$WORK/default" "$WORK/default" A \
+  "$ROOT/scripts/fixtures/argus-preflight/full.json" "$HOST/default"
+ODYSSEUS="$(argus_smoke_allocate "$CLI" "$DEFAULT" "$HOST/default" odysseus)"
+ODYSSEUS_TOKEN="$(jq -r .token <<<"$ODYSSEUS")"
+KALCHAS="$(argus_smoke_allocate "$CLI" "$DEFAULT" "$HOST/default" kalchas "$ODYSSEUS_TOKEN")"
 [ "$(jq -r .browserProfile <<<"$ODYSSEUS")" != "$(jq -r .browserProfile <<<"$KALCHAS")" ] || fail "isolated lanes share a profile"
 [ "$(jq -r .browserArtifactsDirectory <<<"$ODYSSEUS")" != "$(jq -r .browserArtifactsDirectory <<<"$KALCHAS")" ] || fail "isolated lanes share browser artifacts"
 for allocation in "$ODYSSEUS" "$KALCHAS"; do
   root="$(jq -r .browserArtifactsDirectory <<<"$allocation")"
-  case "$root" in "$WORK/default"/*) ;; *) fail "browser artifacts escaped the engagement boundary" ;; esac
+  case "$root" in "$DEFAULT_PHYSICAL"/*) ;; *) fail "browser artifacts escaped the engagement boundary" ;; esac
   for child in downloads traces videos screenshots; do [ -d "$root/$child" ] || fail "missing managed $child directory"; done
 done
 
@@ -57,14 +64,17 @@ ODYSSEUS_ROOT="$WORK/default/ai_agents_internal/workers/odysseus"
 touch "$ODYSSEUS_ROOT/browser-profile/stale-cookie" "$ODYSSEUS_ROOT/auth/stale-token" \
   "$ODYSSEUS_ROOT/browser-artifacts/downloads/stale-download" "$ODYSSEUS_ROOT/tmp/stale-state"
 rm "$ODYSSEUS_ROOT/.lease"
-RECOVERED="$($CLI engagement allocate --manifest "$DEFAULT" --lane odysseus)"
+RECOVERED="$(argus_smoke_allocate "$CLI" "$DEFAULT" "$HOST/default" odysseus "" "$ODYSSEUS_TOKEN")"
 [ "$(jq -r .recoveredFromCrash <<<"$RECOVERED")" = true ] || fail "crash recovery was not reported"
 for stale in browser-profile/stale-cookie auth/stale-token browser-artifacts/downloads/stale-download tmp/stale-state; do
   [ ! -e "$ODYSSEUS_ROOT/$stale" ] || fail "crash recovery retained $stale"
 done
 
-# Success, failure, and interruption all remove browser-sensitive state.
-for spec in "odysseus:success:$RECOVERED" "kalchas:interrupted:$KALCHAS"; do
+# Kalchas completes its declared discovery barrier before success cleanup;
+# success, failure, and interruption all remove browser-sensitive state.
+"$CLI" engagement barrier arrive --manifest "$DEFAULT" --lane kalchas \
+  --token "$(jq -r .token <<<"$KALCHAS")" --phase discovery >/dev/null
+for spec in "kalchas:success:$KALCHAS" "odysseus:interrupted:$RECOVERED"; do
   lane="${spec%%:*}"; rest="${spec#*:}"; outcome="${rest%%:*}"; allocation="${rest#*:}"
   token="$(jq -r .token <<<"$allocation")"
   root="$WORK/default/ai_agents_internal/workers/$lane"
@@ -93,15 +103,18 @@ manifest.browserPolicy.sharedSessionAuthorization = {
 fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
 NODE
 "$CLI" engagement validate --manifest "$SHARED" >/dev/null
-SHARED_O="$($CLI engagement allocate --manifest "$SHARED" --lane odysseus)"
-SHARED_K="$($CLI engagement allocate --manifest "$SHARED" --lane kalchas)"
+argus_smoke_prepare_model_control "$CLI" "$SHARED" "$WORK/shared" "$WORK/shared" A \
+  "$ROOT/scripts/fixtures/argus-preflight/full.json" "$HOST/shared"
+SHARED_O="$(argus_smoke_allocate "$CLI" "$SHARED" "$HOST/shared" odysseus)"
+SHARED_O_TOKEN="$(jq -r .token <<<"$SHARED_O")"
+SHARED_K="$(argus_smoke_allocate "$CLI" "$SHARED" "$HOST/shared" kalchas "$SHARED_O_TOKEN")"
 SHARED_PROFILE="$(jq -r .browserProfile <<<"$SHARED_O")"
 [ "$SHARED_PROFILE" = "$(jq -r .browserProfile <<<"$SHARED_K")" ] || fail "authorized lanes did not receive the shared profile"
 [ "$(jq -r .browserProfileOwner <<<"$SHARED_O")" = "shared-session:review-session" ] || fail "shared profile owner is not explicit"
 [ "$(jq -r .accountAlias <<<"$SHARED_O")" = "support-reviewer" ] && [ "$(jq -r .accountAlias <<<"$SHARED_K")" = "support-reviewer" ] || fail "shared session does not use its authorized account"
-"$CLI" engagement cleanup --manifest "$SHARED" --lane odysseus --token "$(jq -r .token <<<"$SHARED_O")" --outcome interrupted >/dev/null
-[ -d "$SHARED_PROFILE" ] || fail "first shared-lane cleanup removed an active peer profile"
 "$CLI" engagement cleanup --manifest "$SHARED" --lane kalchas --token "$(jq -r .token <<<"$SHARED_K")" --outcome failure >/dev/null
+[ -d "$SHARED_PROFILE" ] || fail "first shared-lane cleanup removed an active peer profile"
+"$CLI" engagement cleanup --manifest "$SHARED" --lane odysseus --token "$(jq -r .token <<<"$SHARED_O")" --outcome interrupted >/dev/null
 [ ! -e "$SHARED_PROFILE" ] || fail "final shared-lane cleanup retained the shared profile"
 
 # Text evidence is redacted from a browser-specific fixture; binary evidence fails closed.

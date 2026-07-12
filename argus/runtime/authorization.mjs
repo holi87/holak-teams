@@ -301,7 +301,17 @@ function deny(ruleId, reason, productionLike) {
 }
 
 function matchesAny(value, patterns) {
-  return nonEmptyString(value) && Array.isArray(patterns) && patterns.some((pattern) => globRegex(pattern).test(value));
+  if (!nonEmptyString(value) || !Array.isArray(patterns)) return false;
+  return patterns.some((pattern) => {
+    if (globRegex(pattern).test(value)) return true;
+    return !pattern.includes('*') && normalizeHttpUrl(pattern) === normalizeHttpUrl(value);
+  });
+}
+
+function normalizeHttpUrl(value) {
+  if (!/^https?:\/\//i.test(value)) return value;
+  try { return new URL(value).toString(); }
+  catch { return value; }
 }
 
 function globRegex(pattern) {

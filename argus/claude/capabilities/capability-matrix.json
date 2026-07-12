@@ -80,6 +80,7 @@
       "ai_agents_internal/immutability-audit.jsonl",
       "ai_agents_internal/model-decisions/*.json",
       "ai_agents_internal/model-telemetry.jsonl",
+      "ai_agents_internal/orchestration-plan.json",
       "ai_agents_internal/preflight.json",
       "solution/",
       "bugs/"

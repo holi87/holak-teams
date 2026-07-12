@@ -30,6 +30,48 @@
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/slug" }
     },
+    "modelTrust": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema", "source", "trustStoreSha256", "pinnedAt", "keys", "legacyBootstrap"],
+          "properties": {
+            "schema": { "const": "argus/model-trust-bundle@1" },
+            "source": { "const": "host-trust-store" },
+            "trustStoreSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "pinnedAt": { "type": "string", "format": "date-time" },
+            "keys": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["runtimeAttestation", "operatorApproval"],
+              "properties": {
+                "runtimeAttestation": { "$ref": "#/$defs/runtimeAttestationTrustKey" },
+                "operatorApproval": { "$ref": "#/$defs/operatorApprovalTrustKey" }
+              }
+            },
+            "legacyBootstrap": {
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "authenticatedLane", "allocationId", "migrationId", "migrationSourceSha256"],
+                  "properties": {
+                    "kind": { "const": "legacy-v1-active-allocation" },
+                    "authenticatedLane": { "$ref": "#/$defs/slug" },
+                    "allocationId": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+                    "migrationId": { "type": "string", "pattern": "^state-v1-[a-f0-9]{24}$" },
+                    "migrationSourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
     "accessibilityPolicy": {
       "type": "object",
       "additionalProperties": false,
@@ -242,6 +284,32 @@
   },
   "$defs": {
     "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "runtimeAttestationTrustKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyId", "purpose", "subjectId", "algorithm", "publicKeyPem", "keyFingerprintSha256"],
+      "properties": {
+        "keyId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "purpose": { "const": "runtime-attestation" },
+        "subjectId": { "type": "string", "minLength": 1 },
+        "algorithm": { "const": "Ed25519" },
+        "publicKeyPem": { "type": "string", "pattern": "^-----BEGIN PUBLIC KEY-----" },
+        "keyFingerprintSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "operatorApprovalTrustKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyId", "purpose", "subjectId", "algorithm", "publicKeyPem", "keyFingerprintSha256"],
+      "properties": {
+        "keyId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "purpose": { "const": "operator-approval" },
+        "subjectId": { "type": "string", "minLength": 1 },
+        "algorithm": { "const": "Ed25519" },
+        "publicKeyPem": { "type": "string", "pattern": "^-----BEGIN PUBLIC KEY-----" },
+        "keyFingerprintSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
     "relativePath": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+" },
     "pathList": {
       "type": "array",

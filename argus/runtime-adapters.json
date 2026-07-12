@@ -13,7 +13,9 @@
       "requiredParentCapabilities": [
         "orchestration",
         "packaged-assets",
-        "tool-equivalence"
+        "tool-equivalence",
+        "dispatch-enforcement-attestation",
+        "jit-dispatch-authorization"
       ],
       "missingCapabilityOutcome": "CAPABILITY_GAP"
     }
@@ -60,6 +62,33 @@
     "sandboxPolicy": "read-only when the capability contract has no Write tool; workspace-write otherwise",
     "doctrinePolicy": "embed only capability-selected doctrine profiles and reviewed technique catalogs at generation time; never read catalogs at runtime",
     "toolPolicy": "require contract-equivalent runtime capabilities and return CAPABILITY_GAP when an assigned capability is unavailable",
+    "capabilityAttestation": {
+      "schema": "argus/model-runtime-attestation@1",
+      "directory": "ai_agents_internal/operator-decisions",
+      "authoringBoundary": "isolated-codex-dispatch-wrapper",
+      "authentication": "ed25519-pinned-engagement-key",
+      "maxValiditySeconds": 900,
+      "requiredEnforcements": [
+        "model",
+        "effort",
+        "maxTurns"
+      ]
+    },
+    "dispatchAuthorization": {
+      "schema": "argus/model-dispatch-authorization@1",
+      "directory": "ai_agents_internal/operator-decisions",
+      "authoringBoundary": "isolated-codex-dispatch-wrapper",
+      "authentication": "ed25519-pinned-engagement-key",
+      "maxValiditySeconds": 900,
+      "requiredBindings": [
+        "decisionId",
+        "decisionIntegritySha256",
+        "selectedConfigSha256",
+        "allocationId",
+        "parentSessionId",
+        "nonce"
+      ]
+    },
     "routingCapabilities": {
       "baseline": {
         "model": true,
@@ -71,7 +100,7 @@
         "effort": false,
         "maxTurns": false
       },
-      "evidence": "Codex TOML enforces the reviewed baseline model and reasoning effort, but has no native max-turn field and the collaboration API exposes no verified per-dispatch model, effort, or turn-cap override."
+      "evidence": "Codex TOML enforces the reviewed baseline model and reasoning effort. A route requires an exact signed enforcement attestation; every later allocation/spawn requires a separate fresh signed authorization bound to that decision, configuration, parent session, allocation, and nonce."
     }
   },
   "explicitDifferences": [

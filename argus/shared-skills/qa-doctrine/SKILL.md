@@ -33,12 +33,16 @@ with this contract, stop and return `DOCTRINE_CONFLICT` to Odysseus.
 
 ## Engagement coordination and ownership
 
-- At worker start run `argus-assets engagement allocate` with the dispatched manifest and
-  lane. Use only the returned lease, browser profile, account, namespace, port, temp directory, output
-  path, phase, and capabilities allocated to this worker. Never borrow another worker's
-  identity or resources. Checkpoint monotonically, arrive at the declared barrier, and
-  clean every lease, lock, profile, account, namespace, temp asset, and fault on success
-  and failure with `argus-assets engagement cleanup`. The full installed policy is
+- The controller allocates each lane against its exact authenticated, selected model
+  decision. Receive only this attempt's current lane token, public resource coordinates, and decision
+  coordinates (`decisionId`, integrity SHA-256, dispatch ID, attempt, and runtime).
+  Workers never run `argus-assets engagement allocate`; only the controller allocates and passes this lane's token.
+  A retry receives the token returned by `engagement start-attempt`; its prior token is revoked.
+  The controller token is never passed to a worker. Never route a model
+  or borrow another worker's identity or resources. Checkpoint monotonically, arrive at the declared
+  barrier, and clean every lease, lock, profile, account, namespace, temp asset, and fault on
+  success and failure with `argus-assets engagement cleanup`. Report `success` only after
+  every projected phase that declares this lane has recorded its arrival. The full installed policy is
   `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 - Follow the canonical RACI route. Stay in lane, do not contact peers directly, and send
   cross-lane signals to Odysseus. Direct canonical writes are forbidden: submit immutable
@@ -125,9 +129,11 @@ with this contract, stop and return `DOCTRINE_CONFLICT` to Odysseus.
 
 ## Progress, communication, and language
 
-- Progress is event-driven. Append one compact heartbeat only when a phase starts or
+- Progress is event-driven. Emit one compact heartbeat through `argus-assets engagement heartbeat`
+  with the active lane lease only when a phase starts or
   completes, a material work unit completes, ETA changes materially, or the role becomes
-  blocked/degraded. Do not run timer-based heartbeat loops. Include phase, completed/total
+  blocked/degraded. Each record is bound to the current allocation, dispatch, and attempt
+  generation. Do not run timer-based heartbeat loops. Include phase, completed/total
   units, ETA, blocker, and current artifact path. The final RESULT envelope is mandatory.
 - Keep inter-agent status terse: facts and paths over narration, no repeated upstream
   context. Preserve full reasoning and complete prose in durable artifacts.

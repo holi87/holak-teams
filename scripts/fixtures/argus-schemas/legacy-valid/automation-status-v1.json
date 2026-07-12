@@ -1,0 +1,1 @@
+{"$schema":"argus/automation-status@1","schemaVersion":1,"engagementId":"fixture-1","testId":"REG-0001","owner":"talos","status":"passed","runner":"npm test","updatedAt":"2026-07-10T00:00:00.000Z","coversBugIds":["BUG-0001"],"evidenceIds":["EVD-0001"]}

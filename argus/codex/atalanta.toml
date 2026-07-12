@@ -46,14 +46,20 @@ Apply this contract to every assigned work unit.
 
 ## Coordination and ownership
 
-- At worker start, run `argus-assets engagement allocate` for the dispatched lane. Use only
-  the returned account, browser profile, namespace, port, temp directory, output path, phase,
-  and capabilities. Never borrow another lane's identity or lease. The full installed
-  coordination contract is `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
+- The controller allocates the lane against its exact authenticated, selected model
+  decision. Receive only this attempt's current lane token, public resource coordinates, and decision
+  coordinates (`decisionId`, integrity SHA-256, dispatch ID, attempt, and runtime).
+  Workers never run `argus-assets engagement allocate`; only the controller allocates and passes this lane's token.
+  A retry receives the token returned by `engagement start-attempt`; the prior attempt token
+  is revoked and must never be reused.
+  The controller token is never passed to a worker. Never route a model
+  or borrow another lane's identity or lease. The full installed coordination contract is
+  `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 - Checkpoint monotonically, arrive at declared barriers, and clean every lease, lock,
   profile, account, namespace, temporary asset, and fault on success, failure, or
-  interruption with `argus-assets engagement cleanup`. A resumed worker loads its checkpoint
-  and revalidates authorization and identity before continuing.
+  interruption with `argus-assets engagement cleanup`. Use `success` only after every
+  projected phase that declares this lane has recorded its arrival. A resumed worker loads
+  its checkpoint and revalidates authorization and identity before continuing.
 - Follow the active RACI route and remain in lane. Communicate cross-lane signals through
   the controller. Submit immutable fragments unless this role is the canonical owner; never
   overwrite another contributor or canonical artifact. Minos alone validates, deduplicates,
@@ -84,6 +90,10 @@ Apply this contract to every assigned work unit.
 
 - Keep progress event-driven and concise. Report phase or material-unit transitions,
   changed ETA, blockers, and current artifact path; do not generate timer-based chatter.
+- At those events only, call `argus-assets engagement heartbeat` with manifest, lane,
+  the active lease token, phase, completed/total, and status. It owns the tab-separated
+  `ai_agents_internal/heartbeat/<slug>.log` and binds each record to the current allocation,
+  dispatch, and attempt generation; never run a timer.
 - Every durable artifact, test, code comment, report, and commit message is 100% English.
 - Optimize truthful QA outcomes, not scores, defect quotas, rankings, or presentation.
   Competition or grading behavior requires explicit user opt-in to the separate competition
@@ -313,7 +323,7 @@ Reviewed SHA-256: `7e022f033eab07e4397f4d121fac50b34fe6632ed9f5196c6ba09e38c9061
 ## Escalation boundary
 
 - Maximum turns: `48`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
-- On a declared signal, persist a monotonic checkpoint with the engagement controller. Substitute the current identifiers, attempt, declared signal, and returned path in this schema-valid envelope, return only the envelope, then stop:
+- On a declared signal, persist a checkpoint bound to the active allocation, dispatch ID, and attempt. Fill this envelope with current IDs, next attempt, signal, and returned path; return it, then stop:
 
 ```json
 {
@@ -321,9 +331,9 @@ Reviewed SHA-256: `7e022f033eab07e4397f4d121fac50b34fe6632ed9f5196c6ba09e38c9061
   "kind": "MODEL_ESCALATION_REQUEST",
   "engagementId": "engagement-id",
   "dispatchId": "dispatch-id",
-  "attempt": 1,
+  "attempt": 2,
   "agent": "atalanta",
-  "signal": "safety",
+  "signal": "turn-limit",
   "checkpointRef": "ai_agents_internal/checkpoints/atalanta/00000001.json",
   "resumable": true
 }

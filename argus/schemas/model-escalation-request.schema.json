@@ -10,12 +10,12 @@
     "kind": { "const": "MODEL_ESCALATION_REQUEST" },
     "engagementId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
     "dispatchId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
-    "attempt": { "type": "integer", "minimum": 1 },
+    "attempt": { "type": "integer", "minimum": 2 },
     "agent": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
     "signal": {
       "enum": ["ambiguity", "safety", "cross-lane", "conflicting-evidence", "oracle-ambiguity", "schema-validation-failure", "repeated-failure", "turn-limit"]
     },
-    "checkpointRef": { "type": "string", "pattern": "^ai_agents_internal/checkpoints/[a-z][a-z0-9-]*/[0-9]{8}\\.json$" },
+    "checkpointRef": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+\\.json$" },
     "resumable": { "const": true }
   }
 }

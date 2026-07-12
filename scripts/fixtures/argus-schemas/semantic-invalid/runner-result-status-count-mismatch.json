@@ -1,0 +1,1 @@
+{"$schema":"argus/runner-result@1","schemaVersion":1,"mode":"full-suite","status":"pass","exitCode":10,"categories":{"product":0,"automation":0,"infrastructure":0,"skip":0,"policy":0},"events":[{"caseId":"api.health","category":"product","status":"fail","expected":false,"lifecycle":"discovered","bugId":"BUG-0001","reason":"unexpected-failure"}]}

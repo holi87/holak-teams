@@ -7,6 +7,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLUGIN="$ROOT/argus/claude"
 MODE="${1:---static}"
 
+source "$ROOT/scripts/lib/argus-smoke-model-control.sh"
+
 fail() {
   printf 'FAIL  %s\n' "$*" >&2
   exit 1
@@ -30,6 +32,11 @@ copy_sync_fixture() {
 "$ROOT/scripts/sync-argus-runtime-assets.mjs" --check
 node "$ROOT/scripts/smoke-argus-asset-consumers.mjs"
 "$PLUGIN/bin/argus-assets" verify
+
+mkdir "$STATIC_WORK/restrictive-umask"
+(umask 077; cp -R "$PLUGIN" "$STATIC_WORK/restrictive-umask/plugin")
+node "$STATIC_WORK/restrictive-umask/plugin/bin/argus-assets" verify >/dev/null || \
+  fail "content-identical plugin failed verification after restrictive-umask extraction"
 
 # Direct invocation through a symlink must execute argument validation rather than
 # silently skipping main().
@@ -162,7 +169,8 @@ command -v claude >/dev/null 2>&1 || fail "claude CLI is required for --installe
 
 CONFIG_DIR="$(mktemp -d)"
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "$STATIC_WORK" "$CONFIG_DIR" "$WORK_DIR"' EXIT
+HOST_DIR="$(mktemp -d)"
+trap 'rm -rf "$STATIC_WORK" "$CONFIG_DIR" "$WORK_DIR" "$HOST_DIR"' EXIT
 
 CLAUDE_CONFIG_DIR="$CONFIG_DIR" claude plugin marketplace add "$ROOT" >/dev/null
 CLAUDE_CONFIG_DIR="$CONFIG_DIR" claude plugin install argus@holak-teams --scope user >/dev/null
@@ -226,12 +234,20 @@ cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-t
     >/dev/null
   test "$("$INSTALLED_PLUGIN/bin/argus-assets" raci route --surface api-rest --activity discover | jq -r .accountable)" = atalanta
   test "$("$INSTALLED_PLUGIN/bin/argus-assets" raci route --activity persist | jq -r .accountable)" = minos
-  allocation="$("$INSTALLED_PLUGIN/bin/argus-assets" engagement allocate \
-    --manifest "$WORK_DIR/preflight-target/ai_agents_internal/engagement.json" --lane kleio)"
+  control_manifest="$WORK_DIR/preflight-target/ai_agents_internal/engagement.json"
+  argus_smoke_prepare_model_control "$INSTALLED_PLUGIN/bin/argus-assets" "$control_manifest" \
+    "$WORK_DIR/preflight-target" "$WORK_DIR/preflight-target" A \
+    "$ROOT/scripts/fixtures/argus-preflight/full.json" "$HOST_DIR"
+  controller="$(argus_smoke_allocate "$INSTALLED_PLUGIN/bin/argus-assets" "$control_manifest" "$HOST_DIR" odysseus)"
+  controller_lease="$(jq -r .token <<<"$controller")"
+  allocation="$(argus_smoke_allocate "$INSTALLED_PLUGIN/bin/argus-assets" "$control_manifest" "$HOST_DIR" kleio "$controller_lease")"
   lease="$(jq -r .token <<<"$allocation")"
   "$INSTALLED_PLUGIN/bin/argus-assets" engagement cleanup \
-    --manifest "$WORK_DIR/preflight-target/ai_agents_internal/engagement.json" \
-    --lane kleio --token "$lease" --outcome success \
+    --manifest "$control_manifest" \
+    --lane kleio --token "$lease" --outcome interrupted \
+    >/dev/null
+  "$INSTALLED_PLUGIN/bin/argus-assets" engagement cleanup \
+    --manifest "$control_manifest" --lane odysseus --token "$controller_lease" --outcome interrupted \
     >/dev/null
 )
 

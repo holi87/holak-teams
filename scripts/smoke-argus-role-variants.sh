@@ -35,6 +35,8 @@ provenance_fields = [
 ]
 capabilities = json.loads((root / "argus/capabilities/capability-matrix.json").read_text())
 capabilities_by_slug = {agent["slug"]: agent for agent in capabilities["agents"]}
+model_policy = json.loads((root / "argus/model-policy.json").read_text())
+model_roles = {role["slug"]: role for role in model_policy["roles"]}
 provenance_bytes = 0
 
 
@@ -97,6 +99,10 @@ for path in files:
         assert "argus-assets model route" not in instructions, f"{slug}: worker can invoke model routing"
         assert "argus-assets model telemetry" not in instructions, f"{slug}: worker can invoke model telemetry"
         assert "MODEL_ESCALATION_REQUEST" in instructions, f"{slug}: worker escalation envelope missing"
+        sample = re.search(r'"signal": "([^"]+)"', instructions)
+        profile = model_roles[slug]["escalationProfile"]
+        assert sample and sample.group(1) in model_policy["escalationProfiles"][profile], \
+            f"{slug}: sample escalation signal is not allowed by {profile}"
     else:
         assert "argus-assets model route --manifest" in instructions, "odysseus: capability-bound route command missing"
         assert "argus-assets model telemetry --manifest" in instructions, "odysseus: decision-bound telemetry command missing"

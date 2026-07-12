@@ -8,6 +8,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const AGENTS_DIR = join(ROOT, 'argus', 'claude', 'agents');
 const SKILLS_DIR = join(ROOT, 'argus', 'claude', 'skills');
 const MATRIX_PATH = join(ROOT, 'argus', 'capabilities', 'capability-matrix.json');
+const WORKER_ALLOCATION_PROHIBITION = "Workers never run `argus-assets engagement allocate`; only the controller allocates and passes this lane's token.";
+const ALLOCATION_INVOCATION = /argus-assets engagement allocate\s+--manifest\b/;
 const LEGACY_PROMPT_PATTERNS = [
   { pattern: /\bGlob\s*\/\s*LS\b/, label: 'Glob/LS' },
   { pattern: /`MultiEdit`|\bMultiEdit tool\b/, label: 'MultiEdit' },
@@ -109,7 +111,14 @@ for (const name of agentFiles) {
   if (hasPlaywright) assert((contract.optionalCapabilities ?? []).includes('playwright-mcp'), `${name} exposes Playwright without a fallback contract`);
   assert(effectivePrompt.includes('argus-assets redact'), `${name} does not enforce the shared evidence redactor`);
   assert(effectivePrompt.includes('${CLAUDE_PLUGIN_ROOT}/references/AUTHORIZATION-POLICY.md'), `${name} does not reference the packaged authorization policy`);
-  assert(effectivePrompt.includes('argus-assets engagement allocate'), `${name} does not allocate/resume its engagement lease`);
+  assert(effectivePrompt.includes(WORKER_ALLOCATION_PROHIBITION), `${name} does not forbid worker-controlled lease allocation`);
+  const controllerOnlyAllocationText = effectivePrompt.split(WORKER_ALLOCATION_PROHIBITION).join('');
+  if (slug === 'odysseus') {
+    assert(ALLOCATION_INVOCATION.test(controllerOnlyAllocationText), `${name} controller prompt does not allocate authenticated leases`);
+  } else {
+    assert(!controllerOnlyAllocationText.includes('argus-assets engagement allocate'), `${name} improperly instructs a worker to allocate its own lease`);
+    assert(!controllerOnlyAllocationText.includes('--controller-token'), `${name} exposes the controller credential to a worker`);
+  }
   assert(effectivePrompt.includes('${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md'), `${name} does not reference the packaged engagement policy`);
 
   if ((contract.riskActions ?? []).length > 0) {
@@ -120,6 +129,14 @@ for (const name of agentFiles) {
     assert(!legacy.pattern.test(text), `${name} prompt still references legacy ${legacy.label}`);
   }
 }
+
+const mainThreadControllerPrompt = [
+  readFileSync(join(SKILLS_DIR, 'run', 'SKILL.md'), 'utf8'),
+  readFileSync(join(SKILLS_DIR, 'orchestration-core', 'SKILL.md'), 'utf8'),
+].join('\n');
+assert(ALLOCATION_INVOCATION.test(mainThreadControllerPrompt), 'main-thread controller does not invoke authenticated lease allocation');
+assert(mainThreadControllerPrompt.includes('--decision'), 'main-thread controller allocation does not bind an exact model decision');
+assert(mainThreadControllerPrompt.includes('--controller-token'), 'main-thread controller does not retain and use the Odysseus controller token');
 
 for (const assetId of matrix.orchestration.requiredAssets) {
   const manifest = readJson(join(ROOT, 'argus', 'runtime-assets.source.json'));

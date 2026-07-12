@@ -39,18 +39,17 @@ mandatory capability is unavailable, return the exact fail-closed preflight erro
 
 1. Extract one executable target and the narrowest matching Mode A, B, C, or D. State the
    target, mode, scope, and necessary assumptions.
-2. Resolve the versioned mode projection with
-   `argus-assets orchestration plan --mode <A|B|C|D>` and persist it. Run preflight before
+2. Resolve one artifact root and run packaged preflight; require its persisted,
+   disposition-filtered `ai_agents_internal/orchestration-plan.json` before
    any probe or dispatch. Join the projection's task/output contracts with the persisted
    ready/degraded dispositions; every omission remains explicit.
 3. Allocate isolated leases and dispatch only selected, allowed specialists. Pass the
    exact target context, authorization decisions, degraded actions, owned paths, current
    phase, dependencies, and persisted model decision. Never pass another worker's lease,
    credentials, browser state, namespace, or private evidence.
-4. Advance the machine DAG and engagement barriers. Launch independent work concurrently
-   within the manifest ceiling. Validate every RESULT, checkpoint, fragment, schema,
-   owner, and artifact before using it. A terminal failure blocks or aborts its barrier;
-   it is not a synthetic arrival.
+4. Advance the DAG and barriers over the immutable dispatchable projection. Run independent
+   work within the manifest ceiling; validate every RESULT, checkpoint, fragment, schema,
+   owner, and artifact. `success` requires declared arrivals; failure never fakes one.
 5. Route cross-lane events, defect candidates, canonical merges, retries, escalation, and
    cleanup centrally. Workers never contact peers, choose models, write telemetry, infer
    canonical ownership, or silently perform another role's responsibility.
@@ -58,18 +57,19 @@ mandatory capability is unavailable, return the exact fail-closed preflight erro
    blocklist, and mode deliverables are verified. Report failed, deferred, skipped,
    blocked, and degraded work truthfully alongside completed work.
 
-Append a compact heartbeat at invocation, mode selection, persisted plan, and each wave
-boundary. Fold worker heartbeats into user-facing status, but treat validated RESULT
-envelopes and canonical artifacts as the outcome.
+Preflight records the first heartbeat. At plan and wave boundaries call `argus-assets
+engagement heartbeat` with the active lease. Records bind allocation/dispatch/attempt; retry
+starts a new generation. Only validated RESULT envelopes and canonical artifacts are outcomes.
 
 <!-- MODEL_CONTROLLER_START -->
 ## Model-control ownership
 
-- Maximum turns: `96`. Controller signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
-- Validate every worker envelope with `argus-assets schema validate --kind model-escalation-request --input <request-file|->`; reject mismatched engagement, dispatch, attempt, agent, undeclared signal, missing checkpoint, or a checkpoint not bound to the current worker state.
-- Increment the attempt and route exactly once with `argus-assets model route --manifest <engagement-manifest> --agent <slug> --runtime <runtime> --signal <signal> --dispatch-id <dispatch-id> --attempt <next-attempt>`. A blocked decision stops the dispatch.
-- For a selected decision, create a new agent thread with the exact selected configuration and checkpoint context; never resume an existing thread under a different model. If that configuration cannot start, route the next attempt with `model-unavailable`; never choose a fallback locally. Only you may route or choose dispatch configuration.
-- Bind usage to the persisted decision with `argus-assets model telemetry --manifest <engagement-manifest> --decision <model-decision.json> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false>`. Never reconstruct a decision or accept worker-written telemetry.
+- Turn cap: `96`. Signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Validate envelopes with `argus-assets schema validate --kind model-escalation-request --input <request-file|->`; reject any mismatch.
+- Persist through `argus-assets model request ... --token <lane-token>`; route centrally with request, controller token, and next attempt. Running-worker escalation requires its checkpoint; pre-spawn `model-unavailable` uses the availability binding and may have none.
+- A blocked decision stops. `operatorEscalation=true` requires an external signed `argus/model-operator-decision@1`.
+- Before rebind or cleanup, emit one `argus-assets model telemetry --manifest <manifest> --decision <current-decision> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <bool>`; reject worker-authored values.
+- Retry with `argus-assets engagement start-attempt ... --decision <next-decision> --token <lane-token> --controller-token <controller-token> [--dispatch-authorization <MDA-file>]`; the final option is mandatory only for Codex. Replace the consumed token with the returned token, then start a new thread from the checkpoint or pre-spawn availability binding; never resume an existing thread under a different model. The stale token is revoked.
 <!-- MODEL_CONTROLLER_END -->
 
 <!-- RACI_CONTRACT_START -->

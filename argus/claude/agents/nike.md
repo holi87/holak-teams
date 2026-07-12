@@ -118,7 +118,7 @@ Mirror of Tyche's four fault-matrix classes — funded inline even when her hand
 ## Escalation boundary
 
 - Maximum turns: `56`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
-- On a declared signal, persist a monotonic checkpoint with the engagement controller. Substitute the current identifiers, attempt, declared signal, and returned path in this schema-valid envelope, return only the envelope, then stop:
+- On a declared signal, persist a checkpoint bound to the active allocation, dispatch ID, and attempt. Fill this envelope with current IDs, next attempt, signal, and returned path; return it, then stop:
 
 ```json
 {
@@ -126,9 +126,9 @@ Mirror of Tyche's four fault-matrix classes — funded inline even when her hand
   "kind": "MODEL_ESCALATION_REQUEST",
   "engagementId": "engagement-id",
   "dispatchId": "dispatch-id",
-  "attempt": 1,
+  "attempt": 2,
   "agent": "nike",
-  "signal": "safety",
+  "signal": "turn-limit",
   "checkpointRef": "ai_agents_internal/checkpoints/nike/00000001.json",
   "resumable": true
 }

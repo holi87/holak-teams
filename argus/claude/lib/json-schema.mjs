@@ -204,11 +204,10 @@ function isTime(value) {
   const sign = match[5] === '-' ? -1 : 1;
   const zoneHour = Number(match[6] ?? 0);
   const zoneMinute = Number(match[7] ?? 0);
-  if (zoneHour > 23 || zoneMinute > 59) return false;
-  if (hour <= 23 && minute <= 59 && second < 60) return true;
-  const utcMinute = minute - zoneMinute * sign;
-  const utcHour = hour - zoneHour * sign - (utcMinute < 0 ? 1 : 0);
-  return (utcHour === 23 || utcHour === -1) && (utcMinute === 59 || utcMinute === -1) && second < 61;
+  if (hour > 23 || minute > 59 || zoneHour > 23 || zoneMinute > 59 || second >= 61) return false;
+  if (second < 60) return true;
+  const utcMinute = (hour * 60 + minute - sign * (zoneHour * 60 + zoneMinute) + 1440) % 1440;
+  return utcMinute === 1439;
 }
 
 function isLeapYear(year) {

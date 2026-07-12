@@ -1,13 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/holi87/holak-teams/argus/schemas/evidence-reference.schema.json",
-  "title": "Argus redacted evidence reference v1",
+  "title": "Argus redacted evidence reference collection v2",
   "type": "object", "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "engagementId", "id", "kind", "source", "collectedBy", "capturedAt", "redaction", "sha256", "relatedBugIds"],
+  "required": ["$schema", "schemaVersion", "engagementId", "references"],
   "properties": {
-    "$schema": { "const": "argus/evidence-reference@1" }, "schemaVersion": { "const": 1 }, "engagementId": { "type": "string", "minLength": 1 },
-    "id": { "type": "string", "pattern": "^EVD-[0-9]{4}$" }, "kind": { "enum": ["text", "http", "trace", "metric", "log"] }, "source": { "type": "string", "minLength": 1 },
-    "collectedBy": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }, "capturedAt": { "type": "string", "format": "date-time" }, "redaction": { "enum": ["redacted", "synthetic", "public"] },
-    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "relatedBugIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^BUG-[0-9]{4}$" } }
+    "$schema": { "const": "argus/evidence-reference@2" }, "schemaVersion": { "const": 2 }, "engagementId": { "type": "string", "minLength": 1 },
+    "references": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/reference" } }
+  },
+  "$defs": {
+    "reference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "source", "collectedBy", "capturedAt", "redaction", "sha256", "relatedBugIds"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^EVD-[0-9]{4}$" }, "kind": { "enum": ["text", "http", "trace", "metric", "log"] }, "source": { "type": "string", "minLength": 1 },
+        "collectedBy": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }, "capturedAt": { "type": "string", "format": "date-time" }, "redaction": { "enum": ["redacted", "synthetic", "public"] },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "relatedBugIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^BUG-[0-9]{4}$" } }
+      }
+    }
   }
 }

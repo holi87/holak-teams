@@ -2,8 +2,21 @@
 
 import Ajv2020 from 'ajv/dist/2020.js';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   validateTechniqueCatalog,
@@ -21,6 +34,9 @@ const MANIFEST_PATH = join(ROLE_ROOT, 'manifest.json');
 const ADAPTERS_PATH = join(ROOT, 'argus', 'runtime-adapters.json');
 const CLAUDE_ROOT = join(ROOT, 'argus', 'claude', 'agents');
 const CODEX_ROOT = join(ROOT, 'argus', 'codex');
+const SHARED_SKILLS_ROOT = join(ROOT, 'argus', 'shared-skills');
+const TECHNIQUE_CATALOGS_ROOT = join(ROOT, 'argus', 'technique-catalogs');
+const SCHEMAS_ROOT = join(ROOT, 'argus', 'schemas');
 const MAX_CODEX_PROVENANCE_BYTES = 1500;
 const MAX_CODEX_PROVENANCE_CORPUS_BYTES = 40000;
 const CODEX_PROVENANCE_FIELDS = Object.freeze([
@@ -53,11 +69,16 @@ const ROUTE_SURFACES = Object.freeze({
   reporting: 'ui-functional',
 });
 
-const manifest = readJson(MANIFEST_PATH);
-const adapters = readJson(ADAPTERS_PATH);
-const modelPolicy = readJson(join(ROOT, manifest.contracts.modelPolicy));
-const raci = readJson(join(ROOT, manifest.contracts.ownership));
-const capabilities = readJson(join(ROOT, manifest.contracts.capabilities));
+preflightDirectory(ROOT, ROOT, 'repository root');
+preflightDirectory(ROLE_ROOT, ROOT, 'canonical role root');
+preflightDirectory(CLAUDE_ROOT, ROOT, 'Claude generated root');
+preflightDirectory(CODEX_ROOT, ROOT, 'Codex generated root');
+
+const manifest = readSourceJson(MANIFEST_PATH, 'role manifest', ROLE_ROOT);
+const adapters = readSourceJson(ADAPTERS_PATH, 'runtime adapters', ROOT);
+const modelPolicy = readSourceJson(contractPath(manifest, 'modelPolicy'), 'model policy', ROOT);
+const raci = readSourceJson(contractPath(manifest, 'ownership'), 'RACI contract', ROOT);
+const capabilities = readSourceJson(contractPath(manifest, 'capabilities'), 'capability matrix', ROOT);
 const doctrineBodies = loadDoctrineProfiles(capabilities.doctrineProfiles);
 const techniqueCatalogs = loadTechniqueCatalogs(capabilities.techniqueCatalogs, raci);
 const rolesByModel = bySlug(modelPolicy.roles, 'model policy');
@@ -76,6 +97,7 @@ assert(manifest.roles.length === 27, `role manifest has ${manifest.roles.length}
 assert(new Set(manifest.roles.map((role) => role.slug)).size === 27, 'role manifest has duplicate slugs');
 
 const expectedFiles = new Set();
+const generatedFiles = [];
 let codexProvenanceBytes = 0;
 for (const role of [...manifest.roles].sort((left, right) => left.slug.localeCompare(right.slug))) {
   validateRole(role);
@@ -90,7 +112,8 @@ for (const role of [...manifest.roles].sort((left, right) => left.slug.localeCom
   };
   const tier = modelPolicy.tiers[policyRole.tier];
   const sourcePath = join(ROLE_ROOT, role.source);
-  const sourceBody = readFileSync(sourcePath, 'utf8');
+  const sourceRaw = readSourceFile(sourcePath, `${role.slug}: canonical role source`, ROLE_ROOT);
+  const sourceBody = sourceRaw.toString('utf8');
   const body = renderCanonicalBody(sourceBody, policyRole, ownership, capability);
   const claude = renderClaude(resolvedRole, tier.claude, policyRole, capability, body);
   const codexInstructions = renderCodexInstructions(resolvedRole, capability, body);
@@ -101,6 +124,7 @@ for (const role of [...manifest.roles].sort((left, right) => left.slug.localeCom
     capability,
     codexToml,
     exactDeveloperInstructions(codexInstructions),
+    sha256(sourceRaw),
   ));
   const provenanceBytes = Buffer.byteLength(codexMarkdown);
   assert(
@@ -109,9 +133,11 @@ for (const role of [...manifest.roles].sort((left, right) => left.slug.localeCom
   );
   codexProvenanceBytes += provenanceBytes;
 
-  sync(join(CLAUDE_ROOT, `${role.slug}.md`), claude);
-  sync(join(CODEX_ROOT, `${role.slug}.toml`), codexToml);
-  sync(join(CODEX_ROOT, `${role.slug}.md`), codexMarkdown);
+  generatedFiles.push(
+    { path: join(CLAUDE_ROOT, `${role.slug}.md`), root: CLAUDE_ROOT, content: claude },
+    { path: join(CODEX_ROOT, `${role.slug}.toml`), root: CODEX_ROOT, content: codexToml },
+    { path: join(CODEX_ROOT, `${role.slug}.md`), root: CODEX_ROOT, content: codexMarkdown },
+  );
   expectedFiles.add(`${role.slug}.md`);
   expectedFiles.add(`${role.slug}.toml`);
 }
@@ -121,8 +147,15 @@ assert(
   `Codex provenance corpus is ${codexProvenanceBytes} bytes; must be < ${MAX_CODEX_PROVENANCE_CORPUS_BYTES}`,
 );
 
-const actualCodex = readdirSync(CODEX_ROOT).filter((file) => /\.(?:md|toml)$/.test(file)).sort();
-assert(equal(actualCodex, [...expectedFiles].sort()), 'Codex output contains missing or orphan role files');
+preflightGeneratedLeaves(generatedFiles);
+const actualClaude = generatedNames(CLAUDE_ROOT, /\.md$/);
+const expectedClaude = manifest.roles.map((role) => `${role.slug}.md`).sort();
+const actualCodex = generatedNames(CODEX_ROOT, /\.(?:md|toml)$/);
+assert(actualClaude.every((name) => expectedClaude.includes(name)), 'Claude output contains orphan role files');
+assert(actualCodex.every((name) => expectedFiles.has(name)), 'Codex output contains orphan role files');
+for (const output of generatedFiles) sync(output.path, output.content, output.root);
+assert(equal(generatedNames(CLAUDE_ROOT, /\.md$/), expectedClaude), 'Claude output contains missing or orphan role files');
+assert(equal(generatedNames(CODEX_ROOT, /\.(?:md|toml)$/), [...expectedFiles].sort()), 'Codex output contains missing or orphan role files');
 console.log(
   `PASS  Argus role variants: ${manifest.roles.length} canonical sources -> ` +
   `27 Claude agents + 27 Codex TOML/provenance pairs, ${codexProvenanceBytes} provenance bytes (${mode.slice(2)})`,
@@ -169,7 +202,7 @@ function renderCodexToml(role, codexTier, capability, instructions) {
   return `name = ${JSON.stringify(role.slug)}\ndescription = ${JSON.stringify(role.description)}\nmodel = ${JSON.stringify(codexTier.model)}\nsandbox_mode = ${JSON.stringify(sandbox)}\nmodel_reasoning_effort = ${JSON.stringify(codexTier.reasoningEffort)}\n\ndeveloper_instructions = '''\n${instructions.trim()}\n'''\n`;
 }
 
-function renderCodexMarkdown(role, codexTier, capability, toml, developerInstructions) {
+function renderCodexMarkdown(role, codexTier, capability, toml, developerInstructions, canonicalSourceSha256) {
   const sandbox = capability.requiredTools.includes('Write') ? 'workspace-write' : 'read-only';
   const fields = {
     schema: 'argus/codex-provenance@1',
@@ -179,7 +212,7 @@ function renderCodexMarkdown(role, codexTier, capability, toml, developerInstruc
     runtime_config_sha256: sha256(toml),
     developer_instructions_sha256: sha256(developerInstructions),
     canonical_source: `argus/roles/${role.source}`,
-    canonical_source_sha256: sha256(readFileSync(join(ROLE_ROOT, role.source))),
+    canonical_source_sha256: canonicalSourceSha256,
     model: codexTier.model,
     model_reasoning_effort: codexTier.reasoningEffort,
     sandbox_mode: sandbox,
@@ -243,8 +276,9 @@ function loadDoctrineProfiles(definitions) {
   assert(definitions && typeof definitions === 'object', 'capability matrix doctrineProfiles are missing');
   const result = new Map();
   for (const profile of Object.keys(definitions)) {
-    const path = join(ROOT, 'argus', 'shared-skills', profile, 'SKILL.md');
-    const raw = readFileSync(path, 'utf8');
+    assert(/^[a-z][a-z0-9-]*$/.test(profile), `invalid doctrine profile id: ${profile}`);
+    const path = join(SHARED_SKILLS_ROOT, profile, 'SKILL.md');
+    const raw = readSourceFile(path, `${profile}: doctrine profile`, SHARED_SKILLS_ROOT).toString('utf8');
     const parsed = splitMarkdown(raw);
     assert(new RegExp(`^name:\\s*${escapeRegex(profile)}$`, 'm').test(parsed.frontmatter), `${profile}: skill name differs from profile id`);
     result.set(profile, parsed.body.trim());
@@ -254,12 +288,17 @@ function loadDoctrineProfiles(definitions) {
 
 function loadTechniqueCatalogs(definitions, ownership) {
   assert(definitions && typeof definitions === 'object', 'capability matrix techniqueCatalogs are missing');
-  const schema = readJson(join(ROOT, 'argus', 'schemas', 'technique-catalog.schema.json'));
+  const schema = readSourceJson(
+    join(SCHEMAS_ROOT, 'technique-catalog.schema.json'),
+    'technique catalog schema',
+    SCHEMAS_ROOT,
+  );
   const validateSchema = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
   const result = new Map();
   for (const [id, definition] of Object.entries(definitions)) {
-    const path = join(ROOT, 'argus', 'technique-catalogs', `${id}.json`);
-    const raw = readFileSync(path);
+    assert(/^[a-z][a-z0-9-]*$/.test(id), `invalid technique catalog id: ${id}`);
+    const path = join(TECHNIQUE_CATALOGS_ROOT, `${id}.json`);
+    const raw = readSourceFile(path, `${id}: technique catalog`, TECHNIQUE_CATALOGS_ROOT);
     const document = JSON.parse(raw.toString('utf8'));
     assert(validateSchema(document), `${id}: technique catalog JSON Schema failed: ${JSON.stringify(validateSchema.errors)}`);
     const semanticErrors = validateTechniqueCatalog(document);
@@ -319,12 +358,12 @@ function formatCatalogRoute(route) {
 
 function renderModelEscalationBlock(role) {
   const signals = modelPolicy.escalationProfiles[role.escalationProfile].join(', ');
-  return `<!-- MODEL_ESCALATION_START -->\n## Escalation boundary\n\n- Maximum turns: \`${role.maxTurns}\`. Declared signals: ${signals}.\n- On a declared signal, persist a monotonic checkpoint with the engagement controller. Substitute the current identifiers, attempt, declared signal, and returned path in this schema-valid envelope, return only the envelope, then stop:\n\n\`\`\`json\n{\n  "schema": "argus/model-escalation-request@1",\n  "kind": "MODEL_ESCALATION_REQUEST",\n  "engagementId": "engagement-id",\n  "dispatchId": "dispatch-id",\n  "attempt": 1,\n  "agent": "${role.slug}",\n  "signal": "safety",\n  "checkpointRef": "ai_agents_internal/checkpoints/${role.slug}/00000001.json",\n  "resumable": true\n}\n\`\`\`\n\nDo not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.\n<!-- MODEL_ESCALATION_END -->`;
+  return `<!-- MODEL_ESCALATION_START -->\n## Escalation boundary\n\n- Maximum turns: \`${role.maxTurns}\`. Declared signals: ${signals}.\n- On a declared signal, persist a checkpoint bound to the active allocation, dispatch ID, and attempt. Fill this envelope with current IDs, next attempt, signal, and returned path; return it, then stop:\n\n\`\`\`json\n{\n  "schema": "argus/model-escalation-request@1",\n  "kind": "MODEL_ESCALATION_REQUEST",\n  "engagementId": "engagement-id",\n  "dispatchId": "dispatch-id",\n  "attempt": 2,\n  "agent": "${role.slug}",\n  "signal": "turn-limit",\n  "checkpointRef": "ai_agents_internal/checkpoints/${role.slug}/00000001.json",\n  "resumable": true\n}\n\`\`\`\n\nDo not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.\n<!-- MODEL_ESCALATION_END -->`;
 }
 
 function renderModelControllerBlock(role) {
   const signals = modelPolicy.escalationProfiles[role.escalationProfile].join(', ');
-  return `<!-- MODEL_CONTROLLER_START -->\n## Model-control ownership\n\n- Maximum turns: \`${role.maxTurns}\`. Controller signals: ${signals}.\n- Validate every worker envelope with \`argus-assets schema validate --kind model-escalation-request --input <request-file|->\`; reject mismatched engagement, dispatch, attempt, agent, undeclared signal, missing checkpoint, or a checkpoint not bound to the current worker state.\n- Increment the attempt and route exactly once with \`argus-assets model route --manifest <engagement-manifest> --agent <slug> --runtime <runtime> --signal <signal> --dispatch-id <dispatch-id> --attempt <next-attempt>\`. A blocked decision stops the dispatch.\n- For a selected decision, create a new agent thread with the exact selected configuration and checkpoint context; never resume an existing thread under a different model. If that configuration cannot start, route the next attempt with \`model-unavailable\`; never choose a fallback locally. Only you may route or choose dispatch configuration.\n- Bind usage to the persisted decision with \`argus-assets model telemetry --manifest <engagement-manifest> --decision <model-decision.json> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false>\`. Never reconstruct a decision or accept worker-written telemetry.\n<!-- MODEL_CONTROLLER_END -->`;
+  return `<!-- MODEL_CONTROLLER_START -->\n## Model-control ownership\n\n- Turn cap: \`${role.maxTurns}\`. Signals: ${signals}.\n- Validate envelopes with \`argus-assets schema validate --kind model-escalation-request --input <request-file|->\`; reject any mismatch.\n- Persist through \`argus-assets model request ... --token <lane-token>\`; route centrally with request, controller token, and next attempt. Running-worker escalation requires its checkpoint; pre-spawn \`model-unavailable\` uses the availability binding and may have none.\n- A blocked decision stops. \`operatorEscalation=true\` requires an external signed \`argus/model-operator-decision@1\`.\n- Before rebind or cleanup, emit one \`argus-assets model telemetry --manifest <manifest> --decision <current-decision> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <bool>\`; reject worker-authored values.\n- Retry with \`argus-assets engagement start-attempt ... --decision <next-decision> --token <lane-token> --controller-token <controller-token> [--dispatch-authorization <MDA-file>]\`; the final option is mandatory only for Codex. Replace the consumed token with the returned token, then start a new thread from the checkpoint or pre-spawn availability binding; never resume an existing thread under a different model. The stale token is revoked.\n<!-- MODEL_CONTROLLER_END -->`;
 }
 
 function renderRaciBlock(agent) {
@@ -340,14 +379,155 @@ function splitMarkdown(raw) {
   return { frontmatter: match[1], body: match[2] };
 }
 
-function sync(path, expected) {
+function sync(path, expected, outputRoot) {
   const normalized = expected.endsWith('\n') ? expected : `${expected}\n`;
+  preflightGeneratedLeaf(path, outputRoot);
   if (mode === '--write') {
-    if (!existsSync(path) || readFileSync(path, 'utf8') !== normalized) writeFileSync(path, normalized);
+    if (!existsSync(path) || readGeneratedFile(path, outputRoot).toString('utf8') !== normalized) {
+      atomicWriteGenerated(path, normalized, outputRoot);
+    }
     return;
   }
   assert(existsSync(path), `generated role is missing: ${path}`);
-  assert(readFileSync(path, 'utf8') === normalized, `generated role drift: ${path}; run scripts/sync-argus-role-variants.mjs --write`);
+  assert(readGeneratedFile(path, outputRoot).toString('utf8') === normalized, `generated role drift: ${path}; run scripts/sync-argus-role-variants.mjs --write`);
+}
+
+function contractPath(document, field) {
+  const value = document?.contracts?.[field];
+  assert(typeof value === 'string' && value.length > 0, `role manifest contracts.${field} is missing`);
+  assert(!isAbsolute(value) && !value.split(/[\\/]/).includes('..'), `role manifest contracts.${field} must stay under the repository root`);
+  const path = resolve(ROOT, value);
+  assert(isWithin(ROOT, path), `role manifest contracts.${field} escapes the repository root`);
+  return path;
+}
+
+function preflightGeneratedLeaves(outputs) {
+  for (const output of outputs) preflightGeneratedLeaf(output.path, output.root);
+}
+
+function generatedNames(root, pattern) {
+  preflightDirectory(root, ROOT, `generated root ${relative(ROOT, root)}`);
+  return readdirSync(root)
+    .filter((name) => pattern.test(name))
+    .map((name) => {
+      preflightGeneratedLeaf(join(root, name), root);
+      return name;
+    })
+    .sort();
+}
+
+function preflightGeneratedLeaf(path, outputRoot) {
+  assertPathWithin(outputRoot, path, `generated output ${relative(ROOT, path)}`);
+  preflightDirectory(outputRoot, ROOT, `generated root ${relative(ROOT, outputRoot)}`);
+  preflightDirectory(dirname(path), outputRoot, `generated output parent ${relative(ROOT, dirname(path))}`);
+  if (!existsSync(path)) return;
+  const info = lstatSync(path);
+  assert(!info.isSymbolicLink(), `generated output cannot be a symbolic link: ${relative(ROOT, path)}`);
+  assert(info.isFile(), `generated output must be a regular file: ${relative(ROOT, path)}`);
+  const physical = realpathSync(path);
+  assertPhysicalWithin(outputRoot, physical, `generated output ${relative(ROOT, path)}`);
+}
+
+function readGeneratedFile(path, outputRoot) {
+  preflightGeneratedLeaf(path, outputRoot);
+  return readRegularFileNoFollow(path, `generated output ${relative(ROOT, path)}`);
+}
+
+function atomicWriteGenerated(path, content, outputRoot) {
+  preflightGeneratedLeaf(path, outputRoot);
+  const digest = sha256(`${path}:${process.pid}:${Date.now()}:${content.length}`).slice(0, 16);
+  const temporary = join(dirname(path), `.${relative(dirname(path), path)}.${digest}.tmp`);
+  assertPathWithin(outputRoot, temporary, `temporary generated output ${relative(ROOT, temporary)}`);
+  try {
+    writeFileSync(temporary, content, { flag: 'wx', mode: 0o644 });
+    const info = lstatSync(temporary);
+    assert(!info.isSymbolicLink() && info.isFile(), `temporary generated output is not a regular file: ${relative(ROOT, temporary)}`);
+    preflightGeneratedLeaf(path, outputRoot);
+    renameSync(temporary, path);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+  preflightGeneratedLeaf(path, outputRoot);
+}
+
+function readSourceJson(path, label, allowedRoot) {
+  const raw = readSourceFile(path, label, allowedRoot);
+  try {
+    return JSON.parse(raw.toString('utf8'));
+  } catch (error) {
+    fail(`${label} is not valid JSON: ${error.message}`);
+  }
+}
+
+function readSourceFile(path, label, allowedRoot) {
+  preflightSourceFile(path, label, allowedRoot);
+  return readRegularFileNoFollow(path, label);
+}
+
+function preflightSourceFile(path, label, allowedRoot) {
+  assertPathWithin(allowedRoot, path, label);
+  preflightDirectory(allowedRoot, ROOT, `${label} root`);
+  preflightDirectory(dirname(path), allowedRoot, `${label} parent`);
+  assert(existsSync(path), `${label} is missing: ${path}`);
+  const info = lstatSync(path);
+  assert(!info.isSymbolicLink(), `${label} cannot be a symbolic link: ${relative(ROOT, path)}`);
+  assert(info.isFile(), `${label} must be a regular file: ${relative(ROOT, path)}`);
+  assertPhysicalWithin(allowedRoot, realpathSync(path), label);
+}
+
+function preflightDirectory(path, allowedRoot, label) {
+  assertPathWithin(allowedRoot, path, label);
+  assert(existsSync(path), `${label} is missing: ${path}`);
+  assertNoSymlinkPath(allowedRoot, path, label);
+  const info = lstatSync(path);
+  assert(!info.isSymbolicLink(), `${label} cannot be a symbolic link: ${relative(ROOT, path) || '.'}`);
+  assert(info.isDirectory(), `${label} must be a directory: ${path}`);
+  assertPhysicalWithin(allowedRoot, realpathSync(path), label);
+}
+
+function assertNoSymlinkPath(allowedRoot, candidate, label) {
+  const root = resolve(allowedRoot);
+  const path = resolve(candidate);
+  assertPathWithin(root, path, label);
+  const rel = relative(root, path);
+  let cursor = root;
+  const rootInfo = lstatSync(root);
+  assert(!rootInfo.isSymbolicLink(), `${label} root cannot be a symbolic link: ${root}`);
+  for (const segment of rel.split(sep).filter(Boolean)) {
+    cursor = join(cursor, segment);
+    if (!existsSync(cursor)) break;
+    assert(!lstatSync(cursor).isSymbolicLink(), `${label} path contains a symbolic link: ${relative(ROOT, cursor)}`);
+  }
+}
+
+function assertPathWithin(allowedRoot, candidate, label) {
+  const root = resolve(allowedRoot);
+  const path = resolve(candidate);
+  assert(isWithin(root, path), `${label} escapes ${relative(ROOT, root) || 'repository root'}: ${candidate}`);
+}
+
+function assertPhysicalWithin(allowedRoot, candidate, label) {
+  const root = realpathSync(allowedRoot);
+  const path = resolve(candidate);
+  assert(isWithin(root, path), `${label} escapes its physical root: ${candidate}`);
+}
+
+function readRegularFileNoFollow(path, label) {
+  const noFollow = constants.O_NOFOLLOW ?? 0;
+  let descriptor;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | noFollow);
+    assert(fstatSync(descriptor).isFile(), `${label} must be a regular file`);
+    return readFileSync(descriptor);
+  } catch (error) {
+    fail(`${label} could not be read safely: ${error.message}`);
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function isWithin(root, path) {
+  return path === root || path.startsWith(`${root}${sep}`);
 }
 
 function bySlug(items, label) {
@@ -370,10 +550,6 @@ function escapeRegex(value) {
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
-}
-
-function readJson(path) {
-  return JSON.parse(readFileSync(path, 'utf8'));
 }
 
 function equal(left, right) {

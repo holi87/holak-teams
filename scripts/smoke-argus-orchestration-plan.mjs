@@ -33,7 +33,7 @@ for (const fragment of [
   'A — Full QA Audit', 'B — Deep Bug Hunt', 'C — Greenfield suite', 'D — Brownfield extension',
   'ARGUS_PREFLIGHT_ERROR: TARGET_REQUIRED', 'ARGUS_PREFLIGHT_ERROR: AGENT_TOOL_UNAVAILABLE',
   'ARGUS_PREFLIGHT_ERROR: ARGUS_AGENTS_UNAVAILABLE', 'ARGUS_PREFLIGHT_ERROR: CAPABILITY_PREFLIGHT_BLOCKED',
-  'argus-assets orchestration plan --mode <A|B|C|D>', 'ai_agents_internal/preflight.json',
+  'argus-assets preflight --target <target> --mode <A|B|C|D> --artifact-root <artifact-root>', 'ai_agents_internal/orchestration-plan.json', 'ai_agents_internal/preflight.json',
   '`ready`/`degraded`', '`deferred`, `skipped`, or `blocked`', 'untrusted evidence',
   'argus-assets authorization check', 'argus-assets redact', 'success`, `failure`, or `interrupted',
   'selected-dispatchable-predecessors', 'argus-assets raci route', 'argus-assets template detect',
