@@ -1,0 +1,327 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/technique-catalog.schema.json",
+  "title": "Argus build-time technique catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "catalogId",
+    "role",
+    "catalogType",
+    "valuePolicy",
+    "executionRule"
+  ],
+  "properties": {
+    "$schema": { "const": "argus/technique-catalog@1" },
+    "schemaVersion": { "const": 1 },
+    "catalogId": {
+      "enum": [
+        "argus/technique-catalog/atalanta@1",
+        "argus/technique-catalog/proteus@1",
+        "argus/technique-catalog/metis@1"
+      ]
+    },
+    "role": { "enum": ["atalanta", "proteus", "metis"] },
+    "catalogType": { "enum": ["hunter", "strategy"] },
+    "valuePolicy": { "const": "discover-never-assume" },
+    "executionRule": { "const": "each-applicable-entry-covered-or-gap" },
+    "absentSurfaceDisposition": {
+      "const": "not-applicable-with-evidence"
+    },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hunterEntry" }
+    },
+    "iso25010": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/qualityCharacteristic" }
+    },
+    "istqb": { "$ref": "#/$defs/istqb" },
+    "journeyClasses": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/journeyClass" }
+    },
+    "boundaryRegister": { "$ref": "#/$defs/boundaryRegister" },
+    "archetypes": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/archetype" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "catalogType": { "const": "hunter" } } },
+      "then": {
+        "required": ["absentSurfaceDisposition", "entries"],
+        "properties": {
+          "absentSurfaceDisposition": {},
+          "entries": {},
+          "iso25010": false,
+          "istqb": false,
+          "journeyClasses": false,
+          "boundaryRegister": false,
+          "archetypes": false
+        }
+      }
+    },
+    {
+      "if": { "properties": { "catalogType": { "const": "strategy" } } },
+      "then": {
+        "required": ["iso25010", "istqb", "journeyClasses", "boundaryRegister", "archetypes"],
+        "properties": {
+          "absentSurfaceDisposition": false,
+          "entries": false,
+          "iso25010": {},
+          "istqb": {},
+          "journeyClasses": {},
+          "boundaryRegister": {},
+          "archetypes": {}
+        }
+      }
+    },
+    {
+      "if": { "properties": { "role": { "const": "atalanta" } } },
+      "then": {
+        "properties": {
+          "catalogId": { "const": "argus/technique-catalog/atalanta@1" },
+          "catalogType": { "const": "hunter" },
+          "entries": { "type": "array", "minItems": 20, "maxItems": 20 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "role": { "const": "proteus" } } },
+      "then": {
+        "properties": {
+          "catalogId": { "const": "argus/technique-catalog/proteus@1" },
+          "catalogType": { "const": "hunter" },
+          "entries": { "type": "array", "minItems": 15, "maxItems": 15 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "role": { "const": "metis" } } },
+      "then": {
+        "properties": {
+          "catalogId": { "const": "argus/technique-catalog/metis@1" },
+          "catalogType": { "const": "strategy" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 3 },
+    "uniqueStrings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "lane": {
+      "enum": [
+        "api",
+        "ui",
+        "security",
+        "performance",
+        "resilience",
+        "data",
+        "accessibility",
+        "journey",
+        "contract",
+        "reporting"
+      ]
+    },
+    "hunterEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "scope", "techniques", "appliesWhen", "construct", "oracles", "routes"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^(ATA|PRO)-T(0[1-9]|1[0-9]|20)$" },
+        "title": { "$ref": "#/$defs/nonEmptyString" },
+        "scope": { "$ref": "#/$defs/uniqueStrings" },
+        "techniques": { "$ref": "#/$defs/uniqueStrings" },
+        "appliesWhen": { "enum": ["always", "surface-present", "documented-control"] },
+        "construct": { "$ref": "#/$defs/uniqueStrings" },
+        "oracles": { "$ref": "#/$defs/uniqueStrings" },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/lane" }
+        }
+      }
+    },
+    "qualityCharacteristic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "focus", "coverageRule"],
+      "properties": {
+        "id": {
+          "enum": [
+            "functional-suitability",
+            "performance-efficiency",
+            "compatibility",
+            "usability",
+            "reliability",
+            "security",
+            "maintainability",
+            "portability"
+          ]
+        },
+        "focus": { "$ref": "#/$defs/uniqueStrings" },
+        "coverageRule": { "const": "covered-or-named-residual-risk" }
+      }
+    },
+    "istqb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["process", "techniques", "mappingRule"],
+      "properties": {
+        "process": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            { "const": "analysis" },
+            { "const": "design" },
+            { "const": "implementation" },
+            { "const": "execution" },
+            { "const": "completion" }
+          ],
+          "items": false
+        },
+        "techniques": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "boundary-value-analysis",
+              "equivalence-partitioning",
+              "decision-table",
+              "state-transition",
+              "pairwise-combinatorial",
+              "use-case",
+              "error-guessing-exploratory-charter"
+            ]
+          }
+        },
+        "mappingRule": { "const": "each-funded-row-names-technique-characteristic-lane-owner" }
+      }
+    },
+    "journeyClass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "requiredOutcomes", "techniques", "tag", "coverageRule"],
+      "properties": {
+        "id": {
+          "enum": [
+            "primary-user-cycle",
+            "value-transaction",
+            "cross-role-workflow",
+            "content-lifecycle",
+            "moderation-approval"
+          ]
+        },
+        "requiredOutcomes": { "$ref": "#/$defs/uniqueStrings" },
+        "techniques": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            { "const": "use-case" },
+            { "const": "state-transition" }
+          ],
+          "items": false
+        },
+        "tag": { "const": "@e2e" },
+        "coverageRule": { "const": "funded-or-justified" }
+      }
+    },
+    "boundaryRegister": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "artifact", "rowIdPattern", "kinds", "requiredColumns", "mandates"],
+      "properties": {
+        "required": { "const": true },
+        "artifact": { "const": "solution/TEST-STRATEGY.md" },
+        "rowIdPattern": { "const": "^BND-[0-9]{3}$" },
+        "kinds": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["threshold", "range", "limit", "enum", "page-size", "rate", "cutoff", "charset-field"]
+          }
+        },
+        "requiredColumns": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "prefixItems": [
+            { "const": "id" },
+            { "const": "source" },
+            { "const": "kind" },
+            { "const": "documentedRule" },
+            { "const": "exactBoundaryState" },
+            { "const": "technique" },
+            { "const": "laneOwner" },
+            { "const": "tag" }
+          ],
+          "items": false
+        },
+        "mandates": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "record-inclusive-exclusive-or-question",
+              "construct-b-minus-b-b-plus-at-domain-step",
+              "register-every-charset-field",
+              "reconcile-covered-versus-total-per-lane"
+            ]
+          }
+        }
+      }
+    },
+    "archetype": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "techniques", "lanes", "oracle", "coverageRule"],
+      "properties": {
+        "id": {
+          "enum": [
+            "boundary-equality",
+            "charset-equivalence",
+            "api-past-widget",
+            "concurrency-race",
+            "soft-delete-resurrection",
+            "money-cross-view-recalculation",
+            "effect-message-content",
+            "perf-seeded-structural"
+          ]
+        },
+        "techniques": { "$ref": "#/$defs/uniqueStrings" },
+        "lanes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/lane" }
+        },
+        "oracle": { "$ref": "#/$defs/nonEmptyString" },
+        "coverageRule": { "const": "filled-or-justified" }
+      }
+    }
+  }
+}

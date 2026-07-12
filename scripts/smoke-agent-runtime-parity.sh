@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate all 49 Claude/Codex roles with generated parity and native loaders.
+# Validate generated alignment and native configuration loading for all 49 roles.
 
 set -euo pipefail
 
@@ -23,4 +23,4 @@ jq -e '.checks["config.load"].status == "ok" and ((.checks["config.load"].detail
   exit 1
 }
 
-printf 'PASS  Native full roster: two Claude plugins + 49 Codex TOML agents loaded without warnings\n'
+printf 'PASS  Native configuration load: two Claude plugins + 49 Codex TOML agents loaded without warnings; behavioral equivalence not claimed\n'

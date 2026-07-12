@@ -2,7 +2,9 @@
 
 When Atalanta confirms a bug, a regression test goes here. **The app is NOT fixed during the engagement**, so the test asserts the SPEC-CORRECT behaviour and will be RED — that red, linked to its bug file, is your evidence that the suite catches the defect (evaluated criterion 4).
 
-Use **red evidence** only: a plain failing test whose red maps to `BUG-NNNN`. Run it in
+Use **red evidence** only: a plain failing test selected by `@Tag("regression")` whose
+`@bug:` provenance maps to the canonical ID or one stable origin alias in
+`solution/bug-ledger.json`. Run it in
 `--mode defect-evidence`; a JUnit extension/listener must append the matching
 `product/fail/expected=true/reproduced` event. Candidate/full modes remain strict green.
 
@@ -37,6 +39,6 @@ Do **not** use expected-failure wrappers (`@Disabled`, assumptions, `assertThrow
 failure) for confirmed defects. A known bug must keep its regression RED until the application
 is fixed. Determinism applies here too: no Surefire rerun — a flaky regression is itself a finding.
 
-Every regression test names its `BUG-NNNN`, cites the oracle, and emits the lifecycle event
+Every regression test carries the native regression tag plus `@bug:<canonical-or-origin>`, cites the oracle, and emits the lifecycle event
 through `scripts/outcome-event.sh`. One regression test per confirmed bug. Lane:
 `@Tag("regression")`.

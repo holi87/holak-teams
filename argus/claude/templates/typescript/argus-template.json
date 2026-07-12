@@ -6,7 +6,7 @@
   "runner": "playwright-test",
   "packageManagers": ["npm"],
   "layoutPlaceholders": { "testRoot": "tests", "harnessRoot": "src" },
-  "tagAdapter": { "contract-smoke": "@contract-smoke", "quarantine": "@quarantine", "regression": "@bug:BUG-NNNN" },
+  "tagAdapter": { "contract-smoke": "@contract-smoke", "quarantine": "@quarantine", "regression": "@regression", "bug-provenance": "@bug:<canonical-or-origin>" },
   "extensionPoints": ["package-manager-adapter", "test-root", "harness-root", "ci-command"],
   "unsupportedByDefault": ["pnpm", "yarn", "bun", "jest", "vitest"]
 }

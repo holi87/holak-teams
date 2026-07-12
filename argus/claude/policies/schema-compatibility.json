@@ -1,7 +1,13 @@
 {
   "$schema": "../schemas/schema-compatibility.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "current": 1,
   "readCompatible": [1],
-  "migration": "No automatic migration exists before a later schemaVersion is explicitly declared. A newer major contract must ship an explicit, deterministic migration command and preserve the prior schema until consumers have moved."
+  "migration": "Contracts without an explicit override remain immutable at v1.",
+  "contracts": {
+    "lane-plan": { "current": 2, "readCompatible": [1, 2], "migration": "argus/migrate-lane-plan-v1-to-v2" },
+    "evidence-reference": { "current": 2, "readCompatible": [1, 2], "migration": "argus/migrate-evidence-reference-v1-to-v2" },
+    "automation-status": { "current": 2, "readCompatible": [1, 2], "migration": "argus/migrate-automation-status-v1-to-v2" },
+    "preflight-report": { "current": 2, "readCompatible": [1, 2], "migration": "argus/preserve-preflight-report-v1-reader" }
+  }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Portable Argus runner-mode contract evaluator. Keep byte-identical in all templates.
+# Portable Argus runner-mode contract evaluator shared by every runtime template.
 set -euo pipefail
 
 mode="" events="" output="" runner_exit="0"
@@ -34,7 +34,7 @@ if [ ! -s "$events" ]; then
   fi
 fi
 
-product=0 automation=0 infrastructure=0 skip=0 policy=0 expected_red=0 violations=0
+product=0 automation=0 infrastructure=0 skip=0 policy=0 expected_red=0
 product_violation=0 automation_violation=0 infrastructure_violation=0 skip_violation=0 policy_violation=0
 event_count=0
 

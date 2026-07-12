@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holak-teams.local/argus/model-dispatch-authorization.schema.json",
+  "title": "JIT authorization for an exact Codex worker dispatch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "kind", "engagementId", "decisionId", "decisionIntegritySha256",
+    "allocationId", "agent", "runtime", "parentRuntime", "parentSessionId",
+    "selectedConfigSha256", "issuedBy", "issuedAt", "expiresAt", "nonce",
+    "reason", "authentication"
+  ],
+  "properties": {
+    "schema": { "const": "argus/model-dispatch-authorization@1" },
+    "kind": { "const": "MODEL_DISPATCH_AUTHORIZATION" },
+    "engagementId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "decisionId": { "type": "string", "pattern": "^MDR-[a-f0-9]{24}$" },
+    "decisionIntegritySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "allocationId": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+    "agent": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "runtime": { "const": "codex" },
+    "parentRuntime": { "const": "codex" },
+    "parentSessionId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "selectedConfigSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "issuedBy": { "type": "string", "minLength": 1 },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "nonce": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$" },
+    "reason": { "type": "string", "minLength": 1 },
+    "authentication": { "$ref": "#/$defs/authentication" }
+  },
+  "$defs": {
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "purpose", "keyFingerprintSha256", "signatureBase64"],
+      "properties": {
+        "algorithm": { "const": "Ed25519" },
+        "keyId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "purpose": { "const": "runtime-attestation" },
+        "keyFingerprintSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "signatureBase64": { "type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$" }
+      }
+    }
+  }
+}

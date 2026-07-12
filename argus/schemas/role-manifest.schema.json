@@ -7,17 +7,16 @@
   "required": ["$schema", "schemaVersion", "contracts", "roles"],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "contracts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["modelPolicy", "ownership", "capabilities", "doctrine", "adapters"],
+      "required": ["modelPolicy", "ownership", "capabilities", "adapters"],
       "properties": {
         "modelPolicy": { "const": "argus/model-policy.json" },
         "ownership": { "const": "argus/raci.json" },
         "capabilities": { "const": "argus/capabilities/capability-matrix.json" },
-        "doctrine": { "const": "argus/shared-skills/qa-doctrine/SKILL.md" },
-        "adapters": { "const": "argus/roles/runtime-adapters.json" }
+        "adapters": { "const": "argus/runtime-adapters.json" }
       }
     },
     "roles": {
@@ -27,19 +26,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slug", "source", "displayName", "description", "color", "claudeTools"],
+        "required": ["slug", "source", "color"],
         "properties": {
           "slug": { "type": "string", "pattern": "^[a-z]+(?:-[a-z]+)*$" },
           "source": { "type": "string", "pattern": "^[a-z]+(?:-[a-z]+)*\\.md$" },
-          "displayName": { "type": "string", "minLength": 1 },
-          "description": { "type": "string", "minLength": 1 },
-          "color": { "enum": ["cyan", "red", "green", "yellow", "purple"] },
-          "claudeTools": {
-            "type": "array",
-            "minItems": 1,
-            "uniqueItems": true,
-            "items": { "type": "string", "minLength": 1 }
-          }
+          "color": { "enum": ["cyan", "red", "green", "yellow", "purple"] }
         }
       }
     }

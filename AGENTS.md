@@ -90,14 +90,15 @@ holak-teams/                         # this repo == the marketplace
     │   ├── .claude-plugin/plugin.json
     │   ├── agents/                  # 27 flat specialist defs (loaded by Claude Code)
     │   ├── skills/run/SKILL.md      # /argus:run main-thread orchestrator
-    │   ├── skills/qa-doctrine/      # preloaded single-source contract for all 27 agents
+    │   ├── skills/orchestration-core/ # complete main-thread/controller contract
+    │   ├── skills/qa-*/             # capability-selected QA profiles
     │   ├── skills/competition-profile/ # explicit opt-in; never preloaded
     │   ├── bin/argus-assets         # list/verify/copy packaged runtime assets
     │   ├── hooks/hooks.json         # packaged PreToolUse target-immutability guard
     │   ├── capabilities/            # generated 27-role capability and fallback matrix
     │   ├── policies/ + lib/         # authorization template, redactor rules, evaluator
     │   ├── references/ + schemas/   # generated, installed runtime references/contracts
-    │   ├── templates/               # generated TS / Java / Python framework copies
+    │   ├── templates/               # common layer + generated TS / Java / Python layers
     │   └── runtime-*.json           # generated asset manifest + prompt inventory
     ├── codex/                       # Codex variants (*.toml + *.md) — separate, not in the plugin
     ├── framework-template/          # prepped Playwright + TS framework (shared reference)
@@ -136,20 +137,21 @@ paths, target-repo paths and host commands referenced by all 27 prompts.
 
 Installed users can run `argus-assets list`, `argus-assets verify`,
 `argus-assets preflight --target <url-or-path> --mode <A|B|C|D>`,
-`argus-assets model list|route|telemetry`,
+`argus-assets model list|trust|request|route|telemetry`,
 `argus-assets template detect|select|scaffold`, the low-level
 `argus-assets copy-template <typescript|java|python> <empty-destination>`, or
-`argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 625 KB
+`argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 800 KB
 and the complete installed Argus plugin at 1.75 MB. `COLOR-SCHEME.md` and team graphs are
 explicitly maintainer-only; their runtime values already live in agent frontmatter.
 
-Every Claude specialist preloads `qa-doctrine` through supported agent frontmatter, so
-safety, ownership, browser isolation, evidence, quality, event-driven progress, and
-artifact-language rules enter its startup context exactly once. The optional
-`competition-profile` is packaged but disabled and never preloaded; it requires explicit
-user opt-in. `node scripts/check-argus-prompts.mjs` enforces the 35% corpus-reduction
-floor, per-agent/description budgets, zero exact duplicated doctrine paragraphs, all 27
-preloads, default-profile isolation, and a representative engagement regression contract.
+Every Claude specialist preloads the exact profiles selected by the capability matrix.
+`qa-core` is universal; browser, framework-runner, coverage-reporting, and orchestration
+policy are attached only where needed. Codex generation embeds the same selected bodies.
+The legacy `qa-doctrine` monolith is maintainer-only. The optional `competition-profile`
+is packaged but disabled and never preloaded; it requires explicit user opt-in.
+`node scripts/check-argus-prompts.mjs` enforces effective Claude and Codex corpus budgets,
+profile/tool assignments, semantic duplicate detection, default-profile isolation, and a
+representative engagement regression contract.
 
 Model selection is generated from `argus/model-policy.json`: 10 quality-critical roles
 use Claude `opus` / maximum effort and Codex `sol` / `xhigh`; 17 bounded execution roles
@@ -161,6 +163,40 @@ and a validator pass before merge. `model-policy.benchmark.json` records synthet
 quality, latency, token, and provider-cost comparisons without prompts, completions, or
 target data. Run `scripts/sync-argus-model-policy.mjs --write|--check` and
 `scripts/smoke-argus-model-policy.sh` after policy changes.
+Before routing, the host trust store must contain two distinct Ed25519 public anchors from
+one snapshot: a `runtime-attestation` key for a trusted Codex dispatch wrapper and an
+`operator-approval` key controlled through a separate human approval boundary. `model
+trust` pins both stable key IDs, then preflight reruns for the changed manifest digest.
+Neither private key nor a generic signing service may be available to the controller,
+workers, or their OS user. The runtime wrapper emits route attestations only for exact
+configurations it can enforce and emits a separate JIT dispatch authorization immediately
+before it applies the model, effort, and turn cap; the CLI verifies that authorization but
+cannot prove the external spawn, so the wrapper must pair CLI success with the exact-config
+dispatch. The isolated operator signer alone authorizes frontier
+continuation or abort. The pinned trust store is a snapshot: revocation requires aborting
+the current engagement and starting a new one with current anchors.
+The controller persists normal attempt-1 decisions for Odysseus and every currently
+dispatchable selected role before any allocation,
+allocates Odysseus first against its exact decision, and uses that controller token to
+authenticate each decision-bound worker allocation. Workers receive only their own lane
+token and decision coordinates, never the controller token; late normal dispatch is blocked
+and retries explicitly rebind the active dispatch/allocation with `engagement start-attempt`.
+The command consumes the current lane token, atomically rotates it, and returns the next
+attempt's token once; the controller replaces the old token before spawning the retry, and
+the stale token is immediately invalid. A model request requires the current lane token;
+routes after allocation require the controller token; telemetry requires the decision-owning
+token, is accepted exactly once per selected decision, and must be emitted before a retry
+rebind or cleanup changes that active binding. Every Codex allocation, resume, or retry
+rebind requires a fresh `argus/model-dispatch-authorization@1` binding the immutable
+decision, configuration, parent session, allocation ID, and nonce. Resume/retry stays on the
+active allocation ID, while a released-lane replacement must use a never-before-consumed
+allocation ID; the bounded history rejects reuse of any MDA digest, nonce, or replacement
+allocation identity. Deferred, skipped, and blocked roles are excluded from the sealed
+decision set and cannot allocate. A declared worker escalation resumes from its authenticated
+checkpoint; a pre-spawn `model-unavailable` retry instead uses the immutable availability
+binding and may have no checkpoint because no worker thread began.
+The generated policy is the single cross-runtime mapping view. Worker prompts contain
+only their local execution envelope and never name the opposite runtime's model.
 
 The preflight writes only dedicated control artifacts under `ai_agents_internal/` before
 any target probe, test, or specialist dispatch: preflight, authorization, engagement, and
@@ -185,10 +221,12 @@ Preflight also creates or loads `ai_agents_internal/engagement.json`. The instal
 plugin's `PreToolUse` hook resolves physical paths and blocks target-source mutation,
 canonical direct writes, shell redirection, patching, and recognized subprocess writes.
 The engagement controller provides immutable per-agent fragments, deterministic
-single-owner merges, ordered phase barriers, unique browser/account/namespace/port/output
-leases, exclusive reset/fault windows, identity-deduplicated atomic IDs, monotonic
-resumable checkpoints, and success/failure cleanup. Canonical machine contracts cover
-lane plans, bug ledgers, evidence, automation status, and final summaries; malformed or
+single-owner merges, ordered phase barriers over the immutable dispatchable projection,
+unique browser/account/namespace/port/output leases, exclusive reset/fault windows,
+identity-deduplicated atomic IDs, monotonic resumable checkpoints,
+attempt-generation-bound heartbeats, and success/failure cleanup. Worker `success` cleanup
+requires every barrier arrival declared for that projected lane. Canonical machine contracts
+cover lane plans, bug ledgers, evidence, automation status, and final summaries; malformed or
 cross-engagement JSON fragments are rejected before merge. Merging a final summary renders
 a human-facing report with its source schema version and runner categories. Packaged
 TypeScript, Java, and Python runners share baseline/evidence/candidate/full modes,
@@ -285,8 +323,8 @@ documented in `RELEASE.md`: `scripts/validate-release.sh`.
 
 Every artifact the agents write to disk — docs, reports, plans, bug reports, checklists,
 code, comments, test names, commit messages — is **100% English**, regardless of the
-conversation language. Argus receives the rule from its preloaded canonical
-`qa-doctrine`; Hephaestus keeps it inline. This repository's documentation follows the
+conversation language. Argus receives the rule from its universal `qa-core` profile;
+Hephaestus keeps it inline. This repository's documentation follows the
 same rule.
 
 <!-- Author: Grzegorz Holak -->

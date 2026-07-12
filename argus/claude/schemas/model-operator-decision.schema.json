@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holak-teams.local/argus/model-operator-decision.schema.json",
+  "title": "Operator decision for a blocked frontier model escalation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "kind", "engagementId", "dispatchId", "attempt", "agent", "signal",
+    "blockedDecisionId", "action", "approvedBy", "approvedAt", "reason", "authentication"
+  ],
+  "properties": {
+    "schema": { "const": "argus/model-operator-decision@1" },
+    "kind": { "const": "MODEL_OPERATOR_DECISION" },
+    "engagementId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "dispatchId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "attempt": { "type": "integer", "minimum": 2 },
+    "agent": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "signal": {
+      "enum": ["ambiguity", "safety", "cross-lane", "conflicting-evidence", "oracle-ambiguity", "schema-validation-failure", "repeated-failure", "turn-limit", "model-unavailable"]
+    },
+    "blockedDecisionId": { "type": "string", "pattern": "^MDR-[a-f0-9]{24}$" },
+    "action": { "enum": ["continue-frontier", "retry-frontier", "abort"] },
+    "approvedBy": { "type": "string", "minLength": 1 },
+    "approvedAt": { "type": "string", "format": "date-time" },
+    "reason": { "type": "string", "minLength": 1 },
+    "authentication": { "$ref": "#/$defs/authentication" }
+  },
+  "$defs": {
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "purpose", "keyFingerprintSha256", "signatureBase64"],
+      "properties": {
+        "algorithm": { "const": "Ed25519" },
+        "keyId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "purpose": { "const": "operator-approval" },
+        "keyFingerprintSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "signatureBase64": { "type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$" }
+      }
+    }
+  }
+}

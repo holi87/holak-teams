@@ -1,0 +1,265 @@
+{
+  "$schema": "argus/orchestration-plan@1",
+  "schemaVersion": 1,
+  "capabilityMatrix": "capabilities/capability-matrix.json",
+  "raci": "references/raci.json",
+  "dependencyPolicy": "selected-dispatchable-predecessors",
+  "modeCounts": {
+    "A": 27,
+    "B": 16,
+    "C": 14,
+    "D": 14
+  },
+  "waves": [
+    { "id": "W0", "barrierAfter": true },
+    { "id": "W1", "barrierAfter": true },
+    { "id": "W2", "barrierAfter": true },
+    { "id": "W3", "barrierAfter": true },
+    { "id": "W4", "barrierAfter": true }
+  ],
+  "roles": [
+    {
+      "slug": "odysseus",
+      "kind": "controller",
+      "dispatch": false,
+      "wave": "controller",
+      "modes": ["A", "B", "C", "D"],
+      "gates": [],
+      "dependsOn": []
+    },
+    {
+      "slug": "kalchas",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W0",
+      "modes": ["A", "B", "C", "D"],
+      "gates": [],
+      "dependsOn": []
+    },
+    {
+      "slug": "metis",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W0",
+      "modes": ["A", "B", "C", "D"],
+      "gates": [],
+      "dependsOn": ["kalchas"]
+    },
+    {
+      "slug": "atlas",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W0",
+      "modes": ["A", "C", "D"],
+      "gates": [],
+      "dependsOn": ["kalchas", "metis"]
+    },
+    {
+      "slug": "penelope",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W1",
+      "modes": ["A", "C", "D"],
+      "gates": ["browser-runtime"],
+      "dependsOn": ["atlas"]
+    },
+    {
+      "slug": "theseus",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W1",
+      "modes": ["A", "C", "D"],
+      "gates": [],
+      "dependsOn": ["atlas"]
+    },
+    {
+      "slug": "pistis",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W1",
+      "modes": ["A", "C"],
+      "gates": ["multi-service"],
+      "dependsOn": ["kalchas"]
+    },
+    {
+      "slug": "tiresias",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W1",
+      "modes": ["A", "B"],
+      "gates": ["source-access"],
+      "dependsOn": ["kalchas"]
+    },
+    {
+      "slug": "aegis",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "C", "D"],
+      "gates": [],
+      "dependsOn": ["atlas"]
+    },
+    {
+      "slug": "antigone",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "B"],
+      "gates": ["browser-runtime"],
+      "dependsOn": ["penelope"]
+    },
+    {
+      "slug": "ariadne",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "B"],
+      "gates": [],
+      "dependsOn": ["atlas", "penelope", "theseus"]
+    },
+    {
+      "slug": "asklepios",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "D"],
+      "gates": ["existing-suite"],
+      "dependsOn": ["kalchas"]
+    },
+    {
+      "slug": "atalanta",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "B"],
+      "gates": [],
+      "dependsOn": ["theseus"]
+    },
+    {
+      "slug": "charon",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "B"],
+      "gates": ["db-access"],
+      "dependsOn": ["kalchas"]
+    },
+    {
+      "slug": "daidalos",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "C", "D"],
+      "gates": ["browser-runtime"],
+      "dependsOn": ["atlas", "penelope"]
+    },
+    {
+      "slug": "hermes",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "B"],
+      "gates": [],
+      "dependsOn": ["atlas"]
+    },
+    {
+      "slug": "lynceus",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "B"],
+      "gates": ["browser-runtime"],
+      "dependsOn": ["penelope"]
+    },
+    {
+      "slug": "minos",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "B"],
+      "gates": [],
+      "dependsOn": ["kalchas"]
+    },
+    {
+      "slug": "mnemosyne",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "C", "D"],
+      "gates": ["db-access"],
+      "dependsOn": ["kalchas"]
+    },
+    {
+      "slug": "nike",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "C", "D"],
+      "gates": [],
+      "dependsOn": ["atlas"]
+    },
+    {
+      "slug": "orion",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "B"],
+      "gates": ["browser-runtime"],
+      "dependsOn": ["penelope"]
+    },
+    {
+      "slug": "perseus",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "B"],
+      "gates": ["browser-runtime"],
+      "dependsOn": ["atlas"]
+    },
+    {
+      "slug": "proteus",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "B"],
+      "gates": ["non-rest-surface"],
+      "dependsOn": ["theseus"]
+    },
+    {
+      "slug": "talos",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "C", "D"],
+      "gates": [],
+      "dependsOn": ["atlas", "theseus"]
+    },
+    {
+      "slug": "tyche",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W2",
+      "modes": ["A", "B"],
+      "gates": [],
+      "dependsOn": ["atlas"]
+    },
+    {
+      "slug": "aristarchus",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W3",
+      "modes": ["A", "C", "D"],
+      "gates": [],
+      "dependsOn": ["aegis", "asklepios", "atlas", "daidalos", "mnemosyne", "nike", "talos"]
+    },
+    {
+      "slug": "kleio",
+      "kind": "specialist",
+      "dispatch": true,
+      "wave": "W4",
+      "modes": ["A", "B", "C", "D"],
+      "gates": [],
+      "dependsOn": ["aristarchus", "minos"]
+    }
+  ]
+}

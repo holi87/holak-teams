@@ -1,0 +1,59 @@
+{
+  "$schema": "argus/bug-ledger@1",
+  "schemaVersion": 1,
+  "engagementId": "bug-coverage-shadowed-smoke",
+  "bugs": [
+    {
+      "id": "BUG-9201",
+      "origin": [],
+      "title": "Local test binding sentinel",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-201",
+      "status": "confirmed",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    },
+    {
+      "id": "BUG-9202",
+      "origin": [],
+      "title": "Local it binding sentinel",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-202",
+      "status": "confirmed",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    },
+    {
+      "id": "BUG-9203",
+      "origin": [],
+      "title": "Unapproved import sentinel",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-203",
+      "status": "confirmed",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    },
+    {
+      "id": "BUG-9204",
+      "origin": [],
+      "title": "Fake local fixtures module sentinel",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-204",
+      "status": "confirmed",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    }
+  ]
+}

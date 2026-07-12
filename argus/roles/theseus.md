@@ -67,6 +67,6 @@ Past runs let field-level contract drift escape because baseline paths asserted 
 - **REST method-conformance baseline (MANDATORY).** Each path states the **status per method** (POST `201`+`Location`, GET `200/404`, PUT `200/204`, DELETE `204`, unsupported→`405`+`Allow`, missing→`404`-not-`500`), the **per-method idempotency** expectation (idempotent methods → double-call identical state; replayed `Idempotency-Key` POST → no duplicate), and that the response is a **STRICT contract subset** (`additionalProperties:false` — catches leaked internal fields). Drives Talos's method-conformance + strict `assertSchema`.
 - Hand these tightened specs to Talos as the 100%-green baseline; contract drift then surfaces as RED at the exact field, not a silent pass.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

@@ -2,8 +2,25 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 625000,
+    "generatedAssetsBytes": 800000,
     "installedPluginBytes": 1750000
+  },
+  "templateCompositions": {
+    "typescript": {
+      "source": "argus/framework-template",
+      "commonAsset": "common-template",
+      "runtimeAsset": "typescript-template"
+    },
+    "java": {
+      "source": "argus/framework-template-java",
+      "commonAsset": "common-template",
+      "runtimeAsset": "java-template"
+    },
+    "python": {
+      "source": "argus/framework-template-python",
+      "commonAsset": "common-template",
+      "runtimeAsset": "python-template"
+    }
   },
   "assets": [
     {
@@ -13,16 +30,7 @@
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
       "bytes": 9569,
-      "sha256": "557da5f1632d01ca37603cbd4c67569c5a74832e23c23a6f79dca7044d623611"
-    },
-    {
-      "id": "shared-doctrine",
-      "kind": "reference",
-      "source": "argus/SHARED-DOCTRINE.md",
-      "destination": "references/SHARED-DOCTRINE.md",
-      "files": 1,
-      "bytes": 750,
-      "sha256": "0ac1f415cc8853fd725bce0bb02c211efe43ca64df804aa5508139ca453ecb0f"
+      "sha256": "9512199fceb47cbeec3a9169788d9ad742bfbcd15c4548180303724ad536dfb3"
     },
     {
       "id": "authorization-policy",
@@ -31,7 +39,7 @@
       "destination": "references/AUTHORIZATION-POLICY.md",
       "files": 1,
       "bytes": 8722,
-      "sha256": "07fd2a7deb8709ead1f2805ceb41ec4b0c18c8aa2660b3e1e3ea449f1dd50718"
+      "sha256": "60e357a6f6a44d01182446485ad0629b5e05ecae268f63df2f36dc7307ac1810"
     },
     {
       "id": "engagement-policy",
@@ -39,8 +47,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 9003,
-      "sha256": "9c2f8115a001418f82c749ab220ad00edfd5ff45f0aa73787e1426948f89c41b"
+      "bytes": 18809,
+      "sha256": "586b84dccfa5ae094952c5829bae54435b224fabcd310108d61429d7de28a768"
     },
     {
       "id": "canonical-contracts",
@@ -48,8 +56,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 5667,
-      "sha256": "a366c8d5d94d47a8e4b989fecc73382272b0a4463246faf83b2961bafe1c93f7"
+      "bytes": 11599,
+      "sha256": "328812238f6468b722a328ec593eee15fd233e81626c016898e379b17ce36abb"
     },
     {
       "id": "runner-contract",
@@ -57,8 +65,8 @@
       "source": "argus/RUNNER-CONTRACT.md",
       "destination": "references/RUNNER-CONTRACT.md",
       "files": 1,
-      "bytes": 5226,
-      "sha256": "6a2f7d6ecc0a5eb32a16f8fe2619d04a73c38f52525f9e837568dd5d1eec4f16"
+      "bytes": 5664,
+      "sha256": "cb352bcdbd8b725bc40a8397f27678e7c43630334354da6fcb2fa3c1b71369e0"
     },
     {
       "id": "template-contract",
@@ -66,8 +74,8 @@
       "source": "argus/TEMPLATE-CONTRACT.md",
       "destination": "references/TEMPLATE-CONTRACT.md",
       "files": 1,
-      "bytes": 2699,
-      "sha256": "fc1364327affbbe7a20ad6cc9acc8ca6605759045aa9c0d26b0e426d10056128"
+      "bytes": 3698,
+      "sha256": "3b0372021b416a07119a8b43a0fdcc83d917bc23b04dfb6caa78d451d87514d1"
     },
     {
       "id": "coverage-contract",
@@ -76,7 +84,7 @@
       "destination": "references/COVERAGE-CONTRACT.md",
       "files": 1,
       "bytes": 2542,
-      "sha256": "6ac8096a4d6bb45aaa51e5d7c153835c3273a80b91d4f91b10712ddf6d6fa1bf"
+      "sha256": "b45df1173adc11496fd95d59bf7d46939a47e05a546fd5514b4623cc70607a67"
     },
     {
       "id": "raci-contract",
@@ -84,8 +92,8 @@
       "source": "argus/RACI-CONTRACT.md",
       "destination": "references/RACI-CONTRACT.md",
       "files": 1,
-      "bytes": 8143,
-      "sha256": "0137538ce8c25874f3cd8c2e8fdb90936becd06fd205c59ca5cae69759dff69f"
+      "bytes": 8208,
+      "sha256": "1c443c159a8737227fb12cf27ba3e190273d8eaa6716f369c0864d5469dd94f7"
     },
     {
       "id": "raci-matrix",
@@ -93,17 +101,53 @@
       "source": "argus/raci.json",
       "destination": "references/raci.json",
       "files": 1,
-      "bytes": 20510,
-      "sha256": "41cf36cad3d8df2f3dafb6ad51274f870e5dfc5882bb3c6d80d6023ad0e6d2cb"
+      "bytes": 20611,
+      "sha256": "2edf6a2996bca441786e4f2ec771df3a112bb54abbbbd26273c091cae2924569"
     },
     {
-      "id": "qa-doctrine-skill",
+      "id": "orchestration-core-skill",
       "kind": "skill",
-      "source": "argus/shared-skills/qa-doctrine",
-      "destination": "skills/qa-doctrine",
+      "source": "argus/shared-skills/orchestration-core",
+      "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 9838,
-      "sha256": "9f9b945631b5e4b607789ed7ab3ed41591f1a4af203202d9423a427094b87b73"
+      "bytes": 9678,
+      "sha256": "881ca9dedc6198e23646d6469d1609b7b341a01199911828306a5da8805acb52"
+    },
+    {
+      "id": "qa-core-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/qa-core",
+      "destination": "skills/qa-core",
+      "files": 1,
+      "bytes": 5924,
+      "sha256": "0fa9967cdaf52ce2a9b9b829074e658d6b1ae063c239f9a83d883c351733b3f2"
+    },
+    {
+      "id": "qa-browser-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/qa-browser",
+      "destination": "skills/qa-browser",
+      "files": 1,
+      "bytes": 1750,
+      "sha256": "e2a4b844fe49a68bdc0a5d436263edf6de67850870b6c523ef6be261c3af07c8"
+    },
+    {
+      "id": "qa-framework-runner-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/qa-framework-runner",
+      "destination": "skills/qa-framework-runner",
+      "files": 1,
+      "bytes": 1807,
+      "sha256": "cc764060b56da7bfcaf972833388d5a4651ff509f7f56ab8ed21633a4ef0b4cc"
+    },
+    {
+      "id": "qa-coverage-reporting-skill",
+      "kind": "skill",
+      "source": "argus/shared-skills/qa-coverage-reporting",
+      "destination": "skills/qa-coverage-reporting",
+      "files": 1,
+      "bytes": 1716,
+      "sha256": "ac00cc31b0eeecb05ba233e3eb0bc41ef1ebafb1aa9f64bca5246c9cee207cf8"
     },
     {
       "id": "competition-profile-skill",
@@ -112,16 +156,16 @@
       "destination": "skills/competition-profile",
       "files": 1,
       "bytes": 1101,
-      "sha256": "2d8e8480f6600dc074ec8cdf273f29853251d39ad17b47242cff757ce3b529a5"
+      "sha256": "bd1b0d1b5880b7995867e44d200d784adc45cb82cf31d5d188f7635dce65b16d"
     },
     {
       "id": "runtime-schemas",
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 31,
-      "bytes": 73984,
-      "sha256": "0d72cc90e6d186424dc2f4fde0d727f42acb5b720e4580c67469e3672050526e"
+      "files": 37,
+      "bytes": 116453,
+      "sha256": "e5512e0dac79506f9fae755959ca303686cc2204909144ab141dc4b162a98e56"
     },
     {
       "id": "capability-matrix",
@@ -129,8 +173,17 @@
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
-      "bytes": 11870,
-      "sha256": "3fed16b4d614a838465100d3932f0b61b31e1a995fbcbbf07b98a57b66d6b5fc"
+      "bytes": 16988,
+      "sha256": "28d0bbd5ab5d96d76226f6e970c46ee173f439449e3cca58d86ddc590920be18"
+    },
+    {
+      "id": "orchestration-plan",
+      "kind": "capabilities",
+      "source": "argus/orchestration-plan.json",
+      "destination": "capabilities/orchestration-plan.json",
+      "files": 1,
+      "bytes": 5959,
+      "sha256": "08e7e35b4b9ff86be0e2a6a2ab1e8f6988b52e3e2857323af75da659ae9ae8ee"
     },
     {
       "id": "model-policy",
@@ -138,8 +191,17 @@
       "source": "argus/model-policy.json",
       "destination": "capabilities/model-policy.json",
       "files": 1,
-      "bytes": 7079,
-      "sha256": "873252292b48f6a91da34db156d85d1f95490c00614d91a7d4e72b7846c7a66b"
+      "bytes": 7416,
+      "sha256": "04094bf360768d53cdeee4b70ac9e87bcd78f5997f1e475a5a600f9654b85496"
+    },
+    {
+      "id": "runtime-adapters",
+      "kind": "capabilities",
+      "source": "argus/runtime-adapters.json",
+      "destination": "capabilities/runtime-adapters.json",
+      "files": 1,
+      "bytes": 4857,
+      "sha256": "1296a862549c7e04f59a90f643c87c2895eecc6df0fd9e428596bae12f24a4ed"
     },
     {
       "id": "template-policy",
@@ -147,8 +209,8 @@
       "source": "argus/template-contract.json",
       "destination": "capabilities/template-contract.json",
       "files": 1,
-      "bytes": 1918,
-      "sha256": "fe294b8ef61b7ac0b7778cf4f386587ed45efc61aa2dcdf666be51573d639132"
+      "bytes": 1969,
+      "sha256": "012fdc0d51db2c33efb7d443f1bc32a5fd802c9e03da111a88cc32cbe67c4a6b"
     },
     {
       "id": "model-policy-benchmark",
@@ -157,7 +219,7 @@
       "destination": "capabilities/model-policy.benchmark.json",
       "files": 1,
       "bytes": 3420,
-      "sha256": "77006aa9928003d949e89184613b05ba7d49da5d075186268ba4282620d460f5"
+      "sha256": "ab93985cf98e9144e62281bc0ceb20f40cabb7c12ec4ba7a06717cc5d6867298"
     },
     {
       "id": "authorization-policies",
@@ -165,47 +227,98 @@
       "source": "argus/policies",
       "destination": "policies",
       "files": 4,
-      "bytes": 11368,
-      "sha256": "949bac29df49f1b8bf37179a47a50aaf72f7dc1d71a8d0089f185c0d9ef58f7a"
+      "bytes": 11707,
+      "sha256": "b5ab751a0972b053c3128c65312081dbb139476e4028ed331127fe9510714227"
     },
     {
       "id": "runtime-library",
       "kind": "runtime",
       "source": "argus/runtime",
       "destination": "lib",
-      "files": 6,
-      "bytes": 113698,
-      "sha256": "27c989f4aa0e7a42743bb775a29d3636f12699cbe7cd0109caf620d8a1589348"
+      "files": 8,
+      "bytes": 228208,
+      "sha256": "c22f53155084255ee9ffb5007e0eb323acedaf2511cb27f8b8f74834fb0eb0af"
+    },
+    {
+      "id": "common-template",
+      "kind": "template",
+      "source": "argus/framework-template-common",
+      "destination": "templates/common",
+      "files": 16,
+      "bytes": 24488,
+      "sha256": "c4a59015fb8ccc6a9634b56b5b918fc35831ab2ddef1e286657d951fef55d231"
     },
     {
       "id": "typescript-template",
       "kind": "template",
       "source": "argus/framework-template",
       "destination": "templates/typescript",
-      "files": 53,
-      "bytes": 144139,
-      "sha256": "f507edab6e2c815f38065ddadc7e6939e2512d9237e93c6c282dfe8aef85a177"
+      "files": 37,
+      "bytes": 132549,
+      "sha256": "cc8557f35e45a6192b10edf9bf38951339befb018aa8d08f986648b6822e9602"
     },
     {
       "id": "java-template",
       "kind": "template",
       "source": "argus/framework-template-java",
       "destination": "templates/java",
-      "files": 28,
-      "bytes": 78686,
-      "sha256": "6c411d87801c195cb8522f104646f50b973f0626d8d1f7b3a691ebeec236fdb7"
+      "files": 23,
+      "bytes": 70024,
+      "sha256": "0cde0834af3b1473fbcecd9706256d87e569d8c7c48b505e7f14da520852070c"
     },
     {
       "id": "python-template",
       "kind": "template",
       "source": "argus/framework-template-python",
       "destination": "templates/python",
-      "files": 33,
-      "bytes": 60764,
-      "sha256": "01b1f078f3d47a20255c4148ef26aefb963b42278897fd3ba1df72bfcaa0c840"
+      "files": 28,
+      "bytes": 52138,
+      "sha256": "b67af9852bcad18d70b382ed92e6be2544653700d2e54f640f3fa3d12fefc77e"
+    }
+  ],
+  "buildOnly": [
+    {
+      "source": "argus/runtime/technique-catalogs.mjs",
+      "reason": "Technique catalogs are validated and embedded by the role generator; installed agents never read them."
+    },
+    {
+      "source": "argus/schemas/prompt-budgets.schema.json",
+      "reason": "The prompt budget is a repository CI contract, not an engagement runtime contract."
+    },
+    {
+      "source": "argus/schemas/model-policy-benchmark.schema.json",
+      "reason": "Synthetic benchmark structure is validated by repository gates; installed runtime verifies the packaged benchmark asset hash before display."
+    },
+    {
+      "source": "argus/schemas/prompt-engagement-contract.schema.json",
+      "reason": "Representative prompt evaluation is enforced during repository validation only."
+    },
+    {
+      "source": "argus/schemas/role-manifest.schema.json",
+      "reason": "The canonical role manifest is consumed only by the build-time role generator."
+    },
+    {
+      "source": "argus/schemas/technique-catalog.schema.json",
+      "reason": "Technique catalogs are build-time generator inputs and are embedded into effective prompts."
+    },
+    {
+      "source": "argus/schemas/capability-matrix.schema.json",
+      "reason": "Capability/profile assignments are validated by repository generation and CI before packaging."
+    },
+    {
+      "source": "argus/schemas/raci.schema.json",
+      "reason": "RACI source synchronization and ownership validation are repository build-time gates."
     }
   ],
   "maintainerOnly": [
+    {
+      "source": "argus/SHARED-DOCTRINE.md",
+      "reason": "Compatibility pointer for maintainers; effective runtime doctrine is delivered by capability-scoped skills."
+    },
+    {
+      "source": "argus/shared-skills/qa-doctrine",
+      "reason": "Legacy monolithic doctrine retained as a maintainer comparison source after capability-scoped skill migration."
+    },
     {
       "source": "argus/COLOR-SCHEME.md",
       "reason": "The runtime color values are embedded in agent frontmatter."
@@ -222,9 +335,17 @@
   "forbiddenPromptReferences": [
     "argus/BROWSER-ISOLATION.md",
     "argus/framework-template",
+    "agents/argus-template",
+    "argus-template/",
     "repo doc — not shipped with the installed plugin",
     "not shipped with the installed plugin"
   ],
   "generated": true,
-  "generatedFrom": "argus/runtime-assets.source.json"
+  "generatedFrom": "argus/runtime-assets.source.json",
+  "inventory": {
+    "path": "runtime-reference-inventory.json",
+    "schemaVersion": 2,
+    "bytes": 53303,
+    "sha256": "7c730ed77bcf06bc635554ef5d7fa32c5307a3a0747d28a9e804c268cb67b8c6"
+  }
 }

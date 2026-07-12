@@ -17,7 +17,7 @@ redacted evidence under `reports/evidence/`, lane/regression/contract-smoke tags
 automatic retries, and expiring `solution/quarantine.tsv` records. `@quarantine` without
 one valid ledger row is a policy failure, not a silent skip.
 ```bash
-./run-tests.sh --mode baseline             # strict green, excludes @bug:BUG-NNNN
+./run-tests.sh --mode baseline             # strict green, excludes @regression
 ./run-tests.sh --mode defect-evidence      # known RED only; requires adapter events
 ./run-tests.sh --mode candidate-regression # strict green over bug-linked tests
 ./run-tests.sh --mode full-suite           # strict green over all selected tests
@@ -43,10 +43,10 @@ The runner fail-fasts on a dead environment ("ENVIRONMENT NOT READY") and gates 
 | File | Owner | Answers |
 |------|-------|---------|
 | `TEST-STRATEGY.md` | Metis | WHAT we test, WHY, in what order — planning of tests, zero implementation detail |
-| `ARCHITECTURE.md` | Talos (framework) + Metis (§1–2 digest) + Kleio (§10–11) | the reviewer-facing strategy+framework doc: what-we-test digest, key risks, stack & layers, How-we-used-AI, Summary — the agreed brief names THIS file as the strategy + run-summary deliverable |
+| `ARCHITECTURE.md` | Atlas (canonical merge); contributor fragments from Metis, lane engineers, and Kleio | the reviewer-facing strategy+framework doc: what-we-test digest, key risks, stack & layers, How-we-used-AI, Summary — the agreed brief names THIS file as the strategy + run-summary deliverable |
 | `IMPLEMENTATION-REPORT.md` | Kleio (at finalisation) | what was DELIVERED vs designed — honest reconciliation + residual risk |
 | `ACCESSIBILITY-REPORT.md` | Kleio (from Antigone + Daidalos) | standard, level, tools, manual and automated checks, limitations, risk-derived browser matrix, and privacy-safe evidence |
-| `TRACEABILITY.md` | Metis seeds → Talos fills → Kleio reconciles | matrix: RISK → why this path → implemented tests → defects found |
+| `TRACEABILITY.md` | Kleio (canonical merge of immutable contributor fragments) | matrix: RISK → why this path → implemented tests → defects found |
 | `PERF-REPORT.md` | Hermes (optional) | perf probe: verdict vs a STATED budget, or light characterisation — p50/p97.5/p99, anomalies as candidate defects |
 
 Plus `solution/BUG-LEDGER.md` (Minos — in `solution/` so `bugs/` stays strictly one-file-per-bug): ranked defect ledger + **Severity × Priority matrix** + detection-source split (automated suite vs agent exploratory/manual — each bug carries a `Detected by` field).
@@ -68,12 +68,12 @@ tests/setup/auth.setup.ts  UI login ONCE → storageState (.auth/user.json)
 tests/api/<resource>/    API/contract tests — one dir per OpenAPI tag (parallel writers)
 tests/ui/<flow>/         few critical-path UI smokes (project starts authenticated)
 tests/ui/a11y.smoke.spec.ts  axe-core WCAG 2.2 AA scan on critical pages (citable oracle)
-tests/regression/        bug-linked tests (red = evidence) — see its README
+tests/regression/        @regression-selected, @bug-provenance RED tests — see its README
 bugs/_TEMPLATE.md        bug report template (replace with the target's verbatim; the _-prefixed file is not a bug report)
 ```
 
 ## Repo layout — deliverables vs internal
-Top level is ONLY what the agreed brief requires (reviewer-facing): `README.md`, `solution/`, `bugs/`, `tests/`, `src/`, `run-tests.sh`, configs, final `RAPORT_LAST.html`. Our internal working artifacts — `campaign-state.json`, event-log, intermediate `RAPORT_RUN*.html`, `bug-ledger.json` (the evaluated ledger is `solution/BUG-LEDGER.md`), `PRE-EVENT-CHECKLIST.md`, coordination scratch — live in **`ai_agents_internal/`** so the root stays clean. Code paths NEVER move (breaks imports). See `ai_agents_internal/README.md`.
+Top level is ONLY what the agreed brief requires (reviewer-facing): `README.md`, `solution/`, `bugs/`, `tests/`, `src/`, `run-tests.sh`, configs, final `RAPORT_LAST.html`. The canonical machine ledger is `solution/bug-ledger.json`, next to the human `solution/BUG-LEDGER.md`. Internal working artifacts — campaign state, event log, intermediate `RAPORT_RUN*.html`, pre-event checklist, and coordination scratch — live in **`ai_agents_internal/`** so the root stays clean. Code paths NEVER move (breaks imports). See `ai_agents_internal/README.md`.
 Dependency direction: specs → fixtures/pages/data → api → config. The **skeleton owner** builds `src/` first; parallel writers import it and never edit it.
 
 ## Configure for the app (at engagement start, from Kalchas's recon)

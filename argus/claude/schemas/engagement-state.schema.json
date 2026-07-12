@@ -6,22 +6,136 @@
   "additionalProperties": false,
   "required": [
     "schemaVersion", "engagementId", "revision", "currentPhase", "completedPhases",
-    "allocations", "barriers", "exclusiveLocks", "nextIds", "idKeys", "checkpoints", "fragments", "merges"
+    "dispatchableAgents", "allocations", "barriers", "exclusiveLocks", "nextIds", "idKeys", "checkpoints", "fragments", "merges", "migrations"
   ],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "engagementId": { "type": "string", "minLength": 1 },
     "revision": { "type": "integer", "minimum": 0 },
-    "currentPhase": { "type": "string", "minLength": 1 },
-    "completedPhases": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
-    "allocations": { "type": "object", "additionalProperties": { "type": "object" } },
+    "currentPhase": { "enum": ["preflight", "discovery", "hunting", "automation", "verification", "reporting", "complete"] },
+    "completedPhases": { "type": "array", "uniqueItems": true, "items": { "enum": ["preflight", "discovery", "hunting", "automation", "verification", "reporting", "complete"] } },
+    "dispatchableAgents": {
+      "type": ["array", "null"],
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+    },
+    "allocations": { "type": "object", "additionalProperties": { "$ref": "#/$defs/allocation" } },
     "barriers": { "type": "object", "additionalProperties": { "type": "array", "uniqueItems": true, "items": { "type": "string" } } },
     "exclusiveLocks": { "type": "object", "additionalProperties": { "type": "object" } },
     "nextIds": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 } },
     "idKeys": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^[A-Z][A-Z0-9-]*[0-9]{4}$" } } },
-    "checkpoints": { "type": "object", "additionalProperties": { "type": "object" } },
+    "checkpoints": { "type": "object", "additionalProperties": { "$ref": "#/$defs/checkpoint" } },
     "fragments": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "object" } } },
-    "merges": { "type": "object", "additionalProperties": { "type": "object" } }
+    "merges": { "type": "object", "additionalProperties": { "type": "object" } },
+    "migrations": { "type": "array", "items": { "$ref": "#/$defs/migration" } }
+  },
+  "$defs": {
+    "allocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lane", "status", "browserSessionMode", "browserProfileOwner", "browserProfile",
+        "browserArtifactsDirectory", "authDirectory", "temporaryDirectory", "outputDirectory",
+        "accountAlias", "dataNamespace", "port", "leaseTokenSha256", "allocationId",
+        "allocatedAt", "releasedAt", "outcome", "recoveredFromCrash"
+      ],
+      "properties": {
+        "lane": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "status": { "enum": ["active", "released"] },
+        "browserSessionMode": { "enum": ["isolated-managed", "shared-authorized"] },
+        "browserProfileOwner": { "type": "string", "minLength": 1 },
+        "browserProfile": { "type": "string", "minLength": 1 },
+        "browserArtifactsDirectory": { "type": "string", "minLength": 1 },
+        "authDirectory": { "type": "string", "minLength": 1 },
+        "temporaryDirectory": { "type": "string", "minLength": 1 },
+        "outputDirectory": { "type": "string", "minLength": 1 },
+        "accountAlias": { "type": "string", "minLength": 1 },
+        "dataNamespace": { "type": "string", "minLength": 1 },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "leaseTokenSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "allocationId": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+        "modelDecisionId": { "type": "string", "pattern": "^MDR-[a-f0-9]{24}$" },
+        "modelDecisionIntegritySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "dispatchId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "runtime": { "enum": ["claude", "codex"] },
+        "dispatchAuthorizationSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "dispatchAuthorizationNonce": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$" },
+        "dispatchAuthorizedAt": { "type": "string", "format": "date-time" },
+        "dispatchAuthorizationExpiresAt": { "type": "string", "format": "date-time" },
+        "dispatchParentSessionId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "dispatchAuthorizationHistory": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["allocationId", "sha256", "nonce", "issuedAt"],
+            "properties": {
+              "allocationId": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "nonce": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$" },
+              "issuedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "allocatedAt": { "type": "string", "format": "date-time" },
+        "releasedAt": { "type": ["string", "null"], "format": "date-time" },
+        "outcome": { "type": ["string", "null"], "enum": ["success", "failure", "interrupted", null] },
+        "recoveredFromCrash": { "type": "boolean" }
+      },
+      "dependentRequired": {
+        "modelDecisionId": ["modelDecisionIntegritySha256", "dispatchId", "attempt", "runtime"],
+        "modelDecisionIntegritySha256": ["modelDecisionId", "dispatchId", "attempt", "runtime"],
+        "dispatchId": ["modelDecisionId", "modelDecisionIntegritySha256", "attempt", "runtime"],
+        "attempt": ["modelDecisionId", "modelDecisionIntegritySha256", "dispatchId", "runtime"],
+        "runtime": ["modelDecisionId", "modelDecisionIntegritySha256", "dispatchId", "attempt"],
+        "dispatchAuthorizationSha256": ["dispatchAuthorizationNonce", "dispatchAuthorizedAt", "dispatchAuthorizationExpiresAt", "dispatchParentSessionId"],
+        "dispatchAuthorizationNonce": ["dispatchAuthorizationSha256", "dispatchAuthorizedAt", "dispatchAuthorizationExpiresAt", "dispatchParentSessionId"],
+        "dispatchAuthorizedAt": ["dispatchAuthorizationSha256", "dispatchAuthorizationNonce", "dispatchAuthorizationExpiresAt", "dispatchParentSessionId"],
+        "dispatchAuthorizationExpiresAt": ["dispatchAuthorizationSha256", "dispatchAuthorizationNonce", "dispatchAuthorizedAt", "dispatchParentSessionId"],
+        "dispatchParentSessionId": ["dispatchAuthorizationSha256", "dispatchAuthorizationNonce", "dispatchAuthorizedAt", "dispatchAuthorizationExpiresAt"]
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase", "sequence", "dispatchId", "attempt", "allocationId", "bindingOrigin", "path", "sha256", "recordedAt"],
+      "properties": {
+        "phase": { "enum": ["preflight", "discovery", "hunting", "automation", "verification", "reporting", "complete"] },
+        "sequence": { "type": "integer", "minimum": 0 },
+        "dispatchId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "allocationId": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+        "bindingOrigin": { "enum": ["runtime", "runtime-v1", "migrated-v1"] },
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "recordedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fromVersion", "toVersion", "migrationId", "sourceSha256", "strategy",
+        "allocationIdsSynthesized", "activeAllocationIdsAtMigration", "checkpointBindingsSynthesized", "runtimeV1BindingsPreserved"
+      ],
+      "properties": {
+        "fromVersion": { "const": 1 },
+        "toVersion": { "const": 2 },
+        "migrationId": { "type": "string", "pattern": "^state-v1-[a-f0-9]{24}$" },
+        "sourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "strategy": { "const": "deterministic-lease-bound-execution-bindings" },
+        "allocationIdsSynthesized": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } },
+        "activeAllocationIdsAtMigration": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+          "additionalProperties": { "type": "string", "pattern": "^[a-f0-9]{24}$" }
+        },
+        "checkpointBindingsSynthesized": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } },
+        "runtimeV1BindingsPreserved": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } }
+      }
+    }
   }
 }

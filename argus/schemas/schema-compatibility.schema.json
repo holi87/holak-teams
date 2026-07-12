@@ -1,8 +1,30 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/holi87/holak-teams/argus/schemas/schema-compatibility.schema.json",
-  "title": "Argus schema compatibility policy",
+  "title": "Argus per-contract schema compatibility policy",
   "type": "object", "additionalProperties": false,
-  "required": ["schemaVersion", "current", "readCompatible", "migration"],
-  "properties": { "$schema": { "type": "string" }, "schemaVersion": { "const": 1 }, "current": { "const": 1 }, "readCompatible": { "const": [1] }, "migration": { "type": "string", "minLength": 1 } }
+  "required": ["$schema", "schemaVersion", "current", "readCompatible", "migration", "contracts"],
+  "properties": {
+    "$schema": { "type": "string" }, "schemaVersion": { "const": 2 }, "current": { "const": 1 }, "readCompatible": { "const": [1] }, "migration": { "type": "string", "minLength": 1 },
+    "contracts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["lane-plan", "evidence-reference", "automation-status", "preflight-report"],
+      "properties": {
+        "lane-plan": { "$ref": "#/$defs/override" },
+        "evidence-reference": { "$ref": "#/$defs/override" },
+        "automation-status": { "$ref": "#/$defs/override" },
+        "preflight-report": { "$ref": "#/$defs/readOverride" }
+      }
+    }
+  },
+  "$defs": {
+    "override": {
+      "type": "object", "additionalProperties": false, "required": ["current", "readCompatible", "migration"],
+      "properties": { "current": { "const": 2 }, "readCompatible": { "const": [1, 2] }, "migration": { "type": "string", "pattern": "^argus/migrate-[a-z-]+-v1-to-v2$" } }
+    },
+    "readOverride": {
+      "type": "object", "additionalProperties": false, "required": ["current", "readCompatible", "migration"],
+      "properties": { "current": { "const": 2 }, "readCompatible": { "const": [1, 2] }, "migration": { "const": "argus/preserve-preflight-report-v1-reader" } }
+    }
+  }
 }

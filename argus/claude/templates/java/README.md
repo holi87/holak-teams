@@ -159,8 +159,8 @@ collected console error / 5xx). The deliberate reductions:
   real screens are known — `PlaywrightFixture.ensureStorageState()` would then drive it instead
   of inline selectors.
 - **Bug↔regression coverage gate.** The TS runner folds `scripts/bug-coverage.mjs` into its exit
-  code to enforce that every confirmed `bugs/BUG-*` has a linked `@Tag("regression")` test. Not
-  ported. *Maven equivalent:* a small script (or an `exec-maven-plugin` step) wired into
-  `run-tests.sh` **before** `mvn test` — parse the `bugs/` files for `BUG-NNN` IDs, grep
-  `src/test/java/qa/regression/` for each, and exit non-zero on any bug without a matching
-  regression test, folding that exit code into the run.
+  code to enforce that every confirmed entry in `solution/bug-ledger.json` has a linked
+  `@Tag("regression")` test whose `@bug:` provenance matches its canonical ID or origin.
+  The Java adapter is an explicit extension point: parse that JSON ledger, inspect the
+  selected regression sources for both markers, fail on every unmatched entry, and fold
+  the adapter exit code into `run-tests.sh` before delivery.

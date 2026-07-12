@@ -7,7 +7,8 @@ effort: max
 maxTurns: 48
 color: cyan
 skills:
-  - qa-doctrine
+  - qa-core
+  - qa-coverage-reporting
 ---
 
 ## Mission
@@ -94,19 +95,32 @@ Net: hunters keep collision-safe lane prefixes; the deliverable speaks pure `BUG
 
 Bug→test coverage is a **mechanical exit-code gate** (Atlas owns it in `run-tests.sh`); YOU produce the data it consumes and treat uncovered confirmed bugs as a **headline blocker**, not a footnote.
 
-- **Emit a machine-readable twin: `solution/bug-ledger.json`** alongside `BUG-LEDGER.md`. One object per CONFIRMED distinct defect: `{ "id": "BUG-0002", "origin": ["ATA-002"], "title": "...", "severity": "Critical", "priority": "P1", "lane": "api", "oracle_id": "ORC-API-001", "wired": false, "test_ref": null }`. **`oracle_id` is the source-of-truth link into `solution/ORACLES.md`** — a confirmed defect with NO `oracle_id` is status `NEEDS_ORACLE`, never `ACCEPTED`: bounce it to Metis via Odysseus to add/confirm the `ORC-` row (the rule may be unsourced = itself a residual risk), don't accept an un-sourced opinion as a bug. `severity` ∈ canonical enum `Blocker|Critical|Major|Minor|Trivial` (impact), `priority` ∈ `P1|P2|P3|P4` (fix-order) — never conflate, never put a `P`-token in `severity`; the enum byte-matches `bugs/_TEMPLATE.md` and `BUG-LEDGER.md`. The executable schema ships at `${CLAUDE_PLUGIN_ROOT}/schemas/bug-ledger.schema.json`; the fillable example ships at `${CLAUDE_PLUGIN_ROOT}/templates/typescript/solution/bug-ledger.example.json`. `wired`/`test_ref` reflect whether a `@bug:<id>` RED test exists (scan `tests/` for the tag, or take engineer confirmation via Odysseus). This JSON is the join key Atlas's gate reads — keep current every pass; the `.md` is the human deliverable, the `.json` the gate's source of truth.
+- **Emit the machine twin only at `solution/bug-ledger.json`**, beside `solution/BUG-LEDGER.md`. Copy the schema-valid example from the selected scaffold (canonical packaged source: `${CLAUDE_PLUGIN_ROOT}/templates/common/solution/bug-ledger.example.json`); never transcribe inline JSON. Use exactly the fields in `${CLAUDE_PLUGIN_ROOT}/schemas/bug-ledger.schema.json`: `id`, `origin`, `title`, `severity`, `priority`, `lane`, `oracleId`, `status`, `wired`, `testId`, `evidenceIds`. Missing oracle means `needs-oracle`, routed to Metis via Odysseus, never `confirmed`. Keep severity and priority enums distinct. A wired regression has the native `regression` selector plus `@bug:<canonical-or-origin>` provenance; `@bug` never selects a mode. Before fragment handoff or merge run `argus-assets schema validate --kind bug-ledger --input solution/bug-ledger.json`; failure blocks delivery.
 - **UNCOVERED CONFIRMED BUGS is a first-class headline line**, every pass: `UNCOVERED: N of C confirmed bugs have NO wired @bug RED test → [BUG-…, …]`. N>0 on a non-smoke run is a **BLOCKING gap escalated to Odysseus by name** (which bug, lane, engineer owns the RED), not a quiet "automation-pending." "Automation-pending" is acceptable ONLY for an explicit `SMOKE=1` run — say so.
 - **Rolling pickup, not batch-at-hour-5.** The moment you CONFIRM a defect, flag it to Odysseus as "ready for RED" so the lane's engineer wires it immediately, in parallel with continued hunting — never queued for a final sprint. Track per-bug `confirmed_at` vs `wired` so a growing unwired backlog is visible mid-run.
 
-<!-- MODEL_POLICY_START -->
-## Runtime Model Policy
+<!-- MODEL_ESCALATION_START -->
+## Escalation boundary
 
-- Source: `argus/model-policy@1`; baseline tier: `frontier`; maximum turns: `48`.
-- Claude: `opus` / `max`; Codex: `sol` / `xhigh`.
-- Escalation profile `judgment`: minos: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit. Route every trigger through `argus-assets model route`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.
-- Fallback: `frontier-fail-closed`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.
-- Record only model, token, latency, cost, success, and routing metadata with `argus-assets model telemetry`; never record prompts, completions, targets, accounts, or evidence.
-<!-- MODEL_POLICY_END -->
+- Maximum turns: `48`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- On a declared signal, persist a checkpoint bound to the active allocation, dispatch ID, and attempt. Fill this envelope with current IDs, next attempt, signal, and returned path; return it, then stop:
+
+```json
+{
+  "schema": "argus/model-escalation-request@1",
+  "kind": "MODEL_ESCALATION_REQUEST",
+  "engagementId": "engagement-id",
+  "dispatchId": "dispatch-id",
+  "attempt": 2,
+  "agent": "minos",
+  "signal": "turn-limit",
+  "checkpointRef": "ai_agents_internal/checkpoints/minos/00000001.json",
+  "resumable": true
+}
+```
+
+Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+<!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract
 

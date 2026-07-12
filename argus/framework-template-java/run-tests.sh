@@ -100,10 +100,11 @@ for url in $([ "${ARGUS_CONTRACT_SMOKE:-0}" = "1" ] && printf '' || printf '%s %
 done
 
 # Run every lane in ONE invocation → ONE aggregated report. Gated lanes self-skip.
-set +e
-"${MVN[@]}" test "${MODE_ARGS[@]}" "$@"
-code=$?
-set -e
+if "${MVN[@]}" test "${MODE_ARGS[@]}" "$@"; then
+  code=0
+else
+  code=$?
+fi
 
 echo ""
 echo "Reports: target/surefire-reports/ (XML per class)  |  reports/summary.html  |  reports/summary.json"

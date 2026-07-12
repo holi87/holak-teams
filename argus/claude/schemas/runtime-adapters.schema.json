@@ -4,29 +4,124 @@
   "title": "Argus Claude and Codex runtime adapters",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "claude", "codex", "explicitDifferences"],
+  "required": ["$schema", "schemaVersion", "contractId", "support", "configurationParity", "claude", "codex", "explicitDifferences"],
   "properties": {
-    "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "$schema": { "const": "./schemas/runtime-adapters.schema.json" },
+    "schemaVersion": { "const": 3 },
+    "contractId": { "const": "argus/runtime-adapters@3" },
+    "support": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claude", "codex"],
+      "properties": {
+        "claude": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["level", "parentRuntimeRequired"],
+          "properties": {
+            "level": { "const": "plugin-native" },
+            "parentRuntimeRequired": { "const": false }
+          }
+        },
+        "codex": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["level", "parentRuntimeRequired", "requiredParentCapabilities", "missingCapabilityOutcome"],
+          "properties": {
+            "level": { "const": "parent-runtime-dependent" },
+            "parentRuntimeRequired": { "const": true },
+            "requiredParentCapabilities": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "enum": ["orchestration", "packaged-assets", "tool-equivalence", "dispatch-enforcement-attestation", "jit-dispatch-authorization"] }
+            },
+            "missingCapabilityOutcome": { "const": "CAPABILITY_GAP" }
+          }
+        }
+      }
+    },
+    "configurationParity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "scope", "doesNotClaim"],
+      "properties": {
+        "status": { "const": "validated" },
+        "scope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["role-inventory", "generated-instructions", "model-and-effort", "sandbox-policy", "native-config-load"] }
+        },
+        "doesNotClaim": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["behavioral-equivalence", "tool-availability", "packaged-asset-availability", "delegation-execution", "target-outcomes"] }
+        }
+      }
+    },
     "claude": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["preloadedSkill", "toolSource", "modelSource"],
+      "required": ["adapterId", "skillSource", "toolSource", "modelSource", "routingCapabilities"],
       "properties": {
-        "preloadedSkill": { "const": "qa-doctrine" },
-        "toolSource": { "const": "role-manifest" },
-        "modelSource": { "const": "model-policy" }
+        "adapterId": { "const": "claude-plugin-agent@1" },
+        "skillSource": { "const": "capability-matrix" },
+        "toolSource": { "const": "capability-matrix" },
+        "modelSource": { "const": "model-policy" },
+        "routingCapabilities": { "$ref": "#/$defs/routingCapabilities" }
       }
     },
     "codex": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["modelSource", "sandboxPolicy", "doctrinePolicy", "toolPolicy"],
+      "required": ["adapterId", "modelSource", "sandboxPolicy", "doctrinePolicy", "toolPolicy", "capabilityAttestation", "dispatchAuthorization", "routingCapabilities"],
       "properties": {
+        "adapterId": { "const": "codex-custom-agent@1" },
         "modelSource": { "const": "model-policy" },
         "sandboxPolicy": { "type": "string", "minLength": 1 },
         "doctrinePolicy": { "type": "string", "minLength": 1 },
-        "toolPolicy": { "type": "string", "minLength": 1 }
+        "toolPolicy": { "type": "string", "minLength": 1 },
+        "capabilityAttestation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema", "directory", "authoringBoundary", "authentication", "maxValiditySeconds", "requiredEnforcements"],
+          "properties": {
+            "schema": { "const": "argus/model-runtime-attestation@1" },
+            "directory": { "const": "ai_agents_internal/operator-decisions" },
+            "authoringBoundary": { "const": "isolated-codex-dispatch-wrapper" },
+            "authentication": { "const": "ed25519-pinned-engagement-key" },
+            "maxValiditySeconds": { "type": "integer", "minimum": 1, "maximum": 900 },
+            "requiredEnforcements": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "uniqueItems": true,
+              "items": { "enum": ["model", "effort", "maxTurns"] }
+            }
+          }
+        },
+        "dispatchAuthorization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema", "directory", "authoringBoundary", "authentication", "maxValiditySeconds", "requiredBindings"],
+          "properties": {
+            "schema": { "const": "argus/model-dispatch-authorization@1" },
+            "directory": { "const": "ai_agents_internal/operator-decisions" },
+            "authoringBoundary": { "const": "isolated-codex-dispatch-wrapper" },
+            "authentication": { "const": "ed25519-pinned-engagement-key" },
+            "maxValiditySeconds": { "type": "integer", "minimum": 1, "maximum": 900 },
+            "requiredBindings": {
+              "type": "array",
+              "minItems": 6,
+              "maxItems": 6,
+              "uniqueItems": true,
+              "items": { "enum": ["decisionId", "decisionIntegritySha256", "selectedConfigSha256", "allocationId", "parentSessionId", "nonce"] }
+            }
+          }
+        },
+        "routingCapabilities": { "$ref": "#/$defs/routingCapabilities" }
       }
     },
     "explicitDifferences": {
@@ -42,6 +137,28 @@
           "codex": { "type": "string", "minLength": 1 },
           "reason": { "type": "string", "minLength": 1 }
         }
+      }
+    }
+  },
+  "$defs": {
+    "routingCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline", "escalation", "evidence"],
+      "properties": {
+        "baseline": { "$ref": "#/$defs/enforcementCapabilities" },
+        "escalation": { "$ref": "#/$defs/enforcementCapabilities" },
+        "evidence": { "type": "string", "minLength": 1 }
+      }
+    },
+    "enforcementCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "effort", "maxTurns"],
+      "properties": {
+        "model": { "type": "boolean" },
+        "effort": { "type": "boolean" },
+        "maxTurns": { "type": "boolean" }
       }
     }
   }

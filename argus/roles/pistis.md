@@ -66,6 +66,6 @@ Past runs let cross-service drift escape because no one owned the contract BETWE
 - **Backward-compatibility diff (additive-only).** For each evolving provider, spec the per-field/enum/status additive-only check: removal / type-narrowing / enum-shrink / response-`required` tightening / consumer-relied status change without a new version = RED. Additive deltas (new optional field, new endpoint, widened input enum) = GREEN-compatible. Drives Talos's contract-diff check.
 - Hand these tightened specs to Talos as the 100%-green provider-verification + consumer-pact suite; cross-service drift then surfaces as RED at the exact pact and field, not a silent pass on both sides.
 
-{{ARGUS_MODEL_POLICY_BLOCK}}
+{{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->

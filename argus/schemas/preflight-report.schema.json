@@ -1,15 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/holi87/holak-teams/argus/schemas/preflight-report.schema.json",
-  "title": "Argus runtime preflight report",
+  "title": "Argus runtime preflight report v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generatedAt", "mode", "status", "target", "artifactRoot", "authorization", "engagement", "checks", "capabilities", "agents", "summary"],
+  "required": ["$schema", "schemaVersion", "generatedAt", "mode", "modelRuntime", "status", "target", "artifactRoot", "authorization", "engagement", "orchestration", "checks", "capabilities", "agents", "summary"],
   "properties": {
-    "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "$schema": { "const": "https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/preflight-report.schema.json" },
+    "schemaVersion": { "const": 2 },
     "generatedAt": { "type": "string", "format": "date-time" },
     "mode": { "enum": ["A", "B", "C", "D"] },
+    "modelRuntime": { "enum": ["claude", "codex"] },
     "status": { "enum": ["ready", "degraded", "blocked"] },
     "target": {
       "type": "object",
@@ -67,6 +68,16 @@
         "hookPackaged": { "type": "boolean" }
       }
     },
+    "orchestration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "specialists"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "specialists": { "type": "integer", "minimum": 0, "maximum": 26 }
+      }
+    },
     "checks": {
       "type": "array",
       "items": { "$ref": "#/$defs/check" }
@@ -101,24 +112,29 @@
           "model": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["schema", "policyId", "agent", "runtime", "signal", "status", "baselineTier", "selectedTier", "model", "effort", "maxTurns", "escalationProfile", "fallbackPolicy", "fallbackUsed", "operatorEscalation", "weakerFallbackAllowed", "reason"],
+            "required": ["schema", "policyId", "agent", "runtime", "status", "baselineConfig", "requiredOverrides", "requiredEnforcements", "adapterId", "adapterSnapshotSha256", "missingCapabilities", "reason"],
             "properties": {
-              "schema": { "const": "argus/model-decision@1" },
+              "schema": { "const": "argus/model-routing-preview@1" },
               "policyId": { "const": "argus/model-policy@1" },
               "agent": { "type": "string" },
-              "runtime": { "const": "claude" },
-              "signal": { "const": "normal" },
-              "status": { "enum": ["selected", "blocked"] },
-              "baselineTier": { "enum": ["frontier", "standard"] },
-              "selectedTier": { "enum": ["frontier", "standard", "mechanical"] },
-              "model": { "enum": ["opus", "sonnet", "haiku"] },
-              "effort": { "enum": ["low", "medium", "high", "max"] },
-              "maxTurns": { "type": "integer", "minimum": 1 },
-              "escalationProfile": { "type": "string" },
-              "fallbackPolicy": { "enum": ["frontier-fail-closed", "upward-only"] },
-              "fallbackUsed": { "type": "boolean" },
-              "operatorEscalation": { "type": "boolean" },
-              "weakerFallbackAllowed": { "const": false },
+              "runtime": { "enum": ["claude", "codex"] },
+              "status": { "enum": ["ready", "blocked", "attestation-required"] },
+              "baselineConfig": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["tier", "model", "effort", "maxTurns"],
+                "properties": {
+                  "tier": { "enum": ["frontier", "standard"] },
+                  "model": { "enum": ["opus", "sonnet", "sol", "terra"] },
+                  "effort": { "enum": ["medium", "max", "xhigh"] },
+                  "maxTurns": { "type": "integer", "minimum": 1 }
+                }
+              },
+              "requiredOverrides": { "type": "array", "items": { "enum": ["model", "effort"] }, "uniqueItems": true },
+              "requiredEnforcements": { "type": "array", "minItems": 3, "items": { "enum": ["model", "effort", "maxTurns"] }, "uniqueItems": true },
+              "adapterId": { "enum": ["claude-plugin-agent@1", "codex-custom-agent@1"] },
+              "adapterSnapshotSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "missingCapabilities": { "type": "array", "items": { "enum": ["model", "effort", "maxTurns"] }, "uniqueItems": true },
               "reason": { "type": "string" }
             }
           },

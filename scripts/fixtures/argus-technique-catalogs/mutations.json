@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "atalanta-entry-count",
+      "catalog": "atalanta",
+      "operation": "remove",
+      "pointer": "/entries/19",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "exactly 20 entries"
+    },
+    {
+      "name": "atalanta-duplicate-id",
+      "catalog": "atalanta",
+      "operation": "replace",
+      "pointer": "/entries/1/id",
+      "value": "ATA-T01",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "must equal \"ATA-T02\""
+    },
+    {
+      "name": "atalanta-unknown-entry-property",
+      "catalog": "atalanta",
+      "operation": "add",
+      "pointer": "/entries/0/model",
+      "value": "forbidden",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "/entries/0/model is not allowed"
+    },
+    {
+      "name": "atalanta-invalid-applicability",
+      "catalog": "atalanta",
+      "operation": "replace",
+      "pointer": "/entries/0/appliesWhen",
+      "value": "optional",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "appliesWhen is not supported"
+    },
+    {
+      "name": "atalanta-missing-oracle",
+      "catalog": "atalanta",
+      "operation": "remove",
+      "pointer": "/entries/0/oracles",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "/entries/0/oracles must be an array"
+    },
+    {
+      "name": "atalanta-semantic-marker-drift",
+      "catalog": "atalanta",
+      "operation": "replace",
+      "pointer": "/entries/5/construct/1",
+      "value": "Try three nearby values.",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "domain's smallest unit"
+    },
+    {
+      "name": "proteus-entry-count",
+      "catalog": "proteus",
+      "operation": "remove",
+      "pointer": "/entries/14",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "exactly 15 entries"
+    },
+    {
+      "name": "proteus-duplicate-title",
+      "catalog": "proteus",
+      "operation": "replace",
+      "pointer": "/entries/1/title",
+      "value": "GraphQL query-cost amplification",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "title duplicates another entry"
+    },
+    {
+      "name": "proteus-cross-role-id",
+      "catalog": "proteus",
+      "operation": "replace",
+      "pointer": "/entries/0/id",
+      "value": "ATA-T01",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "must equal \"PRO-T01\""
+    },
+    {
+      "name": "proteus-semantic-marker-drift",
+      "catalog": "proteus",
+      "operation": "replace",
+      "pointer": "/entries/14/oracles/0",
+      "value": "The callback eventually succeeds.",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "redirects are revalidated"
+    },
+    {
+      "name": "metis-iso-count",
+      "catalog": "metis",
+      "operation": "remove",
+      "pointer": "/iso25010/7",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "exactly 8 entries"
+    },
+    {
+      "name": "metis-duplicate-iso-id",
+      "catalog": "metis",
+      "operation": "replace",
+      "pointer": "/iso25010/1/id",
+      "value": "functional-suitability",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "must equal \"performance-efficiency\""
+    },
+    {
+      "name": "metis-istqb-process-drift",
+      "catalog": "metis",
+      "operation": "replace",
+      "pointer": "/istqb/process/0",
+      "value": "planning",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "must equal \"analysis\""
+    },
+    {
+      "name": "metis-journey-count",
+      "catalog": "metis",
+      "operation": "remove",
+      "pointer": "/journeyClasses/4",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "exactly 5 entries"
+    },
+    {
+      "name": "metis-journey-tag",
+      "catalog": "metis",
+      "operation": "replace",
+      "pointer": "/journeyClasses/0/tag",
+      "value": "@smoke",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "must equal \"@e2e\""
+    },
+    {
+      "name": "metis-boundary-register-optional",
+      "catalog": "metis",
+      "operation": "replace",
+      "pointer": "/boundaryRegister/required",
+      "value": false,
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "must equal true"
+    },
+    {
+      "name": "metis-boundary-mandate-count",
+      "catalog": "metis",
+      "operation": "remove",
+      "pointer": "/boundaryRegister/mandates/3",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "exactly 4 entries"
+    },
+    {
+      "name": "metis-duplicate-archetype-id",
+      "catalog": "metis",
+      "operation": "replace",
+      "pointer": "/archetypes/1/id",
+      "value": "boundary-equality",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "must equal \"charset-equivalence\""
+    },
+    {
+      "name": "metis-unknown-top-level-property",
+      "catalog": "metis",
+      "operation": "add",
+      "pointer": "/runtimeRead",
+      "value": true,
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "/runtimeRead is not allowed"
+    }
+  ]
+}

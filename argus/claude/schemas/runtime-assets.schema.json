@@ -4,12 +4,13 @@
   "title": "Argus runtime asset source manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "budgets", "assets", "maintainerOnly", "forbiddenPromptReferences"],
+  "required": ["schemaVersion", "budgets", "templateCompositions", "assets", "buildOnly", "maintainerOnly", "forbiddenPromptReferences"],
   "properties": {
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
     "generated": { "type": "boolean" },
     "generatedFrom": { "type": "string" },
+    "inventory": { "type": "object", "required": ["path", "schemaVersion", "bytes", "sha256"] },
     "budgets": {
       "type": "object",
       "additionalProperties": false,
@@ -17,6 +18,16 @@
       "properties": {
         "generatedAssetsBytes": { "type": "integer", "minimum": 1 },
         "installedPluginBytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "templateCompositions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["typescript", "java", "python"],
+      "properties": {
+        "typescript": { "$ref": "#/$defs/templateComposition" },
+        "java": { "$ref": "#/$defs/templateComposition" },
+        "python": { "$ref": "#/$defs/templateComposition" }
       }
     },
     "assets": {
@@ -37,7 +48,18 @@
         }
       }
     },
+    "buildOnly": { "$ref": "#/$defs/excludedSources" },
     "maintainerOnly": {
+      "$ref": "#/$defs/excludedSources"
+    },
+    "forbiddenPromptReferences": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "excludedSources": {
       "type": "array",
       "items": {
         "type": "object",
@@ -49,10 +71,15 @@
         }
       }
     },
-    "forbiddenPromptReferences": {
-      "type": "array",
-      "items": { "type": "string", "minLength": 1 },
-      "uniqueItems": true
+    "templateComposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "commonAsset", "runtimeAsset"],
+      "properties": {
+        "source": { "type": "string", "pattern": "^argus/framework-template(?:-(?:java|python))?$" },
+        "commonAsset": { "const": "common-template" },
+        "runtimeAsset": { "type": "string", "pattern": "^(?:typescript|java|python)-template$" }
+      }
     }
   }
 }

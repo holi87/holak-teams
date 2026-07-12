@@ -9,6 +9,7 @@
   },
   "artifactRoot": "<ARTIFACT_ROOT>",
   "selectedAgents": ["odysseus"],
+  "modelTrust": null,
   "accessibilityPolicy": {
     "standard": "WCAG",
     "version": "2.2",
@@ -48,7 +49,6 @@
     "checkpointRoot": "ai_agents_internal/checkpoints",
     "workerRoot": "ai_agents_internal/workers",
     "allowedArtifactRoots": [
-      "ai_agents_internal/heartbeat",
       "ai_agents_internal/recon",
       "ai_agents_internal/reports",
       "bugs",

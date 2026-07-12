@@ -1,0 +1,1 @@
+{"$schema":"argus/bug-ledger@1","schemaVersion":1,"engagementId":"fixture-1","bugs":[{"id":"BUG-0001","origin":[],"title":"Example defect","severity":"Major","priority":"P2","lane":"minos","oracleId":"ORC-API-001","status":"confirmed","wired":true,"testId":"REG-0001","evidenceIds":["EVD-0001"]}]}

@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { validateCoverageObservations, validateSurfaceInventory } from './coverage.mjs';
+import { compileJsonSchema } from './json-schema.mjs';
 
 export const CONTRACT_VERSION = 1;
 export const CONTRACT_KINDS = Object.freeze([
@@ -11,42 +15,54 @@ export const CONTRACT_KINDS = Object.freeze([
   'surface-inventory',
   'coverage-observations',
   'coverage-result',
+  'model-escalation-request',
+  'runner-result',
 ]);
 
-const ID = {
-  bug: /^BUG-[0-9]{4}$/,
-  test: /^(?:TST|REG)-[0-9]{4}$/,
-  evidence: /^EVD-[0-9]{4}$/,
-  lane: /^[a-z][a-z0-9-]*$/,
-  sha256: /^[a-f0-9]{64}$/,
-};
-const ISO = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value));
-const string = (value) => typeof value === 'string' && value.trim().length > 0;
-const list = (value, predicate = string) => Array.isArray(value) && value.every(predicate) && new Set(value).size === value.length;
-const object = (value) => value && typeof value === 'object' && !Array.isArray(value);
+const COLLECTION_CONTRACTS = Object.freeze({
+  'lane-plan': { field: 'lanes', key: 'lane', label: 'lane', migration: 'argus/migrate-lane-plan-v1-to-v2', fields: ['lane', 'owner', 'phase', 'status', 'dependsOn', 'outputContracts', 'transitions'] },
+  'evidence-reference': { field: 'references', key: 'id', label: 'evidence reference', migration: 'argus/migrate-evidence-reference-v1-to-v2', fields: ['id', 'kind', 'source', 'collectedBy', 'capturedAt', 'redaction', 'sha256', 'relatedBugIds'] },
+  'automation-status': { field: 'tests', key: 'testId', label: 'automation test', migration: 'argus/migrate-automation-status-v1-to-v2', fields: ['testId', 'owner', 'status', 'runner', 'updatedAt', 'coversBugIds', 'evidenceIds'] },
+});
 
-export function schemaId(kind) {
+const SCHEMAS = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas');
+const POLICIES = join(dirname(fileURLToPath(import.meta.url)), '..', 'policies');
+const validators = new Map();
+
+const compatibility = loadJson(join(POLICIES, 'schema-compatibility.json'), 'schema compatibility policy');
+const compatibilitySchema = loadJson(join(SCHEMAS, 'schema-compatibility.schema.json'), 'schema compatibility schema');
+const compatibilityErrors = compileJsonSchema(compatibilitySchema)(compatibility);
+if (compatibilityErrors.length > 0) {
+  throw new Error(`invalid schema compatibility policy: ${compatibilityErrors.map(formatValidationError).join('; ')}`);
+}
+if (compatibility.current !== CONTRACT_VERSION || !compatibility.readCompatible.includes(CONTRACT_VERSION)) {
+  throw new Error(`default schema compatibility policy does not permit contract version ${CONTRACT_VERSION}`);
+}
+for (const [kind, contract] of Object.entries(COLLECTION_CONTRACTS)) {
+  const policy = compatibility.contracts?.[kind];
+  if (policy?.current !== 2 || !sameNumbers(policy.readCompatible, [1, 2]) || policy.migration !== contract.migration) {
+    throw new Error(`${kind} compatibility policy must preserve v1 and migrate deterministically to v2`);
+  }
+}
+const preflightCompatibility = compatibility.contracts?.['preflight-report'];
+if (preflightCompatibility?.current !== 2 || !sameNumbers(preflightCompatibility.readCompatible, [1, 2]) || preflightCompatibility.migration !== 'argus/preserve-preflight-report-v1-reader') {
+  throw new Error('preflight-report compatibility policy must preserve the v1 reader and write v2');
+}
+
+export function schemaId(kind, version = contractPolicy(kind).current) {
   if (!CONTRACT_KINDS.includes(kind)) throw new Error(`unknown canonical contract: ${kind}`);
-  return `argus/${kind}@${CONTRACT_VERSION}`;
+  return `argus/${kind}@${version}`;
 }
 
 export function validateCanonicalDocument(kind, document) {
-  const errors = [];
   if (!CONTRACT_KINDS.includes(kind)) return [`unknown canonical contract: ${kind}`];
-  if (!object(document)) return ['document must be an object'];
-  if (document.schemaVersion !== CONTRACT_VERSION) errors.push(`schemaVersion must be ${CONTRACT_VERSION}`);
-  if (document.$schema !== schemaId(kind)) errors.push(`$schema must be ${schemaId(kind)}`);
-  if (!string(document.engagementId)) errors.push('engagementId is required');
-
-  if (kind === 'bug-ledger') validateBugLedger(document, errors);
-  if (kind === 'lane-plan') validateLanePlan(document, errors);
-  if (kind === 'evidence-reference') validateEvidenceReference(document, errors);
-  if (kind === 'automation-status') validateAutomationStatus(document, errors);
-  if (kind === 'final-summary') validateFinalSummary(document, errors);
-  if (kind === 'surface-inventory') errors.push(...validateSurfaceInventory(document));
-  if (kind === 'coverage-observations') errors.push(...validateCoverageObservations(document));
-  if (kind === 'coverage-result') validateCoverageResult(document, errors);
-  return [...new Set(errors)];
+  const version = declaredContractVersion(kind, document);
+  const policy = contractPolicy(kind);
+  if (!policy.readCompatible.includes(version)) return [`unsupported ${kind} contract version: ${String(version)}`];
+  const validate = canonicalValidator(kind, version);
+  const schemaErrors = validate(document).map(formatValidationError);
+  if (schemaErrors.length > 0) return schemaErrors;
+  return semanticErrors(kind, document, version);
 }
 
 export function validateCanonicalFragment(kind, content) {
@@ -54,6 +70,55 @@ export function validateCanonicalFragment(kind, content) {
   try { document = JSON.parse(String(content)); }
   catch { return { errors: ['fragment is not valid JSON'], document: null }; }
   return { errors: validateCanonicalDocument(kind, document), document };
+}
+
+export function migrateCanonicalDocument(kind, document) {
+  const errors = validateCanonicalDocument(kind, document);
+  if (errors.length) throw new Error(`${kind} document is invalid: ${errors.join('; ')}`);
+  const contract = COLLECTION_CONTRACTS[kind];
+  if (!contract) return document;
+  const version = declaredContractVersion(kind, document);
+  const records = version === 1
+    ? [migrateLegacyRecord(kind, pickFields(document, contract.fields))]
+    : document[contract.field];
+  const migrated = {
+    $schema: schemaId(kind),
+    schemaVersion: contractPolicy(kind).current,
+    engagementId: document.engagementId,
+    [contract.field]: records.map((record) => pickFields(record, contract.fields)),
+  };
+  migrated[contract.field].sort((left, right) => compareAscii(left[contract.key], right[contract.key]));
+  const migratedErrors = validateCanonicalDocument(kind, migrated);
+  if (migratedErrors.length) throw new Error(`${kind} migration failed: ${migratedErrors.join('; ')}`);
+  return migrated;
+}
+
+export function mergeCanonicalDocuments(kind, documents) {
+  if (!Array.isArray(documents) || documents.length === 0) throw new Error(`${kind} merge requires at least one document`);
+  const contract = COLLECTION_CONTRACTS[kind];
+  if (!contract) {
+    if (documents.length !== 1) throw new Error(`${kind} requires exactly one complete JSON document fragment`);
+    const errors = validateCanonicalDocument(kind, documents[0]);
+    if (errors.length) throw new Error(`${kind} merged document is invalid: ${errors.join('; ')}`);
+    return documents[0];
+  }
+  const engagementId = documents[0]?.engagementId;
+  const records = [];
+  for (const document of documents) {
+    const migrated = migrateCanonicalDocument(kind, document);
+    if (migrated.engagementId !== engagementId) throw new Error(`${kind} collection fragments have different engagementId values`);
+    records.push(...migrated[contract.field]);
+  }
+  records.sort((left, right) => compareAscii(left[contract.key], right[contract.key]));
+  const merged = {
+    $schema: schemaId(kind),
+    schemaVersion: contractPolicy(kind).current,
+    engagementId,
+    [contract.field]: records,
+  };
+  const errors = validateCanonicalDocument(kind, merged);
+  if (errors.length) throw new Error(`${kind} merged collection is invalid: ${errors.join('; ')}`);
+  return merged;
 }
 
 export function renderFinalSummary(document) {
@@ -112,73 +177,232 @@ function formatRatio(value) {
 }
 
 export function stableIdentity(value) {
-  if (!string(value)) throw new Error('identity must be a non-empty stable string');
+  if (typeof value !== 'string' || value.trim().length === 0) throw new Error('identity must be a non-empty stable string');
   return createHash('sha256').update(value.trim()).digest('hex');
 }
 
-function validateBugLedger(document, errors) {
-  if (!Array.isArray(document.bugs)) return errors.push('bugs must be an array');
-  const ids = new Set();
-  for (const bug of document.bugs) {
-    if (!object(bug)) { errors.push('bug entries must be objects'); continue; }
-    if (!ID.bug.test(bug.id ?? '')) errors.push(`invalid bug id: ${bug.id ?? '(missing)'}`);
-    if (ids.has(bug.id)) errors.push(`duplicate bug id: ${bug.id}`);
-    ids.add(bug.id);
-    if (!list(bug.origin, (value) => /^[A-Z]{3}-[0-9]{3,4}$/.test(value))) errors.push(`bug ${bug.id}: origin must contain stable finding IDs`);
-    if (!string(bug.title) || !['Blocker', 'Critical', 'Major', 'Minor', 'Trivial'].includes(bug.severity) || !['P1', 'P2', 'P3', 'P4'].includes(bug.priority)) errors.push(`bug ${bug.id}: title, severity, or priority is invalid`);
-    if (!ID.lane.test(bug.lane ?? '') || !string(bug.oracleId) || !['confirmed', 'suspected', 'needs-oracle'].includes(bug.status)) errors.push(`bug ${bug.id}: lane, oracleId, or status is invalid`);
-    if (typeof bug.wired !== 'boolean' || (bug.wired && !ID.test.test(bug.testId ?? ''))) errors.push(`bug ${bug.id}: wired bugs require a stable testId`);
-    if (!list(bug.evidenceIds, (value) => ID.evidence.test(value))) errors.push(`bug ${bug.id}: evidenceIds are invalid`);
+function canonicalValidator(kind, version) {
+  const key = `${kind}@${version}`;
+  if (!validators.has(key)) {
+    const current = contractPolicy(kind).current;
+    const path = join(SCHEMAS, version === current ? `${kind}.schema.json` : `${kind}-v${version}.schema.json`);
+    let schema;
+    try { schema = JSON.parse(readFileSync(path, 'utf8')); }
+    catch (error) { throw new Error(`cannot load canonical schema ${path}: ${error.message}`); }
+    validators.set(key, compileJsonSchema(schema));
   }
+  return validators.get(key);
 }
 
-function validateLanePlan(document, errors) {
-  if (!ID.lane.test(document.lane ?? '') || !ID.lane.test(document.owner ?? '')) errors.push('lane and owner must be slugs');
-  if (!['discovery', 'hunting', 'automation', 'verification', 'reporting'].includes(document.phase)) errors.push('phase is invalid');
-  if (!['planned', 'running', 'blocked', 'completed'].includes(document.status)) errors.push('status is invalid');
-  if (!list(document.dependsOn, (value) => ID.lane.test(value))) errors.push('dependsOn must be unique lane slugs');
-  if (!list(document.outputContracts, string)) errors.push('outputContracts must be unique non-empty contract paths');
-  if (!Array.isArray(document.transitions) || document.transitions.length === 0 || !document.transitions.every((transition) => object(transition) && ['planned', 'running', 'blocked', 'completed'].includes(transition.to) && ISO(transition.at) && string(transition.by))) errors.push('transitions must be auditable state transitions');
+function semanticErrors(kind, document, version) {
+  if (kind === 'bug-ledger') return duplicateIds(document.bugs, 'bug');
+  if (kind === 'lane-plan') return validateLanePlan(document, version);
+  if (COLLECTION_CONTRACTS[kind] && version === contractPolicy(kind).current) return validateOrderedCollection(document, COLLECTION_CONTRACTS[kind]);
+  if (kind === 'surface-inventory') return validateSurfaceInventory(document);
+  if (kind === 'coverage-observations') return validateCoverageObservations(document);
+  if (kind === 'runner-result') return validateRunnerResult(document);
+  return [];
 }
 
-function validateEvidenceReference(document, errors) {
-  if (!ID.evidence.test(document.id ?? '')) errors.push('id must be EVD-NNNN');
-  if (!['text', 'http', 'trace', 'metric', 'log'].includes(document.kind)) errors.push('kind is invalid');
-  if (!string(document.source) || !ID.lane.test(document.collectedBy ?? '') || !ISO(document.capturedAt)) errors.push('source, collectedBy, or capturedAt is invalid');
-  if (!['redacted', 'synthetic', 'public'].includes(document.redaction)) errors.push('redaction is invalid');
-  if (!ID.sha256.test(document.sha256 ?? '')) errors.push('sha256 is invalid');
-  if (!list(document.relatedBugIds ?? [], (value) => ID.bug.test(value))) errors.push('relatedBugIds are invalid');
+function validateLanePlan(document, version) {
+  const current = version === contractPolicy('lane-plan').current;
+  if (!current) return [];
+  const errors = validateOrderedCollection(document, COLLECTION_CONTRACTS['lane-plan']);
+  for (const lane of document.lanes) errors.push(...validateLaneTransitions(lane));
+  return errors;
 }
 
-function validateAutomationStatus(document, errors) {
-  if (!ID.test.test(document.testId ?? '')) errors.push('testId must be TST-NNNN or REG-NNNN');
-  if (!ID.lane.test(document.owner ?? '') || !['planned', 'implemented', 'passed', 'failed', 'skipped'].includes(document.status)) errors.push('owner or status is invalid');
-  if (!string(document.runner) || !ISO(document.updatedAt)) errors.push('runner or updatedAt is invalid');
-  if (!list(document.coversBugIds, (value) => ID.bug.test(value))) errors.push('coversBugIds are invalid');
-  if (!list(document.evidenceIds, (value) => ID.evidence.test(value))) errors.push('evidenceIds are invalid');
-}
+function validateLaneTransitions(lane) {
+  const errors = [];
+  const transitions = lane.transitions;
+  const label = `lane ${lane.lane}`;
+  if (transitions[0].to !== 'planned') errors.push(`${label} first transition must be planned`);
 
-function validateFinalSummary(document, errors) {
-  if (!['completed', 'blocked', 'degraded'].includes(document.status)) errors.push('status is invalid');
-  if (!object(document.counts) || !['bugs', 'automated', 'evidence'].every((key) => Number.isInteger(document.counts[key]) && document.counts[key] >= 0)) errors.push('counts are invalid');
-  if (!list(document.sourceSchemas, (value) => /^argus\/[a-z-]+@1$/.test(value))) errors.push('sourceSchemas are invalid');
-  if (!string(document.summary) || !ISO(document.generatedAt) || !ID.lane.test(document.owner ?? '')) errors.push('summary, generatedAt, or owner is invalid');
-  if (document.coverage !== undefined) {
-    const coverage = document.coverage;
-    const ratios = ['discoveryCompleteness', 'executionCoverage', 'assertionQuality', 'evidenceQuality'];
-    if (!object(coverage) || !string(coverage.resultPath) || !ratios.every((key) => coverage[key] === null || (typeof coverage[key] === 'number' && coverage[key] >= 0 && coverage[key] <= 1)) || !Number.isInteger(coverage.scopedOutcomes) || coverage.scopedOutcomes < 0) errors.push('coverage summary is invalid');
+  for (let index = 1; index < transitions.length; index += 1) {
+    const previous = transitions[index - 1];
+    const current = transitions[index];
+    const allowed = previous.to === 'planned'
+      ? new Set(['running', 'blocked'])
+      : previous.to === 'running'
+        ? new Set(['completed', 'blocked'])
+        : new Set();
+    if (!allowed.has(current.to)) errors.push(`${label} transition ${previous.to} -> ${current.to} is not allowed`);
+    if (compareRfc3339(previous.at, current.at) >= 0) errors.push(`${label} transition timestamps must be strictly increasing`);
   }
-  const runner = document.runner;
-  if (!object(runner) || !['baseline', 'defect-evidence', 'candidate-regression', 'full-suite'].includes(runner.mode) || !['pass', 'fail'].includes(runner.status) || ![0, 10, 11, 12, 13, 14, 15].includes(runner.exitCode) || !string(runner.resultPath)) {
-    errors.push('runner mode, status, exitCode, or resultPath is invalid');
-  } else if (!object(runner.categories) || !['product', 'automation', 'infrastructure', 'skip', 'policy'].every((key) => Number.isInteger(runner.categories[key]) && runner.categories[key] >= 0)) {
-    errors.push('runner categories are invalid');
-  }
+
+  if (transitions.at(-1).to !== lane.status) errors.push(`${label} status must equal its final transition`);
+  return errors;
 }
 
-function validateCoverageResult(document, errors) {
-  if (!object(document.discovery) || !object(document.overall) || !object(document.lanes)) errors.push('discovery, overall, and lanes are required');
-  if (!Array.isArray(document.scopedOutcomes) || !object(document.defectOutcomes) || document.defectOutcomes.scoreContribution !== 0) errors.push('scopedOutcomes and defect-neutral outcomes are required');
-  if (!list(document.sourceSchemas, (value) => ['argus/surface-inventory@1', 'argus/coverage-observations@1'].includes(value))) errors.push('coverage sourceSchemas are invalid');
-  if (!ISO(document.generatedAt)) errors.push('generatedAt is invalid');
+function compareRfc3339(left, right) {
+  const leftInstant = parseRfc3339Instant(left);
+  const rightInstant = parseRfc3339Instant(right);
+  if (leftInstant.second !== rightInstant.second) return leftInstant.second < rightInstant.second ? -1 : 1;
+  const width = Math.max(leftInstant.fraction.length, rightInstant.fraction.length);
+  return compareAscii(leftInstant.fraction.padEnd(width, '0'), rightInstant.fraction.padEnd(width, '0'));
+}
+
+function parseRfc3339Instant(value) {
+  const match = /^(\d{4}-\d{2}-\d{2})[Tt ](\d{2}:\d{2}:)(\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}(?::?\d{2})?)$/.exec(value);
+  if (!match) throw new Error(`invalid RFC3339 timestamp reached lane-plan semantics: ${value}`);
+  const leapSecond = match[3] === '60';
+  const zone = normalizeRfc3339Zone(match[5]);
+  const baseSecond = Date.parse(`${match[1]}T${match[2]}${leapSecond ? '59' : match[3]}${zone}`) / 1000;
+  const second = baseSecond * 2 + (leapSecond ? 1 : 0);
+  return { second, fraction: match[4] ?? '' };
+}
+
+function normalizeRfc3339Zone(value) {
+  if (/^z$/i.test(value)) return 'Z';
+  if (/^[+-]\d{2}$/.test(value)) return `${value}:00`;
+  if (/^[+-]\d{4}$/.test(value)) return `${value.slice(0, 3)}:${value.slice(3)}`;
+  return value;
+}
+
+function migrateLegacyRecord(kind, record) {
+  if (kind !== 'lane-plan') return record;
+  return { ...record, transitions: migrateLegacyLaneTransitions(record) };
+}
+
+function migrateLegacyLaneTransitions(record) {
+  const source = record.transitions;
+  const targetStates = canonicalLaneStates(record);
+
+  // Preserve the historical v1 shape without rewriting either recorded endpoint.
+  if (record.status === 'completed' && source.length === 2 && source[0].to === 'planned' && source[1].to === 'completed') {
+    const midpoint = midpointTimestamp(source[0].at, source[1].at);
+    if (midpoint !== null) {
+      return [
+        source[0],
+        { to: 'running', at: midpoint, by: source[1].by },
+        source[1],
+      ];
+    }
+  }
+
+  // A valid ordered subsequence keeps the original actors and exact RFC3339 values,
+  // while obsolete or repeated v1 transitions are discarded deterministically.
+  const selected = selectOrderedTransitions(source, targetStates);
+  if (selected && strictlyIncreasingTransitions(selected)) return selected;
+
+  // Every remaining schema-valid v1 state/status combination receives one stable,
+  // strict v2 path. The fixed epoch makes repeated migrations byte-identical.
+  return targetStates.map((to, index) => ({
+    to,
+    at: new Date(Date.UTC(2000, 0, 1) + index).toISOString(),
+    by: legacyTransitionActor(source, record, to),
+  }));
+}
+
+function canonicalLaneStates(record) {
+  if (record.status === 'planned') return ['planned'];
+  if (record.status === 'running') return ['planned', 'running'];
+  if (record.status === 'completed') return ['planned', 'running', 'completed'];
+  return record.transitions.some(({ to }) => to === 'running')
+    ? ['planned', 'running', 'blocked']
+    : ['planned', 'blocked'];
+}
+
+function selectOrderedTransitions(source, states) {
+  const selected = [];
+  let sourceIndex = 0;
+  for (const state of states) {
+    while (sourceIndex < source.length && source[sourceIndex].to !== state) sourceIndex += 1;
+    if (sourceIndex === source.length) return null;
+    selected.push(source[sourceIndex]);
+    sourceIndex += 1;
+  }
+  return selected;
+}
+
+function strictlyIncreasingTransitions(transitions) {
+  return transitions.every((transition, index) => index === 0 || compareRfc3339(transitions[index - 1].at, transition.at) < 0);
+}
+
+function legacyTransitionActor(source, record, state) {
+  for (let index = source.length - 1; index >= 0; index -= 1) {
+    if (source[index].to === state) return source[index].by;
+  }
+  if (state === 'running') {
+    for (let index = source.length - 1; index >= 0; index -= 1) {
+      if (source[index].to === record.status) return source[index].by;
+    }
+  }
+  return record.owner;
+}
+
+function midpointTimestamp(left, right) {
+  const leftMillis = Date.parse(left);
+  const rightMillis = Date.parse(right);
+  const midpoint = leftMillis + Math.floor((rightMillis - leftMillis) / 2);
+  if (!Number.isFinite(midpoint) || midpoint <= leftMillis || midpoint >= rightMillis) {
+    return null;
+  }
+  return new Date(midpoint).toISOString();
+}
+
+function validateOrderedCollection(document, { field, key, label }) {
+  const seen = new Set();
+  const errors = [];
+  let previous = null;
+  for (const record of document[field]) {
+    const value = record[key];
+    if (seen.has(value)) errors.push(`duplicate ${label} ${key}: ${value}`);
+    if (previous !== null && compareAscii(previous, value) > 0) errors.push(`${label} records must be sorted by ${key}`);
+    seen.add(value);
+    previous = value;
+  }
+  return errors;
+}
+
+function validateRunnerResult(document) {
+  const errors = [];
+  if ((document.exitCode === 0) !== (document.status === 'pass')) errors.push('runner status must be pass exactly when exitCode is 0');
+  for (const category of ['product', 'automation', 'infrastructure', 'skip', 'policy']) {
+    const count = document.events.filter((event) => event.category === category).length;
+    if (document.categories[category] !== count) errors.push(`runner category ${category} count differs from events`);
+  }
+  return errors;
+}
+
+function duplicateIds(items, label) {
+  const seen = new Set();
+  const errors = [];
+  for (const item of items) {
+    if (seen.has(item.id)) errors.push(`duplicate ${label} id: ${item.id}`);
+    seen.add(item.id);
+  }
+  return errors;
+}
+
+function compareAscii(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function contractPolicy(kind) {
+  return compatibility.contracts?.[kind] ?? { current: compatibility.current, readCompatible: compatibility.readCompatible };
+}
+
+function declaredContractVersion(kind, document) {
+  const declaredId = document?.$schema ?? document?.schema;
+  const match = new RegExp(`^argus/${kind.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}@(\\d+)$`).exec(declaredId ?? '');
+  return match ? Number(match[1]) : Number.isInteger(document?.schemaVersion) ? document.schemaVersion : contractPolicy(kind).current;
+}
+
+function pickFields(document, fields) {
+  return Object.fromEntries(fields.map((field) => [field, document[field]]));
+}
+
+function sameNumbers(left, right) {
+  return Array.isArray(left) && left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function loadJson(path, label) {
+  try { return JSON.parse(readFileSync(path, 'utf8')); }
+  catch (error) { throw new Error(`cannot load ${label} ${path}: ${error.message}`); }
+}
+
+function formatValidationError(error) {
+  const location = error.instancePath || '/';
+  return `${location} ${error.message} [${error.keyword} at ${error.schemaPath}]`;
 }

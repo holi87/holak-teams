@@ -1,0 +1,138 @@
+{
+  "$schema": "./schemas/runtime-adapters.schema.json",
+  "schemaVersion": 3,
+  "contractId": "argus/runtime-adapters@3",
+  "support": {
+    "claude": {
+      "level": "plugin-native",
+      "parentRuntimeRequired": false
+    },
+    "codex": {
+      "level": "parent-runtime-dependent",
+      "parentRuntimeRequired": true,
+      "requiredParentCapabilities": [
+        "orchestration",
+        "packaged-assets",
+        "tool-equivalence",
+        "dispatch-enforcement-attestation",
+        "jit-dispatch-authorization"
+      ],
+      "missingCapabilityOutcome": "CAPABILITY_GAP"
+    }
+  },
+  "configurationParity": {
+    "status": "validated",
+    "scope": [
+      "role-inventory",
+      "generated-instructions",
+      "model-and-effort",
+      "sandbox-policy",
+      "native-config-load"
+    ],
+    "doesNotClaim": [
+      "behavioral-equivalence",
+      "tool-availability",
+      "packaged-asset-availability",
+      "delegation-execution",
+      "target-outcomes"
+    ]
+  },
+  "claude": {
+    "adapterId": "claude-plugin-agent@1",
+    "skillSource": "capability-matrix",
+    "toolSource": "capability-matrix",
+    "modelSource": "model-policy",
+    "routingCapabilities": {
+      "baseline": {
+        "model": true,
+        "effort": true,
+        "maxTurns": true
+      },
+      "escalation": {
+        "model": true,
+        "effort": false,
+        "maxTurns": true
+      },
+      "evidence": "Claude agent frontmatter enforces the reviewed baseline. Agent dispatch can select a model and enforce a turn cap, but exposes no verified per-dispatch effort override."
+    }
+  },
+  "codex": {
+    "adapterId": "codex-custom-agent@1",
+    "modelSource": "model-policy",
+    "sandboxPolicy": "read-only when the capability contract has no Write tool; workspace-write otherwise",
+    "doctrinePolicy": "embed only capability-selected doctrine profiles and reviewed technique catalogs at generation time; never read catalogs at runtime",
+    "toolPolicy": "require contract-equivalent runtime capabilities and return CAPABILITY_GAP when an assigned capability is unavailable",
+    "capabilityAttestation": {
+      "schema": "argus/model-runtime-attestation@1",
+      "directory": "ai_agents_internal/operator-decisions",
+      "authoringBoundary": "isolated-codex-dispatch-wrapper",
+      "authentication": "ed25519-pinned-engagement-key",
+      "maxValiditySeconds": 900,
+      "requiredEnforcements": [
+        "model",
+        "effort",
+        "maxTurns"
+      ]
+    },
+    "dispatchAuthorization": {
+      "schema": "argus/model-dispatch-authorization@1",
+      "directory": "ai_agents_internal/operator-decisions",
+      "authoringBoundary": "isolated-codex-dispatch-wrapper",
+      "authentication": "ed25519-pinned-engagement-key",
+      "maxValiditySeconds": 900,
+      "requiredBindings": [
+        "decisionId",
+        "decisionIntegritySha256",
+        "selectedConfigSha256",
+        "allocationId",
+        "parentSessionId",
+        "nonce"
+      ]
+    },
+    "routingCapabilities": {
+      "baseline": {
+        "model": true,
+        "effort": true,
+        "maxTurns": false
+      },
+      "escalation": {
+        "model": false,
+        "effort": false,
+        "maxTurns": false
+      },
+      "evidence": "Codex TOML enforces the reviewed baseline model and reasoning effort. A route requires an exact signed enforcement attestation; every later allocation/spawn requires a separate fresh signed authorization bound to that decision, configuration, parent session, allocation, and nonce."
+    }
+  },
+  "explicitDifferences": [
+    {
+      "field": "tools",
+      "claude": "native frontmatter tool allowlist",
+      "codex": "runtime-provided tools with provenance and fail-closed fallback",
+      "reason": "Claude and Codex expose different tool vocabularies"
+    },
+    {
+      "field": "orchestration",
+      "claude": "Agent plus Task lifecycle tools",
+      "codex": "Codex collaboration tools when provided, otherwise an executable parent-session plan",
+      "reason": "delegation APIs are runtime-specific"
+    },
+    {
+      "field": "model",
+      "claude": "opus/sonnet/haiku plus effort",
+      "codex": "sol/terra/luna plus model_reasoning_effort",
+      "reason": "native model identifiers differ"
+    },
+    {
+      "field": "shared-doctrine",
+      "claude": "capability-selected plugin skills preloaded from the matrix",
+      "codex": "the same selected profiles embedded into developer_instructions",
+      "reason": "standalone Codex custom agents do not load Claude plugin skills"
+    },
+    {
+      "field": "packaged-assets",
+      "claude": "CLAUDE_PLUGIN_ROOT and argus-assets are installed with the plugin",
+      "codex": "use them only when the parent supplies the installed plugin; otherwise return CAPABILITY_GAP",
+      "reason": "Codex agents are installed as standalone TOML files"
+    }
+  ]
+}

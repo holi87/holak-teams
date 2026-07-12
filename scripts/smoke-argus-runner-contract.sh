@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FIXTURES="$ROOT/scripts/fixtures/argus-runner"
+CLI="$ROOT/argus/claude/bin/argus-assets"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 ENGINES=(
@@ -44,6 +45,7 @@ evaluate() {
   set -e
   [ "$code" -eq "$expected_exit" ] || fail "$label exited $code instead of $expected_exit"
   jq -e --arg mode "$mode" --argjson code "$expected_exit" '."$schema" == "argus/runner-result@1" and .schemaVersion == 1 and .mode == $mode and .exitCode == $code' "$output" >/dev/null || fail "$label result contract is invalid"
+  "$CLI" schema validate --kind runner-result --input "$output" >/dev/null || fail "$label result failed packaged runtime validation"
 }
 
 for index in "${!ENGINES[@]}"; do

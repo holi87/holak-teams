@@ -1,0 +1,1 @@
+{"$schema":"argus/lane-plan@2","schemaVersion":2,"engagementId":"fixture-1","lanes":[{"lane":"kalchas","owner":"kalchas","phase":"discovery","status":"planned","dependsOn":[],"outputContracts":[],"transitions":[{"to":"planned","at":"2026-07-10T00:00:00Z","by":"odysseus"},{"to":"running","at":"2026-07-10T00:01:00Z","by":"kalchas"}]}]}

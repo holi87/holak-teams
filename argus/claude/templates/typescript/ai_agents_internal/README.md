@@ -8,14 +8,13 @@ agreed brief requires.
 
 - `campaign-state.json` — orchestration phase/state (Odysseus)
 - `event-log*` / intermediate `RAPORT_RUN1/2/3.html`, `RAPORT_UI-SPRINT.html` — per-wave run logs
-- `bug-ledger.json` — coverage-gate tooling input (the evaluated ledger is `solution/BUG-LEDGER.md`)
 - `PRE-EVENT-CHECKLIST.md` — pre-engagement readiness checklist
 - crew coordination / doctrine scratch
 
 ## What stays at the top (deliverables — reviewer-facing)
 
 `README.md` · `solution/` (ARCHITECTURE, TEST-STRATEGY, IMPLEMENTATION-REPORT,
-BUG-LEDGER.md, PERF-REPORT, TRACEABILITY) · `bugs/` (one file per bug + `_TEMPLATE.md`) ·
+BUG-LEDGER.md, canonical `solution/bug-ledger.json`, PERF-REPORT, TRACEABILITY) · `bugs/` (one file per bug + `_TEMPLATE.md`) ·
 `tests/` · `src/` · `run-tests.sh` · `playwright.config.ts` · final `RAPORT_LAST.html`.
 
 ## Rule

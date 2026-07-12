@@ -1,0 +1,46 @@
+{
+  "$schema": "argus/bug-ledger@1",
+  "schemaVersion": 1,
+  "engagementId": "bug-coverage-disabled-smoke",
+  "bugs": [
+    {
+      "id": "BUG-9101",
+      "origin": [],
+      "title": "Skipped coverage sentinel",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-101",
+      "status": "confirmed",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    },
+    {
+      "id": "BUG-9102",
+      "origin": [],
+      "title": "Fixme coverage sentinel",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-102",
+      "status": "confirmed",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    },
+    {
+      "id": "BUG-9103",
+      "origin": [],
+      "title": "Expected failure coverage sentinel",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-103",
+      "status": "confirmed",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    }
+  ]
+}

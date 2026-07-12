@@ -61,13 +61,20 @@
     "requiresValidatorPass": true,
     "forbiddenWhenQualityJudgment": true
   },
+  "routing": {
+    "decisionDirectory": "ai_agents_internal/model-decisions",
+    "decisionSchema": "argus/model-decision@2",
+    "requiredEnforcements": ["model", "effort", "maxTurns"]
+  },
   "telemetry": {
     "defaultPath": "ai_agents_internal/model-telemetry.jsonl",
-    "schema": "argus/model-telemetry-event@1",
+    "schema": "argus/model-telemetry-event@2",
     "allowedFields": [
-      "schema", "timestamp", "eventId", "agent", "runtime", "tier", "model",
-      "effort", "maxTurns", "signal", "fallbackUsed", "success", "inputTokens",
-      "outputTokens", "totalTokens", "durationMs", "reportedCostUsd"
+      "schema", "timestamp", "eventId", "decisionId", "decisionIntegritySha256",
+      "adapterId", "adapterSnapshotSha256", "engagementId", "dispatchId", "attempt",
+      "agent", "runtime", "tier", "model", "effort", "maxTurns", "signal", "reasonCode",
+      "fallbackUsed", "success", "inputTokens", "outputTokens", "totalTokens",
+      "durationMs", "reportedCostUsd"
     ],
     "forbiddenFields": ["prompt", "completion", "target", "url", "path", "account", "token", "evidence"]
   },

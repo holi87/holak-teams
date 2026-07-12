@@ -45,9 +45,9 @@ contract is available through `argus-assets path coverage-contract`.
 
 Marketplace installs are self-contained. The plugin ships:
 
-- `${CLAUDE_PLUGIN_ROOT}/skills/qa-doctrine/` — the canonical contract preloaded into all 27 specialists exactly once;
+- `${CLAUDE_PLUGIN_ROOT}/skills/orchestration-core/` plus capability-selected `qa-*` profiles — complete policy without loading irrelevant role modules;
 - `${CLAUDE_PLUGIN_ROOT}/skills/competition-profile/` — an explicit opt-in adapter that is disabled and never preloaded by default;
-- `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, RACI/canonical ownership, and shared doctrine;
+- `${CLAUDE_PLUGIN_ROOT}/references/` — browser isolation, authorization, engagement coordination, RACI, runner, coverage, template, and canonical ownership contracts;
 - `${CLAUDE_PLUGIN_ROOT}/capabilities/` — the mode-aware capability matrix plus generated model policy and sanitized benchmark;
 - `${CLAUDE_PLUGIN_ROOT}/policies/` + `lib/` — authorization/engagement templates, redaction patterns, guards, and atomic controllers;
 - `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` — active `PreToolUse` target-immutability guard;
@@ -59,10 +59,26 @@ Maintainers edit the canonical sources under `argus/` and run
 `scripts/sync-argus-runtime-assets.mjs --write`. Generated plugin copies are checked
 byte-for-byte by `--check`; the generated prompt inventory covers all 27 agents.
 `node scripts/check-argus-prompts.mjs` enforces corpus, per-agent, description, and exact
-duplication budgets; verifies every doctrine preload and the default-off optional profile;
-and checks a representative Mode A output/quality contract. The budget is 625 KB for
+duplication budgets; verifies every capability-selected profile and the default-off optional profile;
+and checks a representative Mode A output/quality contract. The budget is 800 KB for
 generated runtime assets and 1.75 MB for the complete installed
 plugin. `COLOR-SCHEME.md` and team graphs are intentionally maintainer-only.
+
+Model escalation files and event-driven progress use bounded commands rather than broad
+write access: `argus-assets model request` requires the active lane token and persists a
+checkpoint-bound worker envelope,
+and `argus-assets engagement heartbeat` authenticates the active lane lease and appends only
+monotonic progress to the contracted lane log. A frontier
+continuation additionally requires an external operator-authored decision under
+`ai_agents_internal/operator-decisions/`. Before routing, the host trust store supplies two
+distinct public anchors from one snapshot: `runtime-attestation` for the enforcing Codex
+dispatch wrapper and `operator-approval` for an isolated human approval boundary. `model
+trust` pins both stable IDs and preflight reruns for the changed manifest digest. The
+controller, workers, and their OS user receive neither private key nor a generic signing
+interface. A pinned snapshot is not live revocation: revoke, abort the engagement, and
+start a new one with current anchors. Normal attempt-1 decisions for Odysseus and every
+currently dispatchable selected role are persisted before allocation; deferred, skipped,
+and blocked roles are excluded from that sealed set. A late normal dispatch is rejected.
 
 ## Runtime preflight
 
@@ -71,10 +87,18 @@ specialist dispatch. Given a primary URL/path and Mode A–D, it persists
 `ai_agents_internal/preflight.json` and evaluates orchestration tools, the strict
 frontmatter vocabulary, connected MCP servers, referenced host commands, packaged asset
 hashes, browser support, target reachability/features, and safe writable artifact paths.
+New reports use `schemaVersion: 2` so the model runtime and bound orchestration projection
+are explicit. The exact Argus 1.18 v1 schema remains packaged for historical validation;
+persisted v1 reports are immutable and are not rewritten.
+New engagements store physical target and artifact-root paths. Existing 1.18 manifests may
+retain lexical macOS aliases such as `/tmp` or `/var`; the current runtime accepts those
+stored values only when they resolve to the same physical roots, without silently changing
+the legacy manifest digest.
 
 Every role receives one disposition: `ready`, `degraded`, `deferred`, `skipped`, or
-`blocked`. Only `ready` and `degraded` records have `dispatchAllowed=true`; degraded
-records carry a deterministic fallback action. A mandatory failure blocks the whole run
+`blocked`. Only `ready` and `degraded` worker records may have `dispatchAllowed=true`;
+Odysseus is included explicitly as the controller while remaining non-dispatchable.
+Degraded records carry a deterministic fallback action. A mandatory failure blocks the whole run
 before target execution. Deferred browser roles require Atlas to provision the packaged
 driver/runtime and a second preflight. The final engagement report must include the exact
 preflight path, counts, non-ready reasons, fallback actions, and capability drift.
@@ -106,22 +130,50 @@ target-source writes, deletes, moves, permission changes, redirections, patches,
 recognized subprocess writes. Exact operator bypasses require an approved, expiring path
 allowlist plus a secret token hash. Every denial records a redacted `GUARD-*` event and a
 command digest, never raw command content.
+The hook is lexical policy enforcement, not an OS sandbox; hard isolation of arbitrary
+target-owned executables requires a read-only mount or equivalent host control.
 
 The default generated-test allowlist is intentionally narrow and does not broadly trust
 `src/`, `scripts/`, or root build configuration. Recon must prove a repository's actual
 test layout before the operator adds any additional root to the manifest.
 
-Each selected worker receives a unique lease with deterministic managed browser profile,
-browser-artifact directory, account, namespace, port, temp, and output coordinates.
+The controller allocates Odysseus first against its exact selected model decision and keeps
+that lease as the controller token. It then authenticates each worker allocation with that
+token and the worker's exact selected decision. Workers receive only their own lane token,
+public resource coordinates, and decision coordinates; they never allocate or receive the
+controller token. Retries reuse the original dispatch and active allocation and require an
+explicit `engagement start-attempt` rebind to the next selected decision before the new
+thread starts. Before rebind, the controller emits the completed attempt's telemetry.
+`start-attempt` consumes the current lane token, atomically rotates it, and returns the new
+token once; the controller replaces the stale token before spawning the retry. Each selected
+worker receives deterministic managed browser profile, browser-artifact directory, account,
+namespace, port, temp, and output coordinates. State retains only each token's SHA-256 and
+the `.lease` file retains only an allocation-ID marker, so resume requires the current
+attempt-generation token rather than redisclosing it.
+After allocation, model routing requires the controller token; request and exactly-once
+telemetry writes require the decision-owning lane token. A Codex route attestation is
+validated at immutable selection time. Each later Codex allocation, resume, or retry rebind
+requires a fresh, 15-minute `argus/model-dispatch-authorization@1` binding that decision and
+config to the allocation and parent session. The CLI verifies and persists the binding; the
+external wrapper must pair the successful operation with the actual exact-config spawn,
+which the CLI cannot observe or prove. Resume/retry keeps the active allocation ID with a
+new MDA nonce and issue time. A post-release replacement must use a never-before-consumed
+allocation ID; bounded lane history rejects reuse of earlier allocation IDs, MDA digests,
+and nonces. Tokens are bearer capabilities, so keep
+them out of prompts, artifacts, logs, shell history, and cross-lane environments; same-UID
+process isolation remains a host responsibility.
 Cross-lane profile reuse requires an explicit, bounded shared-session authorization.
 Browser/device/viewport coverage comes from target support and risk in the engagement
 manifest, and new accessibility work defaults to WCAG 2.2 AA. Kleio publishes
 `solution/ACCESSIBILITY-REPORT.md` with the exact standard, level, tools, manual checks,
 limitations, and privacy-safe evidence status. Workers write immutable fragments;
 canonical owners merge them in stable order under an atomic lock. The controller also
-enforces discovery/hunting/automation/verification/reporting barriers, exclusive
+enforces discovery/hunting/automation/verification/reporting barriers whose participants
+are the manifest phase members inside the immutable dispatchable projection, exclusive
 reset/fault windows, identity-deduplicated `BUG-NNNN` allocation, monotonic resumable
-checkpoints, and idempotent success/failure cleanup. Full contract:
+checkpoints, attempt-generation-bound heartbeats, and idempotent success/failure cleanup.
+A worker may use `success` only after every projected phase that names it has recorded its
+barrier arrival. Full contract:
 `ENGAGEMENT-POLICY.md`; installed path:
 `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 
@@ -147,40 +199,68 @@ tags, one-attempt execution, expiring quarantine records, and runtime extension 
 
 The machine source of truth is versioned JSON, not loose Markdown: lane plans, confirmed
 bug ledgers, redacted evidence references, automation status, and the final summary each
-declare an `argus/<contract>@1` schema. `argus-assets schema validate` validates a file;
+declare an exact `argus/<contract>@<version>` schema. `argus-assets schema validate` validates a file;
 the engagement controller rejects malformed or cross-engagement JSON fragments before
 merge. Stable IDs are allocated with an identity key and survive rerun/resume
 deduplication. Merging `solution/final-summary.json` renders `solution/FINAL-SUMMARY.md`
-with its source schema version. Compatibility is explicit: v1 reads v1 only until a later
-release ships a deterministic migration.
+with its source schema version. Compatibility is per contract: unchanged contracts remain
+v1-only, while lane-plan, evidence-reference, and automation-status read their immutable
+single-record v1 forms and deterministically persist current multi-record v2 collections.
+Preflight is intentionally separate from that merge registry: `argus-assets schema list`
+labels it `report-only`, and `schema validate --kind preflight-report` selects the preserved
+v1 or current v2 reader by `schemaVersion`. New reports carry the actual schema URL and
+`schemaVersion: 2`; validating one never makes it an engagement fragment.
 
 The ownership source of truth is `raci.json`, rendered as `RACI-CONTRACT.md`. Use
 `argus-assets raci route` for defect activities, surfaces, artifacts, and state
-transitions. The RACI sync gate validates all 27 prompt descriptions and generated
-contract blocks against the same source used for the roster below.
+transitions. The sole role-variant generator renders all 27 prompt descriptions and contract blocks from this source. The RACI sync gate validates ownership, roster, and transition consistency.
 
 The model source of truth is `model-policy.json`, rendered as
 [`MODEL-POLICY.md`](MODEL-POLICY.md). It defines 10 frontier and 17 standard roles, native
-Claude/Codex models and effort, maximum turns, upward-only or fail-closed fallback, and
+runtime models and effort, maximum turns, upward-only or fail-closed fallback, and
 dynamic escalation signals. No full role may use the mechanical Haiku/Luna tier.
 `argus-assets model route` resolves dispatches and `argus-assets model telemetry` records
-only sanitized token/latency/provider-cost metrics. The committed synthetic benchmark
+only sanitized operational fields: schema/timestamp; event/decision and adapter bindings;
+engagement, dispatch, attempt, agent, and runtime identifiers; tier, model, effort, turn cap,
+signal, reason, fallback, and success; token counts, duration, and optional reported provider
+cost. The event is authenticated by the lane token and accepted once per selected decision.
+It must be emitted while that decision still owns the active token: before retry rebind or
+cleanup.
+The schema admits no prompt, completion, target, account, or evidence payload. The committed
+synthetic benchmark
 compares Opus and Sonnet without storing prompts, completions, or target data.
+Workers receive no cross-runtime mapping or routing authority: their prompt contains only
+the turn cap, declared signals, and a schema-valid `argus/model-escalation-request@1`
+stop envelope. Odysseus or `/argus:run` validates that envelope, increments the attempt,
+routes it, records the completed attempt's telemetry, explicitly rebinds the active
+allocation with `engagement start-attempt`, adopts the returned token, and starts a fresh
+selected thread from the checkpoint. A pre-spawn `model-unavailable` retry instead uses its
+prior-decision/allocation availability binding and may have no checkpoint because no thread
+started.
 
 ## Roster (`claude/` + `codex/`)
 
-Runtime-neutral role content lives in `roles/*.md`, with metadata and contract pointers in
-`roles/manifest.json`. `roles/runtime-adapters.json` is the reviewed list of intentional
-Claude/Codex differences. Run `scripts/sync-argus-role-variants.mjs --write` to regenerate
-all runtime files and `--check` to reject drift.
+Runtime-neutral role content lives in `roles/*.md`, with source, color, tool metadata, and
+contract pointers in `roles/manifest.json`. Display names derive from slugs and descriptions
+come from `raci.json`, so neither is duplicated in the manifest. `runtime-adapters.json` is the reviewed list of intentional
+Claude/Codex differences and machine-readable support levels. Run
+`scripts/sync-argus-role-variants.mjs --write` to regenerate all runtime files and
+`--check` to reject drift.
 
 The Claude Code version lives in `claude/`. The Codex version lives in `codex/` as the same
-27 agents with the same slugs and names, each as a `*.toml` + readable `*.md` companion.
+27 agents with the same slugs and names. Each self-contained `*.toml` is the runtime input;
+its small `*.md` companion is a non-runtime provenance stub that records source, config,
+instruction hashes, assigned profiles/catalogs, and native Codex settings without copying
+the role body or Claude model metadata.
 The generator reads native model names and effort from `model-policy.json`, ownership and
-outputs from `raci.json`, inputs from the capability matrix, and safety/artifact-language
-rules from `qa-doctrine`. Codex standalone agents embed the shared doctrine because they
-cannot preload Claude plugin skills. Native validation uses `claude plugin validate
---strict` and an isolated `codex doctor` load.
+outputs from `raci.json`, and tool, doctrine-profile, and technique-catalog assignments
+from the capability matrix. Claude preloads only the selected skills; Codex custom-agent
+configuration embeds those same selected bodies because it cannot preload Claude plugin
+skills. Claude support is `plugin-native`; Codex
+support is `parent-runtime-dependent` and requires parent-provided orchestration,
+packaged assets, and equivalent tools. Native validation uses `claude plugin validate
+--strict` and an isolated `codex doctor` load; those checks prove configuration loading,
+not behavioral equivalence or target outcomes.
 
 <!-- RACI_ROSTER_START -->
 | Agent | Role | Lane | Persistence |
@@ -214,12 +294,13 @@ cannot preload Claude plugin skills. Native validation uses `claude plugin valid
 | **tyche** | Resilience hunter | `resilience-hunt` | `candidate-file` |
 <!-- RACI_ROSTER_END -->
 
-The generated roster and every prompt description come from `argus/raci.json`; detailed ownership is in [`RACI-CONTRACT.md`](RACI-CONTRACT.md).
+The generated roster comes from `argus/raci.json`; the sole role-variant generator reads descriptions from the same source. Detailed ownership is in [`RACI-CONTRACT.md`](RACI-CONTRACT.md).
 
 `roles/` — canonical runtime-neutral role sources and adapters. `codex/` — generated Codex
-variant of the roster (27 `*.toml` + readable `*.md` pairs). `framework-template/`
+variant of the roster (27 runtime `*.toml` files + compact provenance `*.md` stubs). `framework-template/`
 (Playwright + TS), `framework-template-java/` (RestAssured + JUnit5 + Playwright-Java),
 `framework-template-python/` (pytest + Playwright + httpx) — project skeletons, all
-no-Selenium. `shared-skills/qa-doctrine/SKILL.md` is the single canonical doctrine;
-`competition-profile` is explicit opt-in. `COLOR-SCHEME.md`, `SHARED-DOCTRINE.md`, and
-`BROWSER-ISOLATION.md` are maintainer docs.
+no-Selenium. `shared-skills/qa-core`, `qa-browser`, `qa-framework-runner`,
+`qa-coverage-reporting`, and `orchestration-core` are the canonical scoped contracts;
+`competition-profile` is explicit opt-in. The old `qa-doctrine` monolith is retained only
+for maintainer comparison. `COLOR-SCHEME.md` and `SHARED-DOCTRINE.md` are maintainer docs.

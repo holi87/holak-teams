@@ -4,7 +4,7 @@
   "title": "Argus capability matrix",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "supportedBuiltinTools", "legacyToolReplacements", "orchestration", "capabilities", "agents"],
+  "required": ["schemaVersion", "supportedBuiltinTools", "legacyToolReplacements", "toolProfiles", "doctrineProfiles", "techniqueCatalogs", "orchestration", "capabilities", "agents"],
   "properties": {
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
@@ -18,6 +18,46 @@
       "type": "object",
       "additionalProperties": { "type": "string", "minLength": 1 },
       "required": ["LS", "MultiEdit", "Task", "TodoWrite"]
+    },
+    "toolProfiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["official-docs", "remote-spec", "public-browser-recon"],
+      "properties": {
+        "official-docs": { "$ref": "#/$defs/toolProfile" },
+        "remote-spec": { "$ref": "#/$defs/toolProfile" },
+        "public-browser-recon": { "$ref": "#/$defs/toolProfile" }
+      }
+    },
+    "doctrineProfiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["orchestration-core", "qa-core", "qa-browser", "qa-framework-runner", "qa-coverage-reporting"],
+      "patternProperties": {
+        "^[a-z]+(?:-[a-z]+)*$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requiredAsset"],
+          "properties": { "requiredAsset": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" } }
+        }
+      }
+    },
+    "techniqueCatalogs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["atalanta", "proteus", "metis"],
+      "patternProperties": {
+        "^(atalanta|proteus|metis)$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["catalogId", "sha256", "embedded"],
+          "properties": {
+            "catalogId": { "type": "string", "pattern": "^argus/technique-catalog/(atalanta|proteus|metis)@1$" },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "embedded": { "const": true }
+          }
+        }
+      }
     },
     "orchestration": {
       "type": "object",
@@ -51,7 +91,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slug", "lane", "modes", "requiredTools", "artifactPaths"],
+        "required": ["slug", "lane", "modes", "requiredTools", "toolProfiles", "doctrineProfiles", "techniqueCatalogs", "artifactPaths"],
         "properties": {
           "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
           "lane": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
@@ -76,12 +116,21 @@
           },
           "requiredCapabilities": { "$ref": "#/$defs/stringList" },
           "optionalCapabilities": { "$ref": "#/$defs/stringList" },
+          "toolProfiles": { "$ref": "#/$defs/stringList" },
+          "doctrineProfiles": { "$ref": "#/$defs/stringList" },
+          "techniqueCatalogs": { "$ref": "#/$defs/stringList" },
           "artifactPaths": { "$ref": "#/$defs/stringList" }
         }
       }
     }
   },
   "$defs": {
+    "toolProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tools"],
+      "properties": { "tools": { "$ref": "#/$defs/stringList" } }
+    },
     "stringList": {
       "type": "array",
       "uniqueItems": true,

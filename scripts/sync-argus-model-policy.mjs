@@ -14,73 +14,15 @@ const slugs = raci.agents.map((agent) => agent.slug).sort();
 const errors = validateModelPolicy(policy, slugs);
 if (errors.length) fail(errors.join('; '));
 
-const roles = new Map(policy.roles.map((role) => [role.slug, role]));
 const expectedFrontier = ['ariadne', 'aristarchus', 'atlas', 'kalchas', 'metis', 'minos', 'odysseus', 'perseus', 'tiresias', 'tyche'];
 assert(equal(policy.roles.filter((role) => role.tier === 'frontier').map((role) => role.slug).sort(), expectedFrontier), 'frontier roster differs from the adopted 10-role baseline');
 
-for (const slug of slugs) {
-  const role = roles.get(slug);
-  syncFile(`argus/claude/agents/${slug}.md`, (content) => updateClaude(content, role));
-  syncFile(`argus/codex/${slug}.md`, (content) => updateCodexMarkdown(content, role));
-  syncFile(`argus/codex/${slug}.toml`, (content) => updateCodexToml(content, role));
-}
-
-for (const path of ['argus/claude/agents/odysseus.md', 'argus/codex/odysseus.md', 'argus/codex/odysseus.toml']) {
-  syncFile(path, updateOdysseusRouting);
-}
 syncGenerated('argus/MODEL-POLICY.md', renderPolicy(policy));
 syncFile('README.md', updateRootReadme);
 syncFile('agents-roster.html', updateRosterHtml);
 
 const counts = Object.fromEntries(['frontier', 'standard'].map((tier) => [tier, policy.roles.filter((role) => role.tier === tier).length]));
 console.log(`PASS  Argus model policy: ${policy.roles.length} roles, ${counts.frontier} frontier, ${counts.standard} standard, 0 mechanical full roles`);
-
-function updateClaude(content, role) {
-  const tier = policy.tiers[role.tier].claude;
-  assert(/^model:\s*\S+$/m.test(content), `${role.slug}: Claude model field missing`);
-  content = content.replace(/^model:\s*\S+$/m, `model: ${tier.model}`);
-  content = content.replace(/^effort:\s*\S+\n?/m, '').replace(/^maxTurns:\s*\d+\n?/m, '');
-  content = content.replace(`model: ${tier.model}\n`, `model: ${tier.model}\neffort: ${tier.effort}\nmaxTurns: ${role.maxTurns}\n`);
-  return insertBlock(content, role);
-}
-
-function updateCodexMarkdown(content, role) {
-  const claude = policy.tiers[role.tier].claude;
-  content = content.replace(/source_model_hint:\s*(?:opus|sonnet|haiku)/g, `source_model_hint: ${claude.model}`);
-  return insertBlock(content, role);
-}
-
-function updateCodexToml(content, role) {
-  const tier = policy.tiers[role.tier].codex;
-  assert(/^model = ".+"$/m.test(content), `${role.slug}: Codex model field missing`);
-  assert(/^model_reasoning_effort = ".+"$/m.test(content), `${role.slug}: Codex reasoning effort missing`);
-  content = content.replace(/^model = ".+"$/m, `model = ${JSON.stringify(tier.model)}`);
-  content = content.replace(/^model_reasoning_effort = ".+"$/m, `model_reasoning_effort = ${JSON.stringify(tier.reasoningEffort)}`);
-  content = content.replace(/source_model_hint:\s*(?:opus|sonnet|haiku)/g, `source_model_hint: ${policy.tiers[role.tier].claude.model}`);
-  return insertBlock(content, role);
-}
-
-function insertBlock(content, role) {
-  const block = renderAgentBlock(role);
-  const pattern = /<!-- MODEL_POLICY_START -->[\s\S]*?<!-- MODEL_POLICY_END -->\n*/;
-  if (pattern.test(content)) return content.replace(pattern, `${block}\n`);
-  if (content.includes('<!-- RACI_CONTRACT_START -->')) return content.replace('<!-- RACI_CONTRACT_START -->', `${block}\n<!-- RACI_CONTRACT_START -->`);
-  assert(content.includes('<!-- Author:'), `${role.slug}: no generated-block anchor`);
-  return content.replace('<!-- Author:', `${block}\n<!-- Author:`);
-}
-
-function renderAgentBlock(role) {
-  const tier = policy.tiers[role.tier];
-  const triggers = `${role.slug}: ${policy.escalationProfiles[role.escalationProfile].join(', ')}`;
-  return `<!-- MODEL_POLICY_START -->\n## Runtime Model Policy\n\n- Source: \`${policy.policyId}\`; baseline tier: \`${role.tier}\`; maximum turns: \`${role.maxTurns}\`.\n- Claude: \`${tier.claude.model}\` / \`${tier.claude.effort}\`; Codex: \`${tier.codex.model}\` / \`${tier.codex.reasoningEffort}\`.\n- Escalation profile \`${role.escalationProfile}\`: ${triggers}. Route every trigger through \`argus-assets model route\`; standard roles escalate upward, frontier roles retain frontier and escalate the decision.\n- Fallback: \`${role.fallbackPolicy}\`; weaker-model fallback is forbidden. Full-role mechanical downgrade is denied; only a bounded subrole with deterministic schema validation may qualify. If the runtime cannot honor the selected model, effort, and turn cap together, block as capability drift instead of silently approximating.\n- Record only model, token, latency, cost, success, and routing metadata with \`argus-assets model telemetry\`; never record prompts, completions, targets, accounts, or evidence.\n<!-- MODEL_POLICY_END -->`;
-}
-
-function updateOdysseusRouting(content) {
-  const replacement = '**Model routing:** before dispatch, resolve the role with `argus-assets model route --agent <slug> --runtime <claude|codex> --signal normal`. On ambiguity, safety, cross-lane conflict, repeated failure, turn limit, or model unavailability, rerun routing with the exact signal and obey its `selected` or `blocked` decision. Standard roles may escalate only upward to frontier; frontier unavailability fails closed and requires operator escalation. Never silently choose a weaker model. Record every override and sanitized usage with `argus-assets model telemetry`.';
-  const pattern = /\*\*Model failover:\*\*[\s\S]*?(?=\n\n\*\*Parallel-instance naming)/;
-  assert(pattern.test(content) || content.includes('**Model routing:**'), 'Odysseus model-routing paragraph missing');
-  return pattern.test(content) ? content.replace(pattern, replacement) : content;
-}
 
 function updateRootReadme(content) {
   for (const role of policy.roles) {
@@ -95,8 +37,8 @@ function updateRootReadme(content) {
   );
   content = content.replace('**Tiers:** 19 opus · 8 sonnet.', '**Tiers:** 10 opus · 17 sonnet · 0 haiku full roles.');
   content = content.replace(
-    /Current Argus QA frontmatter models:[^\n]+/,
-    'Current Argus QA policy: **10 opus / 17 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) records Claude/Codex models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`. The same source updates all 27 Codex `*.toml` + `*.md` variants.',
+    /Current Argus QA (?:frontmatter models|policy):[^\n]+/,
+    'Current Argus QA policy: **10 opus / 17 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.',
   );
   return content;
 }
@@ -126,10 +68,19 @@ function renderPolicy(data) {
   }
   lines.push('', '## Routing rules', '',
     '- Standard roles escalate upward to frontier on their declared ambiguity, safety, cross-lane, evidence, failure, or turn-limit signals.',
-    '- Frontier roles never fall back to a weaker model. Unavailability blocks the dispatch and escalates to the operator.',
-    '- Claude enforces baseline effort and turns in native agent frontmatter. Codex carries the same turn budget in its generated policy block for parent-orchestrator enforcement. An escalation runs only when the runtime can honor model, effort, and turn cap together; otherwise it blocks as capability drift.',
+    '- Frontier roles never fall back to a weaker model. Their declared escalation signals and model unavailability block the dispatch pending an explicit operator decision.',
+    '- Before routing, the host trust store must contain two distinct active Ed25519 public anchors from one immutable snapshot: `runtime-attestation` for the enforcing dispatch wrapper and `operator-approval` for a human-controlled approval boundary. `model trust` selects both by stable ID and never accepts command- or target-supplied first-use keys. Neither private key nor a generic signing interface may be available to the controller, workers, or their OS user. Pinning changes the manifest, so preflight must run again and bind the exact digest and runtime.',
+    '- The pinned trust store is a snapshot, not a live revocation feed. Revoking either source key after pinning requires aborting the current engagement and starting a new engagement that pins a current snapshot.',
+    '- The controller persists a normal attempt-1 selected decision for Odysseus and every projection-selected worker whose current preflight record is `ready` or `degraded` with `dispatchAllowed=true` before any allocation. That exact dispatchable set is sealed into engagement state and becomes the immutable participant filter for phase barriers; deferred, skipped, and blocked roles cannot allocate or create false quorum. It allocates Odysseus first against its exact decision and retains that lane token as the controller token, then authenticates each exact decision-bound worker allocation with that token. Every Codex allocation additionally requires a fresh JIT dispatch authorization from the enforcing wrapper. Workers receive only their own lane token and public decision/resource coordinates. A missing or blocked selection in the sealed set stops, and a new normal attempt-1 dispatch after the first allocation is forbidden.',
+    '- Claude enforces the complete reviewed baseline in native agent frontmatter. Its current dispatch adapter blocks an escalation because no verified per-dispatch effort override exists. A Codex route becomes executable only when the trusted wrapper emits `argus/model-runtime-attestation@1` proving that it can enforce the exact selected model, effort, and hard turn cap. This immutable route proof is checked at selection time; it is not a long-lived spawn capability.',
+    '- Immediately before each Codex allocation, resume, or retry rebind, that same isolated wrapper emits a fresh `argus/model-dispatch-authorization@1` under `ai_agents_internal/operator-decisions/`. It expires within 15 minutes and binds the decision ID and integrity, selected-config digest, role, parent session, random allocation ID, and nonce. `engagement allocate` or `engagement start-attempt` verifies and persists the binding; an authorization consumed by one successful CLI operation cannot authorize another. Resume/retry retains the active allocation ID but requires a new nonce and later `issuedAt`; a released-lane replacement requires a never-before-consumed allocation ID. Bounded history rejects reuse of any allocation ID, MDA digest, or nonce across replacements and lanes. The CLI cannot observe an external process launch, so the wrapper must pair successful verification with the exact-config spawn. Route-attestation expiry therefore does not force every wave to start within one window. Missing/wrong-purpose keys, invalid signatures, stale/cross-decision reuse, or aliases fail closed.',
     '- Haiku/Luna is reserved for a future bounded subrole with no quality judgment, a deterministic output schema, and a validator that passes before merge.',
-    '- `argus-assets model route` is the installed decision interface. `argus-assets model telemetry` writes only sanitized usage metrics.', '',
+    '- Worker prompts contain only their turn cap, declared signals, and the `argus/model-escalation-request@1` stop envelope. They never select a model, invoke routing, or write telemetry.',
+    '- Odysseus and `/argus:run` alone persist and route escalation envelopes. `model request` requires the exact active lane token and binds a declared worker escalation to that allocation, original dispatch ID, current checkpoint, and prior immutable decision. After allocation begins, `model route` also requires the active Odysseus controller token. Before retry rebind, the controller emits telemetry for the completed decision. `engagement start-attempt` then consumes the current lane token, atomically rotates it on the same dispatch/allocation, and returns the next token once; the controller replaces the stale token before spawning the new thread.',
+    '- Frontier declared-signal escalation first persists a blocked decision. Continuation or abort requires a human-authorized `argus/model-operator-decision@1` signed by the isolated `operator-approval` key; the controller and runtime wrapper cannot author, sign, or replace it.',
+    '- `model-unavailable` is valid only after a selected prior attempt on the exact dispatch and an active allocation. When failure occurs before spawn it uses the immutable prior-decision/allocation availability binding and may have no checkpoint; a declared signal from a running worker always uses its authenticated checkpoint. A frontier route then blocks without weakening; an external operator may choose `retry-frontier` after availability recovery or `abort`, while a standard role may move only upward to frontier.',
+    '- Preflight accepts `--model-runtime claude|codex`; a Codex preview reports `attestation-required` until the dispatch-specific parent document exists instead of silently presenting Claude readiness.',
+    '- `argus-assets model route` validates signatures, bindings, and the trusted adapter snapshot, then permits at most one selected decision per engagement/agent/runtime/dispatch/attempt. An exact authenticated replay returns that immutable decision; a refreshed or otherwise different signed document for the same attempt conflicts and fails closed. `model telemetry` requires the matching current lane token, atomically accepts exactly one event per selected decision, and must be written before retry rebind or cleanup changes the active binding. It contains only sanitized lane-reported operational metrics and is not authoritative billing, benchmark, or outcome evidence.', '',
     '## Benchmark', '',
     'The committed `model-policy.benchmark.json` compares representative synthesis, judgment, and schema-bound work on quality markers, latency, input/output tokens, and provider-reported cost without storing prompts, completions, targets, accounts, or evidence.', '');
   return lines.join('\n');

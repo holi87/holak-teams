@@ -12,20 +12,20 @@
 - **Component / Endpoint:** <path or screen>
 - **Environment:** <build/commit, browser if UI, date>
 - **Oracle-id:** <ORC-### from solution/ORACLES.md — the source of truth this violates; required for ACCEPTED. If none exists yet, request it from Metis, do not invent the rule.>
-- **Links:** test `@regression BUG-NNN` · REQ-### · RISK-###
+- **Links:** test native `regression` marker + `@bug:<canonical-or-origin>` provenance · REQ-### · RISK-###
 
 ## Preconditions
 <state, account/role, data>
 
 ## Reproduction
 ```
-<one copy-pasteable command, e.g. curl -X POST ...>
+<one copy-pasteable command for the selected runtime and target>
 ```
 1. <step>
 2. <step>
 
 ## Expected (oracle)
-<what should happen — cite the Oracle-id above (OpenAPI operation / requirement clause / business rule it maps to)>
+<what should happen — cite the Oracle-id above (contract operation / requirement clause / business rule it maps to)>
 
 ## Actual
 <what happened — status code, response body, error>

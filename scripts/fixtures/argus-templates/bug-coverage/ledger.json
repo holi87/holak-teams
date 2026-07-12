@@ -1,0 +1,59 @@
+{
+  "$schema": "argus/bug-ledger@1",
+  "schemaVersion": 1,
+  "engagementId": "bug-coverage-parser-smoke",
+  "bugs": [
+    {
+      "id": "BUG-0001",
+      "origin": ["ATA-001"],
+      "title": "Title provenance sentinel",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-001",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0001",
+      "evidenceIds": []
+    },
+    {
+      "id": "BUG-0002",
+      "origin": ["ATA-002"],
+      "title": "Details provenance sentinel",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-002",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0002",
+      "evidenceIds": []
+    },
+    {
+      "id": "BUG-0003",
+      "origin": ["ATA-003"],
+      "title": "Playwright import alias sentinel",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-003",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0003",
+      "evidenceIds": []
+    },
+    {
+      "id": "BUG-0004",
+      "origin": ["ATA-004"],
+      "title": "Custom fixture import alias sentinel",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-004",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0004",
+      "evidenceIds": []
+    }
+  ]
+}

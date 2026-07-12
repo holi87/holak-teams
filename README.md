@@ -58,7 +58,8 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   │   ├── .claude-plugin/plugin.json
 │   │   ├── agents/              # 27 flat agent defs (odysseus, orion, …)
 │   │   ├── skills/run/SKILL.md  # /argus:run main-thread orchestrator
-│   │   ├── skills/qa-doctrine/  # preloaded contract for every Argus specialist
+│   │   ├── skills/qa-*/         # capability-selected QA profiles
+│   │   ├── skills/orchestration-core/ # complete controller contract
 │   │   ├── skills/competition-profile/ # explicit opt-in profile
 │   │   ├── bin/argus-assets     # verify/copy packaged assets
 │   │   ├── hooks/hooks.json     # packaged target-immutability guard
@@ -77,7 +78,7 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   ├── model-policy*.json        # canonical source + synthetic benchmark evidence
 │   ├── policies/ + runtime/      # canonical policy data + evaluator sources
 │   ├── COLOR-SCHEME.md          # colors by role type
-│   ├── shared-skills/           # canonical doctrine + optional profile sources
+│   ├── shared-skills/           # canonical capability-scoped skill sources
 │   ├── prompt-*.json            # prompt budgets + engagement regression contract
 │   ├── SHARED-DOCTRINE.md       # compatibility pointer to the canonical skill
 │   ├── team-graph.html + .png   # visual team graph (embedded in README)
@@ -144,10 +145,12 @@ The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent 
 
 **Codex runtime mapping for both teams:** Claude `opus` source roles run on `sol` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles run on `terra` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles run on `luna` with `model_reasoning_effort = "medium"`.
 
-The mapping and full role-body parity are enforced for all 49 agents. Hephaestus Codex
+The mapping and generated role-body/configuration alignment are enforced for all 49 agents. Hephaestus Codex
 files are generated from `hephaestus/claude/agents/*.md`; Argus runtime variants are
 generated from `argus/roles/`. `scripts/smoke-agent-runtime-parity.sh` checks both native
-loaders plus this roster and the HTML roster. See
+configuration loaders plus this roster and the HTML roster. That load check is not a
+behavioral-equivalence test: Argus Codex support is `parent-runtime-dependent` and needs
+parent-provided orchestration, packaged assets, and equivalent tools. See
 [`AGENT-RUNTIME-PARITY.md`](AGENT-RUNTIME-PARITY.md) for the latest audit result.
 
 ## Full roster — model per runtime
@@ -224,7 +227,7 @@ Every agent runs on an **Anthropic** model under Claude Code and on a **mapped O
 
 ## Artifact language
 
-All files produced by the agents (documents, reports, strategies, bug reports, checklists, code, comments, test names, commits) are **100% in English** — regardless of the conversation language. Polish only in chat with the user. Argus receives the rule from its preloaded `qa-doctrine`; Hephaestus keeps it inline.
+All files produced by the agents (documents, reports, strategies, bug reports, checklists, code, comments, test names, commits) are **100% in English** — regardless of the conversation language. Polish only in chat with the user. Argus receives the rule from its universal `qa-core` profile; Hephaestus keeps it inline.
 
 ## Team memory and learning
 
@@ -276,7 +279,7 @@ A second, **separate**, **permanent** QA team (**27 agents**) you point at any t
 
 **Cross-cutting / deep journey (5):** **Ariadne** — deep lifecycle & business-rule journey hunter · **Atlas** — Automation Architect, owner of the SINGLE aggregating `run-tests.sh` + the shared oracle helpers · **Aristarchus** — Code Reviewer of the automation, runs **LAST** (determinism, oracle-honesty, blocklist) · **Tiresias** — White-box Source Analyst *(gated: source access)*, code→surface leads to the lanes · **Asklepios** — Test-Suite Sanitation / deflaking, heals a sick existing suite (brownfield Mode D), fixes flakiness at the source.
 
-Current Argus QA policy: **10 opus / 17 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) records Claude/Codex models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`. The same source updates all 27 Codex `*.toml` + `*.md` variants.
+Current Argus QA policy: **10 opus / 17 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.
 
 **Separation:** a separate lead (Odysseus = the Argus QA hub), baked-in QA doctrine (modes/deliverables/paths/rules), a separate `argus/` directory. **Collaboration:** the crew resolves within its own lanes (it has dedicated UI/API/Perf/DB/Sec/a11y) — the main team is pulled in only for a real gap and only via Odysseus→Marcus (e.g. Cassius=deep security, Maximus/Fabricius=wiring in the framework, Seneca=strategy sanity). **The hard rule baked into everyone:** NEVER modify the application under test.
 
