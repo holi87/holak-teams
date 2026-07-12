@@ -191,6 +191,16 @@ guard_shell "argus-assets template detect --target $TARGET" allow
 guard_shell "argus-assets template select --target $TARGET --runtime typescript --package-manager npm --test-root tests --harness-root qa-support --output ai_agents_internal/reports/template-selection.json" allow
 guard_shell "argus-assets template scaffold --selection ai_agents_internal/reports/template-selection.json --destination $atlas_tmp/scaffold" allow
 guard_shell "argus-assets template scaffold --selection ai_agents_internal/reports/template-selection.json --destination $WORK/outside-target" GUARD-TARGET-IMMUTABLE
+guard_shell 'argus-assets orchestration plan --mode A' allow
+guard_shell 'argus-assets orchestration plan --mode A --output ai_agents_internal/orchestration-plan.json' allow
+guard_shell 'argus-assets orchestration plan --mode A --output reports/orchestration-plan.json' GUARD-SHELL-AMBIGUOUS
+(cd "$TARGET" && "$CLI" orchestration plan --mode A --output ai_agents_internal/orchestration-plan.json >/dev/null)
+plan_digest="$(digest_file "$TARGET/ai_agents_internal/orchestration-plan.json")"
+(cd "$TARGET" && "$CLI" orchestration plan --mode A --output ai_agents_internal/orchestration-plan.json >/dev/null)
+[ "$plan_digest" = "$(digest_file "$TARGET/ai_agents_internal/orchestration-plan.json")" ] || fail 'orchestration plan replay changed the persisted projection'
+if (cd "$TARGET" && "$CLI" orchestration plan --mode B --output ai_agents_internal/orchestration-plan.json >/dev/null 2>&1); then
+  fail 'orchestration plan replay replaced an existing projection with a different mode'
+fi
 
 # An exact operator bypass works only with its secret token and is audited without raw commands.
 BYPASS_TOKEN='operator-approved-phase0-bypass'

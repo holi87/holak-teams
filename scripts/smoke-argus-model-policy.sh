@@ -137,4 +137,28 @@ if "$CLI" model route --manifest "$manifest" --agent aegis --runtime claude --si
   fail 'route accepted an arbitrary caller capability flag'
 fi
 
+tampered_policy_plugin="$work/tampered-policy-plugin"
+cp -R "$ROOT/argus/claude" "$tampered_policy_plugin"
+jq '(.roles[] | select(.slug == "aegis") | .maxTurns) += 1' \
+  "$tampered_policy_plugin/capabilities/model-policy.json" >"$work/tampered-policy.json"
+mv "$work/tampered-policy.json" "$tampered_policy_plugin/capabilities/model-policy.json"
+if "$tampered_policy_plugin/bin/argus-assets" model route \
+  --manifest "$manifest" --agent aegis --runtime claude --signal normal \
+  --dispatch-id tampered-policy --attempt 1 >"$work/tampered-policy.out" 2>"$work/tampered-policy.err"; then
+  fail 'route accepted model-policy bytes that differ from the packaged manifest'
+fi
+grep -Fq 'trusted model-policy differs from the packaged asset manifest' "$work/tampered-policy.err" || \
+  fail 'model-policy drift failed for an unexpected reason'
+
+tampered_schema_plugin="$work/tampered-schema-plugin"
+cp -R "$ROOT/argus/claude" "$tampered_schema_plugin"
+printf '\n' >>"$tampered_schema_plugin/schemas/model-policy.schema.json"
+if "$tampered_schema_plugin/bin/argus-assets" model route \
+  --manifest "$manifest" --agent aegis --runtime claude --signal normal \
+  --dispatch-id tampered-schema --attempt 1 >"$work/tampered-schema.out" 2>"$work/tampered-schema.err"; then
+  fail 'route accepted routing schema bytes that differ from the packaged manifest'
+fi
+grep -Fq 'trusted runtime-schemas differs from the packaged asset manifest' "$work/tampered-schema.err" || \
+  fail 'routing schema drift failed for an unexpected reason'
+
 printf 'PASS  Argus model policy: immutable capability-bound decisions, exact persisted routes, and decision-bound sanitized telemetry\n'

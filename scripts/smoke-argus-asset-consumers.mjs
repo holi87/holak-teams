@@ -41,6 +41,30 @@ assert.ok(
     .some((record) => record.mechanism === 'dynamic-require-asset'),
 );
 
+const multilineLiteral = mutate(fixture, (value) => {
+  value.cliText += "\nfunction badMultilineLiteral() { requireAsset(\n  'ghost-multiline'\n); }\n";
+});
+assert.ok(
+  analyzeAssetConsumers(multilineLiteral).unknownAssetReferences
+    .some((record) => record.assetId === 'ghost-multiline'),
+);
+
+const multilineDynamic = mutate(fixture, (value) => {
+  value.cliText += '\nfunction badMultilineDynamic() { requireAsset(\n  selectedAsset\n); }\n';
+});
+assert.ok(
+  analyzeAssetConsumers(multilineDynamic).unknownAssetReferences
+    .some((record) => record.mechanism === 'dynamic-require-asset'),
+);
+
+const indirectLookup = mutate(fixture, (value) => {
+  value.cliText += '\nfunction badAlias() { const lookup = requireAsset; return lookup(selectedAsset); }\n';
+});
+assert.ok(
+  analyzeAssetConsumers(indirectLookup).unknownAssetReferences
+    .some((record) => record.mechanism === 'indirect-require-asset-reference'),
+);
+
 const unknownProfile = mutate(fixture, (value) => {
   value.capabilityMatrix.agents[0].toolProfiles.push('missing-tool-profile');
 });
@@ -70,6 +94,14 @@ const unownedPluginReference = mutate(fixture, (value) => {
 });
 assert.ok(analyzeAssetConsumers(unownedPluginReference).unownedPluginReferences.length > 0);
 
+const parentAlias = mutate(fixture, (value) => {
+  value.manifest.assets.push({ id: 'parent-only', kind: 'reference', destination: 'references/PARENT-ONLY.md' });
+  value.pluginReferences.push({ value: 'references', consumer: 'generic-doc', sourceKind: 'skill' });
+});
+const parentAliasAudit = analyzeAssetConsumers(parentAlias);
+assert.ok(parentAliasAudit.unownedPluginReferences.some((record) => record.value === 'references'));
+assert.ok(parentAliasAudit.unconsumedAssets.includes('parent-only'));
+
 const unreachableSkill = mutate(fixture, (value) => {
   value.manifest.assets.push({ id: 'hidden-skill', kind: 'skill', destination: 'skills/hidden' });
   value.skills.push({
@@ -93,7 +125,7 @@ const overlaps = findExcludedSourceOverlaps({
 });
 assert.equal(overlaps.length, 1, 'nested build-only and maintainer-only sources must be rejected');
 
-console.log('PASS  Argus runtime asset consumer audit: clean graph plus 10 negative mutations');
+console.log('PASS  Argus runtime asset consumer audit: clean graph plus 14 negative mutations');
 
 function cleanFixture() {
   const assets = [

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { dirname, extname, join, posix, relative, resolve, sep } from 'node:path';
 
 const RUNTIMES = ['typescript', 'java', 'python'];
 const IGNORED = new Set(['.git', '.venv', 'ai_agents_internal', 'node_modules', 'target', 'dist', 'build', 'coverage', 'reports']);
@@ -95,13 +95,15 @@ export function selectTemplate({ capabilities, contract, runtime, packageManager
   if (!RUNTIMES.includes(runtime)) throw new Error('explicit --runtime must be typescript, java, or python');
   if (!string(packageManager)) throw new Error('explicit or uniquely detected package manager is required');
   const action = capabilities.existingSuite ? 'adapt' : 'build';
-  if (!safeRelative(testRoot) || !safeRelative(harnessRoot)) throw new Error('explicit safe relative test-root and harness-root are required');
-  if (testRoot === harnessRoot || (action === 'build' && (withinPath(testRoot, harnessRoot) || withinPath(harnessRoot, testRoot)))) throw new Error('build test-root and harness-root must be disjoint');
+  const canonicalTestRoot = canonicalLayoutPath(testRoot);
+  const canonicalHarnessRoot = canonicalLayoutPath(harnessRoot);
+  if (!canonicalTestRoot || !canonicalHarnessRoot) throw new Error('explicit canonical relative test-root and harness-root are required');
+  if (canonicalTestRoot === canonicalHarnessRoot || (action === 'build' && (withinPath(canonicalTestRoot, canonicalHarnessRoot) || withinPath(canonicalHarnessRoot, canonicalTestRoot)))) throw new Error('build test-root and harness-root must be disjoint');
   if (capabilities.existingSuite && capabilities.runtimeCandidates.length && !capabilities.runtimeCandidates.includes(runtime)) throw new Error(`runtime ${runtime} conflicts with detected candidates: ${capabilities.runtimeCandidates.join(', ')}`);
   const template = contract.templates[runtime];
   if (action === 'adapt' && capabilities.packageManagers.length && !capabilities.packageManagers.includes(packageManager)) throw new Error(`package manager ${packageManager} conflicts with detected managers: ${capabilities.packageManagers.join(', ')}`);
-  if (action === 'adapt' && capabilities.testRoots.length && !capabilities.testRoots.includes(testRoot)) throw new Error(`test root ${testRoot} conflicts with detected roots: ${capabilities.testRoots.join(', ')}`);
-  if (action === 'adapt' && capabilities.sourceRoots.length && !capabilities.sourceRoots.includes(harnessRoot)) throw new Error(`harness root ${harnessRoot} conflicts with detected roots: ${capabilities.sourceRoots.join(', ')}`);
+  if (action === 'adapt' && capabilities.testRoots.length && !capabilities.testRoots.includes(canonicalTestRoot)) throw new Error(`test root ${canonicalTestRoot} conflicts with detected roots: ${capabilities.testRoots.join(', ')}`);
+  if (action === 'adapt' && capabilities.sourceRoots.length && !capabilities.sourceRoots.includes(canonicalHarnessRoot)) throw new Error(`harness root ${canonicalHarnessRoot} conflicts with detected roots: ${capabilities.sourceRoots.join(', ')}`);
   const unsupported = [...capabilities.unsupported];
   if (!template.packageManagers.includes(packageManager)) unsupported.push(`selected-package-manager-adapter-required:${packageManager}`);
   if (action === 'build' && unsupported.some((item) => item.startsWith('selected-package-manager'))) throw new Error(`build adapter unavailable for ${packageManager}; choose ${template.packageManagers.join(', ')} or adapt explicitly`);
@@ -112,7 +114,8 @@ export function selectTemplate({ capabilities, contract, runtime, packageManager
     targetRoot: capabilities.targetRoot, runtime, packageManager,
     framework: action === 'adapt' && detectedFramework ? detectedFramework : template.framework,
     testRunner: action === 'adapt' && detectedRunner ? detectedRunner : template.runner,
-    testRoot, harnessRoot, ci: [...new Set([...capabilities.ci, ...(ci ?? [])])].sort(), action,
+    testRoot: canonicalTestRoot, harnessRoot: canonicalHarnessRoot,
+    ci: [...new Set([...capabilities.ci, ...(ci ?? [])])].sort(), action,
     choiceSource: 'explicit-user', capabilitiesSha256: sha256(stable(capabilities)),
     unsupported: [...new Set(unsupported)].sort(), extensionPoints: [...template.extensionPoints],
   };
@@ -128,7 +131,9 @@ export function validateTemplateSelection(selection, contract) {
   const errors = [];
   if (!object(selection) || selection.schemaVersion !== 1 || selection.contractId !== 'argus/template-selection@1' || selection.$schema !== 'argus/template-selection@1') return ['template selection identity is invalid'];
   if (!RUNTIMES.includes(selection.runtime) || !string(selection.packageManager) || !string(selection.framework) || !string(selection.testRunner)) errors.push('runtime, package manager, framework, or runner is invalid');
-  if (!safeRelative(selection.testRoot) || !safeRelative(selection.harnessRoot) || selection.testRoot === selection.harnessRoot || (selection.action === 'build' && (withinPath(selection.testRoot, selection.harnessRoot) || withinPath(selection.harnessRoot, selection.testRoot)))) errors.push('selection layout roots are invalid');
+  const testRoot = canonicalLayoutPath(selection.testRoot);
+  const harnessRoot = canonicalLayoutPath(selection.harnessRoot);
+  if (!testRoot || !harnessRoot || testRoot === harnessRoot || (selection.action === 'build' && (withinPath(testRoot, harnessRoot) || withinPath(harnessRoot, testRoot)))) errors.push('selection layout roots are invalid');
   if (!['build', 'adapt'].includes(selection.action) || selection.choiceSource !== 'explicit-user') errors.push('selection action or explicit choice source is invalid');
   if (!/^[a-f0-9]{64}$/.test(selection.capabilitiesSha256 ?? '') || !Array.isArray(selection.ci) || !Array.isArray(selection.unsupported) || !Array.isArray(selection.extensionPoints)) errors.push('selection digest or capability lists are invalid');
   const expected = contract.templates?.[selection.runtime];
@@ -238,7 +243,7 @@ function moveDirectory(source, destination) {
 function replaceIn(path, from, to) { const content = read(path); if (!content.includes(from)) throw new Error(`layout adapter anchor missing: ${path}: ${from}`); writeFileSync(path, content.replaceAll(from, to)); }
 function remapNewToOld(path, newTests, oldTests, newHarness, oldHarness) { if (inside(newTests, path)) return resolve(oldTests, relative(newTests, path)); if (inside(newHarness, path)) return resolve(oldHarness, relative(newHarness, path)); return path; }
 function remapOldToNew(path, oldTests, newTests, oldHarness, newHarness) { if (inside(oldTests, path)) return resolve(newTests, relative(oldTests, path)); if (inside(oldHarness, path)) return resolve(newHarness, relative(oldHarness, path)); return path; }
-function safeDestination(root, path) { const candidate = resolve(root, path); if (!inside(root, candidate) || candidate === root) throw new Error(`layout path escapes scaffold: ${path}`); return candidate; }
+function safeDestination(root, path) { const canonical = canonicalLayoutPath(path); if (!canonical) throw new Error(`layout path is not canonical: ${path}`); const candidate = resolve(root, canonical); if (!inside(root, candidate) || candidate === root) throw new Error(`layout path escapes scaffold: ${path}`); return candidate; }
 function inside(root, candidate) { const rel = relative(root, candidate); return rel === '' || (!rel.startsWith('..') && !rel.startsWith(`..${sep}`) && !rel.startsWith('/')); }
 
 function walk(root, cursor = root, output = []) {
@@ -261,5 +266,12 @@ function sorted(value) { return [...value].sort(); }
 function sameSet(actual, expected) { return Array.isArray(actual) && actual.length === expected.length && [...actual].sort().every((item, index) => item === [...expected].sort()[index]); }
 function uniqueSignals(signals) { return [...new Map(signals.map((item) => [`${item.capability}\0${item.source}`, item])).values()].sort((a, b) => a.capability.localeCompare(b.capability) || a.source.localeCompare(b.source)); }
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
-function safeRelative(value) { return string(value) && !value.startsWith('/') && !value.split(/[\\/]/).includes('..'); }
+function canonicalLayoutPath(value) {
+  if (!string(value) || value !== value.trim() || value === '.' || value.includes('\\') || /[\u0000-\u001f\u007f]/u.test(value)) return null;
+  if (value.startsWith('/') || /^[A-Za-z]:\//u.test(value) || value.endsWith('/') || value.includes('//')) return null;
+  const parts = value.split('/');
+  if (parts.some((part) => !part || part === '.' || part === '..')) return null;
+  const normalized = posix.normalize(value);
+  return normalized === value && normalized !== '.' && !normalized.startsWith('../') ? normalized : null;
+}
 function withinPath(parent, child) { return child.startsWith(`${parent.replace(/\/$/, '')}/`); }

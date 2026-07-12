@@ -202,6 +202,10 @@
       "reason": "The prompt budget is a repository CI contract, not an engagement runtime contract."
     },
     {
+      "source": "argus/schemas/model-policy-benchmark.schema.json",
+      "reason": "Synthetic benchmark structure is validated by repository gates; installed runtime verifies the packaged benchmark asset hash before display."
+    },
+    {
       "source": "argus/schemas/prompt-engagement-contract.schema.json",
       "reason": "Representative prompt evaluation is enforced during repository validation only."
     },

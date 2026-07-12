@@ -126,12 +126,6 @@
       ]
     },
     {
-      "value": "templates/",
-      "consumers": [
-        "atlas"
-      ]
-    },
-    {
       "value": "templates/common/solution/bug-ledger.example.json",
       "consumers": [
         "minos"
@@ -1885,12 +1879,6 @@
       "destination": "schemas",
       "consumers": [
         {
-          "consumer": "command:argus-assets model benchmark",
-          "kind": "command",
-          "mechanism": "explicit-command-dependency",
-          "reference": "runtime-schemas"
-        },
-        {
           "consumer": "command:argus-assets schema validate (schema compatibility)",
           "kind": "command",
           "mechanism": "explicit-command-dependency",
@@ -1906,6 +1894,12 @@
           "consumer": "orchestration:controller",
           "kind": "orchestration",
           "mechanism": "required-asset",
+          "reference": "runtime-schemas"
+        },
+        {
+          "consumer": "runtime:assertTrustedModelRoutingAssets",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
           "reference": "runtime-schemas"
         },
         {
@@ -1967,6 +1961,18 @@
           "kind": "orchestration",
           "mechanism": "required-asset",
           "reference": "model-policy"
+        },
+        {
+          "consumer": "runtime:assertTrustedModelRoutingAssets",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "model-policy"
+        },
+        {
+          "consumer": "runtime:modelCommand",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "model-policy"
         }
       ]
     },
@@ -1981,7 +1987,7 @@
           "reference": "runtime-adapters"
         },
         {
-          "consumer": "runtime:assertTrustedRuntimeAdapterAsset",
+          "consumer": "runtime:assertTrustedModelRoutingAssets",
           "kind": "command",
           "mechanism": "cli-require-asset",
           "reference": "runtime-adapters"
@@ -2008,6 +2014,12 @@
           "consumer": "command:argus-assets model benchmark",
           "kind": "command",
           "mechanism": "explicit-command-dependency",
+          "reference": "model-policy-benchmark"
+        },
+        {
+          "consumer": "runtime:modelCommand",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
           "reference": "model-policy-benchmark"
         }
       ]
@@ -2149,12 +2161,6 @@
           "reference": "templates/common/solution/STATE_MODEL.md"
         },
         {
-          "consumer": "atlas",
-          "kind": "agent",
-          "mechanism": "plugin-path",
-          "reference": "templates/"
-        },
-        {
           "consumer": "command:argus-assets template scaffold java",
           "kind": "command",
           "mechanism": "validated-template-composition",
@@ -2185,12 +2191,6 @@
       "destination": "templates/typescript",
       "consumers": [
         {
-          "consumer": "atlas",
-          "kind": "agent",
-          "mechanism": "plugin-path",
-          "reference": "templates/"
-        },
-        {
           "consumer": "command:argus-assets template scaffold typescript",
           "kind": "command",
           "mechanism": "validated-template-composition",
@@ -2209,12 +2209,6 @@
       "destination": "templates/java",
       "consumers": [
         {
-          "consumer": "atlas",
-          "kind": "agent",
-          "mechanism": "plugin-path",
-          "reference": "templates/"
-        },
-        {
           "consumer": "command:argus-assets template scaffold java",
           "kind": "command",
           "mechanism": "validated-template-composition",
@@ -2226,12 +2220,6 @@
       "assetId": "python-template",
       "destination": "templates/python",
       "consumers": [
-        {
-          "consumer": "atlas",
-          "kind": "agent",
-          "mechanism": "plugin-path",
-          "reference": "templates/"
-        },
         {
           "consumer": "command:argus-assets template scaffold python",
           "kind": "command",

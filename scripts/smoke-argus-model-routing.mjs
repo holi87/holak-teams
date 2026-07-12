@@ -34,6 +34,16 @@ assert(validateBenchmark(benchmark).length === 0, 'model policy benchmark is inv
 const oversizedBenchmark = structuredClone(benchmark);
 oversizedBenchmark.scenarios[0].runs.push(structuredClone(oversizedBenchmark.scenarios[0].runs[0]));
 assert(validateBenchmark(oversizedBenchmark).some((error) => error.keyword === 'maxItems'), 'runtime schema compiler ignored maxItems');
+for (const tier of ['frontier', 'standard', 'mechanical']) {
+  assertPolicyMutation((copy) => { copy.tiers[tier].rank += 1; }, `${tier} rank`);
+  assertPolicyMutation((copy) => { copy.tiers[tier].qualityCritical = !copy.tiers[tier].qualityCritical; }, `${tier} qualityCritical`);
+  for (const [runtime, effortField] of [['claude', 'effort'], ['codex', 'reasoningEffort']]) {
+    assertPolicyMutation((copy) => { copy.tiers[tier][runtime].model += '-drift'; }, `${tier} ${runtime} model`);
+    assertPolicyMutation((copy) => { copy.tiers[tier][runtime][effortField] += '-drift'; }, `${tier} ${runtime} effort`);
+  }
+}
+assertPolicyMutation((copy) => { copy.tiers.mechanical.eligibility.pop(); }, 'mechanical eligibility');
+assertPolicyMutation((copy) => { copy.mechanicalDowngrade.fullRoleAllowed = true; }, 'mechanical downgrade');
 
 const actualClaudeBaseline = decide(adapters, { slug: 'aegis', runtime: 'claude', signal: 'normal' });
 assert(actualClaudeBaseline.status === 'selected', 'Claude baseline must be enforceable by static agent configuration');
@@ -143,6 +153,15 @@ function decide(snapshot, overrides) {
   const errors = validateDecision(decision);
   assert(errors.length === 0, `model decision schema rejected ${overrides.runtime}/${overrides.signal}: ${errors.map((error) => `${error.instancePath} ${error.message}`).join('; ')}`);
   return decision;
+}
+
+function assertPolicyMutation(mutate, label) {
+  const copy = structuredClone(policy);
+  mutate(copy);
+  assert(
+    validateModelPolicy(copy, copy.roles.map((role) => role.slug)).some((error) => error.includes('adopted mapping') || error.includes('bounded-subrole')),
+    `${label} mutation passed model-policy validation`,
+  );
 }
 
 function readJson(relativePath) {

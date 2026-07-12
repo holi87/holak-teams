@@ -9,6 +9,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -40,7 +41,16 @@ const HOST_COMMANDS = [
 const CODE_CONTEXT_HOST_COMMANDS = ['buf', 'nc'];
 const sourceManifest = readJson(SOURCE_MANIFEST_PATH);
 
-if (resolve(process.argv[1] ?? '') === SCRIPT_PATH) main();
+if (isDirectInvocation()) main();
+
+function isDirectInvocation() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(resolve(process.argv[1])) === realpathSync(SCRIPT_PATH);
+  } catch {
+    return false;
+  }
+}
 
 function main() {
   const mode = process.argv[2] ?? '--check';
@@ -49,7 +59,8 @@ function main() {
   }
 
   validateSourceManifest(sourceManifest);
-  syncPackagedSkillSet(mode);
+  preflightWritableRoots();
+  syncUnownedPackagedPaths(mode);
 
   for (const [runtime, composition] of Object.entries(sourceManifest.templateCompositions)) {
     syncTemplateCommon(runtime, composition, mode);
@@ -64,8 +75,8 @@ function main() {
     checkTemplateComposition(runtime, composition);
   }
 
-  const generatedManifest = buildGeneratedManifest(sourceManifest);
   const generatedInventory = buildReferenceInventory();
+  const generatedManifest = buildGeneratedManifest(sourceManifest, generatedInventory);
 
   if (mode === '--write') {
     writeJson(GENERATED_MANIFEST_PATH, generatedManifest);
@@ -219,21 +230,122 @@ function sourceFile(sourceAbs, relativePath) {
   return { sourceAbs, relativePath };
 }
 
-function syncPackagedSkillSet(mode) {
-  const skillsRoot = safePluginPath('skills');
-  if (!existsSync(skillsRoot)) return;
-  const allowed = new Set([
-    ...sourceManifest.assets
-      .filter((asset) => asset.kind === 'skill')
-      .map((asset) => asset.destination.split('/')[1]),
-    ...ENTRYPOINTS.map((entrypoint) => entrypoint.path.split('/')[1]),
-  ]);
-  for (const entry of readdirSync(skillsRoot).sort()) {
-    const path = join(skillsRoot, entry);
-    if (allowed.has(entry)) continue;
-    if (mode === '--write') rmSync(path, { recursive: true, force: true });
-    else fail(`unowned packaged skill directory: skills/${entry}; run --write`);
+function preflightWritableRoots() {
+  assertWritablePath(ROOT, PLUGIN_ROOT, 'plugin root', true);
+  for (const asset of sourceManifest.assets) {
+    assertWritablePath(
+      PLUGIN_ROOT,
+      safePluginPath(asset.destination),
+      `asset destination ${asset.id}`,
+      true,
+    );
   }
+  for (const [runtime, composition] of Object.entries(sourceManifest.templateCompositions)) {
+    const sourceRoot = join(ROOT, composition.source);
+    assertWritablePath(ROOT, sourceRoot, `${runtime} complete template source`, false);
+    const common = sourceManifest.assets.find((asset) => asset.id === composition.commonAsset);
+    for (const directory of sourceDirectories(common)) {
+      assertWritablePath(ROOT, join(sourceRoot, directory.relativePath), `${runtime} common directory`, true);
+    }
+    for (const file of allSourceFiles(common)) {
+      assertWritablePath(ROOT, join(sourceRoot, file.relativePath), `${runtime} common file`, false);
+    }
+  }
+}
+
+function assertWritablePath(base, candidate, label, scanLeafTree) {
+  const basePath = resolve(base);
+  const candidatePath = resolve(candidate);
+  if (!isWithin(basePath, candidatePath)) fail(`${label} escapes its writable root: ${candidate}`);
+  if (!existsSync(basePath)) fail(`${label} writable root is missing: ${basePath}`);
+  const realBase = inspectWritableEntry(basePath, label, true);
+  const relativePath = relative(basePath, candidatePath);
+  let cursor = basePath;
+  for (const part of relativePath ? relativePath.split(sep) : []) {
+    cursor = join(cursor, part);
+    if (!existsSync(cursor)) break;
+    const isLeaf = cursor === candidatePath;
+    inspectWritableEntry(cursor, label, !isLeaf);
+    const physical = realpathSync(cursor);
+    if (!isWithin(realBase, physical)) fail(`${label} resolves outside its writable root: ${candidate}`);
+  }
+  if (scanLeafTree && existsSync(candidatePath) && lstatSync(candidatePath).isDirectory()) {
+    assertTreeHasNoLinks(candidatePath, label);
+  }
+}
+
+function inspectWritableEntry(path, label, mustBeDirectory) {
+  const info = lstatSync(path);
+  if (info.isSymbolicLink()) fail(`${label} contains a symbolic link: ${path}`);
+  if (mustBeDirectory && !info.isDirectory()) fail(`${label} has a non-directory ancestor: ${path}`);
+  if (!info.isDirectory() && !info.isFile()) fail(`${label} contains an unsupported filesystem entry: ${path}`);
+  return realpathSync(path);
+}
+
+function assertTreeHasNoLinks(root, label) {
+  for (const name of readdirSync(root).sort()) {
+    const path = join(root, name);
+    const info = lstatSync(path);
+    if (info.isSymbolicLink()) fail(`${label} contains a symbolic link: ${path}`);
+    if (info.isDirectory()) assertTreeHasNoLinks(path, label);
+    else if (!info.isFile()) fail(`${label} contains an unsupported filesystem entry: ${path}`);
+  }
+}
+
+function syncUnownedPackagedPaths(mode) {
+  const owned = expectedPackagedPaths();
+  const unowned = listPackagedEntries()
+    .filter((entry) => !owned.has(entry.relativePath))
+    .sort((left, right) => right.relativePath.split('/').length - left.relativePath.split('/').length ||
+      right.relativePath.localeCompare(left.relativePath));
+  if (unowned.length === 0) return;
+  if (mode === '--check') {
+    fail(`unowned packaged path: ${unowned.at(-1).relativePath}; run --write`);
+  }
+  for (const entry of unowned) {
+    if (existsSync(entry.path)) rmSync(entry.path, { recursive: true, force: true });
+  }
+}
+
+function expectedPackagedPaths() {
+  const owned = new Set();
+  const add = (relativePath) => {
+    const normalized = relativePath.split(sep).join('/').replace(/^\.\//, '').replace(/\/+$/, '');
+    if (!normalized || normalized.split('/').includes('..')) fail(`invalid owned plugin path: ${relativePath}`);
+    const parts = normalized.split('/');
+    for (let index = 1; index <= parts.length; index += 1) {
+      owned.add(parts.slice(0, index).join('/'));
+    }
+  };
+  for (const path of [
+    '.claude-plugin/plugin.json',
+    'bin/argus-assets',
+    'hooks/hooks.json',
+    'skills/run/SKILL.md',
+    'runtime-assets.json',
+    'runtime-reference-inventory.json',
+  ]) add(path);
+  const capabilityMatrix = readJson(join(ROOT, 'argus', 'capabilities', 'capability-matrix.json'));
+  for (const agent of capabilityMatrix.agents ?? []) add(`agents/${agent.slug}.md`);
+  for (const asset of sourceManifest.assets) {
+    add(asset.destination);
+    const sourceRoot = join(ROOT, asset.source);
+    if (statSync(sourceRoot).isFile()) continue;
+    for (const directory of sourceDirectories(asset)) add(`${asset.destination}/${directory.relativePath}`);
+    for (const file of sourceFiles(asset)) add(`${asset.destination}/${file.relativePath}`);
+  }
+  return owned;
+}
+
+function listPackagedEntries(root = PLUGIN_ROOT, prefix = '', output = []) {
+  for (const name of readdirSync(root).sort()) {
+    const path = join(root, name);
+    const relativePath = prefix ? `${prefix}/${name}` : name;
+    const info = lstatSync(path);
+    output.push({ path, relativePath });
+    if (info.isDirectory()) listPackagedEntries(path, relativePath, output);
+  }
+  return output;
 }
 
 function syncTemplateCommon(runtime, composition, mode) {
@@ -242,6 +354,7 @@ function syncTemplateCommon(runtime, composition, mode) {
   for (const directory of sourceDirectories(common)) {
     const target = join(sourceRoot, directory.relativePath);
     if (mode === '--write') {
+      assertWritablePath(ROOT, target, `${runtime} common directory`, true);
       mkdirSync(target, { recursive: true });
       chmodSync(target, directory.mode);
     }
@@ -255,6 +368,7 @@ function syncTemplateCommon(runtime, composition, mode) {
   for (const file of allSourceFiles(common)) {
     const target = join(sourceRoot, file.relativePath);
     if (mode === '--write') {
+      assertWritablePath(ROOT, target, `${runtime} common file`, false);
       if (existsSync(target) && !lstatSync(target).isFile()) {
         fail(`${runtime} common template path is not a regular file: ${file.relativePath}`);
       }
@@ -277,6 +391,7 @@ function syncTemplateCommon(runtime, composition, mode) {
 
 function writeAsset(asset) {
   const destinationAbs = safePluginPath(asset.destination);
+  assertWritablePath(PLUGIN_ROOT, destinationAbs, `asset destination ${asset.id}`, true);
   const files = sourceFiles(asset);
   const sourceIsFile = statSync(join(ROOT, asset.source)).isFile();
   if (sourceIsFile) {
@@ -432,12 +547,19 @@ function checkTemplateComposition(runtime, composition) {
   }
 }
 
-function buildGeneratedManifest(manifest) {
+function buildGeneratedManifest(manifest, inventory) {
+  const inventoryStats = jsonDocumentStats(inventory);
   return {
     ...manifest,
     $schema: './schemas/runtime-assets.schema.json',
     generated: true,
     generatedFrom: 'argus/runtime-assets.source.json',
+    inventory: {
+      path: 'runtime-reference-inventory.json',
+      schemaVersion: inventory.schemaVersion,
+      bytes: inventoryStats.bytes,
+      sha256: inventoryStats.sha256,
+    },
     assets: manifest.assets.map((asset) => {
       const stats = treeStats(safePluginPath(asset.destination));
       return { ...asset, files: stats.files, bytes: stats.bytes, sha256: stats.sha256 };
@@ -786,8 +908,8 @@ export function analyzeAssetConsumers({
   const commandDependencies = [
     {
       consumer: 'command:argus-assets model benchmark',
-      assets: ['model-policy-benchmark', 'runtime-schemas'],
-      markers: ['function modelCommand', "operation === 'benchmark'", 'MODEL_BENCHMARK_PATH', 'MODEL_BENCHMARK_SCHEMA_PATH'],
+      assets: ['model-policy-benchmark'],
+      markers: ['function modelCommand', "operation === 'benchmark'", 'MODEL_BENCHMARK_PATH'],
     },
     {
       consumer: 'command:argus-assets orchestration plan',
@@ -859,10 +981,34 @@ export function analyzeAssetConsumers({
 export function analyzeRequireAssetCalls(cliText, assetIds) {
   const literalCalls = [];
   const unknownAssetReferences = [];
-  for (const match of cliText.matchAll(/\brequireAsset\s*\(([^()\n]+)\)/g)) {
-    if (/\bfunction\s+$/.test(cliText.slice(Math.max(0, match.index - 24), match.index))) continue;
-    const functionName = enclosingFunctionName(cliText, match.index);
-    const expression = match[1].trim();
+  for (const usage of scanRequireAssetUsages(cliText)) {
+    const functionName = enclosingFunctionName(cliText, usage.index);
+    if (usage.kind !== 'call') {
+      unknownAssetReferences.push({
+        assetId: null,
+        consumer: `runtime:${functionName ?? 'top-level'}`,
+        mechanism: 'indirect-require-asset-reference',
+        reference: usage.reference,
+      });
+      continue;
+    }
+    const expression = usage.expression.trim();
+    const staticLoopIds = staticRequireAssetLoopIds(cliText, functionName, expression);
+    if (staticLoopIds) {
+      for (const assetId of staticLoopIds) {
+        if (!assetIds.has(assetId)) {
+          unknownAssetReferences.push({
+            assetId,
+            consumer: `runtime:${functionName}`,
+            mechanism: 'cli-require-asset',
+            reference: assetId,
+          });
+        } else {
+          literalCalls.push({ assetId, consumer: `runtime:${functionName}` });
+        }
+      }
+      continue;
+    }
     const literal = expression.match(/^(['"])([a-z0-9][a-z0-9-]*)\1$/)?.[2];
     if (literal) {
       if (!assetIds.has(literal)) {
@@ -877,7 +1023,7 @@ export function analyzeRequireAssetCalls(cliText, assetIds) {
       }
       continue;
     }
-    const validatedCompositionLookup = functionName === 'copyTemplate' &&
+    const validatedCompositionLookup = ['copyTemplate', 'prepareTemplateComposition'].includes(functionName) &&
       ['composition.commonAsset', 'composition.runtimeAsset'].includes(expression);
     const genericPathLookup = functionName === 'printPath' && expression === 'id';
     if (validatedCompositionLookup || genericPathLookup) continue;
@@ -889,6 +1035,159 @@ export function analyzeRequireAssetCalls(cliText, assetIds) {
     });
   }
   return { literalCalls, unknownAssetReferences };
+}
+
+function staticRequireAssetLoopIds(text, functionName, expression) {
+  if (expression !== 'id' || functionName !== 'assertTrustedModelRoutingAssets') return null;
+  const functionMatch = text.match(/function\s+assertTrustedModelRoutingAssets\s*\(\)\s*\{([\s\S]*?)\n\}/);
+  if (!functionMatch) return null;
+  const list = functionMatch[1].match(/for\s*\(\s*const\s+id\s+of\s+\[([^\]]+)\]/)?.[1];
+  if (!list) return null;
+  const ids = [...list.matchAll(/(['"])([a-z0-9][a-z0-9-]*)\1/g)].map((match) => match[2]);
+  const residue = list.replace(/(['"])[a-z0-9][a-z0-9-]*\1/g, '').replace(/[\s,]/g, '');
+  return ids.length > 0 && residue === '' ? ids : null;
+}
+
+function scanRequireAssetUsages(text) {
+  const usages = [];
+  let index = 0;
+  let previousToken = null;
+  while (index < text.length) {
+    const skipped = skipTrivia(text, index);
+    if (skipped !== index) {
+      index = skipped;
+      continue;
+    }
+    const character = text[index];
+    if (character === '"' || character === "'") {
+      index = skipQuoted(text, index, character);
+      previousToken = { type: 'literal', value: character };
+      continue;
+    }
+    if (character === '`') {
+      const end = skipQuoted(text, index, '`');
+      if (text.slice(index, end).includes('requireAsset')) {
+        usages.push({ kind: 'reference', index, reference: 'requireAsset inside template literal' });
+      }
+      index = end;
+      previousToken = { type: 'literal', value: '`' };
+      continue;
+    }
+    if (character === '/' && regexCanStartAfter(previousToken)) {
+      index = skipRegexLiteral(text, index);
+      previousToken = { type: 'literal', value: '/' };
+      continue;
+    }
+    if (/[A-Za-z_$]/.test(character)) {
+      const start = index;
+      index += 1;
+      while (index < text.length && /[A-Za-z0-9_$]/.test(text[index])) index += 1;
+      const value = text.slice(start, index);
+      if (value === 'requireAsset' && previousToken?.value !== 'function') {
+        const callStart = skipTrivia(text, index);
+        if (text[callStart] !== '(' || previousToken?.value === '.' || previousToken?.value === '?.') {
+          usages.push({ kind: 'reference', index: start, reference: value });
+        } else {
+          const call = readCallExpression(text, callStart);
+          if (!call) usages.push({ kind: 'reference', index: start, reference: 'unterminated requireAsset call' });
+          else {
+            usages.push({ kind: 'call', index: start, expression: call.expression });
+            index = call.end;
+          }
+        }
+      }
+      previousToken = { type: 'identifier', value };
+      continue;
+    }
+    const punctuator = text.startsWith('?.', index) ? '?.' : character;
+    previousToken = { type: 'punctuator', value: punctuator };
+    index += punctuator.length;
+  }
+  return usages;
+}
+
+function readCallExpression(text, openIndex) {
+  let depth = 1;
+  let index = openIndex + 1;
+  while (index < text.length) {
+    const skipped = skipTrivia(text, index);
+    if (skipped !== index) {
+      index = skipped;
+      continue;
+    }
+    const character = text[index];
+    if (character === '"' || character === "'" || character === '`') {
+      index = skipQuoted(text, index, character);
+      continue;
+    }
+    if (character === '(') depth += 1;
+    else if (character === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        return { expression: text.slice(openIndex + 1, index), end: index + 1 };
+      }
+    }
+    index += 1;
+  }
+  return null;
+}
+
+function skipTrivia(text, start) {
+  let index = start;
+  while (index < text.length) {
+    if (/\s/.test(text[index])) {
+      index += 1;
+      continue;
+    }
+    if (text.startsWith('//', index)) {
+      const newline = text.indexOf('\n', index + 2);
+      index = newline === -1 ? text.length : newline + 1;
+      continue;
+    }
+    if (text.startsWith('/*', index)) {
+      const end = text.indexOf('*/', index + 2);
+      index = end === -1 ? text.length : end + 2;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function skipQuoted(text, start, quote) {
+  let index = start + 1;
+  while (index < text.length) {
+    if (text[index] === '\\') index += 2;
+    else if (text[index] === quote) return index + 1;
+    else index += 1;
+  }
+  return text.length;
+}
+
+function regexCanStartAfter(token) {
+  return !token || ['(', '[', '{', '=', ':', ',', ';', '!', '?', '|', '&'].includes(token.value) ||
+    ['return', 'case', 'throw', 'yield'].includes(token.value);
+}
+
+function skipRegexLiteral(text, start) {
+  let index = start + 1;
+  let inCharacterClass = false;
+  while (index < text.length) {
+    const character = text[index];
+    if (character === '\\') index += 2;
+    else if (character === '[') {
+      inCharacterClass = true;
+      index += 1;
+    } else if (character === ']' && inCharacterClass) {
+      inCharacterClass = false;
+      index += 1;
+    } else if (character === '/' && !inCharacterClass) {
+      index += 1;
+      while (index < text.length && /[A-Za-z]/.test(text[index])) index += 1;
+      return index;
+    } else index += 1;
+  }
+  return text.length;
 }
 
 function enclosingFunctionName(text, index) {
@@ -903,7 +1202,7 @@ function pluginPathOwners(value, assets) {
   if (!normalized || normalized.split('/').includes('..')) return [];
   return assets.filter((asset) => {
     const destination = asset.destination.replace(/\/+$/, '');
-    return sourceContains(destination, normalized) || sourceContains(normalized, destination);
+    return sourceContains(destination, normalized);
   });
 }
 
@@ -1141,6 +1440,11 @@ function walkDirectories(dir) {
   return out;
 }
 
+function isWithin(root, candidate) {
+  const rel = relative(root, candidate);
+  return rel === '' || (!rel.startsWith('..') && !rel.startsWith(`..${sep}`) && !rel.startsWith(sep));
+}
+
 function safePluginPath(relativePath) {
   const path = resolve(PLUGIN_ROOT, relativePath);
   if (path !== PLUGIN_ROOT && !path.startsWith(`${PLUGIN_ROOT}${sep}`)) fail(`path escapes plugin root: ${relativePath}`);
@@ -1163,7 +1467,19 @@ function readJson(path) {
 
 function writeJson(path, value) {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+  writeFileSync(path, serializeJson(value));
+}
+
+function serializeJson(value) {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function jsonDocumentStats(value) {
+  const content = Buffer.from(serializeJson(value));
+  return {
+    bytes: content.length,
+    sha256: createHash('sha256').update(content).digest('hex'),
+  };
 }
 
 function escapeRegex(value) {

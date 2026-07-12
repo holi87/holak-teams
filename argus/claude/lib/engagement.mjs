@@ -653,6 +653,20 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     if (operation === 'telemetry' && !optionValue(tokens, '--decision')) return deny('model telemetry requires an immutable decision file');
     return allow('packaged model controller owns the bounded decision or telemetry mutation');
   }
+  if (primary === 'orchestration') {
+    if (operation !== 'plan') return deny('unknown orchestration operation');
+    const output = optionValue(tokens, '--output') ?? '-';
+    if (output === '-') return allow('orchestration projection is read-only');
+    const expected = join(manifest.artifactRoot, 'ai_agents_internal', 'orchestration-plan.json');
+    try {
+      if (resolvePhysical(output, cwd) !== resolvePhysical(expected, manifest.artifactRoot)) {
+        return deny('orchestration plan output must be the active engagement control artifact');
+      }
+    } catch {
+      return deny('orchestration plan output cannot be resolved safely');
+    }
+    return allow('packaged orchestration controller owns the idempotent plan artifact');
+  }
   if (primary === 'template') {
     if (operation === 'detect') {
       const output = optionValue(tokens, '--output') ?? '-';

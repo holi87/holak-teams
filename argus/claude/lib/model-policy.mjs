@@ -16,6 +16,24 @@ export const MODEL_SIGNALS = [
 ];
 
 const REQUIRED_ENFORCEMENTS = ['effort', 'maxTurns', 'model'];
+const EXPECTED_TIERS = {
+  frontier: { rank: 2, qualityCritical: true, claude: { model: 'opus', effort: 'max' }, codex: { model: 'sol', reasoningEffort: 'xhigh' } },
+  standard: { rank: 1, qualityCritical: false, claude: { model: 'sonnet', effort: 'medium' }, codex: { model: 'terra', reasoningEffort: 'medium' } },
+  mechanical: {
+    rank: 0,
+    qualityCritical: false,
+    claude: { model: 'haiku', effort: 'low' },
+    codex: { model: 'luna', reasoningEffort: 'medium' },
+    eligibility: ['bounded-subrole', 'no-quality-judgment', 'deterministic-output-schema', 'validator-passes-before-merge'],
+  },
+};
+const EXPECTED_MECHANICAL_DOWNGRADE = {
+  fullRoleAllowed: false,
+  requiresBoundedSubrole: true,
+  requiresDeterministicSchema: true,
+  requiresValidatorPass: true,
+  forbiddenWhenQualityJudgment: true,
+};
 
 export function validateModelPolicy(policy, expectedSlugs = []) {
   const errors = [];
@@ -27,6 +45,8 @@ export function validateModelPolicy(policy, expectedSlugs = []) {
   if (expectedSlugs.length && JSON.stringify([...slugs].sort()) !== JSON.stringify([...expectedSlugs].sort())) errors.push('policy role inventory differs from the canonical roster');
   const counts = Object.groupBy ? Object.groupBy(roles, (role) => role.tier) : roles.reduce((result, role) => ((result[role.tier] ??= []).push(role), result), {});
   if ((counts.frontier ?? []).length !== 10 || (counts.standard ?? []).length !== 17) errors.push('baseline split must be 10 frontier and 17 standard roles');
+  if (stableJson(policy?.tiers) !== stableJson(EXPECTED_TIERS)) errors.push('tier models, effort, rank, quality, and mechanical eligibility differ from the adopted mapping');
+  if (stableJson(policy?.mechanicalDowngrade) !== stableJson(EXPECTED_MECHANICAL_DOWNGRADE)) errors.push('mechanical downgrade eligibility differs from the bounded-subrole contract');
   if (policy?.routing?.decisionDirectory !== 'ai_agents_internal/model-decisions' || policy?.routing?.decisionSchema !== 'argus/model-decision@2') {
     errors.push('routing must persist argus/model-decision@2 under ai_agents_internal/model-decisions');
   }
@@ -63,6 +83,8 @@ export function resolveModelDecision(policy, adapters, {
   attempt,
   createdAt = new Date().toISOString(),
 } = {}) {
+  const policyErrors = validateModelPolicy(policy);
+  if (policyErrors.length) throw new Error(`invalid model policy: ${policyErrors.join('; ')}`);
   if (!['claude', 'codex'].includes(runtime)) throw new Error('runtime must be claude or codex');
   requireStableId(engagementId, 'engagementId');
   requireSha256(engagementManifestSha256, 'engagementManifestSha256');

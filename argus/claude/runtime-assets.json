@@ -163,9 +163,9 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 29,
-      "bytes": 75353,
-      "sha256": "2cb9255fa2c14245e3cbb54675487fdd36e10e597fb4dee24dce50880f6730ea"
+      "files": 28,
+      "bytes": 73116,
+      "sha256": "dd8e68425dcbee903a734aeba2d0a981846285578b97869d63269d0fc2f15084"
     },
     {
       "id": "capability-matrix",
@@ -236,8 +236,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 8,
-      "bytes": 137748,
-      "sha256": "e626701f697c87acfee0e00c93d977e7373ebcb6369893115646bfb9950d8c17"
+      "bytes": 140671,
+      "sha256": "cd105c43c1d10b1b08a5d892d038759fe748e268aaed8e4ddb420277c705d22f"
     },
     {
       "id": "common-template",
@@ -284,6 +284,10 @@
     {
       "source": "argus/schemas/prompt-budgets.schema.json",
       "reason": "The prompt budget is a repository CI contract, not an engagement runtime contract."
+    },
+    {
+      "source": "argus/schemas/model-policy-benchmark.schema.json",
+      "reason": "Synthetic benchmark structure is validated by repository gates; installed runtime verifies the packaged benchmark asset hash before display."
     },
     {
       "source": "argus/schemas/prompt-engagement-contract.schema.json",
@@ -337,5 +341,11 @@
     "not shipped with the installed plugin"
   ],
   "generated": true,
-  "generatedFrom": "argus/runtime-assets.source.json"
+  "generatedFrom": "argus/runtime-assets.source.json",
+  "inventory": {
+    "path": "runtime-reference-inventory.json",
+    "schemaVersion": 2,
+    "bytes": 52543,
+    "sha256": "f86f32ac167819c830bc483da5f9677f785106292b3d7329855ca06ae8725435"
+  }
 }

@@ -12,9 +12,70 @@ fail() {
   exit 1
 }
 
+STATIC_WORK="$(mktemp -d)"
+trap 'rm -rf "$STATIC_WORK"' EXIT
+
+copy_sync_fixture() {
+  local destination="$1"
+  mkdir -p "$destination"
+  while IFS= read -r path; do
+    [ -f "$ROOT/$path" ] || continue
+    mkdir -p "$destination/$(dirname "$path")"
+    cp -p "$ROOT/$path" "$destination/$path"
+  done < <(cd "$ROOT" && git ls-files --cached --others --exclude-standard -- argus scripts)
+  git -C "$destination" init -q
+  git -C "$destination" add -f argus scripts
+}
+
 "$ROOT/scripts/sync-argus-runtime-assets.mjs" --check
 node "$ROOT/scripts/smoke-argus-asset-consumers.mjs"
 "$PLUGIN/bin/argus-assets" verify
+
+# Direct invocation through a symlink must execute argument validation rather than
+# silently skipping main().
+ln -s "$ROOT" "$STATIC_WORK/repo-link"
+if node "$STATIC_WORK/repo-link/scripts/sync-argus-runtime-assets.mjs" --invalid >/dev/null 2>&1; then
+  fail "runtime asset sync silently skipped direct invocation through a symlink"
+fi
+
+# No generated asset write may follow a file or directory symlink. Both cases run
+# against isolated repository fixtures and prove that an external sentinel survives.
+copy_sync_fixture "$STATIC_WORK/file-link-repo"
+printf 'external-file-sentinel\n' >"$STATIC_WORK/file-sentinel"
+rm "$STATIC_WORK/file-link-repo/argus/claude/references/BROWSER-ISOLATION.md"
+ln -s "$STATIC_WORK/file-sentinel" "$STATIC_WORK/file-link-repo/argus/claude/references/BROWSER-ISOLATION.md"
+if (cd "$STATIC_WORK/file-link-repo" && node scripts/sync-argus-runtime-assets.mjs --write) >/dev/null 2>&1; then
+  fail "runtime asset sync accepted a file destination symlink"
+fi
+grep -Fxq 'external-file-sentinel' "$STATIC_WORK/file-sentinel" || fail "file destination symlink modified an external sentinel"
+
+copy_sync_fixture "$STATIC_WORK/directory-link-repo"
+mkdir "$STATIC_WORK/external-references"
+printf 'external-directory-sentinel\n' >"$STATIC_WORK/external-references/sentinel"
+rm -rf "$STATIC_WORK/directory-link-repo/argus/claude/references"
+ln -s "$STATIC_WORK/external-references" "$STATIC_WORK/directory-link-repo/argus/claude/references"
+if (cd "$STATIC_WORK/directory-link-repo" && node scripts/sync-argus-runtime-assets.mjs --write) >/dev/null 2>&1; then
+  fail "runtime asset sync accepted a directory destination symlink"
+fi
+grep -Fxq 'external-directory-sentinel' "$STATIC_WORK/external-references/sentinel" || fail "directory destination symlink modified an external sentinel"
+
+# Stale package files are rejected in check mode and removed in write mode without
+# touching the declared static plugin components.
+copy_sync_fixture "$STATIC_WORK/unowned-repo"
+printf 'stale\n' >"$STATIC_WORK/unowned-repo/argus/claude/references/STALE.md"
+if (cd "$STATIC_WORK/unowned-repo" && node scripts/sync-argus-runtime-assets.mjs --check) >/dev/null 2>&1; then
+  fail "runtime asset check accepted an unowned packaged path"
+fi
+(cd "$STATIC_WORK/unowned-repo" && node scripts/sync-argus-runtime-assets.mjs --write) >/dev/null
+test ! -e "$STATIC_WORK/unowned-repo/argus/claude/references/STALE.md" || fail "runtime asset write retained an unowned packaged path"
+test -f "$STATIC_WORK/unowned-repo/argus/claude/.claude-plugin/plugin.json" || fail "unowned cleanup removed the plugin manifest"
+test -f "$STATIC_WORK/unowned-repo/argus/claude/agents/odysseus.md" || fail "unowned cleanup removed a generated agent"
+test -f "$STATIC_WORK/unowned-repo/argus/claude/bin/argus-assets" || fail "unowned cleanup removed the plugin CLI"
+test -f "$STATIC_WORK/unowned-repo/argus/claude/hooks/hooks.json" || fail "unowned cleanup removed plugin hooks"
+test -f "$STATIC_WORK/unowned-repo/argus/claude/skills/run/SKILL.md" || fail "unowned cleanup removed the entrypoint"
+test -f "$STATIC_WORK/unowned-repo/argus/claude/runtime-assets.json" || fail "unowned cleanup removed the generated manifest"
+test -f "$STATIC_WORK/unowned-repo/argus/claude/runtime-reference-inventory.json" || fail "unowned cleanup removed the generated inventory"
+
 node "$PLUGIN/templates/typescript/scripts/hunt-driver.mjs" --help >/dev/null
 INVENTORY="$PLUGIN/runtime-reference-inventory.json"
 jq -e '
@@ -28,6 +89,12 @@ jq -e '
   (.unownedSkills | length) == 0
 ' "$INVENTORY" >/dev/null || \
   fail "runtime reference inventory v2 is incomplete or contains unresolved ownership"
+jq -e '
+  .inventory.path == "runtime-reference-inventory.json" and
+  .inventory.schemaVersion == 2 and
+  (.inventory.bytes | type) == "number" and
+  (.inventory.sha256 | test("^[a-f0-9]{64}$"))
+' "$PLUGIN/runtime-assets.json" >/dev/null || fail "runtime manifest does not bind inventory v2 metadata"
 jq -e '.pluginAssetReferences[] | select(.value == "skills/orchestration-core/SKILL.md") | .consumers | index("/argus:run")' "$INVENTORY" >/dev/null || \
   fail "runtime reference inventory did not scan the /argus:run entrypoint"
 for consumer in \
@@ -64,6 +131,14 @@ jq -e '.assets[] | select(.id == "raci-contract")' "$PLUGIN/runtime-assets.json"
 jq -e '.assets[] | select(.id == "raci-matrix")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits RACI matrix"
 jq -e '.hooks.PreToolUse[] | select(.matcher == "Write|Edit|MultiEdit|Bash")' "$PLUGIN/hooks/hooks.json" >/dev/null || fail "plugin hook does not cover direct and shell writes"
 
+cp -R "$PLUGIN" "$STATIC_WORK/tampered-plugin"
+jq '.schemaVersion = 999 | .unknownAssetReferences = [{assetId:"ghost"}]' \
+  "$STATIC_WORK/tampered-plugin/runtime-reference-inventory.json" >"$STATIC_WORK/tampered-inventory.json"
+mv "$STATIC_WORK/tampered-inventory.json" "$STATIC_WORK/tampered-plugin/runtime-reference-inventory.json"
+if "$STATIC_WORK/tampered-plugin/bin/argus-assets" verify >/dev/null 2>&1; then
+  fail "argus-assets verify accepted inventory content outside its manifest digest"
+fi
+
 if command -v claude >/dev/null 2>&1; then
   claude plugin validate --strict "$PLUGIN" >/dev/null
 else
@@ -87,7 +162,7 @@ command -v claude >/dev/null 2>&1 || fail "claude CLI is required for --installe
 
 CONFIG_DIR="$(mktemp -d)"
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "$CONFIG_DIR" "$WORK_DIR"' EXIT
+trap 'rm -rf "$STATIC_WORK" "$CONFIG_DIR" "$WORK_DIR"' EXIT
 
 CLAUDE_CONFIG_DIR="$CONFIG_DIR" claude plugin marketplace add "$ROOT" >/dev/null
 CLAUDE_CONFIG_DIR="$CONFIG_DIR" claude plugin install argus@holak-teams --scope user >/dev/null

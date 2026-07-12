@@ -97,6 +97,17 @@ expect_copy_failure() {
   [ ! -e "$destination" ] || fail "$label wrote output before validation completed"
 }
 
+expect_selection_failure() {
+  local label="$1" test_root="$2" harness_root="$3"
+  local target="$WORK/layout-target-$label" output="$WORK/layout-selection-$label.json"
+  mkdir -p "$target"
+  if "$CLI" template select --target "$target" --runtime typescript --package-manager npm \
+    --test-root "$test_root" --harness-root "$harness_root" --output "$output" >"$WORK/$label.log" 2>&1; then
+    fail "$label unexpectedly accepted a non-canonical layout"
+  fi
+  [ ! -e "$output" ] || fail "$label persisted an invalid layout selection"
+}
+
 # The supported materialisation interface composes common + runtime layers into a byte-
 # and mode-exact copy of each complete maintainer source tree.
 for runtime in typescript java python; do
@@ -153,6 +164,61 @@ if "$CLI" copy-template typescript "$WORK/output-link" >"$WORK/output-symlink.lo
   fail "output symlink unexpectedly accepted a template"
 fi
 [ -z "$(find "$WORK/output-real" -mindepth 1 -print -quit)" ] || fail "output symlink received files"
+
+# Layout roots are canonical portable relative paths. Equivalent spellings, dot
+# segments, trailing separators, absolute paths, and traversal all fail before a
+# selection or requested scaffold destination is written.
+expect_selection_failure dot-root . quality/support
+expect_selection_failure double-separator quality//shared quality/shared
+expect_selection_failure dot-segment quality/./specs quality/support
+expect_selection_failure leading-dot ./quality/specs quality/support
+expect_selection_failure trailing-separator quality/specs/ quality/support
+expect_selection_failure absolute-root /quality/specs quality/support
+expect_selection_failure windows-absolute C:/quality/specs quality/support
+expect_selection_failure traversal quality/../specs quality/support
+expect_selection_failure backslash 'quality\specs' quality/support
+
+# A failure after the complete template composition has been copied into the
+# private staging directory leaves neither a partial destination nor staging debris.
+mkdir -p "$WORK/atomic-target"
+"$CLI" template select --target "$WORK/atomic-target" --runtime typescript --package-manager npm \
+  --test-root scripts --harness-root quality/support --output "$WORK/atomic-failure-selection.json" >/dev/null
+if "$CLI" template scaffold --selection "$WORK/atomic-failure-selection.json" \
+  --destination "$WORK/atomic-failure" >"$WORK/atomic-failure.log" 2>&1; then
+  fail "materialization collision unexpectedly produced a scaffold"
+fi
+[ ! -e "$WORK/atomic-failure" ] || fail "failed materialization left a partial scaffold destination"
+[ -z "$(find "$WORK" -maxdepth 1 -name '.atomic-failure.argus-scaffold-*' -print -quit)" ] || fail "failed materialization left a private staging directory"
+
+# Persisted selections receive the same canonical-path validation and fail before
+# the atomic destination exists.
+"$CLI" template select --target "$WORK/atomic-target" --runtime typescript --package-manager npm \
+  --test-root quality/specs --harness-root quality/support --output "$WORK/canonical-selection.json" >/dev/null
+jq '.testRoot = "quality//shared" | .harnessRoot = "quality/shared"' \
+  "$WORK/canonical-selection.json" >"$WORK/mutated-alias-selection.json"
+if "$CLI" template scaffold --selection "$WORK/mutated-alias-selection.json" \
+  --destination "$WORK/mutated-alias-scaffold" >"$WORK/mutated-alias.log" 2>&1; then
+  fail "persisted layout alias unexpectedly produced a scaffold"
+fi
+[ ! -e "$WORK/mutated-alias-scaffold" ] || fail "invalid persisted layout left a scaffold destination"
+
+# Existing empty destinations remain supported and retain their root mode; a
+# non-empty destination remains exclusive and is never modified.
+mkdir "$WORK/existing-empty-scaffold"
+chmod 711 "$WORK/existing-empty-scaffold"
+"$CLI" template scaffold --selection "$WORK/canonical-selection.json" \
+  --destination "$WORK/existing-empty-scaffold" >/dev/null
+node -e 'const fs=require("fs"); if ((fs.statSync(process.argv[1]).mode & 0o777) !== 0o711) process.exit(1)' \
+  "$WORK/existing-empty-scaffold" || fail "atomic publication changed the existing destination mode"
+test -f "$WORK/existing-empty-scaffold/argus-template.json" || fail "existing empty destination did not receive the complete scaffold"
+mkdir "$WORK/non-empty-scaffold"
+printf 'preserve\n' >"$WORK/non-empty-scaffold/sentinel.txt"
+if "$CLI" template scaffold --selection "$WORK/canonical-selection.json" \
+  --destination "$WORK/non-empty-scaffold" >"$WORK/non-empty.log" 2>&1; then
+  fail "non-empty destination unexpectedly accepted a scaffold"
+fi
+grep -Fxq preserve "$WORK/non-empty-scaffold/sentinel.txt" || fail "non-empty destination was modified"
+[ -z "$(find "$WORK" -maxdepth 1 -name '.non-empty-scaffold.argus-scaffold-*' -print -quit)" ] || fail "non-empty rejection left a private staging directory"
 
 # Existing projects are detected from real files and produce ADAPT selections with
 # every unsupported adapter declared. No competing scaffold may be created.

@@ -11,15 +11,18 @@ import {
   existsSync,
   linkSync,
   lstatSync,
+  mkdtempSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   realpathSync,
+  renameSync,
+  rmdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   buildAuditEvent,
@@ -80,8 +83,8 @@ const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
 const CAPABILITY_MATRIX_PATH = join(ROOT, 'capabilities', 'capability-matrix.json');
 const RACI_PATH = join(ROOT, 'references', 'raci.json');
 const MODEL_POLICY_PATH = join(ROOT, 'capabilities', 'model-policy.json');
+const MODEL_POLICY_SCHEMA_PATH = join(ROOT, 'schemas', 'model-policy.schema.json');
 const MODEL_BENCHMARK_PATH = join(ROOT, 'capabilities', 'model-policy.benchmark.json');
-const MODEL_BENCHMARK_SCHEMA_PATH = join(ROOT, 'schemas', 'model-policy-benchmark.schema.json');
 const RUNTIME_ADAPTERS_PATH = join(ROOT, 'capabilities', 'runtime-adapters.json');
 const RUNTIME_ADAPTERS_SCHEMA_PATH = join(ROOT, 'schemas', 'runtime-adapters.schema.json');
 const MODEL_DECISION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-decision.schema.json');
@@ -95,12 +98,12 @@ const HOOKS_PATH = join(ROOT, 'hooks', 'hooks.json');
 const manifest = readJson(MANIFEST_PATH);
 const matrix = readJson(CAPABILITY_MATRIX_PATH);
 const modelPolicy = readJson(MODEL_POLICY_PATH);
+const validateModelPolicySchema = compileJsonSchema(readJson(MODEL_POLICY_SCHEMA_PATH));
+assertSchemaDocument(validateModelPolicySchema, modelPolicy, 'model policy');
 const raciContract = readJson(RACI_PATH);
 const modelPolicyErrors = validateModelPolicy(modelPolicy, matrix.agents.map((agent) => agent.slug));
 if (modelPolicyErrors.length) fail(`model policy invalid: ${modelPolicyErrors.join('; ')}`);
 const modelBenchmark = readJson(MODEL_BENCHMARK_PATH);
-const validateModelBenchmark = compileJsonSchema(readJson(MODEL_BENCHMARK_SCHEMA_PATH));
-assertSchemaDocument(validateModelBenchmark, modelBenchmark, 'model policy benchmark');
 if (modelBenchmark.policyId !== modelPolicy.policyId) fail('model policy benchmark is bound to a different policy');
 const runtimeAdapters = readJson(RUNTIME_ADAPTERS_PATH);
 const validateRuntimeAdapters = compileJsonSchema(readJson(RUNTIME_ADAPTERS_SCHEMA_PATH));
@@ -286,12 +289,12 @@ function templateCommand(args) {
     const digest = createHash('sha256').update(stableTemplateJson(current)).digest('hex');
     if (digest !== selection.capabilitiesSha256) fail('target capabilities changed after selection; detect and select again');
     if (selection.unsupported?.length) fail(`template scaffold has unsupported capabilities: ${selection.unsupported.join(', ')}`);
-    copyTemplate(selection.runtime, options.destination);
-    materializeTemplateLayout(options.destination, selection);
-    const record = resolve(options.destination, 'ai_agents_internal', 'template-selection.json');
-    mkdirSync(dirname(record), { recursive: true });
-    writeFileSync(record, stableTemplateJson(selection), { mode: 0o600 });
-    chmodSync(record, 0o600);
+    const entries = prepareTemplateComposition(selection.runtime);
+    try {
+      scaffoldTemplateAtomically(selection, options.destination, entries);
+    } catch (error) {
+      fail(`template scaffold failed: ${error.message}`);
+    }
     console.log(`SCAFFOLDED  ${selection.runtime}/${selection.packageManager} testRoot=${selection.testRoot} harnessRoot=${selection.harnessRoot} -> ${resolve(options.destination)}`);
     return 0;
   }
@@ -314,6 +317,7 @@ function modelCommand(args) {
   const [operation, ...rest] = args;
   const policy = modelPolicy;
   if (operation === 'list') {
+    assertPackagedAsset(requireAsset('model-policy'), 'trusted model-policy');
     for (const role of policy.roles) {
       const tier = policy.tiers[role.tier];
       console.log(`${role.slug}\t${role.tier}\tclaude=${tier.claude.model}/${tier.claude.effort}\tcodex=${tier.codex.model}/${tier.codex.reasoningEffort}\tturns=${role.maxTurns}\tescalation=${role.escalationProfile}\tfallback=${role.fallbackPolicy}`);
@@ -322,13 +326,15 @@ function modelCommand(args) {
   }
   if (operation === 'benchmark') {
     if (rest.length > 0) fail('usage: argus-assets model benchmark');
+    assertPackagedAsset(requireAsset('model-policy'), 'trusted model-policy');
+    assertPackagedAsset(requireAsset('model-policy-benchmark'), 'trusted model-policy-benchmark');
     console.log(JSON.stringify(modelBenchmark, null, 2));
     return 0;
   }
   if (operation === 'route') {
     const options = parseNamedOptions(rest, new Set(['--manifest', '--agent', '--runtime', '--signal', '--dispatch-id', '--attempt']));
     requireOptions(options, ['manifest', 'agent', 'runtime', 'signal', 'dispatchId', 'attempt'], 'model route');
-    assertTrustedRuntimeAdapterAsset();
+    assertTrustedModelRoutingAssets();
     const engagementContext = loadModelEngagement(options.manifest, options.agent);
     const attempt = positiveInteger(options.attempt, '--attempt');
     const candidate = resolveModelDecision(policy, runtimeAdapters, {
@@ -351,7 +357,7 @@ function modelCommand(args) {
       '--reported-cost-usd', '--success',
     ]));
     requireOptions(options, ['manifest', 'decision', 'inputTokens', 'outputTokens', 'durationMs', 'success'], 'model telemetry');
-    assertTrustedRuntimeAdapterAsset();
+    assertTrustedModelRoutingAssets();
     const engagementContext = loadModelEngagement(options.manifest);
     const decisionPath = resolve(engagementContext.artifactRoot, options.decision);
     const decisionDirectory = resolve(engagementContext.artifactRoot, policy.routing.decisionDirectory);
@@ -416,8 +422,18 @@ function orchestrationCommand(args) {
     process.stdout.write(serialized);
   } else {
     const output = resolve(options.output);
-    if (existsSync(output)) fail(`refusing to overwrite orchestration plan: ${output}`);
-    mkdirSync(dirname(output), { recursive: true });
+    const controlRoot = resolve('ai_agents_internal');
+    const expectedOutput = join(controlRoot, 'orchestration-plan.json');
+    if (output !== expectedOutput) fail('orchestration plan output must be ai_agents_internal/orchestration-plan.json');
+    if (existsSync(controlRoot) && lstatSync(controlRoot).isSymbolicLink()) fail('orchestration plan control root cannot be a symbolic link');
+    mkdirSync(controlRoot, { recursive: true });
+    assertPhysicalWithin(realpathSync(process.cwd()), output, 'orchestration plan output');
+    if (existsSync(output)) {
+      if (lstatSync(output).isSymbolicLink() || !statSync(output).isFile()) fail('existing orchestration plan output must be a real file');
+      if (readFileSync(output, 'utf8') !== serialized) fail(`existing orchestration plan conflicts with requested projection: ${output}`);
+      console.log(`UNCHANGED  ${output}`);
+      return 0;
+    }
     writeFileSync(output, serialized, { mode: 0o600, flag: 'wx' });
     chmodSync(output, 0o600);
     console.log(`WROTE  ${output}`);
@@ -438,13 +454,11 @@ function loadModelEngagement(explicitPath, requiredAgent) {
   return { engagement, manifestPath, artifactRoot, sha256: manifestSha256(engagement) };
 }
 
-function assertTrustedRuntimeAdapterAsset() {
-  const asset = requireAsset('runtime-adapters');
-  const path = assetPath(asset);
-  const stats = treeStats(path);
-  if (stats.files !== asset.files || stats.bytes !== asset.bytes || stats.sha256 !== asset.sha256) {
-    fail('trusted runtime adapter snapshot differs from the packaged asset manifest');
+function assertTrustedModelRoutingAssets() {
+  for (const id of ['model-policy', 'runtime-adapters', 'runtime-schemas']) {
+    assertPackagedAsset(requireAsset(id), `trusted ${id}`);
   }
+  assertSchemaDocument(validateModelPolicySchema, modelPolicy, 'model policy');
   assertSchemaDocument(validateRuntimeAdapters, runtimeAdapters, 'runtime adapter snapshot');
 }
 
@@ -958,16 +972,91 @@ function verifyRuntimeAssets() {
   if (pluginBytes > manifest.budgets.installedPluginBytes) {
     throw new Error(`installed plugin budget exceeded: ${pluginBytes} > ${manifest.budgets.installedPluginBytes}`);
   }
-  if (!existsSync(INVENTORY_PATH)) throw new Error('missing runtime-reference-inventory.json');
-  const inventory = readJson(INVENTORY_PATH);
-  if (inventory.agentsScanned !== 27) throw new Error(`runtime inventory covers ${inventory.agentsScanned} agents; expected 27`);
+  loadVerifiedRuntimeInventory();
   return { assets: manifest.assets.length, assetBytes, pluginBytes };
 }
 
+function loadVerifiedRuntimeInventory() {
+  if (!existsSync(INVENTORY_PATH)) throw new Error('missing runtime-reference-inventory.json');
+  const buffer = readFileSync(INVENTORY_PATH);
+  const metadata = manifest.inventory;
+  if (!metadata || metadata.path !== 'runtime-reference-inventory.json' || metadata.schemaVersion !== 2) {
+    throw new Error('runtime inventory metadata is missing or invalid');
+  }
+  const digest = createHash('sha256').update(buffer).digest('hex');
+  if (metadata.bytes !== buffer.length || metadata.sha256 !== digest) {
+    throw new Error('runtime inventory differs from the packaged manifest');
+  }
+  let inventory;
+  try {
+    inventory = JSON.parse(buffer.toString('utf8'));
+  } catch (error) {
+    throw new Error(`cannot parse runtime inventory: ${error.message}`);
+  }
+  const counts = [
+    ['agentsScanned', 27],
+    ['skillsScanned', 7],
+    ['entrypointsScanned', 1],
+  ];
+  for (const [field, expected] of counts) {
+    if (inventory[field] !== expected) throw new Error(`runtime inventory ${field} is ${inventory[field]}; expected ${expected}`);
+  }
+  if (inventory.schemaVersion !== 2 || inventory.generatedFrom !== 'all packaged Argus agents, skills, entrypoints, capability declarations, runtime imports, hooks, CLI commands, and template compositions') {
+    throw new Error('runtime inventory v2 identity is invalid');
+  }
+  for (const field of ['runtimeFilesScanned', 'runtimeImportsScanned', 'hooksScanned']) {
+    if (!Number.isInteger(inventory[field]) || inventory[field] < 1) {
+      throw new Error(`runtime inventory ${field} must be a positive integer`);
+    }
+  }
+  for (const field of [
+    'unconsumedAssets',
+    'unknownAssetReferences',
+    'unknownProfileReferences',
+    'unownedPluginReferences',
+    'unownedRuntimeReferences',
+    'unownedSkills',
+  ]) {
+    if (!Array.isArray(inventory[field]) || inventory[field].length !== 0) {
+      throw new Error(`runtime inventory ${field} must be an empty array`);
+    }
+  }
+  for (const field of ['pluginAssetReferences', 'targetFileReferences', 'commandReferences']) {
+    if (!Array.isArray(inventory[field]) || inventory[field].some((record) =>
+      !nonEmptyString(record?.value) || !Array.isArray(record.consumers) || record.consumers.length === 0 ||
+      record.consumers.some((consumer) => !nonEmptyString(consumer)))) {
+      throw new Error(`runtime inventory ${field} is malformed`);
+    }
+  }
+  if (!Array.isArray(inventory.assetConsumers) || inventory.assetConsumers.length !== manifest.assets.length) {
+    throw new Error('runtime inventory asset consumer count differs from the manifest');
+  }
+  const expectedAssets = new Map(manifest.assets.map((asset) => [asset.id, asset.destination]));
+  const seenAssets = new Set();
+  for (const record of inventory.assetConsumers) {
+    if (!expectedAssets.has(record?.assetId) || expectedAssets.get(record.assetId) !== record.destination ||
+        seenAssets.has(record.assetId) || !Array.isArray(record.consumers) || record.consumers.length === 0) {
+      throw new Error(`runtime inventory has an invalid asset consumer record: ${record?.assetId ?? '(missing)'}`);
+    }
+    seenAssets.add(record.assetId);
+  }
+  const coreReference = inventory.pluginAssetReferences.find((record) =>
+    record.value === 'skills/orchestration-core/SKILL.md');
+  if (!coreReference?.consumers.includes('/argus:run')) {
+    throw new Error('runtime inventory does not bind /argus:run to orchestration-core');
+  }
+  return inventory;
+}
+
 async function preflight(argv) {
-  assertTrustedRuntimeAdapterAsset();
+  assertTrustedModelRoutingAssets();
   const options = parsePreflightOptions(argv);
-  const inventory = readJson(INVENTORY_PATH);
+  let inventory;
+  try {
+    inventory = loadVerifiedRuntimeInventory();
+  } catch (error) {
+    fail(error.message);
+  }
   const profile = options.profile ? readJson(resolve(options.profile)) : {};
   const mode = options.mode ?? 'A';
   if (!['A', 'B', 'C', 'D'].includes(mode)) fail('preflight --mode must be A, B, C, or D');
@@ -1550,39 +1639,96 @@ function nonEmptyString(value) {
 }
 
 function copyTemplate(runtime, destination) {
+  const entries = prepareTemplateComposition(runtime);
+  if (!destination) fail('copy-template requires an empty destination path');
+  const target = resolve(destination);
+  try {
+    inspectEmptyDestination(target);
+    writeTemplateEntries(entries, target);
+  } catch (error) {
+    fail(error.message);
+  }
+  console.log(`COPIED  ${runtime} template -> ${target}`);
+}
+
+function prepareTemplateComposition(runtime) {
   const composition = manifest.templateCompositions?.[runtime];
   if (!composition) fail('copy-template runtime must be typescript, java, or python');
-  if (!destination) fail('copy-template requires an empty destination path');
   const layers = [requireAsset(composition.commonAsset), requireAsset(composition.runtimeAsset)];
   const entries = validateTemplateLayers(runtime, layers);
   for (const asset of layers) assertPackagedAsset(asset, `template layer ${asset.id}`);
-  const target = resolve(destination);
-  assertEmptyDestination(target);
+  return entries;
+}
+
+function writeTemplateEntries(entries, target) {
   mkdirSync(target, { recursive: true });
   if (lstatSync(target).isSymbolicLink() || !lstatSync(target).isDirectory()) {
-    fail(`template destination must be a real directory: ${target}`);
+    throw new Error(`template destination must be a real directory: ${target}`);
   }
   for (const entry of entries.filter((item) => item.type === 'directory')) {
     const output = resolve(target, entry.relativePath);
-    if (!isWithin(target, output)) fail(`template output escapes destination: ${entry.relativePath}`);
+    if (!isWithin(target, output)) throw new Error(`template output escapes destination: ${entry.relativePath}`);
     if (!existsSync(output)) mkdirSync(output);
     if (lstatSync(output).isSymbolicLink() || !lstatSync(output).isDirectory()) {
-      fail(`template output directory is unsafe: ${entry.relativePath}`);
+      throw new Error(`template output directory is unsafe: ${entry.relativePath}`);
     }
     chmodSync(output, entry.mode);
   }
   for (const entry of entries.filter((item) => item.type === 'file')) {
     const output = resolve(target, entry.relativePath);
-    if (!isWithin(target, output)) fail(`template output escapes destination: ${entry.relativePath}`);
-    if (existsSync(output)) fail(`refusing to overwrite composed template file: ${entry.relativePath}`);
+    if (!isWithin(target, output)) throw new Error(`template output escapes destination: ${entry.relativePath}`);
+    if (existsSync(output)) throw new Error(`refusing to overwrite composed template file: ${entry.relativePath}`);
     const parent = dirname(output);
     if (lstatSync(parent).isSymbolicLink() || !lstatSync(parent).isDirectory()) {
-      fail(`template output parent is unsafe: ${entry.relativePath}`);
+      throw new Error(`template output parent is unsafe: ${entry.relativePath}`);
     }
     copyFileSync(entry.source, output, constants.COPYFILE_EXCL);
     chmodSync(output, entry.mode);
   }
-  console.log(`COPIED  ${runtime} template -> ${target}`);
+}
+
+function scaffoldTemplateAtomically(selection, destination, entries) {
+  const target = resolve(destination);
+  const initial = inspectEmptyDestination(target);
+  const parent = dirname(target);
+  mkdirSync(parent, { recursive: true });
+  const temporary = mkdtempSync(join(parent, `.${basename(target)}.argus-scaffold-`));
+  let published = false;
+  try {
+    chmodSync(temporary, 0o700);
+    writeTemplateEntries(entries, temporary);
+    materializeTemplateLayout(temporary, selection);
+    const record = resolve(temporary, 'ai_agents_internal', 'template-selection.json');
+    mkdirSync(dirname(record), { recursive: true });
+    writeFileSync(record, stableTemplateJson(selection), { mode: 0o600, flag: 'wx' });
+    chmodSync(record, 0o600);
+    publishScaffold(temporary, target, initial);
+    published = true;
+  } finally {
+    if (!published) rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+function publishScaffold(temporary, target, initial) {
+  const current = inspectEmptyDestination(target);
+  if (current.existed !== initial.existed) throw new Error('template destination changed while scaffold was prepared');
+  if (initial.existed && current.mode !== initial.mode) throw new Error('template destination mode changed while scaffold was prepared');
+  const finalMode = initial.existed ? initial.mode : (0o777 & ~process.umask());
+  chmodSync(temporary, finalMode);
+  if (!initial.existed) {
+    renameSync(temporary, target);
+    return;
+  }
+  rmdirSync(target);
+  try {
+    renameSync(temporary, target);
+  } catch (error) {
+    if (!existsSync(target)) {
+      mkdirSync(target, { mode: initial.mode });
+      chmodSync(target, initial.mode);
+    }
+    throw error;
+  }
 }
 
 function validateTemplateLayers(runtime, layers) {
@@ -1713,11 +1859,13 @@ function assetPath(asset, child = '') {
   return path;
 }
 
-function assertEmptyDestination(path) {
-  if (!existsSync(path)) return;
-  if (lstatSync(path).isSymbolicLink()) fail(`destination cannot be a symbolic link: ${path}`);
-  if (!lstatSync(path).isDirectory()) fail(`destination is not a directory: ${path}`);
-  if (readdirSync(path).length > 0) fail(`refusing to copy into non-empty destination: ${path}`);
+function inspectEmptyDestination(path) {
+  if (!existsSync(path)) return { existed: false, mode: null };
+  const info = lstatSync(path);
+  if (info.isSymbolicLink()) throw new Error(`destination cannot be a symbolic link: ${path}`);
+  if (!info.isDirectory()) throw new Error(`destination is not a directory: ${path}`);
+  if (readdirSync(path).length > 0) throw new Error(`refusing to copy into non-empty destination: ${path}`);
+  return { existed: true, mode: info.mode & 0o777 };
 }
 
 function treeStats(path) {

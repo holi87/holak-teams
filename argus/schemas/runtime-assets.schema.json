@@ -10,6 +10,7 @@
     "schemaVersion": { "const": 1 },
     "generated": { "type": "boolean" },
     "generatedFrom": { "type": "string" },
+    "inventory": { "type": "object", "required": ["path", "schemaVersion", "bytes", "sha256"] },
     "budgets": {
       "type": "object",
       "additionalProperties": false,
