@@ -32,6 +32,7 @@ for (const profile of Object.keys(matrix.doctrineProfiles)) {
 
 assert(files.length === 27, `expected 27 Claude agents, found ${files.length}`);
 assert(codexFiles.length === 27, `expected 27 Codex TOMLs, found ${codexFiles.length}`);
+assertSharedExecutionEnvelope(sourceSkills.get('qa-core'));
 
 const agents = new Map();
 const agentWords = {};
@@ -81,11 +82,16 @@ for (const file of files) {
   assert(!body.includes('qa-doctrine'), `${slug}: legacy qa-doctrine reference remains`);
   if (slug === 'odysseus') {
     assert(body.includes('<!-- MODEL_CONTROLLER_START -->'), 'odysseus: model-controller block missing');
+    assert(body.includes('Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`'), 'odysseus: local Mode A/B strategy binding missing');
     assert(count <= budget.budgets.maxOdysseusAgentWords, `odysseus: ${count} words exceeds thin-shell budget`);
   } else {
     boundedWorkers += 1;
     assert(body.includes('<!-- MODEL_ESCALATION_START -->'), `${slug}: neutral model-escalation block missing`);
-    assert(body.includes('"kind": "MODEL_ESCALATION_REQUEST"'), `${slug}: exact escalation envelope missing`);
+    assert(body.includes(`Agent binding: \`${slug}\``), `${slug}: escalation agent binding missing`);
+    assert(body.includes('Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`'), `${slug}: local Mode A/B strategy binding missing`);
+    assert(body.includes('Authorization state follows only the manifest'), `${slug}: local authorization-result binding missing`);
+    assert(body.includes('Structured results include every funded surface'), `${slug}: local funded-surface result binding missing`);
+    assert(body.includes('use the exact shared `MODEL_ESCALATION_REQUEST` envelope'), `${slug}: shared escalation envelope binding missing`);
     assert(!/\b(?:opus|sonnet|haiku|sol|terra|luna)\b/i.test(body), `${slug}: provider model token leaked into worker instructions`);
     assert(!/\bCodex\b/.test(body), `${slug}: opposite runtime leaked into worker instructions`);
     assert(!body.includes('argus-assets model route'), `${slug}: worker can invoke model routing`);
@@ -155,6 +161,7 @@ for (const requirement of comparison.representativeEngagement.requirements) {
   assert(source, `${requirement.id}: unknown source ${requirement.source}`);
   for (const marker of requirement.markers) assert(source.toLowerCase().includes(marker.toLowerCase()), `${requirement.id}: missing ${JSON.stringify(marker)} in ${requirement.source}`);
 }
+assertAdversarialExecutionCases(comparison, sourceSkills.get('qa-core'));
 
 console.log(`PASS  Argus Claude prompts: ${totalWords} raw / ${totalEffectiveWords} effective words, max role ${Math.max(...Object.values(agentWords))}`);
 console.log(`PASS  Argus Codex prompts: ${codexCharacters} chars / ${codexEstimatedTokens} estimated tokens, reduction ${codexReduction}`);
@@ -198,6 +205,36 @@ function assertProfileAssignments(capabilityMatrix, counts) {
   for (const catalog of ['atalanta', 'proteus', 'metis']) {
     const owners = capabilityMatrix.agents.filter((agent) => agent.techniqueCatalogs.includes(catalog)).map((agent) => agent.slug);
     assert(equal(owners, [catalog]), `${catalog}: technique catalog assignment drifted`);
+  }
+}
+
+function assertSharedExecutionEnvelope(qaCore) {
+  assert(qaCore, 'qa-core profile missing');
+  const normalized = qaCore.replace(/\s+/g, ' ');
+  for (const marker of [
+    'controller-selected primary mode',
+    'immutable execution input',
+    'Never infer, substitute, broaden, or narrow the selected mode',
+    '`A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`',
+    'Validate before returning and repair within the same attempt',
+    'never rely on a retry to repair the first response',
+    '"schema": "argus/model-escalation-request@1"',
+    '"kind": "MODEL_ESCALATION_REQUEST"',
+    '"agent": "bound-agent-slug"',
+    'continue the task after returning `MODEL_ESCALATION_REQUEST`',
+  ]) assert(normalized.includes(marker), `qa-core shared execution envelope missing: ${marker}`);
+}
+
+function assertAdversarialExecutionCases(contract, qaCore) {
+  const cases = contract.adversarialExecutionCases ?? [];
+  assert(equal(cases.map((item) => item.selectedMode).sort(), ['A', 'B']), 'isolated Mode A/B preservation cases are missing');
+  for (const item of cases) {
+    assert(item.selectedMode === item.expectedMode, `${item.id}: selected mode is not preserved`);
+    assert(item.distractorStrategy !== item.expectedStrategy, `${item.id}: distractor does not oppose the expected strategy`);
+  }
+  const normalized = qaCore.replace(/\s+/g, ' ');
+  for (const marker of contract.firstAttemptStructuredOutput?.requiredBehavior ?? []) {
+    assert(normalized.toLowerCase().includes(marker.toLowerCase()), `first-attempt structured-output behavior missing: ${marker}`);
   }
 }
 

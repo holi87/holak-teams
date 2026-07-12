@@ -60,7 +60,7 @@
     "adapterId": "codex-custom-agent@1",
     "modelSource": "model-policy",
     "sandboxPolicy": "read-only when the capability contract has no Write tool; workspace-write otherwise",
-    "doctrinePolicy": "embed only capability-selected doctrine profiles and reviewed technique catalogs at generation time; never read catalogs at runtime",
+    "doctrinePolicy": "embed only capability-selected doctrine profiles; load hash-bound technique catalogs lazily after surface inventory, with full-catalog fallback",
     "toolPolicy": "require contract-equivalent runtime capabilities and return CAPABILITY_GAP when an assigned capability is unavailable",
     "capabilityAttestation": {
       "schema": "argus/model-runtime-attestation@1",

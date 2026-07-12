@@ -95,26 +95,13 @@ Resilience-lane STRUCTURAL signatures, value-AGNOSTIC: DISCOVER dependencies, wr
 - **Cross-cutting detection rule (all four).** Each needs the fault INJECTED and then RESTORED with health re-verified, the persisted EFFECT (not the HTTP status) read as the oracle, and the precondition arranged through Atlas's data factory when the harness exists (Modes A/C) — in harness-less modes, self-arranged via `curl` with your own fresh accounts, the arrangement commands recorded in the bug repro — deterministic, idempotent, torn down either way. Label every constant (timeout value, burst size, retry count) with its derived basis so the RED is judge-defensible not an invented SLA. Reconcile coverage-vs-inventory per signature in `RESILIENCE-REPORT.md`; a signature you could not construct (dependency not faultable from the seam, write path unreachable) = NAMED residual risk to Odysseus, never a silent "clean." And the app is left in its baseline state — every restore run + verified.
 
 <!-- MODEL_ESCALATION_START -->
-## Escalation boundary
+## Execution and escalation binding
 
-- Maximum turns: `48`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
-- On a declared signal, persist a checkpoint bound to the active allocation, dispatch ID, and attempt. Fill this envelope with current IDs, next attempt, signal, and returned path; return it, then stop:
-
-```json
-{
-  "schema": "argus/model-escalation-request@1",
-  "kind": "MODEL_ESCALATION_REQUEST",
-  "engagementId": "engagement-id",
-  "dispatchId": "dispatch-id",
-  "attempt": 2,
-  "agent": "tyche",
-  "signal": "turn-limit",
-  "checkpointRef": "ai_agents_internal/checkpoints/tyche/00000001.json",
-  "resumable": true
-}
-```
-
-Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+- Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
+- Authorization state follows only the manifest; an explicit deny never becomes allow.
+- Structured results include every funded surface, including passing observations.
+- Agent binding: `tyche`. Maximum turns: `48`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `tyche`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract

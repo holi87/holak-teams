@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 5924,
-      "sha256": "0fa9967cdaf52ce2a9b9b829074e658d6b1ae063c239f9a83d883c351733b3f2"
+      "bytes": 5528,
+      "sha256": "27b4e5407b5c88cb681359d8b6f1d69ca6505a7eac669bb0c5f97aac881d88f6"
     },
     {
       "id": "qa-browser-skill",
@@ -164,8 +164,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 37,
-      "bytes": 116453,
-      "sha256": "e5512e0dac79506f9fae755959ca303686cc2204909144ab141dc4b162a98e56"
+      "bytes": 116617,
+      "sha256": "381cf0d47ea1e661f6bde4e482ea4916b100d994be1c20e97a868c7e16f98dda"
     },
     {
       "id": "capability-matrix",
@@ -173,8 +173,17 @@
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
-      "bytes": 16988,
-      "sha256": "28d0bbd5ab5d96d76226f6e970c46ee173f439449e3cca58d86ddc590920be18"
+      "bytes": 17357,
+      "sha256": "f288f6d39015caad39abde8513f47fbedda5bc03b2a9c6fd7125f6e7ae3f6aa9"
+    },
+    {
+      "id": "technique-catalogs-bundle",
+      "kind": "capabilities",
+      "source": "argus/technique-catalogs.bundle.b64",
+      "destination": "capabilities/technique-catalogs.bundle.b64",
+      "files": 1,
+      "bytes": 9689,
+      "sha256": "1d7216905a455505ba789af14a84380d4b473b38ee8920e2895dbd882238dd12"
     },
     {
       "id": "orchestration-plan",
@@ -200,8 +209,8 @@
       "source": "argus/runtime-adapters.json",
       "destination": "capabilities/runtime-adapters.json",
       "files": 1,
-      "bytes": 4857,
-      "sha256": "1296a862549c7e04f59a90f643c87c2895eecc6df0fd9e428596bae12f24a4ed"
+      "bytes": 4869,
+      "sha256": "b63394cd2032e832d2fe750d79023f5bceea2802887e0bbc07b35fe7443dd19f"
     },
     {
       "id": "template-policy",
@@ -279,7 +288,7 @@
   "buildOnly": [
     {
       "source": "argus/runtime/technique-catalogs.mjs",
-      "reason": "Technique catalogs are validated and embedded by the role generator; installed agents never read them."
+      "reason": "Full canonical catalog semantics are validated at build time; the installed selector reads only the hash-bound compressed bundle."
     },
     {
       "source": "argus/schemas/prompt-budgets.schema.json",
@@ -299,7 +308,7 @@
     },
     {
       "source": "argus/schemas/technique-catalog.schema.json",
-      "reason": "Technique catalogs are build-time generator inputs and are embedded into effective prompts."
+      "reason": "Canonical catalogs are build-time inputs; the installed selector verifies and lazily expands their compressed bundle."
     },
     {
       "source": "argus/schemas/capability-matrix.schema.json",
@@ -345,7 +354,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 53303,
-    "sha256": "7c730ed77bcf06bc635554ef5d7fa32c5307a3a0747d28a9e804c268cb67b8c6"
+    "bytes": 54037,
+    "sha256": "060a105974b3d705c8088335e586be872ee2c2b9280dc787eafe67d6d0fd7b81"
   }
 }

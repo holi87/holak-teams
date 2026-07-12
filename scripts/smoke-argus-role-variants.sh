@@ -98,11 +98,12 @@ for path in files:
         assert "Claude" not in instructions, f"{slug}: opposite runtime leaked into active instructions"
         assert "argus-assets model route" not in instructions, f"{slug}: worker can invoke model routing"
         assert "argus-assets model telemetry" not in instructions, f"{slug}: worker can invoke model telemetry"
-        assert "MODEL_ESCALATION_REQUEST" in instructions, f"{slug}: worker escalation envelope missing"
-        sample = re.search(r'"signal": "([^"]+)"', instructions)
+        assert '"kind": "MODEL_ESCALATION_REQUEST"' in instructions, f"{slug}: shared worker escalation envelope missing"
+        binding = re.search(r'<!-- MODEL_ESCALATION_START -->(.*?)<!-- MODEL_ESCALATION_END -->', instructions, re.DOTALL)
+        assert binding and f"Agent binding: `{slug}`" in binding.group(1), f"{slug}: worker escalation binding missing"
         profile = model_roles[slug]["escalationProfile"]
-        assert sample and sample.group(1) in model_policy["escalationProfiles"][profile], \
-            f"{slug}: sample escalation signal is not allowed by {profile}"
+        declared = binding.group(1).split("Declared signals: ", 1)[1].split(".", 1)[0].split(", ")
+        assert declared == model_policy["escalationProfiles"][profile], f"{slug}: declared escalation signals differ from {profile}"
     else:
         assert "argus-assets model route --manifest" in instructions, "odysseus: capability-bound route command missing"
         assert "argus-assets model telemetry --manifest" in instructions, "odysseus: decision-bound telemetry command missing"

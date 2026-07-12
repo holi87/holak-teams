@@ -2,12 +2,36 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://holak-teams.local/argus/prompt-engagement-contract.schema.json",
   "type": "object",
-  "required": ["schemaVersion", "baseline", "representativeEngagement"],
+  "required": ["schemaVersion", "baseline", "adversarialExecutionCases", "firstAttemptStructuredOutput", "representativeEngagement"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "baseline": {
       "type": "object",
       "required": ["sourceCommit", "inlineSharedSectionsPerAgent", "claudeAgentWords"]
+    },
+    "adversarialExecutionCases": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "selectedMode", "distractorStrategy", "expectedMode", "expectedStrategy"],
+        "properties": {
+          "id": { "type": "string" },
+          "selectedMode": { "enum": ["A", "B"] },
+          "distractorStrategy": { "enum": ["FULL_AUDIT", "BUG_HUNT"] },
+          "expectedMode": { "enum": ["A", "B"] },
+          "expectedStrategy": { "enum": ["FULL_AUDIT", "BUG_HUNT"] }
+        }
+      }
+    },
+    "firstAttemptStructuredOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredBehavior"],
+      "properties": {
+        "requiredBehavior": { "type": "array", "minItems": 4, "items": { "type": "string" } }
+      }
     },
     "representativeEngagement": {
       "type": "object",

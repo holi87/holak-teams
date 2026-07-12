@@ -6,6 +6,30 @@
     "inlineSharedSectionsPerAgent": true,
     "claudeAgentWords": 147474
   },
+  "adversarialExecutionCases": [
+    {
+      "id": "mode-a-defect-distractor",
+      "selectedMode": "A",
+      "distractorStrategy": "BUG_HUNT",
+      "expectedMode": "A",
+      "expectedStrategy": "FULL_AUDIT"
+    },
+    {
+      "id": "mode-b-surface-distractor",
+      "selectedMode": "B",
+      "distractorStrategy": "FULL_AUDIT",
+      "expectedMode": "B",
+      "expectedStrategy": "BUG_HUNT"
+    }
+  ],
+  "firstAttemptStructuredOutput": {
+    "requiredBehavior": [
+      "exact key names",
+      "value types",
+      "Validate before returning and repair within the same attempt",
+      "never rely on a retry to repair the first response"
+    ]
+  },
   "representativeEngagement": {
     "mode": "A",
     "description": "Full-stack black-box engagement from discovery through final reporting",
@@ -25,6 +49,8 @@
       { "id": "oracle-honesty", "source": "qa-framework-runner", "markers": ["RED on the faulty target", "Never green-encode", "truthful exit"] },
       { "id": "artifact-language", "source": "qa-core", "markers": ["Every durable artifact", "commit message", "English"] },
       { "id": "event-progress", "source": "qa-core", "markers": ["event-driven", "timer-based chatter", "blockers"] },
+      { "id": "immutable-mode", "source": "qa-core", "markers": ["controller-selected primary mode", "Copy it exactly", "A=FULL_AUDIT", "B=BUG_HUNT", "Never infer, substitute, broaden", "protocol error"] },
+      { "id": "first-attempt-schema", "source": "qa-core", "markers": ["exact key names", "value types", "repair within the same attempt", "never rely on a retry"] },
       { "id": "capability-template-selection", "source": "qa-framework-runner", "markers": ["Detect the target language", "Adapt a healthy existing suite", "Scaffold only"] },
       { "id": "shared-template-semantics", "source": "qa-framework-runner", "markers": ["defect-evidence", "candidate-regression", "owner, reason, evidence, expiry"] }
     ]

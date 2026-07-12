@@ -126,6 +126,12 @@
       "destination": "capabilities/capability-matrix.json"
     },
     {
+      "id": "technique-catalogs-bundle",
+      "kind": "capabilities",
+      "source": "argus/technique-catalogs.bundle.b64",
+      "destination": "capabilities/technique-catalogs.bundle.b64"
+    },
+    {
       "id": "orchestration-plan",
       "kind": "capabilities",
       "source": "argus/orchestration-plan.json",
@@ -195,7 +201,7 @@
   "buildOnly": [
     {
       "source": "argus/runtime/technique-catalogs.mjs",
-      "reason": "Technique catalogs are validated and embedded by the role generator; installed agents never read them."
+      "reason": "Full canonical catalog semantics are validated at build time; the installed selector reads only the hash-bound compressed bundle."
     },
     {
       "source": "argus/schemas/prompt-budgets.schema.json",
@@ -215,7 +221,7 @@
     },
     {
       "source": "argus/schemas/technique-catalog.schema.json",
-      "reason": "Technique catalogs are build-time generator inputs and are embedded into effective prompts."
+      "reason": "Canonical catalogs are build-time inputs; the installed selector verifies and lazily expands their compressed bundle."
     },
     {
       "source": "argus/schemas/capability-matrix.schema.json",

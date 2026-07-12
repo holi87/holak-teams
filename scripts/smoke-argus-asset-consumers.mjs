@@ -135,6 +135,7 @@ function cleanFixture() {
     ['runtime-schemas', 'schemas', 'schemas'],
     ['orchestration-plan', 'capabilities', 'capabilities/orchestration-plan.json'],
     ['capability-matrix', 'capabilities', 'capabilities/capability-matrix.json'],
+    ['technique-bundle', 'capabilities', 'capabilities/technique-catalogs.bundle.b64'],
     ['raci-matrix', 'capabilities', 'references/raci.json'],
     ['runtime-library', 'runtime', 'lib'],
     ['authorization-policies', 'policies', 'policies'],
@@ -156,7 +157,7 @@ function cleanFixture() {
     capabilityMatrix: {
       toolProfiles: { standard: { tools: [] } },
       doctrineProfiles: { core: { requiredAsset: 'core-skill' } },
-      techniqueCatalogs: { catalog: { embedded: true } },
+      techniqueCatalogs: { catalog: { requiredAsset: 'technique-bundle' } },
       orchestration: { requiredAssets: ['payload'] },
       agents: [{
         slug: 'agent-one',
@@ -207,6 +208,7 @@ function copyTemplate() {
 }
 function printPath(id) { requireAsset(id); }
 function usePayload() { requireAsset('payload'); }
+function techniqueCommand() { requireAsset('technique-bundle'); }
 function requireAsset(id) { return id; }
 `,
     runtimeFiles: [{

@@ -3,8 +3,8 @@ schema: argus/codex-provenance@1
 slug: nike
 display_name: Nike
 runtime_config: argus/codex/nike.toml
-runtime_config_sha256: 91217ca9c4cb024ae2faefbb1d4836d1fb3ef98e374b5985a45709263db93323
-developer_instructions_sha256: c5d3ba636a4ca2336aba73008b27b80625f3751f2d0fb76992cae067c13e5f57
+runtime_config_sha256: 079ec15b32c1c5104c2684a79b31807c65b068ec9a5a10b70dcf38f086987062
+developer_instructions_sha256: f86fad32b1bd251c88282dc198b5d227c4b6d178b88b94b496ee2d2958ba38c4
 canonical_source: argus/roles/nike.md
 canonical_source_sha256: 28018e3881d03de12f30cf5d6a8e1d8b89804c7c49c0157e46ecb2b434ea8f32
 model: terra

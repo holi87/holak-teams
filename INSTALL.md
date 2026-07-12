@@ -29,7 +29,8 @@ uses `argus-assets model route`; sanitized usage is appended with
 `argus-assets model telemetry` under `ai_agents_internal/`.
 Those commands belong only to Odysseus and `/argus:run`. Each worker sees its own turn
 cap and declared signals, checkpoints safely, then stops with an
-`argus/model-escalation-request@1` envelope. The controller validates the envelope and
+`argus/model-escalation-request@1` envelope supplied once by the shared `qa-core` contract.
+The controller validates the envelope and
 routes a new selected decision, explicitly rebinds the active lane with `engagement
 start-attempt`, replaces the consumed lane token with the one returned by that command,
 and only then starts the retry thread; the stale attempt token is revoked and workers never
@@ -41,6 +42,12 @@ remain under `argus/`; the Claude plugin ships hash-checked runtime assets, a sh
 template layer plus one runtime-specific layer, capability-selected skills, and schemas.
 `argus/COLOR-SCHEME.md`, the legacy monolithic doctrine, and the team graphs remain
 maintainer-only.
+
+Atalanta, Proteus, and Metis load their reviewed technique catalogs only after surface
+discovery. Kalchas obtains reviewed values with `argus-assets technique scopes --role <slug>`;
+owners load them with `argus-assets technique select --role <slug> --inventory <surface-inventory.json>`.
+The hash-bound selector falls back to the complete catalog whenever scope classification is
+missing, unknown, or ambiguous.
 
 ## Claude Code — plugin marketplace (recommended)
 

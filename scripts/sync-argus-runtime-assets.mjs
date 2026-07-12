@@ -814,9 +814,18 @@ export function analyzeAssetConsumers({
       }
     }
     for (const profile of agent.techniqueCatalogs ?? []) {
-      if (!Object.hasOwn(techniqueCatalogs, profile)) {
+      const declaration = techniqueCatalogs[profile];
+      if (!declaration) {
         unknownProfileReferences.push({ consumer: agent.slug, profileType: 'technique-catalog', profile });
+        continue;
       }
+      consume(
+        declaration.requiredAsset,
+        agent.slug,
+        'agent',
+        'technique-catalog-assignment',
+        profile,
+      );
     }
     for (const profile of agent.doctrineProfiles ?? []) {
       const declaration = doctrineProfiles[profile];

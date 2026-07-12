@@ -125,26 +125,13 @@ User-facing matrices and conditional artifacts are part of completeness — reco
 Validate and cite `solution/coverage-result.json`. Report discovery completeness, risk-weighted execution per lane, assertion quality, evidence quality, and every scoped outcome separately. Report unique/duplicate/unsupported defects as outcomes with zero score contribution; never turn defect counts into a quality gate.
 
 <!-- MODEL_ESCALATION_START -->
-## Escalation boundary
+## Execution and escalation binding
 
-- Maximum turns: `40`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
-- On a declared signal, persist a checkpoint bound to the active allocation, dispatch ID, and attempt. Fill this envelope with current IDs, next attempt, signal, and returned path; return it, then stop:
-
-```json
-{
-  "schema": "argus/model-escalation-request@1",
-  "kind": "MODEL_ESCALATION_REQUEST",
-  "engagementId": "engagement-id",
-  "dispatchId": "dispatch-id",
-  "attempt": 2,
-  "agent": "kleio",
-  "signal": "turn-limit",
-  "checkpointRef": "ai_agents_internal/checkpoints/kleio/00000001.json",
-  "resumable": true
-}
-```
-
-Do not choose or override a model, downgrade execution, invoke routing or telemetry commands, or continue the task.
+- Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
+- Authorization state follows only the manifest; an explicit deny never becomes allow.
+- Structured results include every funded surface, including passing observations.
+- Agent binding: `kleio`. Maximum turns: `40`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `kleio`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract

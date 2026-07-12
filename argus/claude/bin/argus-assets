@@ -27,6 +27,7 @@ import {
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { brotliDecompressSync } from 'node:zlib';
 import {
   buildAuditEvent,
   createDefaultAuthorization,
@@ -95,6 +96,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
 const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
 const CAPABILITY_MATRIX_PATH = join(ROOT, 'capabilities', 'capability-matrix.json');
+const TECHNIQUE_BUNDLE_PATH = join(ROOT, 'capabilities', 'technique-catalogs.bundle.b64');
 const RACI_PATH = join(ROOT, 'references', 'raci.json');
 const MODEL_POLICY_PATH = join(ROOT, 'capabilities', 'model-policy.json');
 const MODEL_POLICY_SCHEMA_PATH = join(ROOT, 'schemas', 'model-policy.schema.json');
@@ -193,6 +195,9 @@ switch (command) {
   case 'template':
     process.exitCode = templateCommand(args);
     break;
+  case 'technique':
+    process.exitCode = techniqueCommand(args);
+    break;
   case 'guard':
     process.exitCode = guardCommand(args);
     break;
@@ -235,6 +240,7 @@ Usage:
   argus-assets model telemetry --manifest <engagement.json> --decision <model-decision.json> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false> [options]
   argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--artifact-root <path>] [--output <json|->]
   argus-assets template <detect|select|scaffold> [options]
+  argus-assets technique scopes|select --role <atalanta|proteus|metis> [--inventory <surface-inventory.json>]
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
   argus-assets copy-template <typescript|java|python> <empty-destination>
@@ -284,6 +290,149 @@ Capability-based templates:
 
 Templates are copied only to a new or empty directory. In ADAPT mode, copy to a
 temporary directory, diff against the target's existing harness, and merge explicitly.`);
+}
+
+function techniqueCommand(args) {
+  const [operation, ...rest] = args;
+  if (!['scopes', 'select'].includes(operation)) fail('usage: argus-assets technique scopes|select --role <atalanta|proteus|metis> [--inventory <surface-inventory.json>]');
+  const options = parseNamedOptions(rest, operation === 'scopes' ? new Set(['--role']) : new Set(['--role', '--inventory']));
+  requireOptions(options, operation === 'scopes' ? ['role'] : ['role', 'inventory'], `technique ${operation}`);
+  const declaration = matrix.techniqueCatalogs?.[options.role];
+  if (!declaration || !matrix.agents.some((agent) => agent.slug === options.role && agent.techniqueCatalogs?.includes(options.role))) {
+    fail(`technique ${operation}: ${options.role} is not a catalog-owning role`);
+  }
+
+  const document = loadTechniqueCatalog(options.role, declaration);
+  if (operation === 'scopes') {
+    process.stdout.write(`${JSON.stringify({
+      schema: 'argus/technique-scope-list@1',
+      schemaVersion: 1,
+      role: options.role,
+      catalogId: declaration.catalogId,
+      catalogSha256: declaration.sha256,
+      scopes: techniqueScopes(document).map((scope) => `${options.role}:${scope}`),
+    }, null, 2)}\n`);
+    return 0;
+  }
+
+  let inventory;
+  try { inventory = JSON.parse(readTextInput(options.inventory)); }
+  catch (error) { fail(`technique select: inventory is not valid JSON: ${error.message}`); }
+  const inventoryErrors = validateSurfaceInventory(inventory);
+  if (inventoryErrors.length) fail(`technique select: invalid surface inventory: ${inventoryErrors.join('; ')}`);
+  const invalidScopes = inventory.items.flatMap((item) => item.techniqueScopes ?? []).filter((scope) =>
+    typeof scope !== 'string' || !/^(atalanta|proteus|metis):[a-z0-9]+(?:-[a-z0-9]+)*$/.test(scope));
+  if (invalidScopes.length) fail(`technique select: invalid techniqueScopes: ${[...new Set(invalidScopes)].join(', ')}`);
+
+  const declared = [...new Set(inventory.items.flatMap((item) => item.techniqueScopes ?? [])
+    .filter((scope) => scope.startsWith(`${options.role}:`))
+    .map((scope) => scope.slice(options.role.length + 1)))].sort();
+  const selection = selectTechniqueCatalog(options.role, document, declared);
+  process.stdout.write(`${JSON.stringify({
+    schema: 'argus/technique-selection@1',
+    schemaVersion: 1,
+    role: options.role,
+    catalogId: declaration.catalogId,
+    catalogSha256: declaration.sha256,
+    inventorySchema: inventory.$schema,
+    disposition: selection.disposition,
+    reason: selection.reason,
+    declaredScopes: declared,
+    selectedIds: selection.selectedIds,
+    catalog: selection.catalog,
+  }, null, 2)}\n`);
+  return 0;
+}
+
+function loadTechniqueCatalog(role, declaration) {
+  const asset = requireAsset('technique-catalogs-bundle');
+  assertPackagedAsset(asset, 'trusted technique-catalogs-bundle');
+  let bundle;
+  try {
+    const compressed = Buffer.from(readFileSync(TECHNIQUE_BUNDLE_PATH, 'utf8').trim(), 'base64');
+    bundle = JSON.parse(brotliDecompressSync(compressed).toString('utf8'));
+  } catch (error) {
+    fail(`technique select: cannot decode trusted bundle: ${error.message}`);
+  }
+  if (bundle.schema !== 'argus/technique-catalog-bundle@1' || bundle.schemaVersion !== 1 || !plainObject(bundle.catalogs)) {
+    fail('technique select: trusted bundle envelope is invalid');
+  }
+  const record = bundle.catalogs[role];
+  if (!plainObject(record) || typeof record.source !== 'string' || typeof record.sha256 !== 'string') {
+    fail(`technique select: trusted bundle has no ${role} catalog`);
+  }
+  const digest = createHash('sha256').update(record.source).digest('hex');
+  if (digest !== record.sha256 || digest !== declaration.sha256) fail(`technique select: ${role} catalog hash mismatch`);
+  let document;
+  try { document = JSON.parse(record.source); }
+  catch (error) { fail(`technique select: ${role} catalog is not valid JSON: ${error.message}`); }
+  if (document.$schema !== 'argus/technique-catalog@1' || document.catalogId !== declaration.catalogId || document.role !== role) {
+    fail(`technique select: ${role} catalog identity mismatch`);
+  }
+  return document;
+}
+
+function selectTechniqueCatalog(role, document, declaredScopes) {
+  const full = (reason) => ({
+    disposition: 'full-fallback',
+    reason,
+    selectedIds: techniqueIds(document),
+    catalog: document,
+  });
+  if (declaredScopes.length === 0) return full('missing-role-scopes');
+
+  if (document.catalogType === 'hunter') {
+    const known = new Set(document.entries.flatMap((entry) => entry.scope));
+    const unknown = declaredScopes.filter((scope) => !known.has(scope));
+    if (unknown.length) return full(`unknown-role-scopes:${unknown.join(',')}`);
+    const selected = document.entries.filter((entry) =>
+      entry.appliesWhen === 'always' || entry.scope.some((scope) => declaredScopes.includes(scope)));
+    if (selected.length === 0) return full('empty-selection');
+    return {
+      disposition: 'selected',
+      reason: 'explicit-role-scopes',
+      selectedIds: selected.map((entry) => entry.id),
+      catalog: { ...document, entries: selected },
+    };
+  }
+
+  const sections = ['iso25010', 'journeyClasses', 'archetypes'];
+  const known = new Set(sections.flatMap((section) => document[section].map((entry) => entry.id)));
+  const unknown = declaredScopes.filter((scope) => !known.has(scope));
+  if (unknown.length) return full(`unknown-role-scopes:${unknown.join(',')}`);
+  const selected = Object.fromEntries(sections.map((section) => [
+    section,
+    document[section].filter((entry) => declaredScopes.includes(entry.id)),
+  ]));
+  const selectedIds = sections.flatMap((section) => selected[section].map((entry) => entry.id));
+  if (selectedIds.length === 0) return full('empty-selection');
+  return {
+    disposition: 'selected',
+    reason: 'explicit-role-scopes-with-universal-istqb-and-boundary-register',
+    selectedIds,
+    catalog: {
+      $schema: document.$schema,
+      schemaVersion: document.schemaVersion,
+      catalogId: document.catalogId,
+      role: document.role,
+      catalogType: document.catalogType,
+      valuePolicy: document.valuePolicy,
+      executionRule: document.executionRule,
+      ...selected,
+      istqb: document.istqb,
+      boundaryRegister: document.boundaryRegister,
+    },
+  };
+}
+
+function techniqueIds(document) {
+  if (document.catalogType === 'hunter') return document.entries.map((entry) => entry.id);
+  return [...document.iso25010, ...document.journeyClasses, ...document.archetypes].map((entry) => entry.id);
+}
+
+function techniqueScopes(document) {
+  if (document.catalogType === 'hunter') return [...new Set(document.entries.flatMap((entry) => entry.scope))].sort();
+  return [...new Set([...document.iso25010, ...document.journeyClasses, ...document.archetypes].map((entry) => entry.id))].sort();
 }
 
 function templateCommand(args) {

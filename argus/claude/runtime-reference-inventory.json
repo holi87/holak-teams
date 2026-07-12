@@ -152,12 +152,6 @@
       ]
     },
     {
-      "value": "ai_agents_internal/heartbeat/<slug>.log",
-      "consumers": [
-        "skill:qa-core"
-      ]
-    },
-    {
       "value": "ai_agents_internal/orchestration-plan.json",
       "consumers": [
         "odysseus",
@@ -1950,6 +1944,36 @@
           "kind": "orchestration",
           "mechanism": "required-asset",
           "reference": "capability-matrix"
+        }
+      ]
+    },
+    {
+      "assetId": "technique-catalogs-bundle",
+      "destination": "capabilities/technique-catalogs.bundle.b64",
+      "consumers": [
+        {
+          "consumer": "atalanta",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "atalanta"
+        },
+        {
+          "consumer": "metis",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "metis"
+        },
+        {
+          "consumer": "proteus",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "proteus"
+        },
+        {
+          "consumer": "runtime:loadTechniqueCatalog",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "technique-catalogs-bundle"
         }
       ]
     },
