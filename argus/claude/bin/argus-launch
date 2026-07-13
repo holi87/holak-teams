@@ -184,7 +184,7 @@ sandbox_exec() {
     Linux)
       command -v bwrap >/dev/null 2>&1 || fail 'bubblewrap is unavailable'
       bwrap --die-with-parent --new-session --unshare-all --share-net \
-        --ro-bind / / --bind "$artifact_root" "$artifact_root" --proc /proc \
+        --ro-bind / / --bind "$artifact_root" "$artifact_root" --dev /dev --proc /proc \
         --chdir "$workspace" "$@"
       ;;
     *) fail "unsupported OS sandbox: $(uname -s)" ;;

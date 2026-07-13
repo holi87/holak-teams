@@ -130,7 +130,7 @@ case "$(uname -s)" in
     ;;
   Linux)
     exec bwrap --die-with-parent --new-session --unshare-all --share-net \
-      --ro-bind / / --bind "$artifact_root" "$artifact_root" --proc /proc \
+      --ro-bind / / --bind "$artifact_root" "$artifact_root" --dev /dev --proc /proc \
       --chdir "$workspace" env -i "${environment[@]}" "${command[@]}"
     ;;
   *) printf 'FAIL  unsupported unit-smoke sandbox: %s\n' "$(uname -s)" >&2; exit 2 ;;

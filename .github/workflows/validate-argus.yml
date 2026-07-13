@@ -32,7 +32,8 @@ jobs:
           sudo apt-get install --yes bubblewrap
           sudo sysctl --write kernel.apparmor_restrict_unprivileged_userns=0
           bwrap --die-with-parent --new-session --unshare-all --share-net \
-            --ro-bind / / --proc /proc /bin/true
+            --ro-bind / / --dev /dev --proc /proc \
+            /bin/sh -c '/bin/true </dev/null'
 
       - name: Run the documented full release validation
         run: scripts/validate-release.sh
