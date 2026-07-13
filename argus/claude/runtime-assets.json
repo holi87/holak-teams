@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 21159,
-      "sha256": "21279a05924e98011b419b244328900fed88a218d2dbdf10f6b5f74d56d9ee6f"
+      "bytes": 21369,
+      "sha256": "10a3c3745db1c923bde1c214440686145fd16e283b06f8681defcf277fc05b36"
     },
     {
       "id": "browser-isolation",

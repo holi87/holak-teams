@@ -268,6 +268,7 @@ case "${1:-}" in
       link="$(readlink "$claude_executable")"
       case "$link" in /*) claude_executable="$link" ;; *) claude_executable="$(dirname "$claude_executable")/$link" ;; esac
     done
+    claude_executable="$(cd "$(dirname "$claude_executable")" && pwd -P)/$(basename "$claude_executable")"
     claude_executable="$(physical_file "$claude_executable" 'Claude Code CLI')"
     claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
     [ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
@@ -371,6 +372,7 @@ while [ -L "$claude_executable" ]; do
   link="$(readlink "$claude_executable")"
   case "$link" in /*) claude_executable="$link" ;; *) claude_executable="$(dirname "$claude_executable")/$link" ;; esac
 done
+claude_executable="$(cd "$(dirname "$claude_executable")" && pwd -P)/$(basename "$claude_executable")"
 claude_executable="$(physical_file "$claude_executable" 'Claude Code CLI')"
 claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
 [ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'

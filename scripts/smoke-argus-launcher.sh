@@ -8,6 +8,8 @@ CLI="$ROOT/argus/claude/bin/argus-assets"
 FIXTURE_BIN="$ROOT/scripts/fixtures/argus-launcher"
 WORK="$(mktemp -d)"
 WORK="$(cd "$WORK" && pwd -P)"
+ln -s "$FIXTURE_BIN" "$WORK/fixture-bin-parent-alias"
+FIXTURE_PATH="$WORK/fixture-bin-parent-alias"
 trap 'rm -rf "$WORK"' EXIT
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
@@ -85,7 +87,7 @@ run_authenticated_launch() {
   for environment_name in "${known_argus_environment[@]}"; do
     seeded_environment+=("$environment_name=forged-$environment_name")
   done
-  PATH="$FIXTURE_BIN:$PATH" env "${seeded_environment[@]}" "${command[@]}" >"$output" 2>"$error" &
+  PATH="$FIXTURE_PATH:$PATH" env "${seeded_environment[@]}" "${command[@]}" >"$output" 2>"$error" &
   pid=$!
   wait_for_file "$request" || { cat "$error" >&2; fail "$name launch request was not created"; }
   sign_request "$operator" "$request" "$authorization"
