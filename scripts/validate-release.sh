@@ -3,8 +3,6 @@
 
 set -euo pipefail
 
-export ARGUS_NATIVE_LAUNCH_PROOF='argus-launch/1:claude:96:os-native'
-
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 

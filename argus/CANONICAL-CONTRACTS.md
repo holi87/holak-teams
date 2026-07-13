@@ -42,6 +42,19 @@ upgrading.
 
 ## Runtime report schema registry
 
+`argus/native-launch-authorization@1` is the externally signed, five-minute maximum
+launcher request and authorization. `argus/native-launch-receipt@1` is the verifier-owned
+receipt under `ai_agents_internal/`. Both bind the engagement, target kind and identity,
+workspace, artifact root, runtime/model/effort/turn cap, launcher and Claude hashes,
+sandbox and environment policy, runtime trust key, and inherited launch-capability digest.
+The signed sandbox probe also binds its physical device, inode, owner, and `0700` mode;
+preflight requires that exact empty directory to become non-writable while the artifact root
+remains writable.
+They are runtime controls, never solution fragments. The signer owns only the signature;
+the launcher owns request coordinates, and `argus-assets launch verify` owns the receipt.
+Any field drift, stale time, revoked key, unsafe path, missing supervisor at verification,
+or absent inherited capability fails closed.
+
 `ai_agents_internal/preflight.json` is an immutable runtime report owned by Odysseus, not
 a canonical solution fragment and never an input to `engagement fragment` or `engagement
 merge`. New reports identify the actual writer schema URL

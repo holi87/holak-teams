@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 5025,
-      "sha256": "e5813fe7e0c3120d8a38406b6a19212094db14241a383bdb28744ce9450fef01"
+      "bytes": 21148,
+      "sha256": "067d04864f77f4c0c632292eaf86d1e80d31f95b3aa2e0af5a81a093a75a28f2"
     },
     {
       "id": "browser-isolation",
@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 9739,
-      "sha256": "60c2f52f58dc5cfd7a6f0b3d5cf3287ba3a5cd9babee0b28fba89619748a58e9"
+      "bytes": 10693,
+      "sha256": "9d86ce49cf3556374b416a43575a8e750efc1106031fabca8965e0835a4da43e"
     },
     {
       "id": "runner-contract",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 9295,
-      "sha256": "9fe305fe53af24cbd1ae49f62a22234a6ca6a58983ef5e03c410df3af1aae383"
+      "bytes": 9634,
+      "sha256": "e935581c22945ac5b4831de700bfd8fabf2ab4967bd2e18e3b5a0976e11d22da"
     },
     {
       "id": "qa-core-skill",
@@ -172,9 +172,9 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 31,
-      "bytes": 92696,
-      "sha256": "471e564f202dfea1112051427f993a033cf051e3732a3329bb68b79fce4795a9"
+      "files": 33,
+      "bytes": 99437,
+      "sha256": "a6bde5bc7b43db52f5a2bd054f91d8dc0267a71b2e40b9c47e611de08db8b6a3"
     },
     {
       "id": "capability-matrix",
@@ -218,8 +218,8 @@
       "source": "argus/runtime-adapters.json",
       "destination": "capabilities/runtime-adapters.json",
       "files": 1,
-      "bytes": 3940,
-      "sha256": "1737dae6e11019faba3f24b330e26088fb9fd95e554a613dc002d6ede8f6424c"
+      "bytes": 4173,
+      "sha256": "525a4699a9c06260b0a95e11b5c39a6e4c1dd50dac5e165ae35c2f79ed5d3de3"
     },
     {
       "id": "template-policy",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 8,
-      "bytes": 210059,
-      "sha256": "5508c22cf64d50aeb76c75762b8e5a851300e5c04938124388fcf2b56fa8d0b7"
+      "bytes": 211503,
+      "sha256": "b33c193e8308e09a82a0c983cca2580d555af4fbd10046fbfcf2c2156a238321"
     },
     {
       "id": "common-template",

@@ -105,6 +105,35 @@ export function verifyModelDocumentAuthentication(document, modelTrust) {
       : null;
   if (!expected) throw new Error('signed model document kind has no trusted key purpose');
   const trustKey = trust.keys[expected.slot];
+  return verifyTrustedDocumentAuthentication(document, trustKey, expected);
+}
+
+export function verifyNativeLaunchAuthorization(document, runtimeTrustKey) {
+  if (document?.kind !== 'ARGUS_NATIVE_LAUNCH_AUTHORIZATION') {
+    throw new Error('native launch authorization kind is invalid');
+  }
+  if (!validModelTrustKey(runtimeTrustKey, 'runtime-attestation')) {
+    throw new Error('native launch authorization requires a complete runtime-attestation trust key');
+  }
+  const fingerprint = modelPublicKeyFingerprint(runtimeTrustKey.publicKeyPem);
+  if (runtimeTrustKey.keyFingerprintSha256 !== fingerprint) {
+    throw new Error('native launch runtime-attestation fingerprint is invalid');
+  }
+  return verifyTrustedDocumentAuthentication(document, runtimeTrustKey, {
+    purpose: 'runtime-attestation',
+    identityField: 'issuedBy',
+  });
+}
+
+function validModelTrustKey(key, purpose) {
+  return key && typeof key === 'object' && !Array.isArray(key) && key.algorithm === 'Ed25519' && key.purpose === purpose &&
+    typeof key.keyId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(key.keyId) &&
+    typeof key.subjectId === 'string' && key.subjectId.trim().length > 0 &&
+    typeof key.publicKeyPem === 'string' && key.publicKeyPem.trim().length > 0 &&
+    typeof key.keyFingerprintSha256 === 'string' && /^[a-f0-9]{64}$/.test(key.keyFingerprintSha256);
+}
+
+function verifyTrustedDocumentAuthentication(document, trustKey, expected) {
   const authentication = document?.authentication;
   if (authentication?.algorithm !== 'Ed25519' || authentication.keyId !== trustKey.keyId ||
       authentication.purpose !== expected.purpose || authentication.keyFingerprintSha256 !== trustKey.keyFingerprintSha256) {

@@ -26,5 +26,8 @@ jobs:
       - name: Install Claude Code CLI
         run: npm install --global @anthropic-ai/claude-code @openai/codex
 
+      - name: Install native sandbox runtime
+        run: sudo apt-get update && sudo apt-get install --yes bubblewrap
+
       - name: Run the documented full release validation
         run: scripts/validate-release.sh

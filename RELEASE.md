@@ -8,7 +8,24 @@ scripts/validate-release.sh
 
 It installs lockfile dependencies, validates all plugin manifests and JSON Schemas, runs model, authorization, engagement, orchestration, runner, template, prompt, and generated-file regression suites, verifies package budgets, then installs the previous marketplace revision and updates it to the current release. A release is not ready until the complete gate passes.
 
-## Argus 3.0 breaking boundary
+## Argus 4.0 authenticated-launch boundary
+
+Argus 4 replaces the public fixed-string launch claim with a signed, short-lived,
+engagement-bound authorization and a verified receipt. The authorization covers exact
+target/workspace/artifact coordinates, launcher and Claude executable hashes, mode, model,
+effort, and native turn cap. A one-shot random capability whose digest is signed binds those
+documents to the launched process tree, so public environment injection or copied files
+cannot replay them.
+The artifact root must be physically disjoint from a local target and free of symlink or
+hard-link aliases. URL-only targets are first-class. The child starts from a documented
+environment allowlist and can write only below the artifact root.
+
+This is a major change because every launcher call now requires an engagement ID, public
+trust store, runtime key ID, immutable request path, and external authorization path. The
+release gate runs the real OS sandbox, denial/alias/environment/replay cases, URL and path
+launches, exact turn-cap fixture, direct-preflight rejection, and installed lifecycle.
+
+## Argus 3.0 retired-reader boundary
 
 Argus 3 retires compatibility code whose migration window ended in Argus 2:
 
@@ -24,7 +41,12 @@ The marketplace lifecycle smoke installs the immediately previous release, updat
 
 ## Native execution contract
 
-`argus-launch` is the only supported Claude entry point. It binds Odysseus to the reviewed `opus` / maximum-effort controller baseline, Claude's native 96-turn cap, no session persistence, cleared inherited Argus bearer variables, and an OS filesystem sandbox. Direct `/argus:run` preflight fails.
+`argus-launch` is the only supported Claude entry point. The external runtime-attestation
+signer authorizes the exact request; launch verification issues a receipt, and preflight
+also requires the inherited private launch capability. The launcher binds Odysseus to the
+reviewed `opus` / maximum-effort baseline, Claude's native 96-turn cap, no session
+persistence, a minimal environment, and an OS filesystem sandbox. Direct `/argus:run`
+preflight and authorization-file replay fail.
 
 Codex model and effort mapping remains generated and validated, but Codex dispatch is fail-closed because the installed CLI has no native hard turn cap. Signed route-attestation metadata was removed because a claim cannot create missing enforcement.
 

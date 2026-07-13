@@ -15,8 +15,15 @@ wrapper:
 
 ```bash
 argus-launch doctor
-argus-launch claude --target /absolute/target --artifact-root /absolute/artifacts --mode A
+argus-launch claude --target /absolute/target --artifact-root /absolute/artifacts --mode A \
+  --engagement-id qa-001 --trust-store /secure/model-trust.json --runtime-key-id runtime-2026 \
+  --request-output /secure/qa-001.request.json --launch-authorization /secure/qa-001.authorization.json
 ```
+
+The launcher emits one immutable request and waits for the isolated runtime-attestation
+signer described in `INSTALL.md`. The signer reviews and signs the exact request; no private
+key or generic signing service enters the launcher or agent boundary. URL-only targets are
+supported, with the artifact root as the default workspace.
 
 The main thread loads Odysseus's orchestration policy and does the rest:
 
@@ -30,7 +37,11 @@ specialists return results only to it. If the target is missing, `Agent` delegat
 denied, or the plugin agents are unavailable, the command stops with an actionable
 `ARGUS_PREFLIGHT_ERROR` and never claims that execution occurred.
 
-The launcher binds the native 96-turn cap and OS sandbox. Direct `/argus:run`,
+The signed request binds the engagement, normalized target, physically disjoint artifact
+root, workspace, launcher and Claude hashes, model, effort, mode, and native 96-turn cap.
+The launcher then passes a one-shot random inherited capability, an exact four-variable
+Argus environment, and the verified receipt into an OS sandbox whose only writable root is
+the alias-free artifact boundary. Direct `/argus:run`, copied authorization files,
 `claude --agent argus:odysseus`, and `@argus:odysseus` sessions fail preflight because they
 cannot prove that complete execution envelope.
 
@@ -87,7 +98,7 @@ specialist dispatch. Given a primary URL/path and Mode A–D, it persists
 frontmatter vocabulary, connected MCP servers, referenced host commands, packaged asset
 hashes, browser support, target reachability/features, and safe writable artifact paths.
 Reports use `schemaVersion: 2` so the model runtime and bound orchestration projection are
-explicit. Retired v1 preflight and engagement-state readers are absent in Argus 3.
+explicit. Retired v1 preflight and engagement-state readers remain absent.
 
 Every role receives one disposition: `ready`, `degraded`, `deferred`, `skipped`, or
 `blocked`. Only `ready` and `degraded` worker records may have `dispatchAllowed=true`;
@@ -124,8 +135,9 @@ target-source writes, deletes, moves, permission changes, redirections, patches,
 recognized subprocess writes. Exact operator bypasses require an approved, expiring path
 allowlist plus a secret token hash. Every denial records a redacted `GUARD-*` event and a
 command digest, never raw command content.
-The hook is lexical policy enforcement, not an OS sandbox; hard isolation of arbitrary
-target-owned executables requires a read-only mount or equivalent host control.
+The hook is lexical policy enforcement, not an OS sandbox. The supported launcher supplies
+the mandatory OS boundary: target paths are read-only, only the artifact root is writable,
+and startup rejects symbolic links or multiply linked artifact files.
 
 The default generated-test allowlist is intentionally narrow and does not broadly trust
 `src/`, `scripts/`, or root build configuration. Recon must prove a repository's actual
@@ -147,10 +159,11 @@ attempt-generation token rather than redisclosing it.
 After allocation, model routing requires the controller token; request and exactly-once
 telemetry writes require the decision-owning lane token. Codex dispatch is currently blocked
 because its CLI lacks a native hard turn cap; signed metadata cannot unlock it. Tokens are
-bearer capabilities, so keep
-them out of prompts, artifacts, logs, and shell history. The supported launcher clears
-inherited capabilities and denies process inspection on macOS or creates a private PID
-namespace on Linux.
+bearer capabilities, so keep them out of prompts, artifacts, logs, and shell history. The
+supported launcher clears all inherited `ARGUS_*` values, then passes only the trust-store
+path, authorization path, receipt path, and one-shot capability whose signed digest binds
+the launched process tree. Linux uses a private PID namespace; neither platform grants a
+writable host temp or user-config tree.
 Cross-lane profile reuse requires an explicit, bounded shared-session authorization.
 Browser/device/viewport coverage comes from target support and risk in the engagement
 manifest, and new accessibility work defaults to WCAG 2.2 AA. Kleio publishes

@@ -5,12 +5,19 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CLI="$ROOT/argus/claude/bin/argus-assets"
+REAL_CLI="$ROOT/argus/claude/bin/argus-assets"
+CLI="$ROOT/scripts/lib/argus-smoke-cli.sh"
 FIXTURES="$ROOT/scripts/fixtures/argus-preflight"
 AUTH_FIXTURES="$ROOT/scripts/fixtures/argus-authorization"
 source "$ROOT/scripts/lib/argus-smoke-model-control.sh"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+NATIVE_HOST="$(mktemp -d)"
+trap 'rm -rf "$WORK" "$NATIVE_HOST"' EXIT
+export ARGUS_SMOKE_REAL_CLI="$REAL_CLI"
+export ARGUS_SMOKE_HOST_ROOT="$NATIVE_HOST"
+export ARGUS_SMOKE_LAUNCHER="$ROOT/argus/claude/bin/argus-launch"
+export ARGUS_SMOKE_CLAUDE="$ROOT/scripts/fixtures/argus-launcher/claude"
+export ARGUS_SMOKE_PREFLIGHT_CLI="$CLI"
 
 fail() {
   printf 'FAIL  %s\n' "$*" >&2

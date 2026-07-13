@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install the immediately previous Argus release, update to the current major,
-# and prove a clean current engagement. Active pre-v3 engagements are not resumed.
+# and prove a clean current engagement. Old active engagements are not resumed.
 
 set -euo pipefail
 
@@ -63,7 +63,10 @@ CLAUDE_CONFIG_DIR="$CONFIG" claude plugin details argus@holak-teams >"$WORK/deta
 grep -Fq 'Agents (27)' "$WORK/details.txt" || fail 'updated plugin does not expose 27 agents'
 
 cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$TARGET/ai_agents_internal/authorization.json"
-"$INSTALLED/bin/argus-assets" preflight --target "$TARGET" --mode A \
+ARGUS_SMOKE_REAL_CLI="$INSTALLED/bin/argus-assets" ARGUS_SMOKE_HOST_ROOT="$WORK/native-host" \
+ARGUS_SMOKE_LAUNCHER="$INSTALLED/bin/argus-launch" \
+ARGUS_SMOKE_CLAUDE="$ROOT/scripts/fixtures/argus-launcher/claude" \
+"$ROOT/scripts/lib/argus-smoke-cli.sh" preflight --target "$TARGET" --mode A \
   --authorization "$TARGET/ai_agents_internal/authorization.json" \
   --profile "$ROOT/scripts/fixtures/argus-preflight/full.json" >/dev/null
 MANIFEST="$TARGET/ai_agents_internal/engagement.json"

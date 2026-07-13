@@ -33,21 +33,56 @@ marcus, deliver the requested increment with tests and CI.
 
 ### Start Argus
 
-Argus 3 requires its packaged launcher. A direct `/argus:run` session fails preflight because it cannot prove the native turn cap or the OS sandbox.
+Argus 4 requires its packaged authenticated launcher. A direct `/argus:run` session fails
+preflight because it lacks the signed launch authorization, verified receipt, and inherited
+one-shot OS capability.
 
 ```bash
-PLUGIN_ROOT="$HOME/.claude/plugins/cache/holak-teams/argus/3.0.0"
+PLUGIN_ROOT="$HOME/.claude/plugins/cache/holak-teams/argus/4.0.0"
 TARGET="$(cd /path/to/target && pwd -P)"
 ARTIFACT_ROOT="$(cd /path/to/artifacts && pwd -P)"
+OPERATOR_ROOT="$(cd /secure/operator && pwd -P)"
+TRUST_STORE="$(cd /secure/trust && pwd -P)/model-trust.json"
 
 "$PLUGIN_ROOT/bin/argus-launch" doctor
 "$PLUGIN_ROOT/bin/argus-launch" claude \
   --target "$TARGET" \
   --artifact-root "$ARTIFACT_ROOT" \
-  --mode A
+  --mode A \
+  --engagement-id qa-001 \
+  --trust-store "$TRUST_STORE" \
+  --runtime-key-id runtime-2026 \
+  --request-output "$OPERATOR_ROOT/qa-001.request.json" \
+  --launch-authorization "$OPERATOR_ROOT/qa-001.authorization.json"
 ```
 
-The launcher binds Odysseus to Claude `opus`, maximum effort, and the native 96-turn cap. It disables session persistence, clears inherited Argus bearer variables, and uses `sandbox-exec` on macOS or Bubblewrap on Linux. If the native turn option or OS sandbox is unavailable, launch stops.
+The launcher writes the immutable request and waits up to five minutes. In the isolated
+runtime-attestation signer, review every request field, sign the exact payload, and write
+the authorization atomically. The signer may hold the private key; the launcher,
+controller, workers, and their sandbox must not.
+
+```bash
+"$PLUGIN_ROOT/bin/argus-assets" model payload \
+  --document "$OPERATOR_ROOT/qa-001.request.json" >payload.txt
+openssl pkeyutl -sign -rawin -inkey runtime-private.pem \
+  -in payload.txt -out signature.bin
+SIGNATURE="$(openssl base64 -A -in signature.bin)"
+jq --arg signature "$SIGNATURE" \
+  '.authentication.signatureBase64 = $signature' \
+  "$OPERATOR_ROOT/qa-001.request.json" \
+  >"$OPERATOR_ROOT/qa-001.authorization.json.tmp"
+chmod 600 "$OPERATOR_ROOT/qa-001.authorization.json.tmp"
+mv "$OPERATOR_ROOT/qa-001.authorization.json.tmp" \
+  "$OPERATOR_ROOT/qa-001.authorization.json"
+rm -f payload.txt signature.bin
+```
+
+The launcher binds Odysseus to Claude `opus`, maximum effort, and the native 96-turn cap.
+It supports local paths and normalized HTTP(S) URLs, requires target and artifact roots to
+be physically disjoint, disables session persistence, starts from an environment allowlist,
+and uses `sandbox-exec` on macOS or Bubblewrap on Linux. Only the alias-free artifact root
+is writable; Claude config and temporary files stay inside it. If the reviewed Claude 2.x
+turn-cap contract or OS sandbox is unavailable, launch stops.
 
 Modes are:
 

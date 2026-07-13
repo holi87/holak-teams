@@ -1,40 +1,278 @@
 #!/usr/bin/env bash
-# Launch Argus with native turn enforcement and an OS process/filesystem sandbox.
+# Launch Argus through an authenticated, short-lived host authorization and an OS sandbox.
 
 set -euo pipefail
-PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+umask 077
+
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SOURCE" ]; do
+  SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd -P)"
+  SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+  case "$SCRIPT_SOURCE" in /*) ;; *) SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE" ;; esac
+done
+LAUNCHER_PATH="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd -P)/$(basename "$SCRIPT_SOURCE")"
+PLUGIN_ROOT="$(cd "$(dirname "$LAUNCHER_PATH")/.." && pwd -P)"
+RUNTIME_ROOT="$PLUGIN_ROOT"
+if [ ! -x "$RUNTIME_ROOT/bin/argus-assets" ] && [ -x "$PLUGIN_ROOT/claude/bin/argus-assets" ]; then
+  RUNTIME_ROOT="$PLUGIN_ROOT/claude"
+fi
+ASSETS="$RUNTIME_ROOT/bin/argus-assets"
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 2; }
+
+capability_file=''
+sandbox_probe_dir=''
+cleanup_launch_files() {
+  if [ -n "$capability_file" ] && [ -e "$capability_file" ]; then rm -f "$capability_file"; fi
+  if [ -n "$sandbox_probe_dir" ] && [ -d "$sandbox_probe_dir" ]; then rmdir "$sandbox_probe_dir" 2>/dev/null || true; fi
+}
+trap cleanup_launch_files EXIT
+
+require_host_commands() {
+  local command_name
+  for command_name in node jq openssl strings find env awk sed tr mktemp stat id; do
+    command -v "$command_name" >/dev/null 2>&1 || fail "required host command is unavailable: $command_name"
+  done
+  command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || \
+    fail 'required SHA-256 host command is unavailable'
+}
 
 usage() {
   cat <<'EOF'
 Usage:
   argus-launch doctor
-  argus-launch claude --target <absolute-path> --artifact-root <absolute-path> --mode <A|B|C|D> [--dry-run]
+  argus-launch claude --target <url-or-absolute-path> --artifact-root <absolute-path> \
+    --mode <A|B|C|D> --engagement-id <id> --trust-store <absolute-path> \
+    --runtime-key-id <id> --request-output <absolute-path> \
+    --launch-authorization <absolute-path> [--workspace <absolute-path>] \
+    [--wait-seconds <30..300>] [--dry-run]
 
-Codex execution is unavailable until its CLI exposes a native hard turn cap.
+The launcher writes an unsigned, process-bound request to --request-output, then waits for
+the isolated runtime-attestation signer to create --launch-authorization. The signer must
+sign the exact canonical payload emitted by `argus-assets model payload --document REQUEST`.
+Neither a private key nor a signing service may be available to this process or its agents.
+
+Codex execution remains unavailable until its CLI exposes a native hard turn cap.
 EOF
 }
 
+absolute_normalized() {
+  local value="$1" label="$2"
+  [ -n "$value" ] || fail "$label is required"
+  [[ "$value" = /* ]] || fail "$label must be an absolute path"
+  [ "$(dirname "$value")/$(basename "$value")" = "$value" ] || fail "$label must be normalized"
+}
+
+physical_candidate() {
+  local value="$1" cursor="$1" suffix='' parent base
+  absolute_normalized "$value" 'path'
+  while [ ! -e "$cursor" ]; do
+    base="$(basename "$cursor")"
+    suffix="/$base$suffix"
+    parent="$(dirname "$cursor")"
+    [ "$parent" != "$cursor" ] || fail "path has no existing ancestor: $value"
+    cursor="$parent"
+  done
+  [ -d "$cursor" ] || fail "nearest existing path ancestor is not a directory: $cursor"
+  [ ! -L "$cursor" ] || fail "path ancestor may not be a symbolic link: $cursor"
+  cursor="$(cd "$cursor" && pwd -P)"
+  printf '%s%s\n' "$cursor" "$suffix"
+}
+
+physical_directory() {
+  local value="$1" label="$2" physical
+  absolute_normalized "$value" "$label"
+  [ -d "$value" ] || fail "$label must be an existing directory"
+  [ ! -L "$value" ] || fail "$label may not be a symbolic link"
+  physical="$(cd "$value" && pwd -P)"
+  [ "$physical" = "$value" ] || fail "$label must use its physical normalized path: $physical"
+  printf '%s\n' "$physical"
+}
+
+physical_file() {
+  local value="$1" label="$2" physical
+  absolute_normalized "$value" "$label"
+  [ -f "$value" ] || fail "$label must be an existing regular file"
+  [ ! -L "$value" ] || fail "$label may not be a symbolic link"
+  physical="$(cd "$(dirname "$value")" && pwd -P)/$(basename "$value")"
+  [ "$physical" = "$value" ] || fail "$label must use its physical normalized path: $physical"
+  printf '%s\n' "$physical"
+}
+
+secure_owned_directory() {
+  local path="$1" label="$2" owner
+  case "$(uname -s)" in
+    Darwin) owner="$(stat -f '%u' "$path")" ;;
+    Linux) owner="$(stat -c '%u' "$path")" ;;
+    *) fail "unsupported operator directory owner check: $(uname -s)" ;;
+  esac
+  [ "$owner" = "$(id -u)" ] || fail "$label must be owned by the current user: $path"
+  [ -z "$(find "$path" -maxdepth 0 -perm -022 -print -quit)" ] || \
+    fail "$label must not be group/world writable: $path"
+}
+
+within() {
+  local root="${1%/}" candidate="${2%/}"
+  [ "$candidate" = "$root" ] || [[ "$candidate" = "$root/"* ]]
+}
+
+assert_disjoint() {
+  local left="$1" right="$2" label="$3"
+  if within "$left" "$right" || within "$right" "$left"; then fail "$label must be physically disjoint"; fi
+}
+
+verify_artifact_tree() {
+  local root="$1" alias
+  alias="$(find "$root" -type l -print -quit 2>/dev/null || true)"
+  [ -z "$alias" ] || fail "artifact root contains a symbolic link alias: $alias"
+  alias="$(find "$root" -type f -links +1 -print -quit 2>/dev/null || true)"
+  [ -z "$alias" ] || fail "artifact root contains a hard-link alias: $alias"
+}
+
 claude_supports_native_turn_cap() {
-  local output status
+  local executable="$1" identity version major minor
+  identity="$($executable --version 2>/dev/null || true)"
+  version="${identity%% *}"
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  major="${version%%.*}"
+  minor="${version#*.}"
+  minor="${minor%%.*}"
+  # The reviewed 2.1+ family carries the native cap/error markers. A new major
+  # is blocked until its machine identity and behavior are reviewed.
+  [ "$major" -eq 2 ] && [ "$minor" -ge 1 ] || return 1
+  command -v strings >/dev/null 2>&1 || return 1
+  strings "$executable" 2>/dev/null | awk '
+    index($0, "--max-turns") { option = 1 }
+    index($0, "error_max_turns") { outcome = 1 }
+    END { exit !(option && outcome) }
+  '
+}
+
+escape_sandbox_value() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '%s\n' "$value"
+}
+
+sandbox_exec() {
+  local artifact_root="$1" workspace="$2"
+  shift 2
+  case "$(uname -s)" in
+    Darwin)
+      command -v sandbox-exec >/dev/null 2>&1 || fail 'sandbox-exec is unavailable'
+      local profile escaped_artifact
+      profile="$(mktemp "$artifact_root/ai_agents_internal/tmp/argus-sandbox.XXXXXX")"
+      escaped_artifact="$(escape_sandbox_value "$artifact_root")"
+      printf '%s\n' \
+        '(version 1)' \
+        '(deny default)' \
+        '(import "system.sb")' \
+        '(allow process-exec)' \
+        '(allow process-fork)' \
+        '(allow signal)' \
+        '(allow process-info*)' \
+        '(allow network*)' \
+        '(allow sysctl-read)' \
+        '(allow file-read*)' \
+        "(allow file-write* (subpath \"$escaped_artifact\"))" >"$profile"
+      (cd "$workspace" && sandbox-exec -f "$profile" "$@")
+      local result=$?
+      rm -f "$profile"
+      return "$result"
+      ;;
+    Linux)
+      command -v bwrap >/dev/null 2>&1 || fail 'bubblewrap is unavailable'
+      bwrap --die-with-parent --new-session --unshare-all --share-net \
+        --ro-bind / / --bind "$artifact_root" "$artifact_root" --proc /proc \
+        --chdir "$workspace" "$@"
+      ;;
+    *) fail "unsupported OS sandbox: $(uname -s)" ;;
+  esac
+}
+
+sandbox_probe() {
+  local work target artifact sentinel result
+  work="$(mktemp -d)"
+  work="$(cd "$work" && pwd -P)"
+  target="$work/target"
+  artifact="$work/artifact"
+  mkdir -p "$target" "$artifact/ai_agents_internal/tmp"
+  sentinel="$target/sentinel.txt"
+  printf 'immutable\n' >"$sentinel"
+
   set +e
-  output="$(claude -p --max-turns not-an-integer '' 2>&1)"
-  status=$?
+  sandbox_exec "$artifact" "$target" env -i PATH="${PATH:-/usr/bin:/bin}" \
+    PROBE_TARGET="$target" /bin/sh -c 'printf mutation >"$PROBE_TARGET/new.txt"' >/dev/null 2>&1
+  result=$?
   set -e
-  [ "$status" -ne 0 ] && [[ "$output" != *"unknown option"* ]] && [[ "$output" != *"Unknown option"* ]]
+  [ "$result" -ne 0 ] || { rm -rf "$work"; fail 'OS sandbox allowed target file creation'; }
+  [ ! -e "$target/new.txt" ] || { rm -rf "$work"; fail 'OS sandbox created a target file'; }
+
+  set +e
+  sandbox_exec "$artifact" "$target" env -i PATH="${PATH:-/usr/bin:/bin}" \
+    PROBE_TARGET="$target" /bin/sh -c 'printf changed >"$PROBE_TARGET/sentinel.txt"' >/dev/null 2>&1
+  result=$?
+  set -e
+  [ "$result" -ne 0 ] || { rm -rf "$work"; fail 'OS sandbox allowed target file modification'; }
+  [ "$(cat "$sentinel")" = immutable ] || { rm -rf "$work"; fail 'OS sandbox changed the target sentinel'; }
+
+  set +e
+  sandbox_exec "$artifact" "$target" env -i PATH="${PATH:-/usr/bin:/bin}" \
+    PROBE_TARGET="$target" /bin/sh -c 'mv "$PROBE_TARGET/sentinel.txt" "$PROBE_TARGET/renamed.txt"' >/dev/null 2>&1
+  result=$?
+  set -e
+  [ "$result" -ne 0 ] || { rm -rf "$work"; fail 'OS sandbox allowed target file rename'; }
+  [ -f "$sentinel" ] && [ ! -e "$target/renamed.txt" ] || { rm -rf "$work"; fail 'OS sandbox renamed target content'; }
+
+  set +e
+  sandbox_exec "$artifact" "$target" env -i PATH="${PATH:-/usr/bin:/bin}" \
+    PROBE_TARGET="$target" /bin/sh -c 'rm "$PROBE_TARGET/sentinel.txt"' >/dev/null 2>&1
+  result=$?
+  set -e
+  [ "$result" -ne 0 ] || { rm -rf "$work"; fail 'OS sandbox allowed target file deletion'; }
+  [ -f "$sentinel" ] || { rm -rf "$work"; fail 'OS sandbox deleted target content'; }
+
+  sandbox_exec "$artifact" "$target" env -i PATH="${PATH:-/usr/bin:/bin}" \
+    PROBE_ARTIFACT="$artifact" /bin/sh -c 'printf allowed >"$PROBE_ARTIFACT/write.txt"'
+  [ "$(cat "$artifact/write.txt")" = allowed ] || { rm -rf "$work"; fail 'OS sandbox blocked the artifact write'; }
+
+  set +e
+  sandbox_exec "$artifact" "$target" env -i PATH="${PATH:-/usr/bin:/bin}" \
+    PROBE_TARGET="$target" PROBE_ARTIFACT="$artifact" /bin/sh -c \
+    'ln -s "$PROBE_TARGET/sentinel.txt" "$PROBE_ARTIFACT/symlink" && printf changed >"$PROBE_ARTIFACT/symlink"' >/dev/null 2>&1
+  result=$?
+  set -e
+  [ "$result" -ne 0 ] || { rm -rf "$work"; fail 'OS sandbox allowed target modification through a symbolic link'; }
+  [ "$(cat "$sentinel")" = immutable ] || { rm -rf "$work"; fail 'OS sandbox changed the target through a symbolic link'; }
+  rm -f "$artifact/symlink"
+
+  set +e
+  sandbox_exec "$artifact" "$target" env -i PATH="${PATH:-/usr/bin:/bin}" \
+    PROBE_TARGET="$target" PROBE_ARTIFACT="$artifact" /bin/sh -c \
+    'ln "$PROBE_TARGET/sentinel.txt" "$PROBE_ARTIFACT/hardlink" && printf changed >"$PROBE_ARTIFACT/hardlink"' >/dev/null 2>&1
+  result=$?
+  set -e
+  [ "$result" -ne 0 ] || { rm -rf "$work"; fail 'OS sandbox allowed target modification through a hard link'; }
+  [ "$(cat "$sentinel")" = immutable ] || { rm -rf "$work"; fail 'OS sandbox changed the target through a hard link'; }
+  rm -f "$artifact/hardlink"
+  rm -rf "$work"
 }
 
 case "${1:-}" in
   doctor)
+    require_host_commands
     command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
-    claude_supports_native_turn_cap || fail 'Claude Code does not expose native --max-turns enforcement'
-    case "$(uname -s)" in
-      Darwin) command -v sandbox-exec >/dev/null 2>&1 || fail 'sandbox-exec is unavailable' ;;
-      Linux) command -v bwrap >/dev/null 2>&1 || fail 'bubblewrap is unavailable' ;;
-      *) fail "unsupported OS sandbox: $(uname -s)" ;;
-    esac
-    printf 'PASS  Claude native turn cap and OS sandbox are available; Codex dispatch remains fail-closed\n'
+    claude_executable="$(command -v claude)"
+    while [ -L "$claude_executable" ]; do
+      link="$(readlink "$claude_executable")"
+      case "$link" in /*) claude_executable="$link" ;; *) claude_executable="$(dirname "$claude_executable")/$link" ;; esac
+    done
+    claude_executable="$(physical_file "$claude_executable" 'Claude Code CLI')"
+    claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
+    [ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
+    sandbox_probe
+    printf 'PASS  Claude matches the reviewed native max-turns/error_max_turns contract and the OS sandbox passed behavior probes; signed launch authorization is still required for enforcement\n'
     exit 0
     ;;
   claude) shift ;;
@@ -43,15 +281,31 @@ case "${1:-}" in
   *) usage; fail "unknown runtime: $1" ;;
 esac
 
+require_host_commands
+
 target=''
 artifact_root=''
+workspace=''
 mode=''
+engagement_id=''
+trust_store=''
+runtime_key_id=''
+request_output=''
+launch_authorization=''
+wait_seconds=300
 dry_run=false
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --target) [ "$#" -ge 2 ] || fail '--target requires a path'; target="$2"; shift 2 ;;
+    --target) [ "$#" -ge 2 ] || fail '--target requires a value'; target="$2"; shift 2 ;;
     --artifact-root) [ "$#" -ge 2 ] || fail '--artifact-root requires a path'; artifact_root="$2"; shift 2 ;;
+    --workspace) [ "$#" -ge 2 ] || fail '--workspace requires a path'; workspace="$2"; shift 2 ;;
     --mode) [ "$#" -ge 2 ] || fail '--mode requires a value'; mode="$(printf '%s' "$2" | tr '[:lower:]' '[:upper:]')"; shift 2 ;;
+    --engagement-id) [ "$#" -ge 2 ] || fail '--engagement-id requires a value'; engagement_id="$2"; shift 2 ;;
+    --trust-store) [ "$#" -ge 2 ] || fail '--trust-store requires a path'; trust_store="$2"; shift 2 ;;
+    --runtime-key-id) [ "$#" -ge 2 ] || fail '--runtime-key-id requires a value'; runtime_key_id="$2"; shift 2 ;;
+    --request-output) [ "$#" -ge 2 ] || fail '--request-output requires a path'; request_output="$2"; shift 2 ;;
+    --launch-authorization) [ "$#" -ge 2 ] || fail '--launch-authorization requires a path'; launch_authorization="$2"; shift 2 ;;
+    --wait-seconds) [ "$#" -ge 2 ] || fail '--wait-seconds requires a value'; wait_seconds="$2"; shift 2 ;;
     --dry-run) dry_run=true; shift ;;
     *) fail "unknown option: $1" ;;
   esac
@@ -60,56 +314,138 @@ done
 [ -n "$target" ] || fail '--target is required'
 [ -n "$artifact_root" ] || fail '--artifact-root is required'
 [[ "$mode" =~ ^[ABCD]$ ]] || fail '--mode must be A, B, C, or D'
-[[ "$target" = /* && "$artifact_root" = /* ]] || fail 'target and artifact root must be absolute paths'
-[ -d "$target" ] || fail 'target must be an existing directory'
-mkdir -p "$artifact_root"
-target="$(cd "$target" && pwd -P)"
-artifact_root="$(cd "$artifact_root" && pwd -P)"
-case "$artifact_root/" in "$target/"*) fail 'artifact root must be outside the target tree for OS-enforced target immutability' ;; esac
-case "$target/" in "$artifact_root/"*) fail 'target must be outside the artifact tree for OS-enforced target immutability' ;; esac
-command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
-claude_supports_native_turn_cap || fail 'Claude Code does not expose native --max-turns enforcement'
+[[ "$engagement_id" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$ ]] || fail '--engagement-id must be a stable identifier'
+[ -n "$runtime_key_id" ] || fail '--runtime-key-id is required'
+[[ "$wait_seconds" =~ ^[0-9]+$ ]] && [ "$wait_seconds" -ge 30 ] && [ "$wait_seconds" -le 300 ] || fail '--wait-seconds must be between 30 and 300'
+absolute_normalized "$artifact_root" 'artifact root'
+absolute_normalized "$trust_store" 'trust store'
+absolute_normalized "$request_output" 'request output'
+absolute_normalized "$launch_authorization" 'launch authorization'
+[ ! -e "$request_output" ] || fail 'request output already exists; launch requests are one-shot'
+[ ! -e "$launch_authorization" ] || fail 'launch authorization already exists; replay is forbidden'
+[ "$request_output" != "$launch_authorization" ] || fail 'request and authorization paths must differ'
 
-prompt="/argus:run target=$target artifact-root=$artifact_root mode=$mode"
-command=(claude -p --no-session-persistence --max-turns 96 --model opus --effort max --agent argus:odysseus --plugin-dir "$PLUGIN_ROOT" "$prompt")
+target_kind=path
+target_path=''
+if [[ "$target" =~ ^https?:// ]]; then
+  target_kind=url
+  command -v node >/dev/null 2>&1 || fail 'Node.js is required to normalize URL targets'
+  target="$(node -e 'const u=new URL(process.argv[1]); if(!["http:","https:"].includes(u.protocol)) process.exit(2); process.stdout.write(u.toString())' "$target")" || fail 'target URL is invalid or unsupported'
+else
+  absolute_normalized "$target" 'target'
+  target_path="$(physical_directory "$target" 'target')"
+  target="$target_path"
+fi
+
+artifact_candidate="$(physical_candidate "$artifact_root")"
+if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$artifact_candidate" 'target and artifact root'; fi
+artifact_existed=false
+[ -e "$artifact_root" ] && artifact_existed=true
+mkdir -p "$artifact_root"
+artifact_root="$(physical_directory "$artifact_root" 'artifact root')"
+if ! $artifact_existed; then chmod 700 "$artifact_root"; fi
+secure_owned_directory "$artifact_root" 'artifact root'
+if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$artifact_root" 'target and artifact root'; fi
+verify_artifact_tree "$artifact_root"
+
+if [ -z "$workspace" ]; then
+  if [ "$target_kind" = path ]; then workspace="$target_path"; else workspace="$artifact_root"; fi
+else
+  workspace="$(physical_directory "$workspace" 'workspace')"
+fi
+
+trust_store="$(physical_file "$trust_store" 'trust store')"
+assert_disjoint "$artifact_root" "$trust_store" 'artifact root and trust store'
+if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$trust_store" 'target and trust store'; fi
+for operator_path in "$request_output" "$launch_authorization"; do
+  operator_parent="$(physical_directory "$(dirname "$operator_path")" 'operator authorization directory')"
+  [ "$operator_parent" = "$(dirname "$operator_path")" ] || fail 'operator authorization directory must be physical'
+  secure_owned_directory "$operator_parent" 'operator authorization directory'
+  assert_disjoint "$artifact_root" "$operator_path" 'artifact root and operator authorization path'
+  if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$operator_path" 'target and operator authorization path'; fi
+done
+
+command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
+claude_executable="$(command -v claude)"
+while [ -L "$claude_executable" ]; do
+  link="$(readlink "$claude_executable")"
+  case "$link" in /*) claude_executable="$link" ;; *) claude_executable="$(dirname "$claude_executable")/$link" ;; esac
+done
+claude_executable="$(physical_file "$claude_executable" 'Claude Code CLI')"
+claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
+[ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
+
+mkdir -p "$artifact_root/ai_agents_internal/tmp" "$artifact_root/ai_agents_internal/claude-config"
+chmod 700 "$artifact_root/ai_agents_internal" "$artifact_root/ai_agents_internal/tmp" "$artifact_root/ai_agents_internal/claude-config"
+receipt="$artifact_root/ai_agents_internal/native-launch-receipt.json"
+sandbox_probe_dir="$(mktemp -d "$(dirname "$request_output")/.argus-sandbox-probe.XXXXXX")"
+chmod 700 "$sandbox_probe_dir"
+sandbox_probe_dir="$(physical_directory "$sandbox_probe_dir" 'sandbox probe')"
+capability_file="$(mktemp "$(dirname "$request_output")/.argus-native-capability.XXXXXX")"
+chmod 600 "$capability_file"
+openssl rand -hex 32 | tr -d '\n' >"$capability_file"
+if command -v sha256sum >/dev/null 2>&1; then
+  capability_sha256="$(sha256sum "$capability_file" | awk '{print $1}')"
+else
+  capability_sha256="$(shasum -a 256 "$capability_file" | awk '{print $1}')"
+fi
+
+"$ASSETS" launch request --target "$target" --workspace "$workspace" --artifact-root "$artifact_root" \
+  --mode "$mode" --engagement-id "$engagement_id" --launcher "$LAUNCHER_PATH" --launcher-pid "$$" \
+  --claude-executable "$claude_executable" --runtime-key-id "$runtime_key_id" --trust-store "$trust_store" \
+  --output "$request_output" --ttl-seconds "$wait_seconds" --capability-sha256 "$capability_sha256" \
+  --sandbox-probe-path "$sandbox_probe_dir"
+
+printf 'WAIT  Sign the exact payload from %s and create %s (timeout=%ss)\n' "$request_output" "$launch_authorization" "$wait_seconds" >&2
+elapsed=0
+while [ ! -f "$launch_authorization" ] && [ "$elapsed" -lt "$wait_seconds" ]; do
+  sleep 1
+  elapsed=$((elapsed + 1))
+done
+[ -f "$launch_authorization" ] || fail 'timed out waiting for isolated runtime-attestation authorization'
+launch_authorization="$(physical_file "$launch_authorization" 'launch authorization')"
+verify_artifact_tree "$artifact_root"
+"$ASSETS" launch verify --request "$request_output" --authorization "$launch_authorization" \
+  --receipt "$receipt" --trust-store "$trust_store"
+
+launch_payload="$(jq -cn \
+  --arg target "$target" --arg artifactRoot "$artifact_root" --arg mode "$mode" \
+  --arg engagementId "$engagement_id" --arg launchAuthorization "$launch_authorization" \
+  --arg launchReceipt "$receipt" --arg trustStore "$trust_store" \
+  '{target:$target,"artifact-root":$artifactRoot,mode:$mode,"engagement-id":$engagementId,"launch-authorization":$launchAuthorization,"launch-receipt":$launchReceipt,"trust-store":$trustStore}')"
+prompt="/argus:run authenticatedLaunch=$launch_payload"
+command=("$claude_executable" -p --no-session-persistence --max-turns 96 --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
 
 if $dry_run; then
-  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=96 agent=argus:odysseus mode=%s target=%s artifactRoot=%s sandbox=os-native processInspection=denied inheritedBearerCapabilities=cleared\n' \
-    "$mode" "$target" "$artifact_root"
+  rm -f "$capability_file"
+  capability_file=''
+  rmdir "$sandbox_probe_dir"
+  sandbox_probe_dir=''
+  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=96 agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@2 environment=argus-launch-allowlist@1\n' \
+    "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$(jq -r .launchId "$receipt")"
   exit 0
 fi
 
-case "$(uname -s)" in
-  Darwin)
-    command -v sandbox-exec >/dev/null 2>&1 || fail 'sandbox-exec is unavailable'
-    profile="$(mktemp -t argus-sandbox.XXXXXX)"
-    trap 'rm -f "$profile"' EXIT
-    escaped_artifact="${artifact_root//\\/\\\\}"; escaped_artifact="${escaped_artifact//\"/\\\"}"
-    escaped_home="${HOME//\\/\\\\}"; escaped_home="${escaped_home//\"/\\\"}"
-    printf '%s\n' \
-      '(version 1)' \
-      '(deny default)' \
-      '(import "system.sb")' \
-      '(allow process*)' \
-      '(deny process-info*)' \
-      '(allow network*)' \
-      '(allow sysctl-read)' \
-      '(allow file-read*)' \
-      "(allow file-write* (subpath \"$escaped_artifact\"))" \
-      "(allow file-write* (subpath \"$escaped_home/.claude\"))" \
-      '(allow file-write* (subpath "/private/tmp"))' \
-      '(allow file-write* (subpath "/tmp"))' >"$profile"
-    env -u ARGUS_ENGAGEMENT_LEASE_TOKEN -u ARGUS_ENGAGEMENT_CONTROLLER_TOKEN -u ARGUS_MODEL_SIGNING_KEY \
-      ARGUS_NATIVE_LAUNCH_PROOF='argus-launch/1:claude:96:os-native' \
-      sandbox-exec -f "$profile" "${command[@]}"
-    ;;
-  Linux)
-    command -v bwrap >/dev/null 2>&1 || fail 'bubblewrap is unavailable'
-    env -u ARGUS_ENGAGEMENT_LEASE_TOKEN -u ARGUS_ENGAGEMENT_CONTROLLER_TOKEN -u ARGUS_MODEL_SIGNING_KEY \
-      ARGUS_NATIVE_LAUNCH_PROOF='argus-launch/1:claude:96:os-native' \
-      bwrap --die-with-parent --new-session --unshare-all --share-net \
-        --ro-bind / / --bind "$artifact_root" "$artifact_root" --tmpfs /tmp --chdir "$target" \
-        "${command[@]}"
-    ;;
-  *) fail "unsupported OS sandbox: $(uname -s)" ;;
-esac
+capability="$(tr -d '\n' <"$capability_file")"
+rm -f "$capability_file"
+capability_file=''
+
+child_env=(
+  "HOME=${HOME:-}"
+  "PATH=${PATH:-/usr/bin:/bin}"
+  "TMPDIR=$artifact_root/ai_agents_internal/tmp"
+  "CLAUDE_CONFIG_DIR=$artifact_root/ai_agents_internal/claude-config"
+  "ARGUS_MODEL_TRUST_STORE=$trust_store"
+  "ARGUS_NATIVE_LAUNCH_AUTHORIZATION=$launch_authorization"
+  "ARGUS_NATIVE_LAUNCH_RECEIPT=$receipt"
+  "ARGUS_NATIVE_LAUNCH_CAPABILITY=$capability"
+)
+for name in USER LOGNAME SHELL LANG LC_ALL LC_CTYPE TERM NO_COLOR FORCE_COLOR ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL HTTPS_PROXY HTTP_PROXY NO_PROXY SSL_CERT_FILE SSL_CERT_DIR; do
+  if [ -n "${!name:-}" ]; then child_env+=("$name=${!name}"); fi
+done
+
+sandbox_status=0
+sandbox_exec "$artifact_root" "$workspace" env -i "${child_env[@]}" "${command[@]}" || sandbox_status=$?
+rmdir "$sandbox_probe_dir"
+sandbox_probe_dir=''
+exit "$sandbox_status"

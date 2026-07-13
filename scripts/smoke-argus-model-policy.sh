@@ -4,10 +4,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLI="$ROOT/argus/claude/bin/argus-assets"
+PREFLIGHT_CLI="$ROOT/scripts/lib/argus-smoke-cli.sh"
 source "$ROOT/scripts/lib/argus-smoke-model-control.sh"
 WORK="$(mktemp -d)"
 TARGET="$WORK/target"
 HOST="$WORK/host"
+NATIVE_HOST="$WORK/native-host"
 trap 'rm -rf "$WORK"' EXIT
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
@@ -15,7 +17,10 @@ fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 node "$ROOT/scripts/smoke-argus-model-routing.mjs"
 mkdir -p "$TARGET/ai_agents_internal" "$HOST"
 cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$TARGET/ai_agents_internal/authorization.json"
-"$CLI" preflight --target "$TARGET" --mode A \
+ARGUS_SMOKE_REAL_CLI="$CLI" ARGUS_SMOKE_HOST_ROOT="$NATIVE_HOST" \
+ARGUS_SMOKE_LAUNCHER="$ROOT/argus/claude/bin/argus-launch" \
+ARGUS_SMOKE_CLAUDE="$ROOT/scripts/fixtures/argus-launcher/claude" \
+"$PREFLIGHT_CLI" preflight --target "$TARGET" --mode A \
   --authorization "$TARGET/ai_agents_internal/authorization.json" \
   --profile "$ROOT/scripts/fixtures/argus-preflight/full.json" >/dev/null
 MANIFEST="$TARGET/ai_agents_internal/engagement.json"
