@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+write_turn_cap_behavior() {
+  local output="$1" cap="$2" attempted_turns=0 completed_turns=0 turn_outcome=completed
+  while [ "$attempted_turns" -lt $((cap + 1)) ]; do
+    attempted_turns=$((attempted_turns + 1))
+    if [ "$completed_turns" -ge "$cap" ]; then turn_outcome=error_max_turns; break; fi
+    completed_turns=$((completed_turns + 1))
+  done
+  jq -n --argjson attempted "$attempted_turns" --argjson completed "$completed_turns" --arg outcome "$turn_outcome" \
+    '{requestedTurns:$attempted,completedTurns:$completed,outcome:$outcome,supervisorObserved:true}' >"$output"
+}
+
+if [ "${1:-}" = "--version" ]; then
+  printf '2.1.0 (Claude Code fixture)\n'
+  exit 0
+fi
+
+if [ "${1:-}" = "--help" ]; then
+  printf 'fixture options: --max-turns <turns> --model <model> --effort <effort>; outcome=error_max_turns\n'
+  exit 0
+fi
+
+plugin_root=''
+prompt="${!#}"
+previous=''
+max_turns=''
+turn_cap_probe=''
+for argument in "$@"; do
+  if [ "$previous" = '--plugin-dir' ]; then plugin_root="$argument"; fi
+  if [ "$previous" = '--max-turns' ]; then max_turns="$argument"; fi
+  if [ "$previous" = '--argus-turn-cap-probe' ]; then turn_cap_probe="$argument"; fi
+  previous="$argument"
+done
+if [ -n "$turn_cap_probe" ]; then
+  [[ "$max_turns" =~ ^[1-9][0-9]*$ ]] || { printf 'fixture: turn-cap probe requires a positive integer\n' >&2; exit 87; }
+  write_turn_cap_behavior "$turn_cap_probe" "$max_turns"
+  exit 42
+fi
+[ -n "$plugin_root" ] || { printf 'fixture: --plugin-dir is missing\n' >&2; exit 80; }
+[ "$max_turns" = 96 ] || { printf 'fixture: native max-turns is not exactly 96\n' >&2; exit 84; }
+
+case "$prompt" in
+  '/argus:run authenticatedLaunch='*) launch_payload="${prompt#'/argus:run authenticatedLaunch='}" ;;
+  *) printf 'fixture: authenticated launch JSON is missing\n' >&2; exit 86 ;;
+esac
+target="$(printf '%s' "$launch_payload" | jq -er '.target')"
+artifact_root="$(printf '%s' "$launch_payload" | jq -er '.["artifact-root"]')"
+mode="$(printf '%s' "$launch_payload" | jq -er '.mode')"
+engagement_id="$(printf '%s' "$launch_payload" | jq -er '.["engagement-id"]')"
+authorization="$(printf '%s' "$launch_payload" | jq -er '.["launch-authorization"]')"
+receipt="$(printf '%s' "$launch_payload" | jq -er '.["launch-receipt"]')"
+trust_store="$(printf '%s' "$launch_payload" | jq -er '.["trust-store"]')"
+
+for value in target artifact_root mode engagement_id authorization receipt trust_store; do
+  [ -n "${!value}" ] || { printf 'fixture: prompt omitted %s\n' "$value" >&2; exit 81; }
+done
+
+env | sed 's/^ARGUS_NATIVE_LAUNCH_CAPABILITY=.*/ARGUS_NATIVE_LAUNCH_CAPABILITY=<redacted>/' | sort \
+  >"$artifact_root/ai_agents_internal/fixture-child-environment.txt"
+printf '%s\n' "$@" >"$artifact_root/ai_agents_internal/fixture-claude-arguments.txt"
+write_turn_cap_behavior "$artifact_root/ai_agents_internal/fixture-turn-cap-behavior.json" "$max_turns"
+
+set +e
+"$plugin_root/bin/argus-assets" preflight --target "$target" --artifact-root "$artifact_root" \
+  --mode "$mode" --engagement-id "$engagement_id" --model-runtime claude \
+  --launch-authorization "$authorization" --launch-receipt "$receipt" --trust-store "$trust_store" \
+  --json >"$artifact_root/ai_agents_internal/fixture-preflight-stdout.json"
+preflight_status=$?
+set -e
+
+report="$artifact_root/ai_agents_internal/preflight.json"
+[ -f "$report" ] || { printf 'fixture: preflight report was not persisted (exit=%s)\n' "$preflight_status" >&2; exit 82; }
+jq -e '.checks[] | select(.id == "native-host-execution" and .status == "pass")' "$report" >/dev/null || {
+  jq -r '.checks[] | select(.id == "native-host-execution") | .evidence' "$report" >&2
+  exit 83
+}
+touch "$artifact_root/ai_agents_internal/fixture-native-ready"
+for _ in $(seq 1 200); do
+  [ -f "$artifact_root/ai_agents_internal/fixture-replay-complete" ] && break
+  sleep 0.05
+done
+[ -f "$artifact_root/ai_agents_internal/fixture-replay-complete" ] || { printf 'fixture: replay probe timed out\n' >&2; exit 85; }
+printf 'ARGUS_FIXTURE_NATIVE_PREFLIGHT_OK\n'

@@ -15,6 +15,7 @@ import {
   mkdtempSync,
   mkdirSync,
   openSync,
+  readSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -77,6 +78,7 @@ import {
   modelPublicKeyFingerprint,
   resolveModelDecision,
   verifyModelDocumentAuthentication,
+  verifyNativeLaunchAuthorization,
   validateModelDecisionBinding,
   validateModelPolicy,
 } from '../lib/model-policy.mjs';
@@ -105,6 +107,8 @@ const RUNTIME_ADAPTERS_SCHEMA_PATH = join(ROOT, 'schemas', 'runtime-adapters.sch
 const MODEL_DECISION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-decision.schema.json');
 const MODEL_DISPATCH_AUTHORIZATION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-dispatch-authorization.schema.json');
 const MODEL_OPERATOR_DECISION_SCHEMA_PATH = join(ROOT, 'schemas', 'model-operator-decision.schema.json');
+const NATIVE_LAUNCH_AUTHORIZATION_SCHEMA_PATH = join(ROOT, 'schemas', 'native-launch-authorization.schema.json');
+const NATIVE_LAUNCH_RECEIPT_SCHEMA_PATH = join(ROOT, 'schemas', 'native-launch-receipt.schema.json');
 const MODEL_TRUST_STORE_SCHEMA_PATH = join(ROOT, 'schemas', 'model-trust-store.schema.json');
 const MODEL_TELEMETRY_SCHEMA_PATH = join(ROOT, 'schemas', 'model-telemetry-event.schema.json');
 const PREFLIGHT_REPORT_SCHEMA_PATH = join(ROOT, 'schemas', 'preflight-report.schema.json');
@@ -131,6 +135,8 @@ if (runtimeAdapterErrors.length) fail(`runtime adapter snapshot invalid: ${forma
 const validateModelDecisionSchema = compileJsonSchema(readJson(MODEL_DECISION_SCHEMA_PATH));
 const validateModelDispatchAuthorizationSchema = compileJsonSchema(readJson(MODEL_DISPATCH_AUTHORIZATION_SCHEMA_PATH));
 const validateModelOperatorDecisionSchema = compileJsonSchema(readJson(MODEL_OPERATOR_DECISION_SCHEMA_PATH));
+const validateNativeLaunchAuthorizationSchema = compileJsonSchema(readJson(NATIVE_LAUNCH_AUTHORIZATION_SCHEMA_PATH));
+const validateNativeLaunchReceiptSchema = compileJsonSchema(readJson(NATIVE_LAUNCH_RECEIPT_SCHEMA_PATH));
 const validateModelTrustStoreSchema = compileJsonSchema(readJson(MODEL_TRUST_STORE_SCHEMA_PATH));
 const validateModelTelemetrySchema = compileJsonSchema(readJson(MODEL_TELEMETRY_SCHEMA_PATH));
 const preflightReportSchema = readJson(PREFLIGHT_REPORT_SCHEMA_PATH);
@@ -184,6 +190,9 @@ switch (command) {
   case 'model':
     process.exitCode = modelCommand(args);
     break;
+  case 'launch':
+    process.exitCode = launchCommand(args);
+    break;
   case 'orchestration':
     process.exitCode = orchestrationCommand(args);
     break;
@@ -233,6 +242,8 @@ Usage:
   argus-assets model request --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n> --checkpoint-ref <path> --token <lane-token>
   argus-assets model route --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n> [--request <escalation.json>] [--operator-decision <json>] [--controller-token <odysseus-token>]
   argus-assets model telemetry --manifest <engagement.json> --decision <model-decision.json> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false> [options]
+  argus-assets launch request --target <url-or-path> --workspace <absolute-path> --artifact-root <absolute-path> --mode <A|B|C|D> --engagement-id <id> --launcher <path> --launcher-pid <pid> --claude-executable <path> --runtime-key-id <id> --trust-store <path> --output <path>
+  argus-assets launch verify --request <json> --authorization <json> --receipt <path> --trust-store <path>
   argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--artifact-root <path>] [--output <json|->]
   argus-assets template <detect|select|scaffold> [options]
   argus-assets technique scopes|select --role <atalanta|proteus|metis> [--inventory <surface-inventory.json>]
@@ -249,6 +260,9 @@ Preflight options:
   --environment <name>        unknown|development|test|staging|production
   --engagement-id <id>        Stable authorization/audit correlation identifier
   --model-runtime <name>      claude|codex model-routing preview (default: claude)
+  --launch-authorization <path> Signed, short-lived launcher authorization
+  --launch-receipt <path>     Verified launcher receipt under ai_agents_internal/
+  --trust-store <path>        Secure public host trust store used by the launcher
   --feature <capability>       Confirm a target capability; repeat as needed
   --profile <json>             Deterministic capability override for CI
   --json                       Print the complete report to stdout
@@ -492,6 +506,360 @@ function writeTemplateOutput(document, output) {
   }
 }
 
+function launchCommand(args) {
+  const [operation, ...rest] = args;
+  if (operation === 'request') {
+    const options = parseNamedOptions(rest, new Set([
+      '--target', '--workspace', '--artifact-root', '--mode', '--engagement-id', '--launcher',
+      '--launcher-pid', '--claude-executable', '--runtime-key-id', '--trust-store', '--output',
+      '--ttl-seconds', '--capability-sha256',
+      '--sandbox-probe-path',
+    ]));
+    requireOptions(options, [
+      'target', 'workspace', 'artifactRoot', 'mode', 'engagementId', 'launcher', 'launcherPid',
+      'claudeExecutable', 'runtimeKeyId', 'trustStore', 'output', 'capabilitySha256', 'sandboxProbePath',
+    ], 'launch request');
+    const mode = options.mode.toUpperCase();
+    if (!['A', 'B', 'C', 'D'].includes(mode)) fail('launch request --mode must be A, B, C, or D');
+    requireStableIdentifier(options.engagementId, 'launch request --engagement-id');
+    const launcherPid = positiveInteger(options.launcherPid, 'launch request --launcher-pid');
+    if (!/^[a-f0-9]{64}$/.test(options.capabilitySha256)) fail('launch request --capability-sha256 must be a SHA-256 digest');
+    requireLiveProcess(launcherPid, 'launch request launcher');
+    const target = identifyTarget(options.target);
+    const workspace = existingPhysicalDirectory(options.workspace, 'launch request workspace');
+    const artifactRoot = existingPhysicalDirectory(options.artifactRoot, 'launch request artifact root');
+    requireSecureOwnedDirectory(artifactRoot, 'launch request artifact root');
+    if (target.targetPath && (isWithin(target.targetPath, artifactRoot) || isWithin(artifactRoot, target.targetPath))) {
+      fail('launch request target and artifact root must be physically disjoint');
+    }
+    const launcher = existingPhysicalFile(options.launcher, 'launch request launcher');
+    const claudeExecutable = existingPhysicalFile(options.claudeExecutable, 'launch request Claude executable');
+    const sandboxProbePath = existingPhysicalDirectory(options.sandboxProbePath, 'launch request sandbox probe');
+    if (isWithin(artifactRoot, sandboxProbePath) || (target.targetPath && isWithin(target.targetPath, sandboxProbePath))) {
+      fail('launch request sandbox probe must stay outside target and artifact roots');
+    }
+    const sandboxProbe = sandboxProbeIdentity(sandboxProbePath, 'launch request sandbox probe', true);
+    const trust = loadNativeLaunchTrust(options.runtimeKeyId, options.trustStore, { artifactRoot, targetRoot: target.targetPath });
+    const ttlSeconds = options.ttlSeconds === undefined ? 300 : positiveInteger(options.ttlSeconds, 'launch request --ttl-seconds');
+    if (ttlSeconds < 30 || ttlSeconds > 300) fail('launch request TTL must be between 30 and 300 seconds');
+    const output = secureOperatorOutputPath(options.output, [artifactRoot, target.targetPath].filter(Boolean), 'launch request output');
+    const requestNonce = randomBytes(32).toString('hex');
+    const issuedAt = new Date();
+    const claudeVersion = claudeExecutableVersion(claudeExecutable);
+    const request = {
+      schema: 'argus/native-launch-authorization@1',
+      schemaVersion: 1,
+      kind: 'ARGUS_NATIVE_LAUNCH_AUTHORIZATION',
+      launchId: `LCH-${createHash('sha256').update(`${requestNonce}\0${launcherPid}`).digest('hex').slice(0, 24)}`,
+      engagementId: options.engagementId,
+      requestNonce,
+      launcherPid,
+      launchCapabilitySha256: options.capabilitySha256,
+      runtime: 'claude',
+      model: 'opus',
+      effort: 'max',
+      maxTurns: 96,
+      mode,
+      targetKind: target.kind,
+      target: target.targetIdentity,
+      workspace,
+      artifactRoot,
+      launcherExecutable: launcher,
+      launcherSha256: sha256File(launcher),
+      claudeExecutable,
+      claudeExecutableSha256: sha256File(claudeExecutable),
+      claudeVersion,
+      sandboxPolicy: 'os-native-target-readonly@2',
+      sandboxProbePath,
+      sandboxProbeDevice: sandboxProbe.device,
+      sandboxProbeInode: sandboxProbe.inode,
+      sandboxProbeUid: sandboxProbe.uid,
+      sandboxProbeMode: sandboxProbe.mode,
+      environmentPolicy: 'argus-launch-allowlist@1',
+      issuedBy: trust.record.subjectId,
+      issuedAt: issuedAt.toISOString(),
+      expiresAt: new Date(issuedAt.getTime() + ttlSeconds * 1000).toISOString(),
+      authentication: {
+        algorithm: 'Ed25519',
+        keyId: trust.record.keyId,
+        purpose: 'runtime-attestation',
+        keyFingerprintSha256: modelPublicKeyFingerprint(trust.record.publicKeyPem),
+        signatureBase64: '',
+      },
+    };
+    writeFileSync(output, `${JSON.stringify(request, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    chmodSync(output, 0o600);
+    console.log(`LAUNCH_REQUEST  created launch=${request.launchId} output=${output} expires=${request.expiresAt}`);
+    return 0;
+  }
+  if (operation === 'verify') {
+    const options = parseNamedOptions(rest, new Set(['--request', '--authorization', '--receipt', '--trust-store']));
+    requireOptions(options, ['request', 'authorization', 'receipt', 'trustStore'], 'launch verify');
+    const requestPath = existingPhysicalFile(options.request, 'native launch request');
+    const authorizationPath = existingPhysicalFile(options.authorization, 'native launch authorization');
+    requireSecureOperatorInput(requestPath, 'native launch request');
+    requireSecureOperatorInput(authorizationPath, 'native launch authorization');
+    if (requestPath === authorizationPath) fail('native launch request and signed authorization must be distinct files');
+    const request = readSecureJson(requestPath, 'native launch request');
+    const authorization = readSecureJson(authorizationPath, 'native launch authorization');
+    assertSchemaDocument(validateNativeLaunchAuthorizationSchema, authorization, 'native launch authorization');
+    const unsignedAuthorization = structuredClone(authorization);
+    unsignedAuthorization.authentication.signatureBase64 = '';
+    if (modelAuthenticationPayload(request) !== modelAuthenticationPayload(unsignedAuthorization)) {
+      fail('signed native launch authorization differs from the exact launcher request');
+    }
+    const target = identifyTarget(authorization.target);
+    if (target.kind !== authorization.targetKind || target.targetIdentity !== authorization.target) {
+      fail('native launch authorization target identity is not canonical');
+    }
+    const workspace = existingPhysicalDirectory(authorization.workspace, 'authorized launch workspace');
+    const artifactRoot = existingPhysicalDirectory(authorization.artifactRoot, 'authorized launch artifact root');
+    requireSecureOwnedDirectory(artifactRoot, 'authorized launch artifact root');
+    if (workspace !== authorization.workspace || artifactRoot !== authorization.artifactRoot) {
+      fail('native launch authorization paths changed after request creation');
+    }
+    if (target.targetPath && (isWithin(target.targetPath, artifactRoot) || isWithin(artifactRoot, target.targetPath))) {
+      fail('authorized native launch target and artifact root are not physically disjoint');
+    }
+    const sandboxProbePath = existingPhysicalDirectory(authorization.sandboxProbePath, 'authorized sandbox probe');
+    if (isWithin(artifactRoot, sandboxProbePath) || (target.targetPath && isWithin(target.targetPath, sandboxProbePath)) ||
+        !directoryIsWritable(sandboxProbePath)) {
+      fail('authorized sandbox probe is not a host-writable path outside target and artifact roots');
+    }
+    const sandboxProbe = sandboxProbeIdentity(sandboxProbePath, 'authorized sandbox probe', true);
+    for (const [field, current] of Object.entries({
+      sandboxProbeDevice: sandboxProbe.device,
+      sandboxProbeInode: sandboxProbe.inode,
+      sandboxProbeUid: sandboxProbe.uid,
+      sandboxProbeMode: sandboxProbe.mode,
+    })) if (authorization[field] !== current) fail(`authorized sandbox probe ${field} identity changed after signing`);
+    const trust = loadNativeLaunchTrust(authorization.authentication.keyId, options.trustStore, {
+      artifactRoot,
+      targetRoot: target.targetPath,
+    });
+    const pinnedRuntimeKey = pinnedTrustKey(trust.record);
+    let authentication;
+    try { authentication = verifyNativeLaunchAuthorization(authorization, pinnedRuntimeKey); }
+    catch (error) { fail(`native launch authorization authentication failed: ${error.message}`); }
+    const now = Date.now();
+    const issuedAt = Date.parse(authorization.issuedAt);
+    const expiresAt = Date.parse(authorization.expiresAt);
+    if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt) || expiresAt <= issuedAt || expiresAt - issuedAt > 300_000) {
+      fail('native launch authorization validity window is invalid or exceeds five minutes');
+    }
+    if (issuedAt > now + 30_000 || expiresAt <= now) fail('native launch authorization is not currently valid');
+    requireLiveProcess(authorization.launcherPid, 'authorized native launcher');
+    const launcher = existingPhysicalFile(authorization.launcherExecutable, 'authorized launcher');
+    if (sha256File(launcher) !== authorization.launcherSha256) fail('authorized launcher executable changed after signing');
+    const claudeExecutable = existingPhysicalFile(authorization.claudeExecutable, 'authorized Claude executable');
+    if (sha256File(claudeExecutable) !== authorization.claudeExecutableSha256 || claudeExecutableVersion(claudeExecutable) !== authorization.claudeVersion) {
+      fail('authorized Claude executable or version changed after signing');
+    }
+    const receipt = resolve(options.receipt);
+    const expectedReceipt = join(artifactRoot, 'ai_agents_internal', 'native-launch-receipt.json');
+    if (receipt !== expectedReceipt || !safePhysicalPath(artifactRoot, receipt)) {
+      fail('native launch receipt must be ai_agents_internal/native-launch-receipt.json under the artifact root');
+    }
+    if (existsSync(receipt)) {
+      const current = readSecureJson(receipt, 'existing native launch receipt');
+      const active = Number.isFinite(Date.parse(current.expiresAt)) && Date.parse(current.expiresAt) > now && processIsLive(current.launcherPid);
+      if (active && current.launchId !== authorization.launchId) fail('artifact root already has a different active native launch');
+    }
+    const document = {
+      schema: 'argus/native-launch-receipt@1',
+      schemaVersion: 1,
+      launchId: authorization.launchId,
+      engagementId: authorization.engagementId,
+      launcherPid: authorization.launcherPid,
+      launchCapabilitySha256: authorization.launchCapabilitySha256,
+      authorizationPath,
+      authorizationSha256: modelAuthenticatedDocumentSha256(authorization),
+      trustStorePath: trust.path,
+      trustStoreSha256: trust.sha256,
+      runtimeKeyId: authentication.keyId,
+      runtimeKeyFingerprintSha256: authentication.keyFingerprintSha256,
+      targetKind: authorization.targetKind,
+      target: authorization.target,
+      workspace: authorization.workspace,
+      artifactRoot: authorization.artifactRoot,
+      mode: authorization.mode,
+      runtime: authorization.runtime,
+      model: authorization.model,
+      effort: authorization.effort,
+      maxTurns: authorization.maxTurns,
+      launcherExecutable: authorization.launcherExecutable,
+      launcherSha256: authorization.launcherSha256,
+      claudeExecutable: authorization.claudeExecutable,
+      claudeExecutableSha256: authorization.claudeExecutableSha256,
+      claudeVersion: authorization.claudeVersion,
+      sandboxPolicy: authorization.sandboxPolicy,
+      sandboxProbePath: authorization.sandboxProbePath,
+      sandboxProbeDevice: authorization.sandboxProbeDevice,
+      sandboxProbeInode: authorization.sandboxProbeInode,
+      sandboxProbeUid: authorization.sandboxProbeUid,
+      sandboxProbeMode: authorization.sandboxProbeMode,
+      environmentPolicy: authorization.environmentPolicy,
+      verifiedAt: new Date().toISOString(),
+      expiresAt: authorization.expiresAt,
+    };
+    assertSchemaDocument(validateNativeLaunchReceiptSchema, document, 'native launch receipt');
+    atomicPrivateWrite(receipt, `${JSON.stringify(document, null, 2)}\n`);
+    console.log(`LAUNCH_VERIFIED  launch=${document.launchId} receipt=${receipt}`);
+    return 0;
+  }
+  fail('usage: argus-assets launch <request|verify> [options]');
+}
+
+function requireStableIdentifier(value, label) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value)) {
+    fail(`${label} must be a stable identifier`);
+  }
+}
+
+function processIsLive(pid) {
+  if (!Number.isInteger(pid) || pid < 1) return false;
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return error.code === 'EPERM'; }
+}
+
+function requireLiveProcess(pid, label) {
+  if (!processIsLive(pid)) fail(`${label} process is not live`);
+}
+
+function existingPhysicalDirectory(value, label) {
+  if (typeof value !== 'string' || !value.startsWith('/') || resolve(value) !== value) fail(`${label} must be an absolute normalized path`);
+  let stats;
+  try { stats = lstatSync(value); }
+  catch (error) { fail(`${label} is unavailable: ${error.message}`); }
+  if (!stats.isDirectory() || stats.isSymbolicLink() || realpathSync(value) !== value) fail(`${label} must be a physical directory without symbolic links`);
+  return value;
+}
+
+function existingPhysicalFile(value, label) {
+  if (typeof value !== 'string' || !value.startsWith('/') || resolve(value) !== value) fail(`${label} must be an absolute normalized path`);
+  let stats;
+  try { stats = lstatSync(value); }
+  catch (error) { fail(`${label} is unavailable: ${error.message}`); }
+  if (!stats.isFile() || stats.isSymbolicLink() || stats.nlink !== 1 || realpathSync(value) !== value) {
+    fail(`${label} must be a physical single-link regular file`);
+  }
+  return value;
+}
+
+function directoryIsWritable(path) {
+  try { accessSync(path, constants.W_OK); return true; }
+  catch { return false; }
+}
+
+function requireSecureOwnedDirectory(path, label) {
+  const stats = lstatSync(path);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : stats.uid;
+  if (stats.uid !== uid || (stats.mode & 0o022) !== 0) {
+    fail(`${label} must be current-user-owned and not group/world writable`);
+  }
+}
+
+function sandboxProbeIdentity(path, label, requireWritable) {
+  const stats = lstatSync(path);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : stats.uid;
+  const mode = stats.mode & 0o777;
+  if (stats.uid !== uid || mode !== 0o700 || readdirSync(path).length !== 0 || (requireWritable && !directoryIsWritable(path))) {
+    fail(`${label} must be empty, current-user-owned, mode 0700${requireWritable ? ', and host-writable' : ''}`);
+  }
+  return { device: stats.dev, inode: stats.ino, uid: stats.uid, mode };
+}
+
+function secureOperatorOutputPath(value, forbiddenRoots, label) {
+  if (typeof value !== 'string' || !value.startsWith('/') || resolve(value) !== value) fail(`${label} must be an absolute normalized path`);
+  if (existsSync(value)) fail(`${label} already exists; requests are immutable and may not be overwritten`);
+  const parent = dirname(value);
+  const stats = lstatSync(parent);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (!stats.isDirectory() || stats.isSymbolicLink() || realpathSync(parent) !== parent ||
+      (uid !== null && stats.uid !== uid) || (stats.mode & 0o022) !== 0) {
+    fail(`${label} parent must be a physical current-user-owned directory that is not group/world writable`);
+  }
+  for (const root of forbiddenRoots) if (isWithin(root, value) || isWithin(value, root)) fail(`${label} must stay outside target and artifact roots`);
+  return value;
+}
+
+function requireSecureOperatorInput(path, label) {
+  const pathStats = lstatSync(path);
+  const parent = dirname(path);
+  const parentStats = lstatSync(parent);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (!parentStats.isDirectory() || parentStats.isSymbolicLink() || realpathSync(parent) !== parent ||
+      (uid !== null && parentStats.uid !== uid) || (parentStats.mode & 0o022) !== 0) {
+    fail(`${label} parent must be a physical current-user-owned directory that is not group/world writable`);
+  }
+  if ((uid !== null && pathStats.uid !== uid) || (pathStats.mode & 0o133) !== 0) {
+    fail(`${label} must be current-user-owned, non-executable, and not writable by others`);
+  }
+}
+
+function sha256File(path) {
+  const digest = createHash('sha256');
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  const descriptor = openSync(path, 'r');
+  try {
+    for (;;) {
+      const bytes = readSync(descriptor, buffer, 0, buffer.length, null);
+      if (bytes === 0) break;
+      digest.update(buffer.subarray(0, bytes));
+    }
+  } finally {
+    closeSync(descriptor);
+  }
+  return digest.digest('hex');
+}
+
+function claudeExecutableVersion(path) {
+  let version;
+  try { version = execFileSync(path, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 }).trim(); }
+  catch (error) { fail(`Claude executable version probe failed: ${error.stderr?.toString().trim() || error.message}`); }
+  if (!version || version.length > 128 || /[\r\n]/.test(version)) fail('Claude executable returned an invalid version identity');
+  return version;
+}
+
+function loadNativeLaunchTrust(keyId, explicitStorePath, { artifactRoot, targetRoot }) {
+  requireStableIdentifier(keyId, 'native launch runtime key ID');
+  if (typeof explicitStorePath !== 'string' || !explicitStorePath.startsWith('/') || resolve(explicitStorePath) !== explicitStorePath) {
+    fail('native launch trust store path must be absolute and normalized');
+  }
+  if (isWithin(artifactRoot, explicitStorePath) || (targetRoot && isWithin(targetRoot, explicitStorePath))) {
+    fail('native launch trust store must stay outside target and artifact roots');
+  }
+  const directory = dirname(explicitStorePath);
+  let directoryStat;
+  let pathStat;
+  try {
+    directoryStat = lstatSync(directory);
+    pathStat = lstatSync(explicitStorePath);
+  } catch (error) {
+    fail(`native launch trust store is unavailable: ${error.message}`);
+  }
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink() || realpathSync(directory) !== directory ||
+      (uid !== null && directoryStat.uid !== uid) || (directoryStat.mode & 0o022) !== 0) {
+    fail('native launch trust store directory must be physical, current-user-owned, and not group/world writable');
+  }
+  if (!pathStat.isFile() || pathStat.isSymbolicLink() || pathStat.nlink !== 1 || realpathSync(explicitStorePath) !== explicitStorePath ||
+      (uid !== null && pathStat.uid !== uid) || (pathStat.mode & 0o133) !== 0) {
+    fail('native launch trust store must be a physical, single-link, current-user-owned, non-executable file that is not writable by others');
+  }
+  const raw = readSecureSingleLink(explicitStorePath, 'native launch trust store');
+  let document;
+  try { document = JSON.parse(raw.toString('utf8')); }
+  catch (error) { fail(`native launch trust store is not valid JSON: ${error.message}`); }
+  assertSchemaDocument(validateModelTrustStoreSchema, document, 'native launch trust store');
+  if (new Set(document.keys.map((record) => record.keyId)).size !== document.keys.length) fail('native launch trust store key IDs must be unique');
+  const record = document.keys.find((candidate) => candidate.keyId === keyId);
+  if (!record || record.status !== 'active' || record.purpose !== 'runtime-attestation') {
+    fail(`native launch trust store has no active runtime-attestation key ${keyId}`);
+  }
+  return { record, path: explicitStorePath, sha256: createHash('sha256').update(raw).digest('hex') };
+}
+
 function modelCommand(args) {
   const [operation, ...rest] = args;
   const policy = modelPolicy;
@@ -523,7 +891,7 @@ function modelCommand(args) {
     const path = resolveExistingPhysicalInput(options.document);
     if (!statSafe(path)?.isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) fail('model payload document must be a non-aliased real file');
     const document = readSecureJson(path, 'model payload document');
-    if (!['argus/model-operator-decision@1', 'argus/model-dispatch-authorization@1'].includes(document.schema)) fail('model payload document has an unsupported schema');
+    if (!['argus/model-operator-decision@1', 'argus/model-dispatch-authorization@1', 'argus/native-launch-authorization@1'].includes(document.schema)) fail('model payload document has an unsupported schema');
     process.stdout.write(modelAuthenticationPayload(document));
     return 0;
   }
@@ -2255,6 +2623,190 @@ function loadVerifiedRuntimeInventory() {
   return inventory;
 }
 
+function inspectNativeLaunchForPreflight({ options, modelRuntime, mode, targetKind, targetIdentity, artifactRootPath, engagementId }) {
+  if (modelRuntime !== 'claude') return { ready: false, evidence: 'native launch authorization is available only for Claude runtime' };
+  try {
+    if (!options.launchAuthorization || !options.launchReceipt || !options.trustStore) {
+      throw new Error('signed launch authorization, verified receipt, and public trust store are required');
+    }
+    const authorizationPath = strictPhysicalInput(options.launchAuthorization, 'native launch authorization');
+    const receiptPath = strictPhysicalInput(options.launchReceipt, 'native launch receipt');
+    const trustStorePath = strictPhysicalInput(options.trustStore, 'native launch trust store');
+    const expectedReceipt = join(artifactRootPath, 'ai_agents_internal', 'native-launch-receipt.json');
+    if (receiptPath !== expectedReceipt || !safePhysicalPath(artifactRootPath, receiptPath)) {
+      throw new Error('native launch receipt is outside the exact engagement control path');
+    }
+    const authorization = JSON.parse(readFileSync(authorizationPath, 'utf8'));
+    const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+    const trustStoreRaw = readFileSync(trustStorePath);
+    const trustStore = JSON.parse(trustStoreRaw.toString('utf8'));
+    const authorizationErrors = validateNativeLaunchAuthorizationSchema(authorization);
+    if (authorizationErrors.length) throw new Error(`authorization schema: ${formatSchemaErrors(authorizationErrors)}`);
+    const receiptErrors = validateNativeLaunchReceiptSchema(receipt);
+    if (receiptErrors.length) throw new Error(`receipt schema: ${formatSchemaErrors(receiptErrors)}`);
+    const trustErrors = validateModelTrustStoreSchema(trustStore);
+    if (trustErrors.length) throw new Error(`trust-store schema: ${formatSchemaErrors(trustErrors)}`);
+    const artifactStats = lstatSync(artifactRootPath);
+    const artifactUid = typeof process.getuid === 'function' ? process.getuid() : artifactStats.uid;
+    if (!artifactStats.isDirectory() || artifactStats.isSymbolicLink() || realpathSync(artifactRootPath) !== artifactRootPath ||
+        artifactStats.uid !== artifactUid || (artifactStats.mode & 0o022) !== 0) {
+      throw new Error('artifact root is not a physical current-user-owned directory with safe permissions');
+    }
+    const trustStats = lstatSync(trustStorePath);
+    const trustDirectoryStats = lstatSync(dirname(trustStorePath));
+    const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+    if (trustStats.isSymbolicLink() || !trustStats.isFile() || trustStats.nlink !== 1 ||
+        trustDirectoryStats.isSymbolicLink() || !trustDirectoryStats.isDirectory() ||
+        realpathSync(trustStorePath) !== trustStorePath || realpathSync(dirname(trustStorePath)) !== dirname(trustStorePath) ||
+        (uid !== null && (trustStats.uid !== uid || trustDirectoryStats.uid !== uid)) ||
+        (trustStats.mode & 0o133) !== 0 || (trustDirectoryStats.mode & 0o022) !== 0) {
+      throw new Error('native launch trust store path or permissions are unsafe');
+    }
+    if (isWithin(artifactRootPath, trustStorePath) || (targetKind === 'path' && isWithin(targetIdentity, trustStorePath))) {
+      throw new Error('native launch trust store entered the target or artifact boundary');
+    }
+    const trustRecord = trustStore.keys.find((record) => record.keyId === authorization.authentication.keyId);
+    if (!trustRecord || trustRecord.status !== 'active' || trustRecord.purpose !== 'runtime-attestation') {
+      throw new Error('native launch runtime-attestation anchor is missing or revoked');
+    }
+    const runtimeFingerprint = modelPublicKeyFingerprint(trustRecord.publicKeyPem);
+    const pinnedRuntimeKey = {
+      keyId: trustRecord.keyId,
+      purpose: trustRecord.purpose,
+      subjectId: trustRecord.subjectId,
+      algorithm: 'Ed25519',
+      publicKeyPem: trustRecord.publicKeyPem,
+      keyFingerprintSha256: runtimeFingerprint,
+    };
+    const authentication = verifyNativeLaunchAuthorization(authorization, pinnedRuntimeKey);
+    const now = Date.now();
+    const issuedAt = Date.parse(authorization.issuedAt);
+    const expiresAt = Date.parse(authorization.expiresAt);
+    if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt) || expiresAt <= issuedAt || expiresAt - issuedAt > 300_000 ||
+        issuedAt > now + 30_000 || expiresAt <= now) {
+      throw new Error('native launch authorization is stale or has an invalid validity window');
+    }
+    if (authorization.mode !== mode || authorization.targetKind !== targetKind || authorization.target !== targetIdentity ||
+        authorization.artifactRoot !== artifactRootPath || authorization.engagementId !== engagementId) {
+      throw new Error('native launch authorization differs from the current engagement coordinates');
+    }
+    const currentWorkspace = realpathSync(process.cwd());
+    if (authorization.workspace !== currentWorkspace) throw new Error('native launch workspace differs from the sandbox working directory');
+    const authorizationSha256 = modelAuthenticatedDocumentSha256(authorization);
+    const trustStoreSha256 = createHash('sha256').update(trustStoreRaw).digest('hex');
+    const receiptBindings = {
+      launchId: authorization.launchId,
+      engagementId: authorization.engagementId,
+      launcherPid: authorization.launcherPid,
+      launchCapabilitySha256: authorization.launchCapabilitySha256,
+      authorizationPath,
+      authorizationSha256,
+      trustStorePath,
+      trustStoreSha256,
+      runtimeKeyId: authentication.keyId,
+      runtimeKeyFingerprintSha256: authentication.keyFingerprintSha256,
+      targetKind,
+      target: targetIdentity,
+      workspace: authorization.workspace,
+      artifactRoot: artifactRootPath,
+      mode,
+      runtime: authorization.runtime,
+      model: authorization.model,
+      effort: authorization.effort,
+      maxTurns: authorization.maxTurns,
+      launcherExecutable: authorization.launcherExecutable,
+      launcherSha256: authorization.launcherSha256,
+      claudeExecutable: authorization.claudeExecutable,
+      claudeExecutableSha256: authorization.claudeExecutableSha256,
+      claudeVersion: authorization.claudeVersion,
+      sandboxPolicy: authorization.sandboxPolicy,
+      sandboxProbePath: authorization.sandboxProbePath,
+      sandboxProbeDevice: authorization.sandboxProbeDevice,
+      sandboxProbeInode: authorization.sandboxProbeInode,
+      sandboxProbeUid: authorization.sandboxProbeUid,
+      sandboxProbeMode: authorization.sandboxProbeMode,
+      environmentPolicy: authorization.environmentPolicy,
+      expiresAt: authorization.expiresAt,
+    };
+    for (const [field, expected] of Object.entries(receiptBindings)) {
+      if (receipt[field] !== expected) throw new Error(`native launch receipt ${field} binding differs from signed authorization`);
+    }
+    if (Date.parse(receipt.verifiedAt) < issuedAt || Date.parse(receipt.verifiedAt) > now + 30_000) {
+      throw new Error('native launch receipt verification time is invalid');
+    }
+    if (sha256File(strictPhysicalInput(authorization.launcherExecutable, 'authorized launcher executable')) !== authorization.launcherSha256) {
+      throw new Error('authorized launcher executable changed after verification');
+    }
+    const claudeExecutable = strictPhysicalInput(authorization.claudeExecutable, 'authorized Claude executable');
+    if (sha256File(claudeExecutable) !== authorization.claudeExecutableSha256 || claudeExecutableVersion(claudeExecutable) !== authorization.claudeVersion) {
+      throw new Error('authorized Claude executable or version changed after verification');
+    }
+    const sandboxProbePath = strictPhysicalDirectoryInput(authorization.sandboxProbePath, 'authorized sandbox probe');
+    if (isWithin(artifactRootPath, sandboxProbePath) || (targetKind === 'path' && isWithin(targetIdentity, sandboxProbePath))) {
+      throw new Error('authorized sandbox probe entered the target or artifact boundary');
+    }
+    const sandboxProbeStats = lstatSync(sandboxProbePath);
+    const sandboxProbeBindings = {
+      sandboxProbeDevice: sandboxProbeStats.dev,
+      sandboxProbeInode: sandboxProbeStats.ino,
+      sandboxProbeUid: sandboxProbeStats.uid,
+      sandboxProbeMode: sandboxProbeStats.mode & 0o777,
+    };
+    for (const [field, current] of Object.entries(sandboxProbeBindings)) {
+      if (authorization[field] !== current) throw new Error(`authorized sandbox probe ${field} identity changed after verification`);
+    }
+    if ((sandboxProbeStats.mode & 0o777) !== 0o700 || readdirSync(sandboxProbePath).length !== 0) {
+      throw new Error('authorized sandbox probe is not an empty mode-0700 directory');
+    }
+    if (directoryIsWritable(sandboxProbePath)) {
+      throw new Error('OS sandbox is not active: signed host-writable probe remains writable');
+    }
+    if (!directoryIsWritable(artifactRootPath)) {
+      throw new Error('OS sandbox does not permit the contracted artifact root');
+    }
+    const expectedEnvironment = {
+      ARGUS_MODEL_TRUST_STORE: trustStorePath,
+      ARGUS_NATIVE_LAUNCH_AUTHORIZATION: authorizationPath,
+      ARGUS_NATIVE_LAUNCH_RECEIPT: receiptPath,
+    };
+    for (const [name, expected] of Object.entries(expectedEnvironment)) {
+      if (process.env[name] !== expected) throw new Error(`${name} does not match the signed launcher binding`);
+    }
+    const capability = process.env.ARGUS_NATIVE_LAUNCH_CAPABILITY;
+    if (!/^[a-f0-9]{64}$/.test(capability ?? '')) throw new Error('native launch capability is missing or malformed');
+    if (createHash('sha256').update(capability).digest('hex') !== authorization.launchCapabilitySha256) {
+      throw new Error('native launch capability does not match the signed authorization');
+    }
+    expectedEnvironment.ARGUS_NATIVE_LAUNCH_CAPABILITY = capability;
+    const unexpectedArgus = Object.keys(process.env).filter((name) => name.startsWith('ARGUS_') && !Object.hasOwn(expectedEnvironment, name));
+    if (unexpectedArgus.length) throw new Error(`unapproved inherited Argus environment: ${unexpectedArgus.sort().join(',')}`);
+    return {
+      ready: true,
+      evidence: `authenticated launch ${authorization.launchId}; signer=${authorization.issuedBy}; claude=${authorization.claudeVersion}; model=opus effort=max maxTurns=96; sandbox=${authorization.sandboxPolicy}; environment=${authorization.environmentPolicy}`,
+    };
+  } catch (error) {
+    return { ready: false, evidence: `authenticated native launch unavailable: ${error.message}` };
+  }
+}
+
+function strictPhysicalInput(value, label) {
+  if (typeof value !== 'string' || !value.startsWith('/') || resolve(value) !== value) throw new Error(`${label} path is not absolute and normalized`);
+  const stats = lstatSync(value);
+  if (!stats.isFile() || stats.isSymbolicLink() || stats.nlink !== 1 || realpathSync(value) !== value) {
+    throw new Error(`${label} is not a physical single-link file`);
+  }
+  return value;
+}
+
+function strictPhysicalDirectoryInput(value, label) {
+  if (typeof value !== 'string' || !value.startsWith('/') || resolve(value) !== value) throw new Error(`${label} path is not absolute and normalized`);
+  const stats = lstatSync(value);
+  if (!stats.isDirectory() || stats.isSymbolicLink() || realpathSync(value) !== value) {
+    throw new Error(`${label} is not a physical directory`);
+  }
+  return value;
+}
+
 async function preflight(argv) {
   assertTrustedModelRoutingAssets();
   const options = parsePreflightOptions(argv);
@@ -2285,6 +2837,16 @@ async function preflight(argv) {
   };
   const artifactRootCandidate = resolve(options.artifactRoot ?? targetPath ?? process.cwd());
   const artifactRootPath = statSafe(artifactRootCandidate)?.isDirectory() ? realpathSync(artifactRootCandidate) : artifactRootCandidate;
+  const nativeLaunch = inspectNativeLaunchForPreflight({
+    options,
+    modelRuntime,
+    mode,
+    targetKind,
+    targetIdentity,
+    artifactRootPath,
+    engagementId: options.engagementId,
+  });
+  if (modelRuntime === 'claude' && !nativeLaunch.ready) fail(nativeLaunch.evidence);
   const outputRelative = options.output ?? 'ai_agents_internal/preflight.json';
   const requestedOutputPath = resolve(artifactRootPath, outputRelative);
   const fallbackOutputPath = resolve(artifactRootPath, 'ai_agents_internal/preflight.json');
@@ -2501,18 +3063,17 @@ async function preflight(argv) {
   }
 
   const checks = [];
-  const nativeLaunchProof = process.env.ARGUS_NATIVE_LAUNCH_PROOF;
-  const nativeLaunchReady = modelRuntime === 'claude' && nativeLaunchProof === 'argus-launch/1:claude:96:os-native';
+  const nativeLaunchReady = nativeLaunch.ready;
   addCheck(
     checks,
     'native-host-execution',
     true,
     nativeLaunchReady,
     nativeLaunchReady
-      ? 'argus-launch bound Claude opus/max effort to the native 96-turn cap inside an OS sandbox and cleared inherited bearer capabilities'
+      ? nativeLaunch.evidence
       : modelRuntime === 'codex'
         ? 'Codex dispatch is disabled because the installed CLI exposes no native hard turn cap'
-        : 'start the engagement with argus-launch; direct /argus:run cannot prove a native turn cap or OS sandbox',
+        : nativeLaunch.evidence,
   );
   addCheck(checks, 'target-reachable', true, target.reachable, target.evidence);
   addCheck(checks, 'artifact-root-writable', true, artifactWritable, artifactWritable ? `writable: ${artifactRootPath}` : `not writable: ${artifactRootPath}`);
@@ -2787,6 +3348,9 @@ function parsePreflightOptions(args) {
     else if (name === '--environment') options.environment = value;
     else if (name === '--engagement-id') options.engagementId = value;
     else if (name === '--model-runtime') options.modelRuntime = value.toLowerCase();
+    else if (name === '--launch-authorization') options.launchAuthorization = value;
+    else if (name === '--launch-receipt') options.launchReceipt = value;
+    else if (name === '--trust-store') options.trustStore = value;
     else if (name === '--profile') options.profile = value;
     else if (name === '--feature') options.features.push(value);
     else fail(`unknown preflight option: ${name}`);

@@ -28,10 +28,13 @@ Then use Marcus in a session and Argus through its packaged launcher:
 
 ```
 > marcus, build a REST API for task management with tests and CI
-> argus-launch claude --target /absolute/target --artifact-root /absolute/artifacts --mode A
+> argus-launch claude --target /absolute/target --artifact-root /absolute/artifacts --mode A \
+    --engagement-id qa-001 --trust-store /secure/model-trust.json --runtime-key-id runtime-2026 \
+    --request-output /secure/qa-001.request.json --launch-authorization /secure/qa-001.authorization.json
 ```
 
-`argus-launch` starts `/argus:run` with the native controller turn cap and OS sandbox,
+`argus-launch` writes an exact short-lived request for the isolated runtime signer, then
+starts `/argus:run` with the native controller turn cap and OS sandbox,
 applies Odysseus's orchestration policy, dispatches the namespaced specialists, and
 collects their results. Direct `/argus:run` or `claude --agent argus:odysseus` sessions
 fail preflight. Update later with `/plugin marketplace update holak-teams`.
@@ -174,9 +177,14 @@ telemetry operation reopens the live store; a revoked, replaced, or missing key 
 immediately. Neither private key nor a generic signing service may be available to the
 controller or workers. The isolated operator signer alone authorizes frontier continuation
 or abort.
-`argus-launch` is the only supported Claude entry point. It starts Odysseus with the native
-96-turn cap, exact frontier controller baseline, no session persistence, cleared inherited
-Argus bearer variables, and an OS filesystem sandbox. Direct `/argus:run` preflight blocks.
+`argus-launch` is the only supported Claude entry point. An isolated runtime-attestation
+signer must authorize its exact short-lived request. The signed document binds the engagement,
+target, physically disjoint artifact root, workspace, launcher and Claude hashes, model,
+effort, mode, and native 96-turn cap. A one-shot random capability whose digest is signed
+binds that authorization to the launched process tree. Odysseus starts with the exact frontier controller
+baseline, no session persistence, an explicit environment allowlist, and an OS filesystem
+sandbox whose only writable root is the alias-free artifact boundary. Direct `/argus:run`
+preflight and copied signed files both block.
 The installed Codex CLI can enforce model and reasoning effort but has no native hard turn
 cap, so Codex dispatch fails closed; a signed assertion or approximate counter cannot
 replace missing runtime enforcement.

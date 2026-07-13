@@ -45,7 +45,9 @@ if grep -Fq -- '${CLAUDE_PLUGIN_ROOT}/agents/odysseus.md' "$SKILL"; then
   fail "run skill still loads Odysseus as a second policy source"
 fi
 require_text 'Do not read the Odysseus agent as a second policy source.' "$SKILL" "run skill does not forbid the duplicate Odysseus policy source"
-require_text 'argus-assets preflight --target <target> --mode <A|B|C|D> --artifact-root <artifact-root>' "$SKILL" "run skill does not bind preflight and projection to one artifact root"
+require_text 'ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED' "$SKILL" "run skill does not reject missing authenticated launch coordinates"
+require_text '--engagement-id <engagement-id> --launch-authorization' "$SKILL" "run skill does not bind preflight to the signed engagement and authorization"
+require_text '--launch-receipt <launch-receipt> --trust-store <trust-store>' "$SKILL" "run skill does not bind preflight to the verified receipt and trust store"
 require_text 'name: orchestration-core' "$CORE" "orchestration core has no stable name"
 require_text 'user-invocable: false' "$CORE" "orchestration core must not be user-invoked directly"
 require_text '## Sources of authority' "$CORE" "orchestration core does not define authoritative sources"
@@ -58,6 +60,7 @@ require_controller_text 'ARGUS_PREFLIGHT_ERROR: TARGET_REQUIRED' "missing target
 require_controller_text 'ARGUS_PREFLIGHT_ERROR: AGENT_TOOL_UNAVAILABLE' "missing Agent preflight error"
 require_controller_text 'ARGUS_PREFLIGHT_ERROR: ARGUS_AGENTS_UNAVAILABLE' "missing specialist preflight error"
 require_controller_text 'ARGUS_PREFLIGHT_ERROR: CAPABILITY_PREFLIGHT_BLOCKED' "missing capability preflight error"
+require_controller_text 'ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED' "missing authenticated launcher preflight error"
 require_controller_text 'ai_agents_internal/preflight.json' "controller does not persist/read the preflight report"
 require_controller_text 'ai_agents_internal/orchestration-plan.json' "controller does not require the persisted orchestration projection"
 require_controller_text 'ai_agents_internal/heartbeat/' "controller does not preserve the event-driven heartbeat board"

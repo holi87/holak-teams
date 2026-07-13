@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holak-teams.local/argus/native-launch-authorization.schema.json",
+  "title": "Authenticated Argus native launcher authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "schemaVersion", "kind", "launchId", "engagementId", "requestNonce",
+    "launcherPid", "launchCapabilitySha256", "runtime", "model", "effort", "maxTurns", "mode", "targetKind",
+    "target", "workspace", "artifactRoot", "launcherExecutable", "launcherSha256", "claudeExecutable",
+    "claudeExecutableSha256", "claudeVersion", "sandboxPolicy", "sandboxProbePath",
+    "sandboxProbeDevice", "sandboxProbeInode", "sandboxProbeUid", "sandboxProbeMode", "environmentPolicy",
+    "issuedBy", "issuedAt", "expiresAt", "authentication"
+  ],
+  "properties": {
+    "schema": { "const": "argus/native-launch-authorization@1" },
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "ARGUS_NATIVE_LAUNCH_AUTHORIZATION" },
+    "launchId": { "type": "string", "pattern": "^LCH-[a-f0-9]{24}$" },
+    "engagementId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "requestNonce": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "launcherPid": { "type": "integer", "minimum": 1 },
+    "launchCapabilitySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "runtime": { "const": "claude" },
+    "model": { "const": "opus" },
+    "effort": { "const": "max" },
+    "maxTurns": { "const": 96 },
+    "mode": { "enum": ["A", "B", "C", "D"] },
+    "targetKind": { "enum": ["path", "url"] },
+    "target": { "type": "string", "minLength": 1 },
+    "workspace": { "type": "string", "pattern": "^/" },
+    "artifactRoot": { "type": "string", "pattern": "^/" },
+    "launcherExecutable": { "type": "string", "pattern": "^/" },
+    "launcherSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "claudeExecutable": { "type": "string", "pattern": "^/" },
+    "claudeExecutableSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "claudeVersion": { "type": "string", "minLength": 1 },
+    "sandboxPolicy": { "const": "os-native-target-readonly@2" },
+    "sandboxProbePath": { "type": "string", "pattern": "^/" },
+    "sandboxProbeDevice": { "type": "integer", "minimum": 0 },
+    "sandboxProbeInode": { "type": "integer", "minimum": 1 },
+    "sandboxProbeUid": { "type": "integer", "minimum": 0 },
+    "sandboxProbeMode": { "const": 448 },
+    "environmentPolicy": { "const": "argus-launch-allowlist@1" },
+    "issuedBy": { "type": "string", "minLength": 1 },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "purpose", "keyFingerprintSha256", "signatureBase64"],
+      "properties": {
+        "algorithm": { "const": "Ed25519" },
+        "keyId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "purpose": { "const": "runtime-attestation" },
+        "keyFingerprintSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "signatureBase64": { "type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "targetKind": { "const": "url" } } },
+      "then": { "properties": { "target": { "pattern": "^https?://" } } },
+      "required": ["targetKind"]
+    },
+    {
+      "if": { "properties": { "targetKind": { "const": "path" } } },
+      "then": { "properties": { "target": { "pattern": "^/" } } },
+      "required": ["targetKind"]
+    }
+  ]
+}

@@ -3,8 +3,6 @@
 # Shared test-only setup for the production model-control sequence. Callers keep
 # the host root outside the engagement artifact root and own its cleanup.
 
-export ARGUS_NATIVE_LAUNCH_PROOF='argus-launch/1:claude:96:os-native'
-
 argus_smoke_prepare_model_control() {
   local cli="$1"
   local manifest="$2"
@@ -14,7 +12,7 @@ argus_smoke_prepare_model_control() {
   local profile="$6"
   local host_root="$7"
   local runtime="${8:-claude}"
-  local control_id control_root runtime_private runtime_public operator_private operator_public trust_store runtime_key_id operator_key_id lane result relative_path preflight_output
+  local control_id control_root runtime_private runtime_public operator_private operator_public trust_store runtime_key_id operator_key_id lane result relative_path preflight_output preflight_cli repo_root preflight_real_cli preflight_launcher preflight_claude
 
   if [ "$runtime" != claude ]; then
     printf 'FAIL  shared model-control helper supports Claude only; Codex JIT is covered by smoke-argus-model-policy.sh\n' >&2
@@ -53,8 +51,17 @@ argus_smoke_prepare_model_control() {
   export ARGUS_MODEL_TRUST_STORE
   ARGUS_MODEL_TRUST_STORE="$(realpath "$trust_store")"
 
+  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+  preflight_cli="${ARGUS_SMOKE_PREFLIGHT_CLI:-$repo_root/scripts/lib/argus-smoke-cli.sh}"
+  preflight_real_cli="${ARGUS_SMOKE_REAL_CLI:-$cli}"
+  preflight_launcher="${ARGUS_SMOKE_LAUNCHER:-$(dirname "$preflight_real_cli")/argus-launch}"
+  preflight_claude="${ARGUS_SMOKE_CLAUDE:-$repo_root/scripts/fixtures/argus-launcher/claude}"
   preflight_output="$control_root/preflight-output.json"
-  if ! "$cli" preflight --target "$target" --artifact-root "$artifact_root" --mode "$mode" \
+  if ! ARGUS_SMOKE_REAL_CLI="$preflight_real_cli" \
+    ARGUS_SMOKE_HOST_ROOT="$control_root/native-launch" \
+    ARGUS_SMOKE_LAUNCHER="$preflight_launcher" \
+    ARGUS_SMOKE_CLAUDE="$preflight_claude" \
+    "$preflight_cli" preflight --target "$target" --artifact-root "$artifact_root" --mode "$mode" \
     --engagement "$manifest" --engagement-id "$(jq -r .engagementId "$manifest")" \
     --model-runtime "$runtime" --profile "$profile" --json >"$preflight_output"; then
     printf 'FAIL  model-control preflight did not become dispatchable for %s/%s\n' "$target" "$runtime" >&2

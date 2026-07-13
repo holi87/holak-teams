@@ -207,7 +207,11 @@ mkdir "$WORK_DIR/preflight-target/ai_agents_internal"
 cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-target/ai_agents_internal/authorization.json"
 (
   cd "$WORK_DIR"
-  "$INSTALLED_PLUGIN/bin/argus-assets" preflight \
+  ARGUS_SMOKE_REAL_CLI="$INSTALLED_PLUGIN/bin/argus-assets" \
+    ARGUS_SMOKE_HOST_ROOT="$HOST_DIR/native-launch" \
+    ARGUS_SMOKE_LAUNCHER="$INSTALLED_PLUGIN/bin/argus-launch" \
+    ARGUS_SMOKE_CLAUDE="$ROOT/scripts/fixtures/argus-launcher/claude" \
+    "$ROOT/scripts/lib/argus-smoke-cli.sh" preflight \
     --target "$WORK_DIR/preflight-target" \
     --mode A \
     --authorization "$WORK_DIR/preflight-target/ai_agents_internal/authorization.json" \

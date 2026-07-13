@@ -52,7 +52,7 @@
         "effort": false,
         "maxTurns": true
       },
-      "evidence": "argus-launch starts Odysseus with Claude's native --max-turns 96, the reviewed opus/max controller baseline, cleared inherited Argus capabilities, and an OS filesystem sandbox. Direct /argus:run is blocked by preflight."
+      "evidence": "argus-launch verifies an externally signed, short-lived exact launch authorization, binds it to one process tree with a one-shot random capability whose digest is signed, and starts Odysseus with Claude's native --max-turns 96, the reviewed opus/max controller baseline, an environment allowlist, and an OS filesystem sandbox whose only writable root is the alias-free artifact boundary. Direct or file-only replayed /argus:run is blocked by preflight."
     }
   },
   "codex": {

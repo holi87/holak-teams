@@ -124,9 +124,13 @@ Before any target probe, test, or specialist dispatch:
    `argus:kalchas` plus another mode-required namespaced specialist returns
    `ARGUS_PREFLIGHT_ERROR: ARGUS_AGENTS_UNAVAILABLE`. A plan is not a substitute for any
    of these failures.
-2. Resolve one artifact root: the target directory for a local-directory target,
-   otherwise the current directory. Run
-   `argus-assets preflight --target <target> --mode <A|B|C|D> --artifact-root <artifact-root>`.
+2. Require the exact signed launcher coordinates: target, physically disjoint artifact
+   root, mode, engagement ID, launch authorization, launch receipt, and public trust store.
+   Missing coordinates return `ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED`.
+   Never derive, normalize, or replace them. Run
+   `argus-assets preflight --target <target> --mode <A|B|C|D> --artifact-root <artifact-root>
+   --engagement-id <engagement-id> --launch-authorization <launch-authorization>
+   --launch-receipt <launch-receipt> --trust-store <trust-store>`.
    Require its exact persisted `ai_agents_internal/orchestration-plan.json`. Declare a feature or
    environment only when user input or safe read-only evidence proves it. Unknown,
    staging, and production-like targets stay read-only. Never invent an approver/grant.
