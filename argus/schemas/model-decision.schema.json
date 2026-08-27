@@ -26,6 +26,7 @@
     "agent": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
     "runtime": { "enum": ["claude", "codex"] },
     "signal": { "type": "string", "minLength": 1 },
+    "trust": { "const": "unattested" },
     "status": { "enum": ["selected", "blocked"] },
     "reasonCode": {
       "enum": [

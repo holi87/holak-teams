@@ -75,6 +75,7 @@ import {
   modelAuthenticatedDocumentSha256,
   modelConfigSha256,
   modelAuthenticationPayload,
+  modelLaunchAssurance,
   modelPublicKeyFingerprint,
   resolveModelDecision,
   verifyModelDocumentAuthentication,
@@ -914,6 +915,9 @@ function modelCommand(args) {
     const engagementContext = loadModelEngagement(options.manifest, options.agent);
     const attempt = positiveInteger(options.attempt, '--attempt');
     requirePinnedModelTrust(engagementContext);
+    if (unattestedEngagement(engagementContext) && options.runtime !== 'claude') {
+      fail('unattested engagements are claude-only: Codex dispatch requires a signed JIT dispatch authorization');
+    }
     requireCurrentModelPreflight(engagementContext, options.agent, options.runtime);
     requireModelRouteAuthority(engagementContext, options);
     requirePreAllocationInitialRoute(engagementContext, options, attempt);
@@ -932,6 +936,7 @@ function modelCommand(args) {
       escalationBinding,
       availabilityBinding,
       operatorDecision,
+      trust: modelLaunchAssurance(engagementContext.engagement.launchAssurance),
       createdAt,
     };
     const preview = resolveModelDecision(policy, runtimeAdapters, routingInput);
@@ -966,6 +971,7 @@ function modelCommand(args) {
       decisionPath,
       artifactRoot: engagementContext.artifactRoot,
       modelTrust: engagementContext.engagement.modelTrust,
+      launchAssurance: engagementContext.engagement.launchAssurance,
     });
     if (bindingErrors.length) fail(`model telemetry decision binding invalid: ${bindingErrors.join('; ')}`);
     if (!engagementContext.engagement.selectedAgents.includes(decision.agent)) fail(`model telemetry decision agent ${decision.agent} is not selected for the engagement`);
@@ -1077,6 +1083,9 @@ function loadModelEngagement(explicitPath, requiredAgent) {
 
 function pinModelTrust(options) {
   const context = loadModelEngagement(options.manifest);
+  if (modelLaunchAssurance(context.engagement.launchAssurance) === 'unattested') {
+    fail('an unattested engagement cannot pin model trust; rerun preflight without --unattested-launch on a fresh artifact root to run attested');
+  }
   const runtimeTrust = loadHostModelTrust(options.runtimeKeyId, 'runtime-attestation', context);
   const operatorTrust = loadHostModelTrust(options.operatorKeyId, 'operator-approval', context);
   if (runtimeTrust.sha256 !== operatorTrust.sha256) fail('model trust keys must come from the same secure host trust-store snapshot');
@@ -1180,7 +1189,84 @@ function pinnedTrustKey(record) {
   };
 }
 
+// The single unattested-mode control anchored OUTSIDE the engagement artifact root, and
+// therefore outside the only filesystem region the launcher's sandbox lets an in-sandbox
+// controller write (argus/bin/argus-launch: `(deny default)` + file-write* under the
+// artifact root only; Linux `--ro-bind / /` + `--bind "$artifact_root"`). Any resolvable
+// host key material — or any inherited attested-launch environment binding — proves the
+// operator CAN run attested, so keyless mode is refused. Because this is re-derived on
+// every command it also restores the operator's mid-engagement kill switch that a pinned
+// bundle's live-store recheck used to provide: creating, restoring, or relocating the host
+// trust store halts an unattested engagement on its very next command.
+function hostAttestationMaterial() {
+  const bindings = Object.keys(process.env)
+    .filter((name) => /^ARGUS_(MODEL_TRUST_STORE|NATIVE_LAUNCH_)/.test(name) && nonEmptyString(process.env[name]))
+    .sort();
+  if (bindings.length) return `inherited attested-launch environment binding ${bindings.join(',')} is present`;
+  const configured = process.env.ARGUS_MODEL_TRUST_STORE;
+  const storePath = configured ? resolve(configured) : join(userInfo().homedir, '.config', 'argus', 'model-trust.json');
+  // lstat, not stat: a dangling symbolic link still counts as material present. Any probe
+  // error other than "absent" (EACCES on a parent directory, for example) also counts, so
+  // an unreadable store can never be mistaken for a keyless host.
+  try {
+    return lstatSafe(storePath) ? `host model trust store key material exists at ${storePath}` : null;
+  } catch (error) {
+    return `host model trust store path ${storePath} is not provably absent: ${error.message}`;
+  }
+}
+
+// The manifest field is never the trust switch on its own. The co-resident preflight
+// report must independently carry the UNATTESTED native-host-execution disposition for
+// the exact current manifest digest, so a manifest flipped to unattested without a
+// matching preflight run — and a report forged to claim attestation passed — are both
+// refused. This is defence in depth over hostAttestationMaterial(), not a substitute:
+// the report lives inside the artifact root and is writable by the controller.
+function requireUnattestedPreflightEvidence(context) {
+  const path = join(context.artifactRoot, 'ai_agents_internal', 'preflight.json');
+  if (!safePhysicalPath(context.artifactRoot, path) || !statSafe(path)?.isFile() ||
+      lstatSync(path).isSymbolicLink() || lstatSync(path).nlink !== 1) {
+    fail('an unattested engagement requires a current, non-aliased ai_agents_internal/preflight.json recording the UNATTESTED disposition');
+  }
+  const raw = readSecureSingleLink(path, 'unattested engagement preflight report');
+  let report;
+  try { report = JSON.parse(raw.toString('utf8')); }
+  catch (error) { fail(`unattested engagement preflight report is not valid JSON: ${error.message}`); }
+  assertSchemaDocument(validatePreflightReportSchema, report, 'unattested engagement preflight report');
+  if (report.engagement?.sha256 !== context.sha256) {
+    fail('unattested engagement preflight digest is stale; the UNATTESTED disposition must be recorded for the exact current engagement manifest');
+  }
+  const check = report.checks?.find((entry) => entry.id === 'native-host-execution');
+  if (!check || check.mandatory !== false || check.status !== 'degraded' ||
+      !String(check.evidence ?? '').startsWith('UNATTESTED: ')) {
+    fail('unattested engagement preflight does not carry the UNATTESTED native-host-execution disposition (mandatory=false, status=degraded, UNATTESTED evidence); rerun preflight with --unattested-launch or run attested');
+  }
+}
+
+// An engagement whose manifest records launchAssurance=unattested has no trust store and
+// no operator ability to create one, so demanding a pinned bundle — and re-reading a live
+// store that does not exist — is unsatisfiable by construction. The relaxation is never
+// taken on the manifest's word alone: it is re-derived here on every command from state
+// outside the artifact root plus the co-resident preflight disposition, and a manifest
+// that claims unattested while attestation material exists is a hard failure rather than
+// a silent fall-back. Every other control (integrity digests, deterministic
+// re-derivation, preflight freshness, seal, lease capabilities) is untouched.
+function unattestedEngagement(context) {
+  if (modelLaunchAssurance(context.engagement.launchAssurance) !== 'unattested') return false;
+  if ((context.engagement.modelTrust ?? null) !== null) return false;
+  const material = hostAttestationMaterial();
+  if (material) {
+    fail(
+      `engagement manifest records launchAssurance=unattested but ${material}; ` +
+      'unattested mode is re-derived on every command and is refused while operator key material is resolvable — ' +
+      'the host trust store is the operator kill switch, so start a fresh attested artifact root instead',
+    );
+  }
+  requireUnattestedPreflightEvidence(context);
+  return true;
+}
+
 function requirePinnedModelTrust(context) {
+  if (unattestedEngagement(context)) return;
   const trust = context.engagement.modelTrust;
   if (!trust || trust.schema !== 'argus/model-trust-bundle@1' || trust.source !== 'host-trust-store' || !/^[a-f0-9]{64}$/.test(trust.trustStoreSha256 ?? '')) {
     fail('model routing requires a complete purpose-separated host trust bundle');
@@ -1453,6 +1539,7 @@ function bindOperatorDecision(context, options, attempt, escalationBinding, avai
     decisionPath: blockedPath,
     artifactRoot: context.artifactRoot,
     modelTrust: context.engagement.modelTrust,
+    launchAssurance: context.engagement.launchAssurance,
   });
   if (bindingErrors.length > 0) fail(`operator-blocked decision binding invalid: ${bindingErrors.join('; ')}`);
   const expectedBlockedReason = unavailable ? 'FRONTIER_UNAVAILABLE' : 'OPERATOR_ESCALATION_REQUIRED';
@@ -1528,6 +1615,7 @@ function selectedModelDecisions(context, agent, runtime, dispatchId, attempt) {
       decisionPath: path,
       artifactRoot: context.artifactRoot,
       modelTrust: context.engagement.modelTrust,
+      launchAssurance: context.engagement.launchAssurance,
     });
     if (errors.length > 0) fail(`previous model decision binding invalid: ${errors.join('; ')}`);
     matches.push(decision);
@@ -1629,6 +1717,7 @@ function persistModelDecisionFile(policy, candidate, context) {
       decisionPath: output,
       artifactRoot: context.artifactRoot,
       modelTrust: context.engagement.modelTrust,
+      launchAssurance: context.engagement.launchAssurance,
     });
     if (errors.length) fail(`persisted model decision binding invalid: ${errors.join('; ')}`);
     if (existing.decisionId !== candidate.decisionId) fail('model decision identity collision');
@@ -1659,6 +1748,7 @@ function persistModelDecisionFile(policy, candidate, context) {
     decisionPath: output,
     artifactRoot: context.artifactRoot,
     modelTrust: context.engagement.modelTrust,
+    launchAssurance: context.engagement.launchAssurance,
   });
   if (errors.length) fail(`persisted model decision binding invalid: ${errors.join('; ')}`);
   return persisted;
@@ -2017,6 +2107,7 @@ function loadSelectedDecision(context, lane, explicitPath, operation) {
     decisionPath,
     artifactRoot: context.artifactRoot,
     modelTrust: context.engagement.modelTrust,
+    launchAssurance: context.engagement.launchAssurance,
   });
   if (bindingErrors.length) fail(`engagement ${operation} model decision binding invalid: ${bindingErrors.join('; ')}`);
   if (decision.agent !== lane) fail(`engagement ${operation} model decision belongs to ${decision.agent}, not ${lane}`);
@@ -2807,6 +2898,38 @@ function strictPhysicalDirectoryInput(value, label) {
   return value;
 }
 
+// --unattested-launch is honoured only for a run that provably could not have been
+// attested. The decisive check is hostAttestationMaterial(): it reads the host trust
+// store and the attested launcher's environment bindings, both outside the engagement
+// artifact root and therefore outside the sandbox write grant an in-sandbox controller
+// holds, so a controller launched attested cannot reach keyless mode by dropping the
+// three signed coordinates from the command it composes. ARGUS_LAUNCH_UNATTESTED=1 is
+// additionally required: it is the unattested launcher's own positive signal (exported
+// by argus-launch --unattested into an `env -i` child), and an operator running preflight
+// by hand on a keyless host sets it explicitly.
+function requireUnattestedLaunchPreconditions({ options, modelRuntime, nativeLaunch, artifactRootPath }) {
+  if (process.env.ARGUS_LAUNCH_UNATTESTED !== '1') {
+    fail('--unattested-launch requires the unattested launcher signal ARGUS_LAUNCH_UNATTESTED=1; it is exported only by argus-launch --unattested, or set explicitly by an operator running preflight on a keyless host');
+  }
+  if (modelRuntime !== 'claude') {
+    fail('--unattested-launch is claude-only: the Codex CLI exposes no native hard turn cap, so its mandatory native-host-execution check can never be waived');
+  }
+  for (const [key, flag] of [['trustStore', '--trust-store'], ['launchAuthorization', '--launch-authorization'], ['launchReceipt', '--launch-receipt']]) {
+    if (options[key]) fail(`--unattested-launch cannot be combined with ${flag}: signed launch coordinates mean attestation is available`);
+  }
+  if (nativeLaunch.ready) {
+    fail('--unattested-launch refused: this launch is authenticated and attestation is available; rerun preflight without the flag');
+  }
+  const material = hostAttestationMaterial();
+  if (material) {
+    fail(`--unattested-launch refused: ${material}; keyless mode exists only for a host with no resolvable operator key material — present the signed launch coordinates and run attested instead`);
+  }
+  const receiptPath = join(artifactRootPath, 'ai_agents_internal', 'native-launch-receipt.json');
+  if (lstatSafe(receiptPath)) {
+    fail(`--unattested-launch refused: an attested native-launch receipt exists at ${receiptPath}, so this artifact root belongs to an authenticated launch`);
+  }
+}
+
 async function preflight(argv) {
   assertTrustedModelRoutingAssets();
   const options = parsePreflightOptions(argv);
@@ -2846,7 +2969,16 @@ async function preflight(argv) {
     artifactRootPath,
     engagementId: options.engagementId,
   });
-  if (modelRuntime === 'claude' && !nativeLaunch.ready) fail(nativeLaunch.evidence);
+  // --unattested-launch is an operator escape hatch for a host that demonstrably has no
+  // key material at all — never a downgrade an in-sandbox controller can take by simply
+  // omitting the signed coordinates it was handed. Every precondition is a hard refusal
+  // with its own named error, not a silent fall-back to attested, and the load-bearing
+  // one reads state outside the artifact root. See requireUnattestedLaunchPreconditions.
+  const unattestedLaunch = Boolean(options.unattestedLaunch);
+  if (unattestedLaunch) {
+    requireUnattestedLaunchPreconditions({ options, modelRuntime, nativeLaunch, artifactRootPath });
+  }
+  if (modelRuntime === 'claude' && !nativeLaunch.ready && !unattestedLaunch) fail(nativeLaunch.evidence);
   const outputRelative = options.output ?? 'ai_agents_internal/preflight.json';
   const requestedOutputPath = resolve(artifactRootPath, outputRelative);
   const fallbackOutputPath = resolve(artifactRootPath, 'ai_agents_internal/preflight.json');
@@ -2954,6 +3086,11 @@ async function preflight(argv) {
       browserSupport: profile.browserSupport,
       accessibilityRequirement: profile.accessibilityRequirement,
     });
+    // Record the operator's opt-out durably, before any decision or allocation can exist,
+    // so every model decision minted for this engagement is integrity-bound to it through
+    // engagementManifestSha256. Attested engagements keep the field absent, byte-for-byte
+    // identical to every manifest written before unattested mode existed.
+    if (unattestedLaunch) engagement.launchAssurance = 'unattested';
     mkdirSync(dirname(requestedEngagementPath), { recursive: true });
     writeFileSync(requestedEngagementPath, `${JSON.stringify(engagement, null, 2)}\n`, { mode: 0o600 });
     chmodSync(requestedEngagementPath, 0o600);
@@ -2961,6 +3098,17 @@ async function preflight(argv) {
   }
   if (engagement) {
     engagementErrors.push(...validateEngagementManifest(engagement));
+    // Assurance is immutable for the life of an engagement: decisions and the model-control
+    // seal are bound to the manifest digest, so silently flipping either direction would
+    // invalidate them. A mismatch is an error, never a rewrite.
+    const recordedAssurance = modelLaunchAssurance(engagement.launchAssurance);
+    const requestedAssurance = unattestedLaunch ? 'unattested' : 'attested';
+    if (recordedAssurance !== requestedAssurance) {
+      engagementErrors.push(
+        `engagement launchAssurance ${recordedAssurance} does not match this preflight run (${requestedAssurance}); ` +
+        'assurance is immutable once recorded — rerun preflight with the matching --unattested-launch setting, or start a fresh artifact root',
+      );
+    }
     if (engagement.mode !== mode) engagementErrors.push(`engagement mode ${engagement.mode} does not match preflight mode ${mode}`);
     if (typeof engagement.artifactRoot !== 'string' || !physicalPathsEquivalent(engagement.artifactRoot, artifactRootPath)) engagementErrors.push('engagement artifactRoot does not match preflight artifact root');
     if (!targetIdentitiesEquivalent(engagement.target?.identifier, targetIdentity) || !nullablePhysicalPathsEquivalent(engagement.target?.root, targetPath)) engagementErrors.push('engagement target does not match the inspected target');
@@ -3067,13 +3215,15 @@ async function preflight(argv) {
   addCheck(
     checks,
     'native-host-execution',
-    true,
+    !unattestedLaunch,
     nativeLaunchReady,
     nativeLaunchReady
       ? nativeLaunch.evidence
-      : modelRuntime === 'codex'
-        ? 'Codex dispatch is disabled because the installed CLI exposes no native hard turn cap'
-        : nativeLaunch.evidence,
+      : unattestedLaunch
+        ? `UNATTESTED: operator explicitly opted out of native-launch attestation via --unattested-launch (${nativeLaunch.evidence}); no cryptographic proof of sandbox/turn-cap/model-dispatch integrity exists for this run — treat as a named residual risk in every downstream report`
+        : modelRuntime === 'codex'
+          ? 'Codex dispatch is disabled because the installed CLI exposes no native hard turn cap'
+          : nativeLaunch.evidence,
   );
   addCheck(checks, 'target-reachable', true, target.reachable, target.evidence);
   addCheck(checks, 'artifact-root-writable', true, artifactWritable, artifactWritable ? `writable: ${artifactRootPath}` : `not writable: ${artifactRootPath}`);
@@ -3222,7 +3372,8 @@ async function preflight(argv) {
     console.log(
       `PREFLIGHT  ${status} mode=${mode} selected=${summary.selected} dispatchable=${summary.dispatchable} ` +
       `degraded=${summary.degraded} deferred=${summary.deferred} skipped=${summary.skipped} blocked=${summary.blocked} ` +
-      `report=${persisted ? outputPath : 'NOT_PERSISTED'}`,
+      `report=${persisted ? outputPath : 'NOT_PERSISTED'}` +
+      (unattestedLaunch ? ' attestation=UNATTESTED' : ''),
     );
   }
   return status === 'blocked' ? 2 : 0;
@@ -3329,11 +3480,15 @@ function evaluateRiskAuthorizations(contract, authorization, target, now) {
 }
 
 function parsePreflightOptions(args) {
-  const options = { features: [], json: false };
+  const options = { features: [], json: false, unattestedLaunch: false };
   for (let index = 0; index < args.length; index += 1) {
     const name = args[index];
     if (name === '--json') {
       options.json = true;
+      continue;
+    }
+    if (name === '--unattested-launch') {
+      options.unattestedLaunch = true;
       continue;
     }
     const value = args[index + 1];

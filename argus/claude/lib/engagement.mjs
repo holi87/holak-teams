@@ -101,6 +101,15 @@ export function validateEngagementManifest(manifest) {
       runtimeTrust.keyId === operatorTrust.keyId || runtimeTrust.keyFingerprintSha256 === operatorTrust.keyFingerprintSha256)) {
     errors.push('modelTrust must be null or a complete purpose-separated host-trust-store Ed25519 bundle');
   }
+  // launchAssurance is the operator's explicit, recorded opt-out of native-launch
+  // attestation. Absent means attested. An unknown value is rejected outright rather
+  // than silently downgraded, and an unattested engagement can never pin a trust bundle.
+  if (manifest.launchAssurance !== undefined && !['attested', 'unattested'].includes(manifest.launchAssurance)) {
+    errors.push('launchAssurance must be attested or unattested');
+  }
+  if (manifest.launchAssurance === 'unattested' && modelTrust !== null) {
+    errors.push('an unattested engagement must not pin a modelTrust bundle');
+  }
   validateAccessibilityPolicy(manifest.accessibilityPolicy, errors);
   validateBrowserPolicy(manifest.browserPolicy, manifest.selectedAgents, errors);
   if (!Array.isArray(manifest.phasePlan) || manifest.phasePlan.length !== PHASES.length) {
@@ -407,7 +416,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     const destination = engagementPath(manifest, canonical.path);
     atomicWrite(destination, output);
     if (canonical.schema === 'final-summary') {
-      atomicWrite(engagementPath(manifest, 'solution/FINAL-SUMMARY.md'), renderFinalSummary(JSON.parse(output)));
+      atomicWrite(engagementPath(manifest, 'solution/FINAL-SUMMARY.md'), renderFinalSummary(JSON.parse(output), { launchAssurance: manifest.launchAssurance }));
     }
     const result = { owner, fragments: records.length, sha256: sha256(output), mergedAt: new Date().toISOString() };
     state.merges[canonical.path] = result;

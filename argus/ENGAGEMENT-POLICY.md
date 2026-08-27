@@ -87,6 +87,126 @@ fragments by stable filename, acquires the single merge lock, writes a temporary
 and atomically renames it over the canonical path. Repeated merges of the same fragments
 produce byte-identical output.
 
+## Unattested launch (no trust store)
+
+`argus-launch claude ... --unattested` and `argus-assets preflight ... --unattested-launch`
+are an explicit, opt-in alternative to the trust-store/launch-authorization handshake above,
+for operators who cannot provision or use Ed25519 signing keys (no key-management access on
+the target's host is the primary case). They skip ONLY the cryptographic native-launch
+attestation gate at preflight (`native-host-execution` becomes a non-mandatory, explicitly
+`UNATTESTED`-labeled `degraded` check instead of a hard fail); the OS-level sandbox
+(target/artifact-root immutability via `sandbox-exec`/`bwrap`) is unaffected and still runs.
+Default behavior — no `--unattested`/`--unattested-launch` — is unchanged and stays
+fail-closed exactly as before.
+
+### How assurance is recorded and bound
+
+When `preflight --unattested-launch` creates the engagement manifest it writes
+`"launchAssurance": "unattested"` into it. An attested manifest omits the field entirely and
+is byte-identical to every manifest written before this mode existed; a missing or
+unrecognized value resolves to `attested`, and an unrecognized value is rejected by
+`validateEngagementManifest` rather than silently accepted.
+
+### Preconditions: the flag is refused, never quietly ignored
+
+`--unattested-launch` is not a switch a dispatched controller can flip. Passing it is a
+hard failure with its own named error unless *every* precondition below holds, so a
+controller that was launched attested cannot reach keyless mode by simply omitting the
+three signed coordinates from the preflight command it composes:
+
+1. `ARGUS_LAUNCH_UNATTESTED=1` must be present. `argus-launch --unattested` exports it into
+   its `env -i` child; the attested launcher never does. An operator running `preflight`
+   by hand on a keyless host must set it explicitly:
+   `env ARGUS_LAUNCH_UNATTESTED=1 argus-assets preflight ... --unattested-launch`.
+2. `--model-runtime` must be `claude`. Codex's `native-host-execution` mandate covers the
+   absence of a native hard turn cap and can never be waived.
+3. None of `--trust-store`, `--launch-authorization`, `--launch-receipt` may be supplied.
+4. The native-launch inspection must not already be `ready`.
+5. **No host attestation material may be resolvable.** No `ARGUS_MODEL_TRUST_STORE` /
+   `ARGUS_NATIVE_LAUNCH_*` environment binding may be inherited, and no file may exist at
+   the host trust store path (`$ARGUS_MODEL_TRUST_STORE`, else
+   `~/.config/argus/model-trust.json`). This is the load-bearing check: the trust store is
+   required to live outside the engagement artifact root, which is the only region the
+   launcher's sandbox grants write access to, so this condition reads state the controller
+   cannot forge or remove.
+6. No attested `ai_agents_internal/native-launch-receipt.json` may exist in the artifact
+   root — that file means this root belongs to an authenticated launch.
+
+Assurance is immutable for the life of an engagement. Rerunning preflight against an
+existing manifest with the opposite setting is an error, not a rewrite — the manifest digest
+is baked into every model decision and into the model-control seal, so flipping it would
+invalidate them. `model trust` refuses to pin a bundle on an unattested engagement, and an
+`unattested` manifest that carries a `modelTrust` bundle is invalid.
+
+Every model decision minted for an unattested engagement carries `"trust": "unattested"`.
+That marker is part of the semantic input to the deterministic `decisionId`, so it cannot be
+added to or stripped from a decision file after the fact. `validateModelDecisionBinding`
+requires the decision's trust and the manifest's `launchAssurance` to agree exactly: an
+unattested decision is rejected under an attested manifest, and an attested (unmarked)
+decision is rejected under an unattested manifest. Decision files therefore cannot be
+replayed across assurance levels in either direction.
+
+### What unattested mode does and does not relax
+
+Relaxed, and only this: the requirement for a pinned purpose-separated Ed25519 trust bundle
+(`validateModelTrust`) and the per-route recheck of the *pinned* identity against the live
+host trust store. With that gate satisfied by the recorded opt-out instead of by key
+material, `model route`, `model telemetry`, `engagement allocate`, and
+`engagement start-attempt` all work with no trust store, no keys, and no signer.
+
+The recorded opt-out is never honoured on the manifest's word alone. Every command that
+would have demanded a pinned bundle re-derives the relaxation before taking it:
+
+- **No host attestation material may be resolvable** — the same probe as preflight
+  precondition 5, evaluated fresh on every invocation. This is what restores the
+  operator's mid-engagement kill switch: creating, restoring, or relocating a host trust
+  store halts an unattested engagement on its very next command, exactly as rotating a
+  pinned key halts an attested one. A manifest that claims `unattested` while key material
+  exists is a hard failure, not a fall-back.
+- **The co-resident `preflight.json` must corroborate it** — schema-valid, digest-fresh
+  against the *exact* current manifest, and carrying a `native-host-execution` entry with
+  `mandatory: false`, `status: "degraded"`, and `UNATTESTED: `-prefixed evidence. A manifest
+  flipped to `unattested` without a matching preflight run is refused, and so is a report
+  forged to claim attestation passed. This is defence in depth, not the anchor: the report
+  lives inside the artifact root and is writable by the controller.
+
+Fully enforced, unchanged: packaged-asset digests; decision self-integrity SHA-256;
+deterministic re-derivation of every decision from the packaged policy and adapter snapshot
+(semantics, `decisionId`, `relativePath`, persisted path); preflight freshness bound to the
+manifest digest; the immutable model-control seal and its dispatchable projection;
+`status === 'selected'`, exact agent/dispatch/attempt binding and retry lineage;
+non-aliased/single-link file guards; lease-token capability checks; and the OS sandbox.
+
+Still fail-closed, by design and with no way to opt out:
+
+- **Codex dispatch is unavailable.** A Codex allocation needs a signed JIT
+  `MODEL_DISPATCH_AUTHORIZATION`, which cannot exist without a runtime-attestation key.
+  Unattested mode is Claude-only, enforced at decision creation, not just at the CLI.
+- **Operator-approved escalations are unavailable.** A frontier role that hits
+  `ambiguity`/`safety`/`repeated-failure`, or `model-unavailable` on a frontier role,
+  produces `OPERATOR_ESCALATION_REQUIRED`/`FRONTIER_UNAVAILABLE` and stays blocked: weaker
+  fallback is forbidden and there is no operator-approval anchor to verify a signature
+  against. Standard-role `model-unavailable` still routes upward to frontier as usual.
+
+### Named residual risk
+
+Unattested mode loses one protection, and it must be reported: there is no cryptographic
+proof of sandbox/turn-cap/model-dispatch integrity for the run. Concretely, a local actor
+with write access to the artifact root can mint a *self-consistent* decision file, because
+nothing signs the policy-to-decision step. Key rotation and revocation remain observable in
+the only form that applies to a keyless host — the appearance of any host trust store halts
+dispatch — but there is no pinned identity to compare against, so a *changed* key inside an
+existing store is indistinguishable from any other store. One residual downgrade path is
+named and accepted: an attested controller whose operator keeps the trust store at a
+non-default path could scrub the inherited `ARGUS_*` bindings, delete the in-root
+native-launch receipt, and set `ARGUS_LAUNCH_UNATTESTED=1` itself. Keeping the host trust
+store at the default `~/.config/argus/model-trust.json` closes it. Disclosure is automatic and
+layered: the manifest field, the `UNATTESTED:`-prefixed `native-host-execution` evidence in
+`preflight.json`, `attestation=UNATTESTED` on the `PREFLIGHT` line, `"trust": "unattested"`
+in every decision file, and an `## Attestation: UNATTESTED` section rendered into
+`solution/FINAL-SUMMARY.md`. Carry that residual risk verbatim into every report; never
+present an unattested run as attested.
+
 ## Isolated resources and leases
 
 Before allocation, the controller persists a normal attempt-1 selected model decision for

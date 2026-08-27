@@ -81,6 +81,13 @@ export function modelAuthenticatedDocumentSha256(document) {
   return sha256(stableJson(document));
 }
 
+// Launch assurance is an opt-in, manifest-recorded operator declaration. Anything
+// other than the exact string 'unattested' — absent, null, misspelled, or a future
+// value this build does not know — resolves to 'attested' so ambiguity fails closed.
+export function modelLaunchAssurance(value) {
+  return value === 'unattested' ? 'unattested' : 'attested';
+}
+
 export function modelPublicKeyFingerprint(publicKeyPem) {
   const key = createPublicKey(publicKeyPem);
   if (key.asymmetricKeyType !== 'ed25519') throw new Error('model trust key must be Ed25519');
@@ -179,11 +186,19 @@ export function resolveModelDecision(policy, adapters, {
   escalationBinding = null,
   availabilityBinding = null,
   operatorDecision = null,
+  trust = 'attested',
   createdAt = new Date().toISOString(),
 } = {}) {
   const policyErrors = validateModelPolicy(policy);
   if (policyErrors.length) throw new Error(`invalid model policy: ${policyErrors.join('; ')}`);
   if (!['claude', 'codex'].includes(runtime)) throw new Error('runtime must be claude or codex');
+  if (!['attested', 'unattested'].includes(trust)) throw new Error('decision trust must be attested or unattested');
+  if (trust === 'unattested' && runtime !== 'claude') {
+    throw new Error('unattested engagements are claude-only: Codex dispatch requires a signed JIT dispatch authorization');
+  }
+  if (trust === 'unattested' && operatorDecision !== null) {
+    throw new Error('an unattested engagement has no operator-approval trust anchor and cannot carry an operator-approved decision');
+  }
   requireStableId(engagementId, 'engagementId');
   requireSha256(engagementManifestSha256, 'engagementManifestSha256');
   requireStableId(dispatchId, 'dispatchId');
@@ -306,6 +321,9 @@ export function resolveModelDecision(policy, adapters, {
     agent: slug,
     runtime,
     signal,
+    // Only an unattested decision carries the marker, so attested decisionIds stay
+    // byte-identical to every decision minted before unattested mode existed.
+    ...(trust === 'unattested' ? { trust: 'unattested' } : {}),
     adapterContractId: adapters.contractId,
     adapterId: runtimeAdapter.adapterId,
     adapterSnapshotSha256: snapshotSha256,
@@ -342,6 +360,7 @@ export function resolveModelDecision(policy, adapters, {
     agent: slug,
     runtime,
     signal,
+    ...(trust === 'unattested' ? { trust: 'unattested' } : {}),
     status,
     reasonCode,
     baselineConfig,
@@ -405,6 +424,7 @@ export function validateModelDecisionBinding(policy, adapters, decision, {
   decisionPath,
   artifactRoot,
   modelTrust,
+  launchAssurance,
 } = {}) {
   const errors = [];
   if (decision?.schema !== policy?.routing?.decisionSchema) errors.push(`decision schema must be ${policy?.routing?.decisionSchema}`);
@@ -419,8 +439,26 @@ export function validateModelDecisionBinding(policy, adapters, decision, {
   if (!sameStrings(decision?.requiredEnforcements, REQUIRED_ENFORCEMENTS)) errors.push('decision requiredEnforcements are incomplete');
   if (decision?.policySha256 !== modelPolicySha256(policy)) errors.push('decision policy hash differs from the packaged policy');
   if (decision?.integritySha256 !== modelDecisionIntegritySha256(decision)) errors.push('decision integrity hash is invalid');
-  try { validateModelTrust(modelTrust); }
-  catch (error) { errors.push(`decision model trust is invalid: ${error.message}`); }
+  // Assurance is bound in two independent places: the manifest (whose digest is baked
+  // into decision.engagementManifestSha256) and the decision itself. Requiring exact
+  // agreement makes a decision file unreplayable across assurance levels in either
+  // direction, and an absent/unknown value on either side resolves to 'attested'.
+  const assurance = modelLaunchAssurance(launchAssurance);
+  const decisionTrust = decision?.trust === undefined ? 'attested' : decision.trust;
+  if (!['attested', 'unattested'].includes(decisionTrust)) errors.push('decision trust must be attested or unattested');
+  if (decisionTrust !== assurance) {
+    errors.push(`decision trust ${decisionTrust} differs from the engagement launchAssurance ${assurance}`);
+  }
+  if (assurance === 'unattested' && decisionTrust === 'unattested') {
+    // The operator opted out of attestation and has no trust anchor at all; a pinned
+    // bundle here would mean the manifest is self-contradictory.
+    if ((modelTrust ?? null) !== null) errors.push('an unattested engagement must not pin a modelTrust bundle');
+    if (decision?.operatorDecision) errors.push('an unattested engagement cannot carry an operator-approved model decision');
+    if (decision?.runtime !== 'claude') errors.push('unattested engagements are claude-only: Codex dispatch requires a signed JIT dispatch authorization');
+  } else {
+    try { validateModelTrust(modelTrust); }
+    catch (error) { errors.push(`decision model trust is invalid: ${error.message}`); }
+  }
   validateDecisionAuthentication(decision, modelTrust, errors);
   let expected;
   try {
@@ -435,6 +473,7 @@ export function validateModelDecisionBinding(policy, adapters, decision, {
       escalationBinding: decision?.escalationBinding,
       availabilityBinding: decision?.availabilityBinding,
       operatorDecision: decision?.operatorDecision,
+      trust: decision?.trust === undefined ? 'attested' : decision.trust,
       createdAt: decision?.createdAt,
     });
   } catch (error) {
