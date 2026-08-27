@@ -320,6 +320,7 @@ function expectedPackagedPaths() {
   for (const path of [
     '.claude-plugin/plugin.json',
     'bin/argus-assets',
+    'bin/package.json',
     'hooks/hooks.json',
     'skills/run/SKILL.md',
     'runtime-assets.json',

@@ -46,11 +46,21 @@ Usage:
     --runtime-key-id <id> --request-output <absolute-path> \
     --launch-authorization <absolute-path> [--workspace <absolute-path>] \
     [--wait-seconds <30..300>] [--dry-run]
+  argus-launch claude --target <url-or-absolute-path> --artifact-root <absolute-path> \
+    --mode <A|B|C|D> --engagement-id <id> --unattested [--workspace <absolute-path>] [--dry-run]
 
 The launcher writes an unsigned, process-bound request to --request-output, then waits for
 the isolated runtime-attestation signer to create --launch-authorization. The signer must
 sign the exact canonical payload emitted by `argus-assets model payload --document REQUEST`.
 Neither a private key nor a signing service may be available to this process or its agents.
+
+--unattested is an explicit, opt-in alternative to the trust-store/launch-authorization
+handshake above, for operators who cannot provision or use Ed25519 signing keys (e.g. no
+key-management access on the target's host). It skips ONLY the cryptographic native-launch
+attestation; the OS-level sandbox (target/artifact-root immutability) still runs unchanged.
+The resulting engagement is reported as UNATTESTED — a named residual risk with no
+cryptographic proof of sandbox/turn-cap/model-dispatch integrity — in every downstream
+report, never silently. Default behavior (no --unattested) is unchanged and stays fail-closed.
 
 Codex execution remains unavailable until its CLI exposes a native hard turn cap.
 EOF
@@ -295,6 +305,7 @@ request_output=''
 launch_authorization=''
 wait_seconds=300
 dry_run=false
+unattested=false
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --target) [ "$#" -ge 2 ] || fail '--target requires a value'; target="$2"; shift 2 ;;
@@ -307,6 +318,7 @@ while [ "$#" -gt 0 ]; do
     --request-output) [ "$#" -ge 2 ] || fail '--request-output requires a path'; request_output="$2"; shift 2 ;;
     --launch-authorization) [ "$#" -ge 2 ] || fail '--launch-authorization requires a path'; launch_authorization="$2"; shift 2 ;;
     --wait-seconds) [ "$#" -ge 2 ] || fail '--wait-seconds requires a value'; wait_seconds="$2"; shift 2 ;;
+    --unattested) unattested=true; shift ;;
     --dry-run) dry_run=true; shift ;;
     *) fail "unknown option: $1" ;;
   esac
@@ -316,15 +328,29 @@ done
 [ -n "$artifact_root" ] || fail '--artifact-root is required'
 [[ "$mode" =~ ^[ABCD]$ ]] || fail '--mode must be A, B, C, or D'
 [[ "$engagement_id" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$ ]] || fail '--engagement-id must be a stable identifier'
-[ -n "$runtime_key_id" ] || fail '--runtime-key-id is required'
-[[ "$wait_seconds" =~ ^[0-9]+$ ]] && [ "$wait_seconds" -ge 30 ] && [ "$wait_seconds" -le 300 ] || fail '--wait-seconds must be between 30 and 300'
 absolute_normalized "$artifact_root" 'artifact root'
-absolute_normalized "$trust_store" 'trust store'
-absolute_normalized "$request_output" 'request output'
-absolute_normalized "$launch_authorization" 'launch authorization'
-[ ! -e "$request_output" ] || fail 'request output already exists; launch requests are one-shot'
-[ ! -e "$launch_authorization" ] || fail 'launch authorization already exists; replay is forbidden'
-[ "$request_output" != "$launch_authorization" ] || fail 'request and authorization paths must differ'
+if $unattested; then
+  [ -z "$trust_store" ] && [ -z "$runtime_key_id" ] && [ -z "$request_output" ] && [ -z "$launch_authorization" ] || \
+    fail '--unattested cannot be combined with --trust-store/--runtime-key-id/--request-output/--launch-authorization'
+  # Keyless mode exists only for a host that has no operator key material at all. If any
+  # is resolvable, refuse here rather than letting the dispatched controller discover it:
+  # argus-assets preflight --unattested-launch enforces the same precondition, and the
+  # host trust store is the operator's kill switch for an in-flight unattested engagement.
+  [ -z "${ARGUS_MODEL_TRUST_STORE:-}" ] || \
+    fail 'ARGUS_MODEL_TRUST_STORE is set; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id'
+  default_trust_store="${HOME:-}/.config/argus/model-trust.json"
+  [ ! -e "$default_trust_store" ] || \
+    fail "a host model trust store exists at $default_trust_store; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id"
+else
+  [ -n "$runtime_key_id" ] || fail '--runtime-key-id is required (or pass --unattested to skip signed attestation)'
+  [[ "$wait_seconds" =~ ^[0-9]+$ ]] && [ "$wait_seconds" -ge 30 ] && [ "$wait_seconds" -le 300 ] || fail '--wait-seconds must be between 30 and 300'
+  absolute_normalized "$trust_store" 'trust store'
+  absolute_normalized "$request_output" 'request output'
+  absolute_normalized "$launch_authorization" 'launch authorization'
+  [ ! -e "$request_output" ] || fail 'request output already exists; launch requests are one-shot'
+  [ ! -e "$launch_authorization" ] || fail 'launch authorization already exists; replay is forbidden'
+  [ "$request_output" != "$launch_authorization" ] || fail 'request and authorization paths must differ'
+fi
 
 target_kind=path
 target_path=''
@@ -355,16 +381,18 @@ else
   workspace="$(physical_directory "$workspace" 'workspace')"
 fi
 
-trust_store="$(physical_file "$trust_store" 'trust store')"
-assert_disjoint "$artifact_root" "$trust_store" 'artifact root and trust store'
-if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$trust_store" 'target and trust store'; fi
-for operator_path in "$request_output" "$launch_authorization"; do
-  operator_parent="$(physical_directory "$(dirname "$operator_path")" 'operator authorization directory')"
-  [ "$operator_parent" = "$(dirname "$operator_path")" ] || fail 'operator authorization directory must be physical'
-  secure_owned_directory "$operator_parent" 'operator authorization directory'
-  assert_disjoint "$artifact_root" "$operator_path" 'artifact root and operator authorization path'
-  if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$operator_path" 'target and operator authorization path'; fi
-done
+if ! $unattested; then
+  trust_store="$(physical_file "$trust_store" 'trust store')"
+  assert_disjoint "$artifact_root" "$trust_store" 'artifact root and trust store'
+  if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$trust_store" 'target and trust store'; fi
+  for operator_path in "$request_output" "$launch_authorization"; do
+    operator_parent="$(physical_directory "$(dirname "$operator_path")" 'operator authorization directory')"
+    [ "$operator_parent" = "$(dirname "$operator_path")" ] || fail 'operator authorization directory must be physical'
+    secure_owned_directory "$operator_parent" 'operator authorization directory'
+    assert_disjoint "$artifact_root" "$operator_path" 'artifact root and operator authorization path'
+    if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$operator_path" 'target and operator authorization path'; fi
+  done
+fi
 
 command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
 claude_executable="$(command -v claude)"
@@ -379,6 +407,35 @@ claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code versio
 
 mkdir -p "$artifact_root/ai_agents_internal/tmp" "$artifact_root/ai_agents_internal/claude-config"
 chmod 700 "$artifact_root/ai_agents_internal" "$artifact_root/ai_agents_internal/tmp" "$artifact_root/ai_agents_internal/claude-config"
+
+if $unattested; then
+  # No trust store, no signed launch-authorization handshake: the operator explicitly
+  # accepted this via --unattested. The OS-level sandbox (target/artifact-root
+  # immutability) still runs unchanged below; only the cryptographic native-launch
+  # attestation is skipped. argus-assets preflight reports this as a named,
+  # non-mandatory residual risk (see --unattested-launch / native-host-execution check).
+  prompt="/argus:run target=$target artifact-root=$artifact_root mode=$mode unattestedLaunch=true engagementId=$engagement_id"
+  command=("$claude_executable" -p --no-session-persistence --max-turns 96 --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+  if $dry_run; then
+    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=96 agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@2 environment=argus-launch-unattested@1 attestation=UNATTESTED\n' \
+      "$mode" "$target_kind" "$target" "$workspace" "$artifact_root"
+    exit 0
+  fi
+  child_env=(
+    "HOME=${HOME:-}"
+    "PATH=${PATH:-/usr/bin:/bin}"
+    "TMPDIR=$artifact_root/ai_agents_internal/tmp"
+    "CLAUDE_CONFIG_DIR=$artifact_root/ai_agents_internal/claude-config"
+    "ARGUS_LAUNCH_UNATTESTED=1"
+  )
+  for name in USER LOGNAME SHELL LANG LC_ALL LC_CTYPE TERM NO_COLOR FORCE_COLOR ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL HTTPS_PROXY HTTP_PROXY NO_PROXY SSL_CERT_FILE SSL_CERT_DIR; do
+    if [ -n "${!name:-}" ]; then child_env+=("$name=${!name}"); fi
+  done
+  sandbox_status=0
+  sandbox_exec "$artifact_root" "$workspace" env -i "${child_env[@]}" "${command[@]}" || sandbox_status=$?
+  exit "$sandbox_status"
+fi
+
 receipt="$artifact_root/ai_agents_internal/native-launch-receipt.json"
 sandbox_probe_dir="$(mktemp -d "$(dirname "$request_output")/.argus-sandbox-probe.XXXXXX")"
 chmod 700 "$sandbox_probe_dir"

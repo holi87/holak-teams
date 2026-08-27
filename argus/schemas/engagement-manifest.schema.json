@@ -30,6 +30,7 @@
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/slug" }
     },
+    "launchAssurance": { "enum": ["attested", "unattested"] },
     "modelTrust": {
       "oneOf": [
         { "type": "null" },

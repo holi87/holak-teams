@@ -56,9 +56,8 @@ Before any target probe, test, or specialist dispatch:
    `argus:kalchas` plus another mode-required namespaced specialist returns
    `ARGUS_PREFLIGHT_ERROR: ARGUS_AGENTS_UNAVAILABLE`. A plan is not a substitute for any
    of these failures.
-2. Require the exact signed launcher coordinates: target, physically disjoint artifact
-   root, mode, engagement ID, launch authorization, launch receipt, and public trust store.
-   Missing coordinates return `ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED`.
+2. Require every exact signed launcher coordinate below, over a physically disjoint artifact
+   root. Missing coordinates return `ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED`.
    Never derive, normalize, or replace them. Run
    `argus-assets preflight --target <target> --mode <A|B|C|D> --artifact-root <artifact-root>
    --engagement-id <engagement-id> --launch-authorization <launch-authorization>
@@ -66,6 +65,11 @@ Before any target probe, test, or specialist dispatch:
    Require its exact persisted `ai_agents_internal/orchestration-plan.json`. Declare a feature or
    environment only when user input or safe read-only evidence proves it. Unknown,
    staging, and production-like targets stay read-only. Never invent an approver/grant.
+
+   **Unattested exception** — only when `ARGUS_LAUNCH_UNATTESTED=1`:
+   swap signed coordinates for `--unattested-launch` per `references/ENGAGEMENT-POLICY.md`.
+   Decisions carry `trust=unattested`; Codex and operator escalations stay blocked. Report
+   `UNATTESTED` residual risk, never attested.
 3. Verify persisted `ai_agents_internal/preflight.json`: target evidence, engagement path/digest,
    state/audit paths, orchestration digest, selected count, and guard. Exit 2, missing
    persistence, `blocked`, or a mandatory failure returns

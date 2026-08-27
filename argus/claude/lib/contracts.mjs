@@ -119,16 +119,33 @@ export function mergeCanonicalDocuments(kind, documents) {
   return merged;
 }
 
-export function renderFinalSummary(document) {
+export function renderFinalSummary(document, { launchAssurance } = {}) {
   const errors = validateCanonicalDocument('final-summary', document);
   if (errors.length) throw new Error(`invalid final summary: ${errors.join('; ')}`);
+  // Attestation status comes from the engagement manifest, not from the merged
+  // final-summary document, so an unattested run cannot omit this disclosure by
+  // writing a fragment that leaves it out. Attested runs render exactly as before.
+  const unattested = launchAssurance === 'unattested';
   const lines = [
     '# Argus Final Summary',
     '',
     `Source schema: ${document.$schema}`,
     `Engagement: ${document.engagementId}`,
     `Status: ${document.status}`,
+    ...(unattested ? [`Attestation: UNATTESTED (launchAssurance=unattested)`] : []),
     '',
+    ...(unattested ? [
+      '## Attestation: UNATTESTED',
+      '',
+      'This engagement ran with `launchAssurance: "unattested"`: the operator explicitly opted',
+      'out of native-launch attestation because no Ed25519 trust store was available. No',
+      'cryptographic proof of sandbox, turn-cap, or model-dispatch integrity exists for this',
+      'run, and pinned-key rotation/revocation could not be detected mid-engagement. Model',
+      'decisions remain integrity-bound (self-consistent SHA-256, deterministic re-derivation',
+      'from the packaged policy and adapter snapshot) and the OS sandbox stayed active, but',
+      'every finding below carries this as a named residual risk.',
+      '',
+    ] : []),
     '## Counts',
     '',
     `- Bugs: ${document.counts.bugs}`,
