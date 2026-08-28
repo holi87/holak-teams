@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 5528,
-      "sha256": "27b4e5407b5c88cb681359d8b6f1d69ca6505a7eac669bb0c5f97aac881d88f6"
+      "bytes": 6314,
+      "sha256": "60f8233f87633e26e772bb2733f08dfe447901dfbd298b5b43de350bc24988a8"
     },
     {
       "id": "qa-browser-skill",
