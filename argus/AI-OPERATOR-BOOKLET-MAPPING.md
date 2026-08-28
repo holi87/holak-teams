@@ -146,3 +146,25 @@ the agent that writes the tests. Argus satisfies this by construction:
   already confirmed.
 
 No single role finds, validates, and automates its own defect.
+
+---
+
+## Appendix — model tier verification
+
+The booklet run assumes the frontier roles reason on the strongest available model. Status:
+
+- The 10 frontier roles (`ariadne`, `aristarchus`, `atlas`, `kalchas`, `metis`, `minos`,
+  `odysseus`, `perseus`, `tiresias`, `tyche`) declare `model: opus`; the 17 execution roles
+  declare `model: sonnet`. Both are generated from `argus/model-policy.json` (frontier tier
+  `claude.model = opus`).
+- `opus` is an **alias**. Claude Code 2.1.250 resolves it to the latest opus family member,
+  `claude-opus-5` (CLI alias table `opus → claude-opus-5`; verified on live agent runs via
+  `--output-format json` `modelUsage.canonicalModel`). No repo change is needed for the
+  frontier roles to request Opus 5. Pinning an exact id is deliberately **not** done — the
+  alias floats forward with the CLI, and an exact pin recreates the staleness it would try
+  to fix.
+- Which model actually **serves** a completion, and any runtime fallback to a previous opus
+  (e.g. `claude-opus-4-8`), is decided by the Claude Code CLI at request time from account
+  capacity/quota — **not** by the agent definition. Verified: an exact
+  `model: claude-opus-5` pin falls back identically to the alias, so the fallback is outside
+  repo control. The only in-repo lever is the tier request, which is set to Opus 5.
