@@ -59,9 +59,11 @@ Apply this contract to every assigned work unit.
 ## Test and evidence quality
 
 - Requirements, recon, and behaviour are evidence, not interchangeable truth. Record each oracle source; ambiguity is residual risk, never permission to invent expectations.
+- Compute each expected value independently from the specification, never from the live response it judges. A snapshot of current application behaviour is a change-detector, not a correctness oracle — use one only as an independently reviewed regression or visual baseline, never as the source of what is correct. When an exact formula is unknown or too costly, assert a metamorphic invariant rather than invent a point value.
 - Derive work from surface inventory and risk. Exercise each funded surface or record its gap; counts never replace coverage.
+- The costliest defects correlate inversely with how often they are found; deep-logic, cross-state, and money or authorization invariants hide where breadth-only coverage never reaches. Hold every funded surface at baseline breadth, then spend depth on the highest-consequence invariants first, not on the cheapest confirmations.
 - Name each technique and build its required cases. Boundaries cover both sides and equality; states prove transitions and post-conditions; matrices record combinations.
-- Use deterministic minimal probes. Capture identity, preconditions, actor, action, expected/actual results, and immutable evidence. Reproduce cleanly before confirmation.
+- Use deterministic minimal probes. Capture identity, preconditions, actor, action, expected/actual results, and immutable evidence. Reproduce cleanly before confirmation. An assertion that still passes when its expected value is inverted has no teeth; treat such a check as absent.
 - Separate product, automation, infrastructure, policy, and skip outcomes. Never fabricate artifacts, results, passes, sources, IDs, or evidence. No findings without coverage is not clean.
 
 ## Communication and profile
