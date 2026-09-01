@@ -49,9 +49,17 @@ if (!existsSync(join(runRoot, 'solution', 'bug-ledger.json'))) {
 
 const bugFiles = listBugFiles(join(runRoot, 'bugs'));
 const ledger = readLedger(join(runRoot, 'solution', 'bug-ledger.json'));
+const fileDocuments = bugFiles.map((path) => describeDocument(basename(path), readFileSync(path, 'utf8')));
 const documents = [
-  ...bugFiles.map((path) => describeDocument(basename(path), readFileSync(path, 'utf8'))),
-  ...ledger.map((entry, index) => describeDocument(`bug-ledger[${index}]`, JSON.stringify(entry))),
+  ...fileDocuments,
+  ...ledger.map((entry, index) => {
+    const doc = describeDocument(`bug-ledger[${index}]`, JSON.stringify(entry));
+    // A ledger row is a twin of the bug file it originates from, and carries no component
+    // of its own — its own `lane` names a hunter, not a component. Inherit from the file
+    // it points at, so the twin cannot bypass a component demotion the file would take.
+    for (const component of inheritedComponents(entry, fileDocuments)) doc.components.add(component);
+    return doc;
+  }),
 ];
 if (documents.length === 0) {
   warn('no scoreable documents — an all-miss score reflects an empty run, not a scoring failure');
@@ -128,10 +136,25 @@ function reportContestedDocuments(scored) {
 function describeDocument(source, raw) {
   const text = raw.toLowerCase();
   const lane = text.match(/^\s*[-*]\s*\*\*lane:\*\*\s*([^\n<]+)/m)?.[1]?.trim();
-  // An unfilled template line still lists the whole enum; treat it as no component at all.
+  // The filled Lane field is the only component evidence. An unfilled template line still
+  // lists the whole enum, so it means nothing. An oracle id's namespace (ORC-VAL, ORC-BIZ)
+  // is deliberately NOT a component: it uses a different vocabulary, so reading it would
+  // demote correct matches. Oracle ids already carry their own weight as a strength floor.
   const components = new Set(lane && !lane.includes('|') ? [lane] : []);
-  for (const match of text.matchAll(/orc-([a-z0-9]+)-\d+/g)) components.add(match[1]);
   return { source, text, components };
+}
+
+function inheritedComponents(entry, fileDocuments) {
+  const origins = [entry.id, ...(Array.isArray(entry.origin) ? entry.origin : [entry.origin])]
+    .filter((value) => typeof value === 'string' && value.length > 0)
+    .map((value) => value.toLowerCase());
+  const inherited = new Set();
+  for (const doc of fileDocuments) {
+    const stem = doc.source.replace(/\.md$/, '').toLowerCase();
+    if (!origins.some((origin) => stem === origin || stem.startsWith(`${origin}-`))) continue;
+    for (const component of doc.components) inherited.add(component);
+  }
+  return inherited;
 }
 
 function componentFit(components, doc) {
