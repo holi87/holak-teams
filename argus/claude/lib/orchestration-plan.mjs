@@ -62,6 +62,27 @@ export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
     }
   }
 
+  const deepHunt = plan.deepHuntWave;
+  if (deepHunt !== undefined) {
+    if (!isObject(deepHunt)) errors.push('deepHuntWave: must be an object');
+    else {
+      if (!WAVE_ORDER.includes(deepHunt.afterWave)) errors.push('deepHuntWave.afterWave: must name a declared wave');
+      for (const mode of Array.isArray(deepHunt.modes) ? deepHunt.modes : []) {
+        if (!MODES.includes(mode)) errors.push(`deepHuntWave.modes: unknown mode ${String(mode)}`);
+      }
+      for (const slug of Array.isArray(deepHunt.roles) ? deepHunt.roles : []) {
+        const role = planBySlug.get(slug);
+        if (!role) errors.push(`deepHuntWave.roles: unknown role ${String(slug)}`);
+        else if (!role.dispatch) errors.push(`deepHuntWave.roles: ${slug} is not dispatched`);
+        else {
+          for (const mode of Array.isArray(deepHunt.modes) ? deepHunt.modes : []) {
+            if (!role.modes.includes(mode)) errors.push(`deepHuntWave.roles: ${slug} is inactive in Mode ${mode}`);
+          }
+        }
+      }
+    }
+  }
+
   validateDependencies(planBySlug, errors);
   return [...new Set(errors)];
 }
@@ -106,9 +127,24 @@ export function projectOrchestrationPlan(plan, capabilityMatrix, mode, dispatcha
           omittedDependencies: role.dependsOn.filter((slug) => !selectedSlugs.has(slug)),
         })),
     })),
+    deepHuntWave: projectDeepHuntWave(plan.deepHuntWave, mode, selectedSlugs),
     omitted: active
       .filter((role) => !selectedSlugs.has(role.slug))
       .map((role) => ({ slug: role.slug, reason: 'not-in-dispatchable-set' })),
+  };
+}
+
+function projectDeepHuntWave(deepHunt, mode, selectedSlugs) {
+  if (!isObject(deepHunt) || !Array.isArray(deepHunt.modes) || !deepHunt.modes.includes(mode)) return null;
+  const roles = Array.isArray(deepHunt.roles) ? deepHunt.roles : [];
+  return {
+    afterWave: deepHunt.afterWave,
+    tier: deepHunt.tier,
+    brief: [...deepHunt.brief],
+    roles: roles.filter((slug) => selectedSlugs.has(slug)),
+    omitted: roles
+      .filter((slug) => !selectedSlugs.has(slug))
+      .map((slug) => ({ slug, reason: 'not-in-dispatchable-set' })),
   };
 }
 

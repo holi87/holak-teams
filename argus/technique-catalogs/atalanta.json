@@ -45,7 +45,7 @@
       "techniques": ["decision table", "state transition"],
       "appliesWhen": "surface-present",
       "construct": ["Cross each supported and unsupported method with present, missing, invalid, unauthenticated, forbidden, and conflicting resource states"],
-      "oracles": ["Create returns the sourced create code and Location when promised; unsupported methods return 405 with Allow; missing, auth, validation, and conflict states remain distinguishable"],
+      "oracles": ["Create returns the sourced create code and Location when promised; unsupported methods return 405 with Allow; missing, auth, validation, and conflict states remain distinguishable", "Router-level not-found and handler not-found stay distinguishable: a documented operation whose route is unregistered is a contract defect, not a resource that happens to be absent"],
       "routes": ["contract"]
     },
     {
@@ -175,7 +175,7 @@
       "techniques": ["equivalence partitioning", "decision table"],
       "appliesWhen": "surface-present",
       "construct": ["Pair a valid local-at-domain-dot-TLD case with missing-at, missing-domain, missing-TLD, spaces, double-at, consecutive-dot, overlong, IDN, Unicode-domain, and short-domain cases on every email field"],
-      "oracles": ["The valid address is accepted; each invalid partition follows the sourced rule with a field-bound error and never a 5xx"],
+      "oracles": ["The valid address is accepted; each invalid partition follows the sourced rule with a field-bound error and never a 5xx", "When the contract declares a format constraint on the field, the missing-domain, missing-TLD, double-at, and embedded-whitespace partitions are MUST-REJECT and are never downgraded to characterisation; only IDN and quoted-local-part edges may be characterised"],
       "routes": ["api", "security"]
     },
     {
@@ -207,6 +207,26 @@
       "construct": ["For every discovered string field, test ASCII, target-locale text, multibyte boundary values, emoji, astral, combining, ZWJ, RTL, zero-width, normalization variants, and overlong input", "Write through the API and read through every funded view"],
       "oracles": ["Limits use the sourced unit; accepted values are byte-faithful where promised and semantically consistent across views; rejected values are explicit; no double encoding, replacement, surrogate damage, silent truncation, or 5xx occurs"],
       "routes": ["api", "data", "security"]
+    },
+    {
+      "id": "ATA-T21",
+      "title": "Collection conservation across pages",
+      "scope": ["list-endpoints", "data-integrity", "pagination"],
+      "techniques": ["state verification", "metamorphic testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Arrange at least two page-sizes worth of rows created in one burst so the declared ordering keys tie", "Walk every page at a small page size twice and collect the identifiers, the reported total, and the declared sort"],
+      "oracles": ["The union of the pages equals the reported total with zero duplicates and zero drops, both passes return the identical order, and the sort declares or applies a unique tie-breaker"],
+      "routes": ["api", "data"]
+    },
+    {
+      "id": "ATA-T22",
+      "title": "Numeric fidelity round-trip",
+      "scope": ["numeric-fields", "storage-integrity", "data-integrity"],
+      "techniques": ["equivalence partitioning", "boundary value analysis", "round-trip testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["For every numeric field send a fractional value where the contract declares an integer, a value carrying more decimals than documented, a numeric string, a negative or zero value where the rule forbids it, and a very large value", "Read the entity back through every funded view"],
+      "oracles": ["Each value is either rejected with a field-bound error or stored exactly as sent; silent truncation, rounding, coercion, or sign change is a data-fidelity defect, and the impact names the business rule the altered value feeds"],
+      "routes": ["api", "data"]
     }
   ]
 }

@@ -69,7 +69,7 @@ Write to the repo, then return a structured summary to Odysseus.
 - **Building lane conventions/extensions before a green skeleton runner exists.** Skeleton + aggregated report first, always.
 - **The preloaded `qa-core` and assigned capability-profile bans apply.**
 
-## Ten shared oracle helpers (mandatory, harness)
+## Fourteen shared oracle helpers (mandatory, harness)
 
 You own a **shared, reusable oracle library** in `<selected-harness-root>/` so every lane applies the same tight checks with zero copy-paste (lanes improvising their own checks let whole defect classes escape). Implement, export, document, and wire ALL of these into the single `run-tests.sh`; generic + black-box, no app-specific knowledge baked in.
 
@@ -86,7 +86,12 @@ You own a **shared, reusable oracle library** in `<selected-harness-root>/` so e
 | `boundary3(B, probe, expect, step=domainUnit)` | three-point BVA: drive `{B−step, B, B+step}` (both edges of a range) where **step = the domain's smallest unit — money `0.01`, percent/count `1`, not blind integer ±1** → assert each point's accept/reject + value; plus money reconciles to the cent (`sum==total`, no penny drift) and percentage breakdowns sum to EXACTLY 100% | Atalanta, Talos, Orion, Daidalos |
 | `idempotentReplay(method, req)` + `assertRestStatus(method, state)` | call an idempotent method (GET/PUT/DELETE/HEAD) twice → assert identical state+response; replayed `Idempotency-Key` POST → no duplicate; assert the REST-correct status per method×state (`201`+`Location`/`204`/`405`+`Allow`/`404`-not-`500`). `assertSchema` runs **strict** (`additionalProperties:false`) so any field outside the contract is RED | Atalanta, Talos, Theseus |
 
-Rules: one canonical implementation each (DRY — no lane re-implements); deterministic (fixed seeds/sizes, no `sleep`, warm-up discarded); typed + documented in `solution/ARCHITECTURE.md`; pinned in the lockfile. A helper not wired into `run-tests.sh` is not delivered. These ten close ~28 escaped defect classes — P0 harness work the lanes depend on.
+| `expectStatus(resp, exact)` | assert the exact documented status code, never a class match (`2xx`/`4xx`) or a `<300` comparison | Talos, Theseus, Atalanta |
+| `assertSchemaStrict(resp, opId)` | `assertSchema` with `additionalProperties:false` forced on every object, so an undocumented field is RED rather than tolerated | Talos, Theseus |
+| `invalidPartitions(fieldSchema)` | generate one invalid value per declared constraint — email: missing-`@`, missing-domain, missing-TLD, double-`@`, embedded whitespace; numeric: below-min, above-max, fractional-when-integer, string-when-number, precision-overflow; plus missing-required and out-of-enum | Talos, Atalanta |
+| `paginateAll(endpoint, pageSize)` | walk every page twice at a small page size → `{ids, total, duplicates, missing}` for the collection-conservation oracle | Talos, Atalanta |
+
+Rules: one canonical implementation each (DRY — no lane re-implements); deterministic (fixed seeds/sizes, no `sleep`, warm-up discarded); typed + documented in `solution/ARCHITECTURE.md`; pinned in the lockfile. A helper not wired into `run-tests.sh` is not delivered. These fourteen close ~30 escaped defect classes — P0 harness work the lanes depend on.
 
 **Shared deep-precondition recipe (mandatory — unblocks the deepest journey).** Add to the shared harness (`<selected-harness-root>/data` factory + `<selected-harness-root>/fixtures`) a deterministic, DOMAIN-NEUTRAL arrange-via-API recipe the lanes import; no lane improvises the precondition by hand:
 - `deepJourneyState(opts)` (<selected-harness-root>/data + <selected-harness-root>/fixtures) — arrange-via-API the deep precondition the deepest stateful journey needs but a fresh account cannot reach, returning the entity IDs the spec drives from. Deterministic, idempotent, no hand-grabbing scarce state on shared prod (cleanup in teardown). Derive WHAT this app's deep precondition actually is from Kalchas's recon (screen map · state model · mutating-action inventory · role matrix) — never assume the practice app's shape. *(E.g. on a resource/shop app: `deepJourneyState({ startedTerm: true })` has an operator/admin create a resource + term with open seats, or enrolls a fresh participant onto an already-started term, and returns `{ courseId, termId, lessonId, enrollmentId }` ready for learn/assessment/cert — one illustration of the deep-precondition shape, not the mandate. On a banking app it might arrange a funded-account-with-cleared-transfer; on a ticketing app, an assigned-ticket-mid-workflow.)*

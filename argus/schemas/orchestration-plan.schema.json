@@ -50,6 +50,28 @@
       "minItems": 27,
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/role" }
+    },
+    "deepHuntWave": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["afterWave", "modes", "tier", "roles", "brief"],
+      "properties": {
+        "afterWave": { "enum": ["W0", "W1", "W2", "W3", "W4"] },
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["A", "B", "C", "D"] }
+        },
+        "tier": { "const": "frontier" },
+        "roles": { "$ref": "#/$defs/stringList" },
+        "brief": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 3 }
+        }
+      }
     }
   },
   "$defs": {

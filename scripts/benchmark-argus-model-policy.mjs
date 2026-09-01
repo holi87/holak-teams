@@ -30,7 +30,7 @@ if (mode === '--record') {
 
 const benchmark = readJson('argus/model-policy.benchmark.json');
 assert(benchmark.schemaVersion === 1 && benchmark.policyId === policy.policyId, 'benchmark policy identity mismatch');
-assert(benchmark.decision === 'adopt-10-frontier-17-standard', 'benchmark does not adopt the 10/17 baseline');
+assert(benchmark.decision === 'adopt-12-frontier-15-standard', 'benchmark does not adopt the 12/15 baseline');
 assert(benchmark.syntheticOnly === true, 'benchmark must not contain target data');
 assert(benchmark.scenarios.length === scenarios.scenarios.length, 'benchmark scenario count drift');
 

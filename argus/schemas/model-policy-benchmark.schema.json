@@ -7,7 +7,7 @@
   "properties": {
     "schemaVersion": { "const": 1 },
     "policyId": { "const": "argus/model-policy@1" },
-    "decision": { "const": "adopt-10-frontier-17-standard" },
+    "decision": { "const": "adopt-12-frontier-15-standard" },
     "recordedAt": { "type": "string", "format": "date-time" },
     "claudeCodeVersion": { "type": "string" },
     "syntheticOnly": { "const": true },

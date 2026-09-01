@@ -5,7 +5,7 @@
 export const TECHNIQUE_CATALOG_SCHEMA = 'argus/technique-catalog@1';
 
 const ROLE_CONTRACTS = Object.freeze({
-  atalanta: Object.freeze({ type: 'hunter', prefix: 'ATA', count: 20 }),
+  atalanta: Object.freeze({ type: 'hunter', prefix: 'ATA', count: 22 }),
   proteus: Object.freeze({ type: 'hunter', prefix: 'PRO', count: 15 }),
   metis: Object.freeze({ type: 'strategy' }),
 });

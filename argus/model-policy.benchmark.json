@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "policyId": "argus/model-policy@1",
-  "decision": "adopt-10-frontier-17-standard",
+  "decision": "adopt-12-frontier-15-standard",
   "recordedAt": "2026-07-11T05:22:39.857Z",
   "claudeCodeVersion": "2.1.206 (Claude Code)",
   "syntheticOnly": true,

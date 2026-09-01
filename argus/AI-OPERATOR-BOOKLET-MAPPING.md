@@ -27,6 +27,41 @@ and preload into every role by the capability matrix.
 
 ---
 
+## What changed in 4.5.0 — answer-key review
+
+Three scored runs of the crew family against a private 19-defect answer key showed the
+misses are systematic, not random: cheap contract-conformance defects were planned but never
+executed, documentation-only divergences had no filing owner, confirmed findings were
+"passed as signals" instead of filed, and two-layer disagreements were resolved in the
+implementation's favour. F-01…F-15 close those four buckets. Every edit stays generic and
+black-box; no target name, endpoint, field, or constant entered any prompt.
+
+| Fix | Source | Change | Booklet rule |
+|---|---|---|---|
+| F-01 | `roles/theseus.md`, `roles/talos.md`, `roles/atalanta.md`, `roles/atlas.md` | Mechanical conformance sweep: Theseus emits `solution/paths/conformance-grid.json`, Talos materializes it row-by-row and appends failures to `solution/findings/conformance-red.json`, Atalanta must close every RED row as filed, refuted, or residual. | 3 |
+| F-02 | `roles/atalanta.md`, `roles/proteus.md`, `roles/minos.md`, `technique-catalogs/atalanta.json` | Technique-coverage table is an enforced RESULT output; Minos names any gap on an always-applicable entry as a residual; ATA-T17 marks the structural email partitions MUST-REJECT. | 8–11 |
+| F-03 | `roles/kalchas.md`, `roles/atalanta.md`, `roles/metis.md`, `roles/minos.md`, `qa-core`, bug template | Documentation defects are first class: `solution/discovery/contract-drift.json` with `DRIFT-NNN` ids and sides, an `ORC-DOC-NNN` lane, a Minos classification-of-absence gate, and a `Divergence side` field plus the template-independent qa-core rule. | 1–2 |
+| F-04 | `roles/minos.md`, `roles/kleio.md`, `roles/theseus.md`, `roles/penelope.md` | No file, no canonical id: leads are bounced or promoted into `bugs/`, Kleio asserts the file ↔ ledger bijection, path analysts report unpromoted leads. | 12–15 |
+| F-05 | `shared-skills/qa-core/SKILL.md` | A runtime-confirmed divergence is filed by its finder; deduplication is Minos's call at the barrier. "Passed as a signal" is a dropped finding. | 12–15 |
+| F-06 | `shared-skills/qa-core/SKILL.md`, `roles/minos.md`, `roles/ariadne.md` | Two-layer disagreement is never resolved in the implementation's favour: quote the requirement's qualifier, file both candidates, keep the side `undecidable` when no source pins it. | 1–2 |
+| F-07 | `roles/ariadne.md`, `roles/minos.md`, STATE_MODEL template | Cardinality rules are scope-tested, not disputed: vary the actor, entity, and time window against the documented scope; a report contradicting a documented rule becomes a Requirements observation. | 4–6 |
+| F-08 | `roles/ariadne.md`, STATE_MODEL template | Config-change invariants split into three separately filed oracles: frozen terminal entities, re-evaluated in-flight entities, and transition guards that re-check current criteria. | 4–6 |
+| F-09 | `roles/orion.md`, `roles/penelope.md`, `roles/daidalos.md` | CTA enablement matrix per form, with Penelope's baseline and Daidalos's `ctaEnablement(form)` helper. | 3 |
+| F-10 | `roles/perseus.md`, `roles/aegis.md` | CORS is judged per operation on the actual request, not by preflight sampling; non-uniform coverage is its own filed defect class, backed by `corsMatrix(operations)`. | 7 |
+| F-11 | `technique-catalogs/atalanta.json`, `roles/atlas.md` | ATA-T21 collection conservation across pages, with the `paginateAll` helper. | 3 |
+| F-12 | `technique-catalogs/atalanta.json`, `roles/orion.md` | ATA-T22 numeric fidelity round-trip; a widget `step`/`type` contradicting the documented type is a form-validation defect. | 3 |
+| F-13 | `roles/metis.md`, `roles/minos.md`, `roles/kleio.md` | Risk closure is a coverage gate: every risk carries `CONFIRMED`/`REFUTED`/`UNTESTABLE`/`OPEN`, no top-8 risk stays open, Kleio publishes risk → closure → evidence. | 1–2, 8–11 |
+| F-14 | `model-policy.json`, `orchestration-plan.json`, `roles/odysseus.md` | Atalanta and Orion move to the frontier tier with 64 turns (12 frontier / 15 standard), and the deep-hunt wave after W2 becomes a declared `deepHuntWave` in Modes A and B. | 12–15 |
+| F-15 | `scripts/eval/score-against-key.mjs`, `Makefile` | `make eval` scores a run's `bugs/` plus ledger against a private key file supplied through `ARGUS_ANSWER_KEY`, with manual overrides for judgment rows. The key stays out of the repository. | 15 |
+
+Budget note: `maxAgentWords` is unchanged at 5000, and so is the 1.75 MB installed-plugin cap.
+Two budgets moved deliberately: `maxEffectiveClaudeWords` to 113000, because `qa-core` grew by
+four doctrine bullets that preload into all 27 roles, and `generatedAssetsBytes` to 840 KB, for
+the two new catalog entries, the three new schemas and the grown packaged doctrine.
+`approvedCorpus` was re-approved for the roles that grew.
+
+---
+
 ## What changed in 4.1.0
 
 Three canonical sources, each edit at the RACI-correct owner, all within the prompt-budget
@@ -153,8 +188,8 @@ No single role finds, validates, and automates its own defect.
 
 The booklet run assumes the frontier roles reason on the strongest available model. Status:
 
-- The 10 frontier roles (`ariadne`, `aristarchus`, `atlas`, `kalchas`, `metis`, `minos`,
-  `odysseus`, `perseus`, `tiresias`, `tyche`) declare `model: opus`; the 17 execution roles
+- The 12 frontier roles (`ariadne`, `aristarchus`, `atalanta`, `atlas`, `kalchas`, `metis`,
+  `minos`, `odysseus`, `orion`, `perseus`, `tiresias`, `tyche`) declare `model: opus`; the 15 execution roles
   declare `model: sonnet`. Both are generated from `argus/model-policy.json` (frontier tier
   `claude.model = opus`).
 - `opus` is an **alias**. Claude Code 2.1.250 resolves it to the latest opus family member,

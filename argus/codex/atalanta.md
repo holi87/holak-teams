@@ -3,12 +3,12 @@ schema: argus/codex-provenance@1
 slug: atalanta
 display_name: Atalanta
 runtime_config: argus/codex/atalanta.toml
-runtime_config_sha256: ace40112a35f837a06981b2a7a2f938ef4e408c78be2102e4818701ff1770529
-developer_instructions_sha256: 3be1178f5a2863d2d77ca25c92a02f292083b2b6227563b789242589543694f3
+runtime_config_sha256: 4cdee39f9ba0f913a906ff5c85a0c3537f09154312ec7fbe5ad846050798135b
+developer_instructions_sha256: d648c899dc6f7a64d5dcbb1c5b96283b06a0a6ea16ece212cc08e3617fda7ea6
 canonical_source: argus/roles/atalanta.md
-canonical_source_sha256: 5489a7fe02926e665e0783ee7ccea15053917de126b6e4d1a7f84381dc5c7c66
-model: terra
-model_reasoning_effort: medium
+canonical_source_sha256: e9e23eb4583d45d55bbaac9bce1c15937d43e51f1d816b9c83bf24ad5d61a5bd
+model: sol
+model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 doctrine_profiles: ["qa-core"]
 technique_catalogs: ["atalanta"]

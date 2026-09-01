@@ -143,8 +143,9 @@ Installed users can run `argus-assets list`, `argus-assets verify`,
 `argus-assets technique scopes|select --role <atalanta|proteus|metis> [--inventory <surface-inventory.json>]`,
 the low-level
 `argus-assets copy-template <typescript|java|python> <empty-destination>`, or
-`argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 800 KB
-and the complete installed Argus plugin at 1.75 MB. `COLOR-SCHEME.md` and team graphs are
+`argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 840 KB
+and the complete installed Argus plugin at 1.75 MB. Both caps are deliberate budgets: raise
+one only in a commit that names the growth. `COLOR-SCHEME.md` and team graphs are
 explicitly maintainer-only; their runtime values already live in agent frontmatter.
 
 Every Claude specialist preloads the exact profiles selected by the capability matrix.

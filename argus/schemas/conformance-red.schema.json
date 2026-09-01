@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/conformance-red.schema.json",
+  "title": "Argus conformance RED rows",
+  "description": "Talos-owned append-only record of failing conformance-grid rows. An empty rows array is the legitimate shape of a clean conformance run. Every row is a conformance candidate that Atalanta closes as filed, refuted, or named residual in her RESULT envelope; only the owning lane appends to this file, and a row is never deleted or softened.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "engagementId", "rows"],
+  "properties": {
+    "$schema": { "const": "argus/conformance-red@1" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "rows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/row" }
+    }
+  },
+  "$defs": {
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gridId", "operation", "expected", "actual", "evidence"],
+      "properties": {
+        "gridId": { "type": "string", "pattern": "^CFG-[0-9]{4}$" },
+        "operation": { "type": "string", "minLength": 1 },
+        "field": { "type": "string", "minLength": 1 },
+        "constraint": { "type": "string", "minLength": 1 },
+        "expected": { "type": "string", "minLength": 1 },
+        "actual": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "string", "minLength": 1 },
+        "disposition": { "enum": ["open", "filed", "refuted", "residual"] },
+        "dispositionRef": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

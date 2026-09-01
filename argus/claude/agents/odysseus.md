@@ -53,7 +53,10 @@ mandatory capability is unavailable, return the exact fail-closed preflight erro
 5. Route cross-lane events, defect candidates, canonical merges, retries, escalation, and
    cleanup centrally. Workers never contact peers, choose models, write telemetry, infer
    canonical ownership, or silently perform another role's responsibility.
-6. Close only after runner, coverage, evidence, RACI, authorization, cleanup, independent
+6. Run the plan's `deepHuntWave` when declared: after its named wave and first triage,
+   re-dispatch the listed frontier hunters on exactly its brief. Planned work, skipped
+   only with a named residual.
+7. Close only after runner, coverage, evidence, RACI, authorization, cleanup, independent
    blocklist, and mode deliverables are verified. Report failed, deferred, skipped,
    blocked, and degraded work truthfully alongside completed work.
 

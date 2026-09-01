@@ -14,8 +14,8 @@ const slugs = raci.agents.map((agent) => agent.slug).sort();
 const errors = validateModelPolicy(policy, slugs);
 if (errors.length) fail(errors.join('; '));
 
-const expectedFrontier = ['ariadne', 'aristarchus', 'atlas', 'kalchas', 'metis', 'minos', 'odysseus', 'perseus', 'tiresias', 'tyche'];
-assert(equal(policy.roles.filter((role) => role.tier === 'frontier').map((role) => role.slug).sort(), expectedFrontier), 'frontier roster differs from the adopted 10-role baseline');
+const expectedFrontier = ['ariadne', 'aristarchus', 'atalanta', 'atlas', 'kalchas', 'metis', 'minos', 'odysseus', 'orion', 'perseus', 'tiresias', 'tyche'];
+assert(equal(policy.roles.filter((role) => role.tier === 'frontier').map((role) => role.slug).sort(), expectedFrontier), 'frontier roster differs from the adopted 12-role baseline');
 
 syncGenerated('argus/MODEL-POLICY.md', renderPolicy(policy));
 syncFile('README.md', updateRootReadme);
@@ -33,12 +33,14 @@ function updateRootReadme(content) {
   }
   content = content.replace(
     /The above is the \*\*main team \(22\)\*\*\. \*\*Argus QA \(27\)\*\* is a separate, permanent QA team with mixed model tiers from the frontmatter \([^\n]+\)\./,
-    'The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 10 frontier / 17 standard policy from `argus/model-policy.json`.',
+    'The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 12 frontier / 15 standard policy from `argus/model-policy.json`.',
   );
-  content = content.replace('**Tiers:** 19 opus · 8 sonnet.', '**Tiers:** 10 opus · 17 sonnet · 0 haiku full roles.');
+  content = content.replace('The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 10 frontier / 17 standard policy from `argus/model-policy.json`.',
+    'The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 12 frontier / 15 standard policy from `argus/model-policy.json`.');
+  content = content.replace('**Tiers:** 10 opus · 17 sonnet · 0 haiku full roles.', '**Tiers:** 12 opus · 15 sonnet · 0 haiku full roles.');
   content = content.replace(
     /Current Argus QA (?:frontmatter models|policy):[^\n]+/,
-    'Current Argus QA policy: **10 opus / 17 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.',
+    'Current Argus QA policy: **12 opus / 15 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.',
   );
   return content;
 }
@@ -51,14 +53,14 @@ function updateRosterHtml(content) {
     assert(pattern.test(content), `${role.slug}: visual roster model row missing`);
     content = content.replace(pattern, `$1${model}$3${model}$5`);
   }
-  return content.replace('Argus QA: 19 opus / 8 sonnet', 'Argus QA: 10 opus / 17 sonnet / 0 haiku full roles');
+  return content.replace('Argus QA: 10 opus / 17 sonnet / 0 haiku full roles', 'Argus QA: 12 opus / 15 sonnet / 0 haiku full roles');
 }
 
 function renderPolicy(data) {
   const lines = [
     '# Argus Runtime Model Policy', '',
     `Policy ID: \`${data.policyId}\`. The machine-readable source is [\`model-policy.json\`](model-policy.json).`, '',
-    'The adopted baseline assigns 10 high-consequence roles to frontier reasoning and 17 bounded execution roles to standard reasoning. No complete role uses the mechanical tier.', '',
+    'The adopted baseline assigns 12 high-consequence roles to frontier reasoning and 15 bounded execution roles to standard reasoning. No complete role uses the mechanical tier.', '',
     '| Agent | Tier | Claude | Effort | Codex | Effort | Max turns | Escalation | Fallback |',
     '|---|---|---|---|---|---|---:|---|---|',
   ];
@@ -81,7 +83,8 @@ function renderPolicy(data) {
     '- Preflight accepts `--model-runtime claude|codex`; Claude requires the signed launch authorization, verified receipt, public trust store, and inherited private launch capability. Codex is blocked with the exact missing capability instead of silently presenting Claude readiness.',
     '- `argus-assets model route` validates signatures, bindings, and the trusted adapter snapshot, then permits at most one selected decision per engagement/agent/runtime/dispatch/attempt. An exact authenticated replay returns that immutable decision; a refreshed or otherwise different signed document for the same attempt conflicts and fails closed. `model telemetry` requires the matching current lane token, atomically accepts exactly one event per selected decision, and must be written before retry rebind or cleanup changes the active binding. It contains only sanitized lane-reported operational metrics and is not authoritative billing, benchmark, or outcome evidence.', '',
     '## Benchmark', '',
-    'The committed `model-policy.benchmark.json` compares representative synthesis, judgment, and schema-bound work on quality markers, latency, input/output tokens, and provider-reported cost without storing prompts, completions, targets, accounts, or evidence.', '');
+    'The committed `model-policy.benchmark.json` compares representative synthesis, judgment, and schema-bound work on quality markers, latency, input/output tokens, and provider-reported cost without storing prompts, completions, targets, accounts, or evidence.',
+    'It measures three work classes, not individual roles: its `decision` field records which baseline was in force when the runs were recorded, and it is never the evidence for a particular role-to-tier assignment. That evidence lives in the answer-key review recorded in `AI-OPERATOR-BOOKLET-MAPPING.md`. Re-record with `node scripts/benchmark-argus-model-policy.mjs --record` when the baseline moves; the recorded timestamp shows when a stamp was last earned.', '');
   return lines.join('\n');
 }
 

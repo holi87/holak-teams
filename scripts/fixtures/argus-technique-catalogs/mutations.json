@@ -5,9 +5,9 @@
       "name": "atalanta-entry-count",
       "catalog": "atalanta",
       "operation": "remove",
-      "pointer": "/entries/19",
+      "pointer": "/entries/21",
       "rejects": ["schema", "runtime"],
-      "runtimeIncludes": "exactly 20 entries"
+      "runtimeIncludes": "exactly 22 entries"
     },
     {
       "name": "atalanta-duplicate-id",

@@ -55,7 +55,8 @@
       "reports",
       "solution/findings",
       "solution/paths",
-      "solution/contracts"
+      "solution/contracts",
+      "solution/discovery"
     ],
     "generatedTestRoots": [
       "tests",

@@ -9,6 +9,7 @@
 - **Canonical-ID:** <BUG-NNNN — Minos assigns at final triage; leave blank when filing>
 - **Lane:** ui | api | perf | security | a11y | db   <!-- metadata; not the filename prefix -->
 - **Detected by:** automated suite (spec path / @tag) | agent exploratory/manual (charter or probe) | recon
+- **Divergence side:** implementation | documentation | undecidable   <!-- required whenever two sources disagree; `undecidable` states both hypotheses in Expected -->
 - **Component / Endpoint:** <path or screen>
 - **Environment:** <build/commit, browser if UI, date>
 - **Oracle-id:** <ORC-### from solution/ORACLES.md — the source of truth this violates; required for ACCEPTED. If none exists yet, request it from Metis, do not invent the rule.>

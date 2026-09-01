@@ -2,7 +2,7 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 800000,
+    "generatedAssetsBytes": 840000,
     "installedPluginBytes": 1750000
   },
   "templateCompositions": {
@@ -101,8 +101,8 @@
       "source": "argus/RACI-CONTRACT.md",
       "destination": "references/RACI-CONTRACT.md",
       "files": 1,
-      "bytes": 8208,
-      "sha256": "1c443c159a8737227fb12cf27ba3e190273d8eaa6716f369c0864d5469dd94f7"
+      "bytes": 8322,
+      "sha256": "3eefb2532ce0ada54acf2633694f0c9a5bac1f809169923f1fd8b311576cf909"
     },
     {
       "id": "raci-matrix",
@@ -110,8 +110,8 @@
       "source": "argus/raci.json",
       "destination": "references/raci.json",
       "files": 1,
-      "bytes": 20611,
-      "sha256": "2edf6a2996bca441786e4f2ec771df3a112bb54abbbbd26273c091cae2924569"
+      "bytes": 20827,
+      "sha256": "635d6bce55c2c5e6b4a96a5f06a199e3e4ad1fac41e61bf14949cfed52674268"
     },
     {
       "id": "orchestration-core-skill",
@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 6398,
-      "sha256": "aca264511d1e5ad0b634c95ebe367168b7546d6af39ac174461e152c29cb3be3"
+      "bytes": 7575,
+      "sha256": "b9e898357e00c5775a680342b1daa949c7e40715df5e85d37793df44ca845c41"
     },
     {
       "id": "qa-browser-skill",
@@ -172,9 +172,9 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 33,
-      "bytes": 99540,
-      "sha256": "b4a12ee63d281d148028e4992f36e084833ef6470929fa2ef9bfee32c846219a"
+      "files": 36,
+      "bytes": 106896,
+      "sha256": "ab4ac7c64d6b3de0b9ca5882e0090f0a7f99bcb3559d158e3a4fc21be65e2767"
     },
     {
       "id": "capability-matrix",
@@ -182,8 +182,8 @@
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
-      "bytes": 17357,
-      "sha256": "f288f6d39015caad39abde8513f47fbedda5bc03b2a9c6fd7125f6e7ae3f6aa9"
+      "bytes": 17481,
+      "sha256": "ee231bb5233ee5d07023d61bf2f3eb251b264913c3430ca01fcb11145c3be4a7"
     },
     {
       "id": "technique-catalogs-bundle",
@@ -191,8 +191,8 @@
       "source": "argus/technique-catalogs.bundle.b64",
       "destination": "capabilities/technique-catalogs.bundle.b64",
       "files": 1,
-      "bytes": 9689,
-      "sha256": "1d7216905a455505ba789af14a84380d4b473b38ee8920e2895dbd882238dd12"
+      "bytes": 10337,
+      "sha256": "f14105ff0a1e3c45b169bf380c12a1039b1e43cc6fc5fd49ddec6138ea58058e"
     },
     {
       "id": "orchestration-plan",
@@ -200,8 +200,8 @@
       "source": "argus/orchestration-plan.json",
       "destination": "capabilities/orchestration-plan.json",
       "files": 1,
-      "bytes": 5959,
-      "sha256": "08e7e35b4b9ff86be0e2a6a2ab1e8f6988b52e3e2857323af75da659ae9ae8ee"
+      "bytes": 6295,
+      "sha256": "7849ca21a33f44dbda3a75d0fea11ee9cf88d250b321ea9b4c621baba2416ab7"
     },
     {
       "id": "model-policy",
@@ -209,8 +209,8 @@
       "source": "argus/model-policy.json",
       "destination": "capabilities/model-policy.json",
       "files": 1,
-      "bytes": 7416,
-      "sha256": "04094bf360768d53cdeee4b70ac9e87bcd78f5997f1e475a5a600f9654b85496"
+      "bytes": 7434,
+      "sha256": "ab954f2d53b0532b0341d2b5b5e3f2d248ff6916900febee22b56e3f067f0b66"
     },
     {
       "id": "runtime-adapters",
@@ -237,7 +237,7 @@
       "destination": "capabilities/model-policy.benchmark.json",
       "files": 1,
       "bytes": 3420,
-      "sha256": "ab93985cf98e9144e62281bc0ceb20f40cabb7c12ec4ba7a06717cc5d6867298"
+      "sha256": "7e6902fb272c80214c4cad0d890bdbc66aa6bd1540ec2bc35376ab3e403a13c0"
     },
     {
       "id": "authorization-policies",
@@ -245,8 +245,8 @@
       "source": "argus/policies",
       "destination": "policies",
       "files": 4,
-      "bytes": 11473,
-      "sha256": "e70bb5b7b23f5d59f97f50f8b3d43f59fa2c22c2c50589afb089261111c3af93"
+      "bytes": 11501,
+      "sha256": "fe88328a0d70ebc5f0f91ca3deaec07815d3365663f7c80f41ae621957cbac86"
     },
     {
       "id": "runtime-library",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 8,
-      "bytes": 215951,
-      "sha256": "25c09d41b7e3f9f7cc7b3c5b9851b055a72cb89ad0bc7d9f75ad8371f0e262e1"
+      "bytes": 217600,
+      "sha256": "986fbdd54da5f96f4c6d8f8028c05953d005306e5b0f59c6d4188bf0ca57fc9e"
     },
     {
       "id": "common-template",
@@ -263,8 +263,8 @@
       "source": "argus/framework-template-common",
       "destination": "templates/common",
       "files": 16,
-      "bytes": 24488,
-      "sha256": "c4a59015fb8ccc6a9634b56b5b918fc35831ab2ddef1e286657d951fef55d231"
+      "bytes": 25517,
+      "sha256": "f08b2b51c2439b89e3f3c4a938dd9b5560893a4abdbf96171378fe686d1b6aa1"
     },
     {
       "id": "typescript-template",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 54422,
-    "sha256": "00854ff9f1c13ca593ceee74cf8ecd12751e217c5e46354209b0c9e034c7f4da"
+    "bytes": 54953,
+    "sha256": "31b76765676ed685e599287f848be53cbb421b817a0de43e370d3bbbb9f579d7"
   }
 }
