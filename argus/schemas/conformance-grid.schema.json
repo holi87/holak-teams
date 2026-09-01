@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/holi87/holak-teams/argus/schemas/conformance-grid.schema.json",
   "title": "Argus generated conformance grid",
-  "description": "Theseus-owned contract-derived grid: one row per operation and documented response code, and one row per request field and schema constraint. Rows are machine input for Talos, never prose.",
+  "description": "Theseus-owned contract-derived grid: one row per operation and documented response code, and one row per request field and schema constraint. Rows are machine input for Talos, never prose. Only exact status codes are rows, because every row is materialized as an exact-status assertion; a response documented solely as `default` or as a wildcard range carries no exact status to assert and is recorded in `residuals` instead.",
   "type": "object",
   "additionalProperties": false,
   "required": ["$schema", "schemaVersion", "engagementId", "rows"],
@@ -37,7 +37,11 @@
         "id": { "type": "string", "pattern": "^CFG-[0-9]{4}$" },
         "kind": { "enum": ["response-code", "field-constraint"] },
         "operation": { "type": "string", "minLength": 1 },
-        "responseCode": { "type": "string", "pattern": "^[1-5][0-9]{2}$" },
+        "responseCode": {
+          "type": "string",
+          "pattern": "^[1-5][0-9]{2}$",
+          "description": "Exact documented status code. A `default` or wildcard-range response belongs in `residuals`, never here."
+        },
         "field": { "type": "string", "minLength": 1 },
         "constraint": {
           "enum": ["type", "format", "enum", "minimum", "maximum", "minLength", "maxLength", "pattern", "required"]

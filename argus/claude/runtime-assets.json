@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "budgets": {
     "generatedAssetsBytes": 840000,
-    "installedPluginBytes": 1800000
+    "installedPluginBytes": 1750000
   },
   "templateCompositions": {
     "typescript": {
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 36,
-      "bytes": 106211,
-      "sha256": "82effa4213ad884de55613ed2ae20afadd6dbb33aa17f19ff06c6d0b2f7b6e0f"
+      "bytes": 106896,
+      "sha256": "ab4ac7c64d6b3de0b9ca5882e0090f0a7f99bcb3559d158e3a4fc21be65e2767"
     },
     {
       "id": "capability-matrix",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 8,
-      "bytes": 216973,
-      "sha256": "20a8e00025f92a758ff0b4fa4ac4c3b11e749d77b9c000432227d37aa0cf7599"
+      "bytes": 217600,
+      "sha256": "986fbdd54da5f96f4c6d8f8028c05953d005306e5b0f59c6d4188bf0ca57fc9e"
     },
     {
       "id": "common-template",

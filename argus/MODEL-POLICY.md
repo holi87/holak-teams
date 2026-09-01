@@ -53,3 +53,4 @@ The adopted baseline assigns 12 high-consequence roles to frontier reasoning and
 ## Benchmark
 
 The committed `model-policy.benchmark.json` compares representative synthesis, judgment, and schema-bound work on quality markers, latency, input/output tokens, and provider-reported cost without storing prompts, completions, targets, accounts, or evidence.
+It measures three work classes, not individual roles: its `decision` field records which baseline was in force when the runs were recorded, and it is never the evidence for a particular role-to-tier assignment. That evidence lives in the answer-key review recorded in `AI-OPERATOR-BOOKLET-MAPPING.md`. Re-record with `node scripts/benchmark-argus-model-policy.mjs --record` when the baseline moves; the recorded timestamp shows when a stamp was last earned.

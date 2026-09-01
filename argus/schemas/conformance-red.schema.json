@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/holi87/holak-teams/argus/schemas/conformance-red.schema.json",
   "title": "Argus conformance RED rows",
-  "description": "Talos-owned append-only record of failing conformance-grid rows. Every row is a conformance candidate that Atalanta must close as filed, refuted, or named residual.",
+  "description": "Talos-owned append-only record of failing conformance-grid rows. An empty rows array is the legitimate shape of a clean conformance run. Every row is a conformance candidate that Atalanta closes as filed, refuted, or named residual in her RESULT envelope; only the owning lane appends to this file, and a row is never deleted or softened.",
   "type": "object",
   "additionalProperties": false,
   "required": ["$schema", "schemaVersion", "engagementId", "rows"],
@@ -12,7 +12,6 @@
     "engagementId": { "type": "string", "minLength": 1 },
     "rows": {
       "type": "array",
-      "minItems": 1,
       "items": { "$ref": "#/$defs/row" }
     }
   },

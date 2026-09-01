@@ -70,7 +70,7 @@ Maintainers edit the canonical sources under `argus/` and run
 byte-for-byte by `--check`; the generated prompt inventory covers all 27 agents.
 `node scripts/check-argus-prompts.mjs` enforces corpus, per-agent, description, and exact
 duplication budgets; verifies every capability-selected profile and the default-off optional profile;
-and checks a representative Mode A output/quality contract. The budget is 800 KB for
+and checks a representative Mode A output/quality contract. The budget is 840 KB for
 generated runtime assets and 1.75 MB for the complete installed
 plugin. `COLOR-SCHEME.md` and team graphs are intentionally maintainer-only.
 

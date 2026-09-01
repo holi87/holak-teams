@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/holi87/holak-teams/argus/schemas/contract-drift.schema.json",
   "title": "Argus contract drift diff",
-  "description": "Kalchas-owned machine-readable diff of the on-disk specification, the live specification, the requirements prose, and observed runtime. Every row is a candidate with a default owner, never a note.",
+  "description": "Kalchas-owned machine-readable diff of the on-disk specification, the live specification, the requirements prose, and observed runtime. An empty rows array is the legitimate shape of a run whose sources agree. Every row is a candidate with a default owner, never a note; the owning lane closes it as filed, refuted, or residual in its RESULT envelope.",
   "type": "object",
   "additionalProperties": false,
   "required": ["$schema", "schemaVersion", "engagementId", "rows"],
@@ -12,7 +12,6 @@
     "engagementId": { "type": "string", "minLength": 1 },
     "rows": {
       "type": "array",
-      "minItems": 1,
       "items": { "$ref": "#/$defs/row" }
     }
   },

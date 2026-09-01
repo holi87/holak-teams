@@ -54,10 +54,11 @@ black-box; no target name, endpoint, field, or constant entered any prompt.
 | F-14 | `model-policy.json`, `orchestration-plan.json`, `roles/odysseus.md` | Atalanta and Orion move to the frontier tier with 64 turns (12 frontier / 15 standard), and the deep-hunt wave after W2 becomes a declared `deepHuntWave` in Modes A and B. | 12–15 |
 | F-15 | `scripts/eval/score-against-key.mjs`, `Makefile` | `make eval` scores a run's `bugs/` plus ledger against a private key file supplied through `ARGUS_ANSWER_KEY`, with manual overrides for judgment rows. The key stays out of the repository. | 15 |
 
-Budget note: `maxAgentWords` is unchanged at 5000. The corpus-wide `maxEffectiveClaudeWords`
-rose to 113000 and `approvedCorpus` was re-approved because `qa-core` grew by four doctrine
-bullets that preload into all 27 roles; the generated-asset byte budget rose with the two new
-catalog entries and the three new schemas.
+Budget note: `maxAgentWords` is unchanged at 5000, and so is the 1.75 MB installed-plugin cap.
+Two budgets moved deliberately: `maxEffectiveClaudeWords` to 113000, because `qa-core` grew by
+four doctrine bullets that preload into all 27 roles, and `generatedAssetsBytes` to 840 KB, for
+the two new catalog entries, the three new schemas and the grown packaged doctrine.
+`approvedCorpus` was re-approved for the roles that grew.
 
 ---
 

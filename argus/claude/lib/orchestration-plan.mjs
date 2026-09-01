@@ -127,9 +127,24 @@ export function projectOrchestrationPlan(plan, capabilityMatrix, mode, dispatcha
           omittedDependencies: role.dependsOn.filter((slug) => !selectedSlugs.has(slug)),
         })),
     })),
+    deepHuntWave: projectDeepHuntWave(plan.deepHuntWave, mode, selectedSlugs),
     omitted: active
       .filter((role) => !selectedSlugs.has(role.slug))
       .map((role) => ({ slug: role.slug, reason: 'not-in-dispatchable-set' })),
+  };
+}
+
+function projectDeepHuntWave(deepHunt, mode, selectedSlugs) {
+  if (!isObject(deepHunt) || !Array.isArray(deepHunt.modes) || !deepHunt.modes.includes(mode)) return null;
+  const roles = Array.isArray(deepHunt.roles) ? deepHunt.roles : [];
+  return {
+    afterWave: deepHunt.afterWave,
+    tier: deepHunt.tier,
+    brief: [...deepHunt.brief],
+    roles: roles.filter((slug) => selectedSlugs.has(slug)),
+    omitted: roles
+      .filter((slug) => !selectedSlugs.has(slug))
+      .map((slug) => ({ slug, reason: 'not-in-dispatchable-set' })),
   };
 }
 

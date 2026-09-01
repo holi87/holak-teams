@@ -15,7 +15,7 @@
 //   "entries": [
 //     { "id": "01", "title": "...", "layer": "L1", "points": 1,
 //       "keywords": ["email", "format"], "oracleIds": ["ORC-VAL-001"],
-//       "components": ["api"] }
+//       "components": ["api"] }        components demote a conflicting document, never exclude it
 //   ]
 // }
 //
@@ -26,6 +26,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
 const CREDIT_FRACTION = Object.freeze({ full: 1, partial: 0.5, miss: 0 });
+const COMPONENT_PENALTY = 0.5;
 
 const args = parseArgs(process.argv.slice(2));
 const runRoot = resolve(required(args.run, '--run <engagement-root> is required'));
@@ -34,22 +35,37 @@ const keyPath = resolve(args.key ?? process.env.ARGUS_ANSWER_KEY
 const key = readJson(keyPath);
 assert(Array.isArray(key.entries) && key.entries.length > 0, `${keyPath}: key has no entries`);
 const overrides = args.overrides ? readJson(resolve(args.overrides)) : {};
+const warnings = [];
+
+// A typo or a deleted engagement must fail loudly. An all-miss table is a legitimate
+// result for a real run that found nothing, so it may never double as an error report.
+if (!isDirectory(runRoot)) fail(`--run ${runRoot} is not a directory`);
+if (!isDirectory(join(runRoot, 'bugs')) && !isDirectory(join(runRoot, 'solution'))) {
+  fail(`--run ${runRoot} has neither bugs/ nor solution/ — not an Argus engagement root`);
+}
+if (!existsSync(join(runRoot, 'solution', 'bug-ledger.json'))) {
+  warn('solution/bug-ledger.json not found — scoring bugs/ only; Minos has not written the canonical ledger yet');
+}
 
 const bugFiles = listBugFiles(join(runRoot, 'bugs'));
 const ledger = readLedger(join(runRoot, 'solution', 'bug-ledger.json'));
 const documents = [
-  ...bugFiles.map((path) => ({ source: basename(path), text: readFileSync(path, 'utf8').toLowerCase() })),
-  ...ledger.map((entry, index) => ({ source: `bug-ledger[${index}]`, text: JSON.stringify(entry).toLowerCase() })),
+  ...bugFiles.map((path) => describeDocument(basename(path), readFileSync(path, 'utf8'))),
+  ...ledger.map((entry, index) => describeDocument(`bug-ledger[${index}]`, JSON.stringify(entry))),
 ];
+if (documents.length === 0) {
+  warn('no scoreable documents — an all-miss score reflects an empty run, not a scoring failure');
+}
 
 const rows = key.entries.map((entry) => score(entry, documents, overrides[entry.id]));
+reportContestedDocuments(rows);
 const earned = rows.reduce((sum, row) => sum + row.earned, 0);
 const maximum = key.maximum ?? key.entries.reduce((sum, entry) => sum + entry.points, 0);
 const counts = { full: 0, partial: 0, miss: 0 };
 for (const row of rows) counts[row.credit] += 1;
 
 if (args.json) {
-  process.stdout.write(`${JSON.stringify({ keyId: key.keyId ?? basename(keyPath), runRoot, earned, maximum, counts, rows }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ keyId: key.keyId ?? basename(keyPath), runRoot, warnings, earned, maximum, counts, rows }, null, 2)}\n`);
 } else {
   console.log(`Answer key: ${key.keyId ?? basename(keyPath)}   run: ${runRoot}`);
   console.log(`bugs/ files: ${bugFiles.length}   ledger entries: ${ledger.length}`);
@@ -66,12 +82,17 @@ if (args.json) {
 function score(entry, docs, override) {
   const keywords = (entry.keywords ?? []).map((value) => value.toLowerCase());
   const oracleIds = (entry.oracleIds ?? []).map((value) => value.toLowerCase());
+  const components = (entry.components ?? []).map((value) => value.toLowerCase());
   let best = null;
   for (const doc of docs) {
     const keywordHits = keywords.filter((word) => doc.text.includes(word)).length;
     const oracleHit = oracleIds.some((id) => doc.text.includes(id));
     const ratio = keywords.length === 0 ? (oracleHit ? 1 : 0) : keywordHits / keywords.length;
-    const strength = oracleHit ? Math.max(ratio, 0.75) : ratio;
+    const raw = oracleHit ? Math.max(ratio, 0.75) : ratio;
+    // A document that names a component the key entry does not claim is demoted, never
+    // excluded: the bug template is a placeholder the target may replace, so an absent
+    // component must not silently zero out a legitimate match.
+    const strength = componentFit(components, doc) === 'conflict' ? raw * COMPONENT_PENALTY : raw;
     if (!best || strength > best.strength) best = { strength, source: doc.source };
   }
   const detected = !best || best.strength === 0 ? 'miss' : best.strength >= 0.75 ? 'full' : 'partial';
@@ -88,6 +109,38 @@ function score(entry, docs, override) {
     matchedBy: best && best.strength > 0 ? best.source : null,
     earned: entry.points * CREDIT_FRACTION[credit],
   };
+}
+
+// One document can still satisfy several key entries — that is a judgment call for the
+// operator, resolved through the overrides file. It is reported, never resolved silently.
+function reportContestedDocuments(scored) {
+  const claims = new Map();
+  for (const row of scored) {
+    if (!row.matchedBy || row.override) continue;
+    if (!claims.has(row.matchedBy)) claims.set(row.matchedBy, []);
+    claims.get(row.matchedBy).push(row.id);
+  }
+  for (const [source, ids] of claims) {
+    if (ids.length > 1) warn(`${source} was credited to ${ids.length} key entries (${ids.join(', ')}) — adjudicate in the overrides file`);
+  }
+}
+
+function describeDocument(source, raw) {
+  const text = raw.toLowerCase();
+  const lane = text.match(/^\s*[-*]\s*\*\*lane:\*\*\s*([^\n<]+)/m)?.[1]?.trim();
+  // An unfilled template line still lists the whole enum; treat it as no component at all.
+  const components = new Set(lane && !lane.includes('|') ? [lane] : []);
+  for (const match of text.matchAll(/orc-([a-z0-9]+)-\d+/g)) components.add(match[1]);
+  return { source, text, components };
+}
+
+function componentFit(components, doc) {
+  if (components.length === 0 || doc.components.size === 0) return 'unknown';
+  return components.some((component) => doc.components.has(component)) ? 'match' : 'conflict';
+}
+
+function isDirectory(path) {
+  return existsSync(path) && statSync(path).isDirectory();
 }
 
 function listBugFiles(directory) {
@@ -135,6 +188,12 @@ function readJson(path) {
 
 function assert(value, message) {
   if (!value) fail(message);
+}
+
+// stderr only, so --json stdout stays machine-parseable.
+function warn(message) {
+  warnings.push(message);
+  console.error(`WARN  ${message}`);
 }
 
 function fail(message) {

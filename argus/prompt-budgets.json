@@ -10,7 +10,7 @@
   },
   "approvedCorpus": {
     "words": 79896,
-    "sha256": "6d1e71a8df141292d9032d23e199cb6b58141d875bc0f63219998fa310311bb4",
+    "sha256": "c27a724f810ef215491ff96ac98e85fa7e7915e29a43bbf2bbbe6e4a7602b71b",
     "agents": {
       "aegis": 2327,
       "antigone": 3430,
@@ -22,11 +22,11 @@
       "charon": 2826,
       "daidalos": 2435,
       "hermes": 3258,
-      "kalchas": 2885,
+      "kalchas": 2916,
       "kleio": 3242,
       "lynceus": 2625,
       "metis": 4452,
-      "minos": 2656,
+      "minos": 2672,
       "mnemosyne": 2406,
       "nike": 2664,
       "odysseus": 780,
@@ -35,8 +35,8 @@
       "perseus": 3426,
       "pistis": 2783,
       "proteus": 4065,
-      "talos": 2934,
-      "theseus": 2627,
+      "talos": 2961,
+      "theseus": 2653,
       "tiresias": 3403,
       "tyche": 3751
     }

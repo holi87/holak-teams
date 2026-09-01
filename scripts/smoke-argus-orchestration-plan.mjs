@@ -67,6 +67,17 @@ for (const [mode, expectedCount] of Object.entries({ A: 27, B: 16, C: 14, D: 14 
     assert(Array.isArray(role.accountableArtifacts) && Array.isArray(role.artifactPaths), `${mode}/${role.slug}: output contract missing from projection`);
   }
   assert(projected.omitted.length === 0, `mode ${mode}: complete projection unexpectedly omitted roles`);
+  if (plan.deepHuntWave.modes.includes(mode)) {
+    assert(projected.deepHuntWave
+      && projected.deepHuntWave.afterWave === plan.deepHuntWave.afterWave
+      && projected.deepHuntWave.tier === plan.deepHuntWave.tier
+      && sameSet(projected.deepHuntWave.roles, plan.deepHuntWave.roles)
+      && projected.deepHuntWave.omitted.length === 0
+      && projected.deepHuntWave.brief.length === plan.deepHuntWave.brief.length,
+      `mode ${mode}: projection lost the declared deep-hunt wave`);
+  } else {
+    assert(projected.deepHuntWave === null, `mode ${mode}: deep-hunt wave must not project outside its declared modes`);
+  }
 }
 
 const gatedA = projectOrchestrationPlan(plan, matrix, 'A', ['kalchas', 'metis', 'atlas', 'theseus', 'talos', 'aristarchus', 'kleio'], raci);
@@ -77,6 +88,10 @@ const kleio = gatedRoles.find((role) => role.slug === 'kleio');
 assert(sameSet(kleio.dependsOn, ['aristarchus']), 'projection did not remove gated Minos predecessor');
 assert(gatedA.omitted.length === 19, `gated projection must report 19 omitted roles, found ${gatedA.omitted.length}`);
 assert(gatedA.omitted.every((role) => role.reason === 'not-in-dispatchable-set'), 'gated projection omitted a disposition reason');
+assert(gatedA.deepHuntWave.roles.length === 0
+  && sameSet(gatedA.deepHuntWave.omitted.map((role) => role.slug), ['atalanta', 'orion'])
+  && gatedA.deepHuntWave.omitted.every((role) => role.reason === 'not-in-dispatchable-set'),
+  'gated projection did not report the deep-hunt hunters as named residuals');
 assertThrows(() => projectOrchestrationPlan(plan, matrix, 'A', ['unknown-role'], raci), 'unknown dispatchable role');
 assertThrows(() => projectOrchestrationPlan(plan, matrix, 'B', ['atlas'], raci), 'not dispatchable in Mode B');
 
