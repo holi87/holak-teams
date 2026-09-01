@@ -19,9 +19,9 @@ node "$ROOT/scripts/sync-argus-runtime-assets.mjs" --check >/dev/null
 if "$CLI" raci route --surface unknown --activity discover >/dev/null 2>&1; then fail 'unknown surface route was accepted'; fi
 
 for file in "$ROOT/argus/claude/agents/atlas.md" "$ROOT/argus/codex/atlas.toml"; do
-  grep -Fq '## Ten shared oracle helpers' "$file" || fail "Atlas helper heading is stale in $file"
-  count="$(awk '/^## Ten shared oracle helpers/{inside=1; next} inside && /^Rules:/{inside=0} inside && /^\| `/{count++} END{print count+0}' "$file")"
-  [ "$count" -eq 10 ] || fail "Atlas declares ten helpers but lists $count in $file"
+  grep -Fq '## Fourteen shared oracle helpers' "$file" || fail "Atlas helper heading is stale in $file"
+  count="$(awk '/^## Fourteen shared oracle helpers/{inside=1; next} inside && /^Rules:/{inside=0} inside && /^\| `/{count++} END{print count+0}' "$file")"
+  [ "$count" -eq 14 ] || fail "Atlas declares fourteen helpers but lists $count in $file"
 done
 
 grep -Eq '^tools: .*Write' "$ROOT/argus/claude/agents/tiresias.md" && fail 'Tiresias unexpectedly has Write'

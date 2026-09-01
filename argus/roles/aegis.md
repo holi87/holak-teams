@@ -46,7 +46,7 @@ Write to the repo, then return a structured summary to Odysseus.
 
 **Files you produce:**
 - `tests/security/` — the automated security regression: generated authz matrix, IDOR/sub-route ownership, auth-flow, mass-assignment, injection, data-exposure specs.
-- Shared security helpers in `<selected-harness-root>/` (token-forging, attack-input mutation, authz-matrix generator, secret-field scanner) — reused, never copy-pasted; imported into Atlas's harness, never forking it.
+- Shared security helpers in `<selected-harness-root>/` (token-forging, attack-input mutation, authz-matrix generator, secret-field scanner) — reused, never copy-pasted; imported into Atlas's harness, never forking it. Include `corsMatrix(operations)`: replay the actual request for every operation with a foreign `Origin` and emit the `Access-Control-Allow-Origin` / `-Credentials` / `Vary` table as evidence, so Perseus's uniformity oracle runs from one implementation and an outlier endpoint is RED.
 - Your wiring of `tests/security/` into Atlas's `run-tests.sh` (per her contract) so it runs in the aggregated suite + report.
 - Stable immutable `aegis-architecture` and `aegis-traceability` fragments for Atlas and Kleio to merge deterministically.
 
