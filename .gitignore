@@ -2,6 +2,10 @@
 TODO.md
 todo.md
 
+# Private evaluation answer keys — never commit (see scripts/eval/score-against-key.mjs)
+answer-key*.json
+*.answer-key.json
+
 # Junk / deps — never commit
 .DS_Store
 node_modules/
