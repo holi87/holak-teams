@@ -57,8 +57,8 @@ const modelTrust = {
 assert(validateModelPolicy(policy, policy.roles.map(({ slug }) => slug)).length === 0, 'model policy is invalid');
 assert(validateAdapters(adapters).length === 0, 'runtime adapter snapshot is invalid');
 assert(validateBenchmark(benchmark).length === 0, 'model benchmark is invalid');
-assert(policy.roles.filter(({ tier }) => tier === 'frontier').length === 10, 'frontier roster count drifted');
-assert(policy.roles.filter(({ tier }) => tier === 'standard').length === 17, 'standard roster count drifted');
+assert(policy.roles.filter(({ tier }) => tier === 'frontier').length === 12, 'frontier roster count drifted');
+assert(policy.roles.filter(({ tier }) => tier === 'standard').length === 15, 'standard roster count drifted');
 assert(policy.tiers.frontier.codex.model === 'sol' && policy.tiers.standard.codex.model === 'terra', 'Codex tier mapping drifted');
 assert(policy.tiers.frontier.claude.model === 'opus' && policy.tiers.standard.claude.model === 'sonnet', 'Claude tier mapping drifted');
 

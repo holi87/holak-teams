@@ -10,6 +10,18 @@
     "C": 14,
     "D": 14
   },
+  "deepHuntWave": {
+    "afterWave": "W2",
+    "modes": ["A", "B"],
+    "tier": "frontier",
+    "roles": ["atalanta", "orion"],
+    "brief": [
+      "conformance RED rows without a disposition",
+      "open contract-drift rows",
+      "open risk-register rows",
+      "the hottest defect clusters from the first triage pass"
+    ]
+  },
   "waves": [
     { "id": "W0", "barrierAfter": true },
     { "id": "W1", "barrierAfter": true },

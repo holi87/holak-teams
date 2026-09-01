@@ -45,6 +45,9 @@ for (const fragment of [
 }
 assert(!controllerSkill.includes('qa-doctrine'), 'orchestration-core references legacy qa-doctrine instead of modular skills');
 assert(plan.roles.length === 27, `expected 27 roles, found ${plan.roles.length}`);
+assert(plan.deepHuntWave?.tier === 'frontier' && plan.deepHuntWave.afterWave === 'W2'
+  && sameSet(plan.deepHuntWave.roles, ['atalanta', 'orion']) && sameSet(plan.deepHuntWave.modes, ['A', 'B'])
+  && plan.deepHuntWave.brief.length >= 4, 'deep-hunt wave is not a named frontier wave after W2 in Modes A and B');
 assert(plan.roles.find((role) => role.slug === 'odysseus')?.dispatch === false, 'Odysseus is not a non-dispatched controller');
 for (const [wave, expected] of Object.entries(expectedWaves)) {
   const actual = plan.roles.filter((role) => role.wave === wave).map((role) => role.slug);
