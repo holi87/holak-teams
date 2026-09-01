@@ -44,7 +44,7 @@ export function validateModelPolicy(policy, expectedSlugs = []) {
   if (new Set(slugs).size !== slugs.length) errors.push('role slugs must be unique');
   if (expectedSlugs.length && JSON.stringify([...slugs].sort()) !== JSON.stringify([...expectedSlugs].sort())) errors.push('policy role inventory differs from the canonical roster');
   const counts = Object.groupBy ? Object.groupBy(roles, (role) => role.tier) : roles.reduce((result, role) => ((result[role.tier] ??= []).push(role), result), {});
-  if ((counts.frontier ?? []).length !== 10 || (counts.standard ?? []).length !== 17) errors.push('baseline split must be 10 frontier and 17 standard roles');
+  if ((counts.frontier ?? []).length !== 12 || (counts.standard ?? []).length !== 15) errors.push('baseline split must be 12 frontier and 15 standard roles');
   if (stableJson(policy?.tiers) !== stableJson(EXPECTED_TIERS)) errors.push('tier models, effort, rank, quality, and mechanical eligibility differ from the adopted mapping');
   if (stableJson(policy?.mechanicalDowngrade) !== stableJson(EXPECTED_MECHANICAL_DOWNGRADE)) errors.push('mechanical downgrade eligibility differs from the bounded-subrole contract');
   if (policy?.routing?.decisionDirectory !== 'ai_agents_internal/model-decisions' || policy?.routing?.decisionSchema !== 'argus/model-decision@2') {

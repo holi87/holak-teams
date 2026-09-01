@@ -218,7 +218,7 @@ The ownership source of truth is `raci.json`, rendered as `RACI-CONTRACT.md`. Us
 transitions. The sole role-variant generator renders all 27 prompt descriptions and contract blocks from this source. The RACI sync gate validates ownership, roster, and transition consistency.
 
 The model source of truth is `model-policy.json`, rendered as
-[`MODEL-POLICY.md`](MODEL-POLICY.md). It defines 10 frontier and 17 standard roles, native
+[`MODEL-POLICY.md`](MODEL-POLICY.md). It defines 12 frontier and 15 standard roles, native
 runtime models and effort, maximum turns, upward-only or fail-closed fallback, and
 dynamic escalation signals. No full role may use the mechanical Haiku/Luna tier.
 `argus-assets model route` resolves dispatches and `argus-assets model telemetry` records

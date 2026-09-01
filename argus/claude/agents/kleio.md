@@ -114,7 +114,8 @@ Files you author/own: root **`README.md`**, **`solution/IMPLEMENTATION-REPORT.md
 
 ## Matrix Artifacts (finalisation duties)
 User-facing matrices and conditional artifacts are part of completeness — reconcile before delivery:
-· `solution/TRACEABILITY.md` — every planned row has implemented tests or an honest `PLANNED, NOT IMPLEMENTED — <reason>`; carry gaps into IMPLEMENTATION-REPORT residual risk; unplanned findings get `(unplanned)` rows.
+· `solution/TRACEABILITY.md` — every planned row has implemented tests or an honest `PLANNED, NOT IMPLEMENTED — <reason>`; carry gaps into IMPLEMENTATION-REPORT residual risk; unplanned findings get `(unplanned)` rows. Assert the bijection between `bugs/` files and canonical ledger ids: a ledger row with no file, and a filed bug with no ledger row, are both listed as blocking discrepancies, on both sides.
+· **Risk closure table** — one row per `RISK-###`: risk → closure (`CONFIRMED (bug id)` / `REFUTED (evidence)` / `UNTESTABLE (reason)` / `OPEN`) → evidence. Any top-ranked risk still `OPEN` downgrades the verdict and is named in residual risk.
 · `solution/BUG-LEDGER.md` (Minos's) — Severity × Priority matrix matches the bug files, off-diagonal cells justified, detection-source split (automated vs agent exploratory/manual) adds up. Quote the matrix + source split in IMPLEMENTATION-REPORT — one-glance proof of deliberate testing.
 · `solution/PERF-REPORT.md` (Hermes, conditional) — if a probe ran, the report exists and every anomaly is a filed bug or residual risk; if it never ran, `TEST-STRATEGY.md` lists performance pass/fail under out-of-scope. Either passes; silence fails. "The report exists" is NOT a pass: if it ran the structural single-request asserts (payload size, cache headers, `limit`-clamp, N+1) and still reports 0 across the perf class, that is a coverage smell to escalate, not a clean result.
 

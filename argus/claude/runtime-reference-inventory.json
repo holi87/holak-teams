@@ -216,6 +216,12 @@
       ]
     },
     {
+      "value": "bugs/<lead-id>-promoted-<slug>.md",
+      "consumers": [
+        "minos"
+      ]
+    },
+    {
       "value": "bugs/<PREFIX>-NNN-*.md",
       "consumers": [
         "minos"
@@ -494,6 +500,13 @@
       ]
     },
     {
+      "value": "solution/discovery/contract-drift.json",
+      "consumers": [
+        "atalanta",
+        "kalchas"
+      ]
+    },
+    {
       "value": "solution/evidence-reference.json",
       "consumers": [
         "kleio"
@@ -517,6 +530,7 @@
       "consumers": [
         "atalanta",
         "lynceus",
+        "minos",
         "penelope",
         "proteus",
         "theseus"
@@ -526,6 +540,13 @@
       "value": "solution/findings/a11y.md",
       "consumers": [
         "antigone"
+      ]
+    },
+    {
+      "value": "solution/findings/conformance-red.json",
+      "consumers": [
+        "atalanta",
+        "talos"
       ]
     },
     {
@@ -579,6 +600,13 @@
     {
       "value": "solution/paths/api-<resource>.md",
       "consumers": [
+        "theseus"
+      ]
+    },
+    {
+      "value": "solution/paths/conformance-grid.json",
+      "consumers": [
+        "talos",
         "theseus"
       ]
     },

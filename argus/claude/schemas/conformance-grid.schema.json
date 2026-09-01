@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/conformance-grid.schema.json",
+  "title": "Argus generated conformance grid",
+  "description": "Theseus-owned contract-derived grid: one row per operation and documented response code, and one row per request field and schema constraint. Rows are machine input for Talos, never prose.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "engagementId", "rows"],
+  "properties": {
+    "$schema": { "const": "argus/conformance-grid@1" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "residuals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject", "reason"],
+        "properties": {
+          "subject": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/row" }
+    }
+  },
+  "$defs": {
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "operation", "expected", "source"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^CFG-[0-9]{4}$" },
+        "kind": { "enum": ["response-code", "field-constraint"] },
+        "operation": { "type": "string", "minLength": 1 },
+        "responseCode": { "type": "string", "pattern": "^[1-5][0-9]{2}$" },
+        "field": { "type": "string", "minLength": 1 },
+        "constraint": {
+          "enum": ["type", "format", "enum", "minimum", "maximum", "minLength", "maxLength", "pattern", "required"]
+        },
+        "expected": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "response-code" } }, "required": ["kind"] },
+          "then": { "required": ["responseCode"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "field-constraint" } }, "required": ["kind"] },
+          "then": { "required": ["field", "constraint"] }
+        }
+      ]
+    }
+  }
+}

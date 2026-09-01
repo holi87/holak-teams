@@ -62,6 +62,27 @@ export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
     }
   }
 
+  const deepHunt = plan.deepHuntWave;
+  if (deepHunt !== undefined) {
+    if (!isObject(deepHunt)) errors.push('deepHuntWave: must be an object');
+    else {
+      if (!WAVE_ORDER.includes(deepHunt.afterWave)) errors.push('deepHuntWave.afterWave: must name a declared wave');
+      for (const mode of Array.isArray(deepHunt.modes) ? deepHunt.modes : []) {
+        if (!MODES.includes(mode)) errors.push(`deepHuntWave.modes: unknown mode ${String(mode)}`);
+      }
+      for (const slug of Array.isArray(deepHunt.roles) ? deepHunt.roles : []) {
+        const role = planBySlug.get(slug);
+        if (!role) errors.push(`deepHuntWave.roles: unknown role ${String(slug)}`);
+        else if (!role.dispatch) errors.push(`deepHuntWave.roles: ${slug} is not dispatched`);
+        else {
+          for (const mode of Array.isArray(deepHunt.modes) ? deepHunt.modes : []) {
+            if (!role.modes.includes(mode)) errors.push(`deepHuntWave.roles: ${slug} is inactive in Mode ${mode}`);
+          }
+        }
+      }
+    }
+  }
+
   validateDependencies(planBySlug, errors);
   return [...new Set(errors)];
 }

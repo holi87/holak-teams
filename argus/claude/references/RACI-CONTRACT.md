@@ -114,7 +114,7 @@ The accountable owner is also the sole owner of that artifact's `fragment → ca
 | charon | Direct-database hunter | database-hunt | candidate-file | — |
 | daidalos | UI and accessibility automation engineer | ui-automation | tests-only | — |
 | hermes | Performance hunter | performance-hunt | candidate-file | `solution/PERF-REPORT.md` |
-| kalchas | System reconnaissance analyst | recon | owned-artifact | `solution/surface-inventory.json` |
+| kalchas | System reconnaissance analyst | recon | owned-artifact | `solution/discovery/contract-drift.json`, `solution/surface-inventory.json` |
 | kleio | Final reporter | reporting | owned-artifact | `README.md`, `solution/evidence-reference.json`, `solution/coverage-result.json`, `solution/final-summary.json`, `solution/FINDINGS.md`, `solution/ACCESSIBILITY-REPORT.md`, `solution/IMPLEMENTATION-REPORT.md`, `solution/TRACEABILITY.md` |
 | lynceus | UI presentation hunter | presentation-hunt | candidate-file | — |
 | metis | Test strategist | strategy | owned-artifact | `solution/TEST-STRATEGY.md`, `solution/ORACLES.md` |
@@ -127,8 +127,8 @@ The accountable owner is also the sole owner of that artifact's `fragment → ca
 | perseus | Security hunter | security-hunt | candidate-file | — |
 | pistis | Consumer contract baseline analyst | contract-analysis | owned-path-spec | — |
 | proteus | Event and non-REST protocol hunter | multi-protocol-hunt | candidate-file | — |
-| talos | API and event automation engineer | api-automation | tests-only | — |
-| theseus | REST API baseline path analyst | api-path-analysis | owned-path-spec | — |
+| talos | API and event automation engineer | api-automation | tests-only | `solution/findings/conformance-red.json` |
+| theseus | REST API baseline path analyst | api-path-analysis | owned-path-spec | `solution/paths/conformance-grid.json` |
 | tiresias | White-box source analyst | source-analysis | fragment-only | — |
 | tyche | Resilience hunter | resilience-hunt | candidate-file | `solution/RESILIENCE-REPORT.md` |
 

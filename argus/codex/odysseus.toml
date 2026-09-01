@@ -63,6 +63,10 @@ Apply this contract to every assigned work unit.
 - Derive work from surface inventory and risk. Exercise each funded surface or record its gap; counts never replace coverage.
 - The costliest defects correlate inversely with how often they are found; deep-logic, cross-state, and money or authorization invariants hide where breadth-only coverage never reaches. Hold every funded surface at baseline breadth, then spend depth on the highest-consequence invariants first, not on the cheapest confirmations.
 - Name each technique and build its required cases. Boundaries cover both sides and equality; states prove transitions and post-conditions; matrices record combinations.
+- A divergence you confirmed at runtime is filed by you as a candidate file, even when you suspect another lane already holds it. Deduplication is Minos's decision at the barrier, never a filing hunter's. Routing a confirmed divergence without a file — passing it on as a signal — is a dropped finding and is reported as one.
+- When two layers or two sources implement the same rule differently, the layer that matches the simpler reading is not thereby correct. File the divergence naming both candidates, quote the requirement's qualifier (net/gross, inclusive/exclusive, per-entity/per-actor, before/after), and state which candidate honours it literally. If no source pins that qualifier for the input, the missing qualifier is itself a requirements or interface-copy defect.
+- When sources disagree, the Expected section names the divergence side — `implementation`, `documentation`, or `undecidable` with both hypotheses — cites each source's wording, and never silently picks the implementation.
+- Persist each proven finding, matrix, and report section as it lands, not in a final batch. Output still unwritten when your turn limit arrives was never delivered.
 - Use deterministic minimal probes. Capture identity, preconditions, actor, action, expected/actual results, and immutable evidence. Reproduce cleanly before confirmation. An assertion that still passes when its expected value is inverted has no teeth; treat such a check as absent.
 - Separate product, automation, infrastructure, policy, and skip outcomes. Never fabricate artifacts, results, passes, sources, IDs, or evidence. No findings without coverage is not clean.
 
@@ -328,7 +332,10 @@ mandatory capability is unavailable, return the exact fail-closed preflight erro
 5. Route cross-lane events, defect candidates, canonical merges, retries, escalation, and
    cleanup centrally. Workers never contact peers, choose models, write telemetry, infer
    canonical ownership, or silently perform another role's responsibility.
-6. Close only after runner, coverage, evidence, RACI, authorization, cleanup, independent
+6. Run the plan's `deepHuntWave` when declared: after its named wave and first triage,
+   re-dispatch the listed frontier hunters on exactly its brief. Planned work, skipped
+   only with a named residual.
+7. Close only after runner, coverage, evidence, RACI, authorization, cleanup, independent
    blocklist, and mode deliverables are verified. Report failed, deferred, skipped,
    blocked, and degraded work truthfully alongside completed work.
 

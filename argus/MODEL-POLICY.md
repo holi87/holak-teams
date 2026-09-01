@@ -2,7 +2,7 @@
 
 Policy ID: `argus/model-policy@1`. The machine-readable source is [`model-policy.json`](model-policy.json).
 
-The adopted baseline assigns 10 high-consequence roles to frontier reasoning and 17 bounded execution roles to standard reasoning. No complete role uses the mechanical tier.
+The adopted baseline assigns 12 high-consequence roles to frontier reasoning and 15 bounded execution roles to standard reasoning. No complete role uses the mechanical tier.
 
 | Agent | Tier | Claude | Effort | Codex | Effort | Max turns | Escalation | Fallback |
 |---|---|---|---|---|---|---:|---|---|
@@ -11,7 +11,7 @@ The adopted baseline assigns 10 high-consequence roles to frontier reasoning and
 | ariadne | frontier | opus | max | sol | xhigh | 56 | judgment | frontier-fail-closed |
 | aristarchus | frontier | opus | max | sol | xhigh | 40 | judgment | frontier-fail-closed |
 | asklepios | standard | sonnet | medium | terra | medium | 40 | judgment | upward-only |
-| atalanta | standard | sonnet | medium | terra | medium | 48 | execution | upward-only |
+| atalanta | frontier | opus | max | sol | xhigh | 64 | execution | frontier-fail-closed |
 | atlas | frontier | opus | max | sol | xhigh | 64 | analysis | frontier-fail-closed |
 | charon | standard | sonnet | medium | terra | medium | 40 | execution | upward-only |
 | daidalos | standard | sonnet | medium | terra | medium | 56 | execution | upward-only |
@@ -24,7 +24,7 @@ The adopted baseline assigns 10 high-consequence roles to frontier reasoning and
 | mnemosyne | standard | sonnet | medium | terra | medium | 48 | execution | upward-only |
 | nike | standard | sonnet | medium | terra | medium | 56 | execution | upward-only |
 | odysseus | frontier | opus | max | sol | xhigh | 96 | orchestration | frontier-fail-closed |
-| orion | standard | sonnet | medium | terra | medium | 48 | execution | upward-only |
+| orion | frontier | opus | max | sol | xhigh | 64 | execution | frontier-fail-closed |
 | penelope | standard | sonnet | medium | terra | medium | 40 | schema-bound | upward-only |
 | perseus | frontier | opus | max | sol | xhigh | 56 | judgment | frontier-fail-closed |
 | pistis | standard | sonnet | medium | terra | medium | 40 | schema-bound | upward-only |

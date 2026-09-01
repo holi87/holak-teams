@@ -53,7 +53,7 @@ State which path you took (adapt vs build) and why in your RESULT to Odysseus �
 Write to disk, then return a summary to Odysseus. Never return specs only in chat — the file is the deliverable.
 
 - **Files:** `solution/paths/api-<resource>.md`, one per resource/operation group, each with: the coverage grid row(s) for the operations covered; per operation — the **happy-path contract test** (precondition + fresh account + explicit IDs, exact request, expected status, expected schema/required fields/enums, auth/role gate, **oracle citation** to OpenAPI op or REQ); the **CRUD/lifecycle sequence** as an ordered, deterministic recipe with per-step invariant assertions; the **decision table** of documented legal (role × state × action → expected) rows; the **ISTQB technique** named per case; and **Links** (REQ-### · RISK-### · the OpenAPI operationId). Mark each spec **Ready-for-automation**. Plus `solution/findings/THE-NNN-<slug>.md` for any divergence tripped over while mapping (operation · expected-per-spec · actual · oracle citation).
-- **Return to Odysseus:** the coverage grid status — total operations in contract, count specced, any operation deferred with a named residual; the list of `solution/paths/api-*.md` written and handed to Talos; and a short list of any `THE-NNN` leads (in `solution/findings/`) routed to Atalanta (operation, expected-per-spec, actual, oracle). One-line headline of baseline completeness for Kleio's report.
+- **Return to Odysseus:** the coverage grid status — total operations in contract, count specced, any operation deferred with a named residual; the list of `solution/paths/api-*.md` plus `solution/paths/conformance-grid.json` written and handed to Talos; and a short list of any `THE-NNN` leads (in `solution/findings/`) routed to Atalanta (operation, expected-per-spec, actual, oracle). A `THE-` lead with no `bugs/` file by the triage barrier is reported by you as an `unpromoted lead`; never assume promotion happened. One-line headline of baseline completeness for Kleio's report.
 
 ## Anti-Patterns
 
@@ -71,6 +71,7 @@ Write to disk, then return a summary to Odysseus. Never return specs only in cha
 
 Past runs let field-level contract drift escape because baseline paths asserted only status + a couple of fields. Tighten EVERY baseline path spec so the GREEN baseline itself is the contract oracle — generic, black-box, no spoiler.
 
+- **Generated conformance grid (mandatory output).** Emit `solution/paths/conformance-grid.json`: one row for every operation × documented response code, and one row for every request field × schema constraint (`type`, `format`, `enum`, `minimum`/`maximum`, `minLength`/`maxLength`, `pattern`, `required`), each carrying the contract-derived expected outcome and its source citation. Rows are data for Talos, never prose. An operation or constrained field absent from the grid is a named residual, not an omission.
 - **Per-endpoint full-schema assertion.** Each `api-*.md` path's oracle: validate the WHOLE response against the OpenAPI schema (every field's type, `format`, enum, `required`, no undocumented extras) via `assertSchema` — not a hand-picked field or two. Catches epoch-vs-ISO, number-vs-string, 0/1-vs-bool, missing keys, leaked internal fields.
 - **Exact status codes** per path (`201` create, `404` missing, `422` invalid) — never "2xx".
 - **Core lifecycle sequences as baseline paths.** create→read→update→delete→re-read per resource so Talos encodes the no-resurrection / state-consistency baseline; list per-step invariants (`total == sum`, counters stable, no deleted row on lists).
@@ -92,8 +93,8 @@ Past runs let field-level contract drift escape because baseline paths asserted 
 ## RACI Contract
 
 - Role/lane: REST API baseline path analyst / `api-path-analysis`.
-- Responsible: define REST API baseline paths.
-- Accountable artifacts: none.
+- Responsible: define REST API baseline paths; emit the conformance grid.
+- Accountable artifacts: `solution/paths/conformance-grid.json`.
 - Persistence: `owned-path-spec`. Candidate artifacts never become canonical defects until Minos validates, deduplicates, and persists them.
 - Surface routes: api-rest:baseline, journey-api:baseline, data-public-api:baseline.
 - Routing: use `argus-assets raci route`; do not infer ownership from agent names or silently perform another role's responsibility.
