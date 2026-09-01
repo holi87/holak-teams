@@ -15,11 +15,11 @@ node "$ROOT/scripts/sync-argus-technique-bundle.mjs" --check >/dev/null
 jq -e '.schema == "argus/technique-scope-list@1" and (.scopes | index("proteus:graphql")) != null and (.scopes | index("proteus:websocket-sse")) != null' "$WORK/proteus-scopes.json" >/dev/null
 
 "$CLI" technique select --role atalanta --inventory "$SOURCE" >"$WORK/atalanta-full.json"
-jq -e '.disposition == "full-fallback" and .reason == "missing-role-scopes" and (.selectedIds | length) == 20 and (.catalog.entries | length) == 20' "$WORK/atalanta-full.json" >/dev/null
+jq -e '.disposition == "full-fallback" and .reason == "missing-role-scopes" and (.selectedIds | length) == 22 and (.catalog.entries | length) == 22' "$WORK/atalanta-full.json" >/dev/null
 
 jq '(.items[] | select(.id == "SRF-API-ORDERS-POST")) += {techniqueScopes:["atalanta:validation"]}' "$SOURCE" >"$WORK/atalanta-inventory.json"
 "$CLI" technique select --role atalanta --inventory "$WORK/atalanta-inventory.json" >"$WORK/atalanta-selected.json"
-jq -e '.disposition == "selected" and (.selectedIds | length) < 20 and (.selectedIds | index("ATA-T01")) != null and (.catalog.entries | length) == (.selectedIds | length)' "$WORK/atalanta-selected.json" >/dev/null
+jq -e '.disposition == "selected" and (.selectedIds | length) < 22 and (.selectedIds | index("ATA-T01")) != null and (.catalog.entries | length) == (.selectedIds | length)' "$WORK/atalanta-selected.json" >/dev/null
 
 jq '(.items[] | select(.id == "SRF-EVENT-ORDER-CREATED")) += {techniqueScopes:["proteus:graphql"]}' "$SOURCE" >"$WORK/proteus-inventory.json"
 "$CLI" technique select --role proteus --inventory "$WORK/proteus-inventory.json" >"$WORK/proteus-selected.json"
