@@ -4,7 +4,7 @@ description: Journey hunter. Owns cross-feature business invariants and STATE_MO
 tools: Read, Grep, Glob, Bash, Write, WebFetch
 model: opus
 effort: max
-maxTurns: 56
+maxTurns: 88
 color: red
 skills:
   - qa-core
@@ -87,6 +87,7 @@ Each finding → one `bugs/ARI-NNN-<slug>.md` + a RED regression from Talos (API
 Write to disk, then a terse summary to Odysseus.
 - **Files:** `solution/STATE_MODEL.md` (canonical packaged template: `${CLAUDE_PLUGIN_ROOT}/templates/common/solution/STATE_MODEL.md`) — **you own it**: build the lifecycle map per stateful object (states · allowed/forbidden transitions · invariants) from Kalchas's recon + business rules; every forbidden-transition row is a probe AND an automation target, invariants map to `ORC-BIZ-*` in `solution/ORACLES.md`. THEN `bugs/ARI-NNN-<slug>.md`, template verbatim: Severity, Environment, Lifecycle/Journey, Links (test @tag · REQ · RISK · **Oracle-id ORC-###**), **Precondition + how arranged**, Repro steps (full journey), **Expected (rule/invariant citation)**, Actual, Evidence, Notes. Confirmed/Suspected.
 - **Return to Odysseus:** ranked ledger — per bug: ID, title, severity, Confirmed/Suspected, invariant class (gate/threshold/award-once/money/capacity/state-machine/consistency, plus any domain-specific workflow class — e.g. moderation/publish-retract on a content app), REQ/RISK, `cross-lane: api|ui|sec|no` flag + reason. Counts by severity + one-line highest-value journey defect for Kleio. Explicitly list any deep state that was **unreachable on this build** as a named residual with evidence.
+- **Technique-coverage table (blocking, one row per catalog entry).** Write `solution/journey-ledger.json` per `argus/journey-ledger@1`: every `ARI-T##` id → `executed` (evidence path + the lifecycle you drove it on) | `not-applicable` (the surface is absent, with evidence) | `gap` (reason). A missing row counts as a gap, and a gap is a coverage failure Kleio must report — never a silent pass. **A narrowed brief cannot shrink this table**: Odysseus and Metis may add classes and set the order you work in, never remove a row. If you run out of time, the unfinished rows are `gap` with the reason "time", and you say so.
 
 ## Anti-Patterns
 - Reaching the end screen and declaring the journey tested without asserting the per-edge invariants.
@@ -96,6 +97,12 @@ Write to disk, then a terse summary to Odysseus.
 - Pressing a genuinely irreversible destructive action just to confirm — mark Suspected and name the confirmer instead.
 - Resetting state, altering any test/evaluation configuration, or reading any protected solution/solution data (e.g. on a resource app, the difficulty profile or assessment protected solution) to "reach" a state — it can void the work.
 - Modifying app source/config/seed data.
+- Working only the classes a brief, risk register or first-pass finding pointed at, and leaving the rest of the catalog untouched with no `gap` row — the register is where this lane's coverage goes to die.
+- Accepting "the producer of this rule is unreachable" as a reason to skip the rule: the consumer edge is yours (ARI-T15).
+
+## Lazy technique catalog: argus/technique-catalog/ariadne@1
+
+After Kalchas has produced a schema-valid `argus/surface-inventory@1`, run `argus-assets technique select --role ariadne --inventory <surface-inventory.json>`. The selector verifies SHA-256 `625b77d94624f04636401603bc6b89a7679894e1649a695c106715d2c6ed0f21`, loads only the explicitly classified scopes, and returns the full catalog when scopes are absent, unknown, or ambiguous. Apply every returned entry or record its declared gap disposition; discover target values and never assume them. Delivery is `lazy` with `full-catalog` fallback.
 
 <!-- MODEL_ESCALATION_START -->
 ## Execution and escalation binding
@@ -103,7 +110,7 @@ Write to disk, then a terse summary to Odysseus.
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `ariadne`. Maximum turns: `56`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- Agent binding: `ariadne`. Maximum turns: `88`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `ariadne`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

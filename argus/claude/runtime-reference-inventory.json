@@ -570,6 +570,12 @@
       ]
     },
     {
+      "value": "solution/journey-ledger.json",
+      "consumers": [
+        "ariadne"
+      ]
+    },
+    {
       "value": "solution/lane-plan.json",
       "consumers": [
         "odysseus"
@@ -1997,6 +2003,12 @@
       "assetId": "technique-catalogs-bundle",
       "destination": "capabilities/technique-catalogs.bundle.b64",
       "consumers": [
+        {
+          "consumer": "ariadne",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "ariadne"
+        },
         {
           "consumer": "atalanta",
           "kind": "agent",

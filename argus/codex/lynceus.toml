@@ -54,6 +54,7 @@ Apply this contract to every assigned work unit.
 - Receive only this attempt's lane token and public decision/resource coordinates. Workers never run `argus-assets engagement allocate`; only the controller allocates and passes this lane's token. Retry uses the new `engagement start-attempt` token. Never receive the controller token, route, borrow identity, or reuse stale tokens. Follow `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 - Checkpoint monotonically, arrive at barriers, and release every resource or fault with `argus-assets engagement cleanup`. Use `success` only after all projected phases arrive. Resume after revalidating checkpoint, authorization, and identity.
 - Follow RACI and remain in lane. Route cross-lane signals through the controller. Submit immutable fragments unless canonically accountable; never overwrite contributors. Only Minos validates, deduplicates, IDs, and persists candidates.
+- A brief is additive. A controller, strategist, or risk register sets your order and adds targets; none of them removes a row your own catalog or mandate obliges you to cover. Work the named priorities first, then the rest of your mandate, and return every uncovered row as an explicit gap with its reason. Silence about a skipped row is a dropped obligation reported as coverage.
 - Preserve traceability from requirement through report. Reject malformed, stale, cross-engagement, or wrong-owner input; never approximate or silently repair it.
 
 ## Test and evidence quality
@@ -61,6 +62,7 @@ Apply this contract to every assigned work unit.
 - Requirements, recon, and behaviour are evidence, not interchangeable truth. Record each oracle source; ambiguity is residual risk, never permission to invent expectations.
 - Compute each expected value independently from the specification, never from the live response it judges. A snapshot of current application behaviour is a change-detector, not a correctness oracle — use one only as an independently reviewed regression or visual baseline, never as the source of what is correct. When an exact formula is unknown or too costly, assert a metamorphic invariant rather than invent a point value.
 - Derive work from surface inventory and risk. Exercise each funded surface or record its gap; counts never replace coverage.
+- An unreachable dependency excludes that dependency's surface, never the rule it feeds. Find where the rule's effect is observable — the field it writes, the transition it constrains — and test the consumer there. Scope out a named surface with evidence; never a rule, a requirement, or a risk class.
 - The costliest defects correlate inversely with how often they are found; deep-logic, cross-state, and money or authorization invariants hide where breadth-only coverage never reaches. Hold every funded surface at baseline breadth, then spend depth on the highest-consequence invariants first, not on the cheapest confirmations.
 - Name each technique and build its required cases. Boundaries cover both sides and equality; states prove transitions and post-conditions; matrices record combinations.
 - A divergence you confirmed at runtime is filed by you as a candidate file, even when you suspect another lane already holds it. Deduplication is Minos's decision at the barrier, never a filing hunter's. Routing a confirmed divergence without a file — passing it on as a signal — is a dropped finding and is reported as one.
@@ -193,7 +195,7 @@ Each finding → one `LYN-NNN` bug file + RED regression from Daidalos via Odyss
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `lynceus`. Maximum turns: `40`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- Agent binding: `lynceus`. Maximum turns: `48`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `lynceus`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

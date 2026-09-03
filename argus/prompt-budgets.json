@@ -9,43 +9,44 @@
     "sourceCommit": "1e4d411"
   },
   "approvedCorpus": {
-    "words": 79896,
-    "sha256": "c27a724f810ef215491ff96ac98e85fa7e7915e29a43bbf2bbbe6e4a7602b71b",
+    "words": 77585,
+    "sha256": "bd2f49ba78d9b98427aabb62d77c5bf91d15b82cf45f63b6eeb7008661e323fa",
     "agents": {
       "aegis": 2327,
-      "antigone": 3430,
-      "ariadne": 3265,
-      "aristarchus": 2568,
-      "asklepios": 2833,
-      "atalanta": 4124,
+      "antigone": 3422,
+      "ariadne": 3493,
+      "aristarchus": 2564,
+      "asklepios": 2825,
+      "atalanta": 2823,
       "atlas": 3096,
-      "charon": 2826,
+      "charon": 2818,
       "daidalos": 2435,
-      "hermes": 3258,
+      "hermes": 3250,
       "kalchas": 2916,
       "kleio": 3242,
-      "lynceus": 2625,
-      "metis": 4452,
-      "minos": 2672,
-      "mnemosyne": 2406,
-      "nike": 2664,
+      "lynceus": 2617,
+      "metis": 2896,
+      "minos": 2748,
+      "mnemosyne": 2398,
+      "nike": 2656,
       "odysseus": 780,
       "orion": 3709,
       "penelope": 2745,
       "perseus": 3426,
-      "pistis": 2783,
-      "proteus": 4065,
+      "pistis": 2775,
+      "proteus": 2937,
       "talos": 2961,
       "theseus": 2653,
-      "tiresias": 3403,
-      "tyche": 3751
-    }
+      "tiresias": 3395,
+      "tyche": 3678
+    },
+    "approvedFor": "4.9.0 — invariant-lane mechanisation; see the release notes in RELEASE.md"
   },
   "budgets": {
     "maxClaudeAgentWords": 88407,
-    "maxEffectiveClaudeWords": 113000,
-    "maxAgentWords": 5000,
-    "maxEffectiveAgentWords": 6000,
+    "maxEffectiveClaudeWords": 124000,
+    "maxAgentWords": 5200,
+    "maxEffectiveAgentWords": 6400,
     "maxCodexEstimatedTokens": 221040,
     "minimumCodexTokenReduction": 15000,
     "minRunSkillWords": 300,
@@ -60,7 +61,9 @@
     "duplicateParagraphMinWords": 40,
     "maxDuplicatedDoctrineInstances": 0
   },
-  "requiredPreloadedProfiles": ["qa-core"],
+  "requiredPreloadedProfiles": [
+    "qa-core"
+  ],
   "optionalProfiles": [
     "competition-profile"
   ]
