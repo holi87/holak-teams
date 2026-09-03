@@ -14,7 +14,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CATALOGS = join(ROOT, 'argus', 'technique-catalogs');
 const SCHEMA_PATH = join(ROOT, 'argus', 'schemas', 'technique-catalog.schema.json');
 const FIXTURES_PATH = join(ROOT, 'scripts', 'fixtures', 'argus-technique-catalogs', 'mutations.json');
-const roles = ['atalanta', 'proteus', 'metis'];
+const roles = ['atalanta', 'ariadne', 'proteus', 'metis'];
 const documents = new Map(roles.map((role) => [role, readJson(join(CATALOGS, `${role}.json`))]));
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
@@ -53,11 +53,11 @@ for (const fixture of fixtures.cases) {
   }
 }
 
-const missingSetErrors = validateTechniqueCatalogSet([...documents.values()].slice(0, 2));
-assert(missingSetErrors.some((error) => error.includes('exactly 3 catalogs')), 'catalog set accepted a missing role');
+const missingSetErrors = validateTechniqueCatalogSet([...documents.values()].slice(0, roles.length - 2));
+assert(missingSetErrors.some((error) => error.includes(`exactly ${roles.length} catalogs`)), 'catalog set accepted a missing role');
 assert(missingSetErrors.some((error) => error.includes('missing metis')), 'catalog set did not name the missing role');
 const duplicateSetErrors = validateTechniqueCatalogSet([
-  documents.get('atalanta'), documents.get('atalanta'), documents.get('metis'),
+  documents.get('atalanta'), documents.get('atalanta'), documents.get('ariadne'), documents.get('metis'),
 ]);
 assert(duplicateSetErrors.some((error) => error.includes('duplicates atalanta')), 'catalog set accepted a duplicate role');
 assert(duplicateSetErrors.some((error) => error.includes('missing proteus')), 'catalog set did not name the displaced role');
@@ -69,6 +69,7 @@ for (const forbidden of ['readFileSync', 'readFile(', 'technique-catalogs/atalan
 
 console.log(
   `PASS  Argus technique catalogs: ${documents.get('atalanta').entries.length} Atalanta, ` +
+  `${documents.get('ariadne').entries.length} Ariadne, ` +
   `${documents.get('proteus').entries.length} Proteus, ` +
   `${documents.get('metis').iso25010.length} ISO 25010, ` +
   `${documents.get('metis').journeyClasses.length} journeys, ` +

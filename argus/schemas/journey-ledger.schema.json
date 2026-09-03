@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/journey-ledger.schema.json",
+  "title": "Argus journey and invariant coverage ledger",
+  "description": "One row per technique-catalog entry of an invariant hunting lane. The contract lanes have carried a machine-checked ledger since 4.5.0 and score accordingly; this gives the invariant lanes the same standing, so a class can no longer be dropped by a narrowed brief without leaving a row behind.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "engagementId", "lane", "catalogId", "rows"],
+  "properties": {
+    "$schema": { "const": "argus/journey-ledger@1" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "lane": { "type": "string", "minLength": 1 },
+    "catalogId": { "type": "string", "minLength": 1 },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/row" }
+    }
+  },
+  "$defs": {
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["techniqueId", "disposition"],
+      "properties": {
+        "techniqueId": { "type": "string", "pattern": "^[A-Z]{3}-T[0-9]{2}$" },
+        "disposition": { "enum": ["executed", "not-applicable", "gap"] },
+        "lifecycle": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The entity lifecycle or workflow this class was driven on."
+        },
+        "arrangement": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How the required precondition state was constructed. Required for an executed row whose catalog entry asks for an arranged state; a probe against whatever state happened to exist has no detection power."
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Paths to the captured evidence. An executed row without evidence is a gap."
+        },
+        "findings": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z]{3}-[0-9]{3}" },
+          "description": "Candidate files filed from this class. An empty list is a legitimate clean result."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why the row is not executed. Required for not-applicable and gap. Time pressure is a valid reason to record, never a reason to omit the row."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "disposition": { "const": "executed" } } },
+          "then": { "required": ["lifecycle", "evidence"] }
+        },
+        {
+          "if": { "properties": { "disposition": { "enum": ["not-applicable", "gap"] } } },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    }
+  }
+}

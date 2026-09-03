@@ -14,12 +14,25 @@
     "afterWave": "W2",
     "modes": ["A", "B"],
     "tier": "frontier",
-    "roles": ["atalanta", "orion"],
+    "roles": ["atalanta", "ariadne", "orion", "tyche"],
     "brief": [
       "conformance RED rows without a disposition",
       "open contract-drift rows",
       "open risk-register rows",
-      "the hottest defect clusters from the first triage pass"
+      "the hottest defect clusters from the first triage pass",
+      "every technique-catalog row still marked gap after the first pass, invariant classes before contract rows",
+      "every documented business rule whose consumer edge is reachable but whose producer was called unreachable"
+    ]
+  },
+  "mandatoryLanes": {
+    "policy": "gates-satisfied-means-dispatched",
+    "modes": ["A", "B"],
+    "roles": ["ariadne", "atalanta", "hermes", "tyche", "orion", "perseus", "lynceus", "antigone"],
+    "rule": [
+      "A hunter whose capability gates are satisfied is dispatched and returns its technique-coverage table. Time pressure is not a disposition.",
+      "A lane may be omitted only when a gate is unmet, and the unmet gate is recorded in coverage-result.json as the reason.",
+      "A dispatched lane that produced no artifact is a coverage failure, not an empty result: Kleio reports it and the run verdict cannot be PARTIAL-WITH-NAMED-GAPS on that basis alone.",
+      "A brief given to a lane is additive. It may set order and add targets; it may never remove a catalog row from that lane's obligation."
     ]
   },
   "waves": [

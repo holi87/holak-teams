@@ -119,6 +119,12 @@ if (Object.keys(increases).length > 0 || totalWords > budget.approvedCorpus.word
   assert(approval.corpusSha256 === corpusSha256, 'regressionApproval does not match current prompt corpus');
   assert(/^#[0-9]+$/.test(approval.issue) && approval.approvedBy && approval.reason, 'regressionApproval metadata is incomplete');
   assert(equal(approval.allowedAgentIncreases, increases), `regressionApproval must exactly enumerate increases: ${JSON.stringify(increases)}`);
+} else {
+  // Without this branch the recorded digest was decoration: a corpus could be rewritten
+  // word-for-word inside the approved counts and nothing would notice. A gate whose own
+  // integrity field is never read is the same failure the framework audits others for.
+  assert(budget.approvedCorpus.sha256 === corpusSha256,
+    `approvedCorpus.sha256 does not match the current corpus ${corpusSha256}: re-approve the corpus or restore it`);
 }
 
 const reduction = 1 - totalWords / budget.baseline.claudeAgentWords;
@@ -202,7 +208,7 @@ function assertProfileAssignments(capabilityMatrix, counts) {
     const actual = capabilityMatrix.agents.filter((agent) => agent.toolProfiles.includes(profile)).length;
     assert(actual === count, `${profile}: expected ${count} assignments, found ${actual}`);
   }
-  for (const catalog of ['atalanta', 'proteus', 'metis']) {
+  for (const catalog of ['atalanta', 'ariadne', 'proteus', 'metis']) {
     const owners = capabilityMatrix.agents.filter((agent) => agent.techniqueCatalogs.includes(catalog)).map((agent) => agent.slug);
     assert(equal(owners, [catalog]), `${catalog}: technique catalog assignment drifted`);
   }

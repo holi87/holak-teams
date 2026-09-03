@@ -12,23 +12,55 @@
     "dependencyPolicy",
     "modeCounts",
     "waves",
-    "roles"
+    "roles",
+    "mandatoryLanes"
   ],
   "properties": {
-    "$schema": { "const": "argus/orchestration-plan@1" },
-    "schemaVersion": { "const": 1 },
-    "capabilityMatrix": { "const": "capabilities/capability-matrix.json" },
-    "raci": { "const": "references/raci.json" },
-    "dependencyPolicy": { "const": "selected-dispatchable-predecessors" },
+    "$schema": {
+      "const": "argus/orchestration-plan@1"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "capabilityMatrix": {
+      "const": "capabilities/capability-matrix.json"
+    },
+    "raci": {
+      "const": "references/raci.json"
+    },
+    "dependencyPolicy": {
+      "const": "selected-dispatchable-predecessors"
+    },
     "modeCounts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["A", "B", "C", "D"],
+      "required": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
       "properties": {
-        "A": { "type": "integer", "minimum": 0, "maximum": 27 },
-        "B": { "type": "integer", "minimum": 0, "maximum": 27 },
-        "C": { "type": "integer", "minimum": 0, "maximum": 27 },
-        "D": { "type": "integer", "minimum": 0, "maximum": 27 }
+        "A": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 27
+        },
+        "B": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 27
+        },
+        "C": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 27
+        },
+        "D": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 27
+        }
       }
     },
     "waves": {
@@ -38,10 +70,23 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "barrierAfter"],
+        "required": [
+          "id",
+          "barrierAfter"
+        ],
         "properties": {
-          "id": { "enum": ["W0", "W1", "W2", "W3", "W4"] },
-          "barrierAfter": { "type": "boolean" }
+          "id": {
+            "enum": [
+              "W0",
+              "W1",
+              "W2",
+              "W3",
+              "W4"
+            ]
+          },
+          "barrierAfter": {
+            "type": "boolean"
+          }
         }
       }
     },
@@ -49,27 +94,97 @@
       "type": "array",
       "minItems": 27,
       "uniqueItems": true,
-      "items": { "$ref": "#/$defs/role" }
+      "items": {
+        "$ref": "#/$defs/role"
+      }
     },
     "deepHuntWave": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["afterWave", "modes", "tier", "roles", "brief"],
+      "required": [
+        "afterWave",
+        "modes",
+        "tier",
+        "roles",
+        "brief"
+      ],
       "properties": {
-        "afterWave": { "enum": ["W0", "W1", "W2", "W3", "W4"] },
+        "afterWave": {
+          "enum": [
+            "W0",
+            "W1",
+            "W2",
+            "W3",
+            "W4"
+          ]
+        },
         "modes": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "enum": ["A", "B", "C", "D"] }
+          "items": {
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ]
+          }
         },
-        "tier": { "const": "frontier" },
-        "roles": { "$ref": "#/$defs/stringList" },
+        "tier": {
+          "const": "frontier"
+        },
+        "roles": {
+          "$ref": "#/$defs/stringList"
+        },
         "brief": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "type": "string", "minLength": 3 }
+          "items": {
+            "type": "string",
+            "minLength": 3
+          }
+        }
+      }
+    },
+    "mandatoryLanes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "modes",
+        "roles",
+        "rule"
+      ],
+      "properties": {
+        "policy": {
+          "const": "gates-satisfied-means-dispatched"
+        },
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ]
+          }
+        },
+        "roles": {
+          "$ref": "#/$defs/stringList"
+        },
+        "rule": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 20
+          }
         }
       }
     }
@@ -78,26 +193,67 @@
     "role": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["slug", "kind", "dispatch", "wave", "modes", "gates", "dependsOn"],
+      "required": [
+        "slug",
+        "kind",
+        "dispatch",
+        "wave",
+        "modes",
+        "gates",
+        "dependsOn"
+      ],
       "properties": {
-        "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
-        "kind": { "enum": ["controller", "specialist"] },
-        "dispatch": { "type": "boolean" },
-        "wave": { "enum": ["controller", "W0", "W1", "W2", "W3", "W4"] },
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "kind": {
+          "enum": [
+            "controller",
+            "specialist"
+          ]
+        },
+        "dispatch": {
+          "type": "boolean"
+        },
+        "wave": {
+          "enum": [
+            "controller",
+            "W0",
+            "W1",
+            "W2",
+            "W3",
+            "W4"
+          ]
+        },
         "modes": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "enum": ["A", "B", "C", "D"] }
+          "items": {
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ]
+          }
         },
-        "gates": { "$ref": "#/$defs/stringList" },
-        "dependsOn": { "$ref": "#/$defs/stringList" }
+        "gates": {
+          "$ref": "#/$defs/stringList"
+        },
+        "dependsOn": {
+          "$ref": "#/$defs/stringList"
+        }
       }
     },
     "stringList": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      }
     }
   }
 }
