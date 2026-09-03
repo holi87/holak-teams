@@ -83,6 +83,40 @@ export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
     }
   }
 
+  // A lane that is silently dropped costs more than a lane that fails loudly. Three of the
+  // four hunters listed here produced nothing at all on one past engagement while the plan
+  // stayed formally valid, so membership is checked rather than assumed.
+  const mandatory = plan.mandatoryLanes;
+  if (mandatory !== undefined) {
+    if (!isObject(mandatory)) errors.push('mandatoryLanes: must be an object');
+    else {
+      if (mandatory.policy !== 'gates-satisfied-means-dispatched') {
+        errors.push('mandatoryLanes.policy: must be gates-satisfied-means-dispatched');
+      }
+      if (!Array.isArray(mandatory.rule) || mandatory.rule.length < 3) {
+        errors.push('mandatoryLanes.rule: must state the dispatch, omission and additive-brief rules');
+      }
+      for (const mode of Array.isArray(mandatory.modes) ? mandatory.modes : []) {
+        if (!MODES.includes(mode)) errors.push(`mandatoryLanes.modes: unknown mode ${String(mode)}`);
+      }
+      const listed = Array.isArray(mandatory.roles) ? mandatory.roles : [];
+      if (listed.length === 0) errors.push('mandatoryLanes.roles: must not be empty');
+      for (const slug of listed) {
+        const role = planBySlug.get(slug);
+        if (!role) errors.push(`mandatoryLanes.roles: unknown role ${String(slug)}`);
+        else if (!role.dispatch) errors.push(`mandatoryLanes.roles: ${slug} is not dispatched`);
+        else {
+          for (const mode of Array.isArray(mandatory.modes) ? mandatory.modes : []) {
+            if (!role.modes.includes(mode)) errors.push(`mandatoryLanes.roles: ${slug} is inactive in Mode ${mode}`);
+          }
+        }
+      }
+      for (const slug of Array.isArray(deepHunt?.roles) ? deepHunt.roles : []) {
+        if (!listed.includes(slug)) errors.push(`mandatoryLanes.roles: deep-hunt role ${slug} must also be mandatory`);
+      }
+    }
+  }
+
   validateDependencies(planBySlug, errors);
   return [...new Set(errors)];
 }

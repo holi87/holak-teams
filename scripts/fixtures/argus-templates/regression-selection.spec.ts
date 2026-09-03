@@ -14,5 +14,9 @@ test('origin alias selection sentinel', { tag: ['@regression', '@bug:ATA-001'] }
     expect('faulty-target').toBe('fixed-target');
   } else {
     expect(mode).toBe('candidate-regression');
+    // A candidate-regression run proves a fix, so the case records the closed outcome.
+    // Without an event the contract has nothing to judge and refuses to call it a pass.
+    const events = process.env.ARGUS_OUTCOME_FILE ?? 'reports/outcomes.raw.tsv';
+    appendFileSync(events, 'origin.selection\tproduct\tpass\tfalse\tfixed\tBUG-0001\tcandidate-green\n');
   }
 });

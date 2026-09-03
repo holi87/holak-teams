@@ -4,7 +4,7 @@ description: Authorized resilience hunter. Owns RESILIENCE-REPORT and persists T
 tools: Read, Grep, Glob, Bash, Write
 model: opus
 effort: max
-maxTurns: 48
+maxTurns: 72
 color: red
 skills:
   - qa-core
@@ -100,7 +100,7 @@ Resilience-lane STRUCTURAL signatures, value-AGNOSTIC: DISCOVER dependencies, wr
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `tyche`. Maximum turns: `48`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- Agent binding: `tyche`. Maximum turns: `72`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `tyche`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

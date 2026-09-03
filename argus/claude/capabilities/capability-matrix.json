@@ -32,7 +32,9 @@
       ]
     },
     "remote-spec": {
-      "tools": ["WebFetch"]
+      "tools": [
+        "WebFetch"
+      ]
     },
     "public-browser-recon": {
       "tools": [
@@ -42,35 +44,78 @@
     }
   },
   "doctrineProfiles": {
-    "orchestration-core": { "requiredAsset": "orchestration-core-skill" },
-    "qa-core": { "requiredAsset": "qa-core-skill" },
-    "qa-browser": { "requiredAsset": "qa-browser-skill" },
-    "qa-framework-runner": { "requiredAsset": "qa-framework-runner-skill" },
-    "qa-coverage-reporting": { "requiredAsset": "qa-coverage-reporting-skill" }
+    "orchestration-core": {
+      "requiredAsset": "orchestration-core-skill"
+    },
+    "qa-core": {
+      "requiredAsset": "qa-core-skill"
+    },
+    "qa-browser": {
+      "requiredAsset": "qa-browser-skill"
+    },
+    "qa-framework-runner": {
+      "requiredAsset": "qa-framework-runner-skill"
+    },
+    "qa-coverage-reporting": {
+      "requiredAsset": "qa-coverage-reporting-skill"
+    }
   },
   "techniqueCatalogs": {
-    "atalanta": { "catalogId": "argus/technique-catalog/atalanta@1", "sha256": "605ccbde04dd96b38d96d61641498a6b480711f752eb41e14ce2252f31fe6f37", "delivery": "lazy", "requiredAsset": "technique-catalogs-bundle", "selectionInput": "argus/surface-inventory@1", "fallback": "full-catalog" },
-    "proteus": { "catalogId": "argus/technique-catalog/proteus@1", "sha256": "f81ec23ffad2d618e49663a615bd6a72720190e648ed2e833eb4415d4f8d1184", "delivery": "lazy", "requiredAsset": "technique-catalogs-bundle", "selectionInput": "argus/surface-inventory@1", "fallback": "full-catalog" },
-    "metis": { "catalogId": "argus/technique-catalog/metis@1", "sha256": "f6a2ec9f044647ffc4d601d367c1ccd5ec93a966301171c5bcb13a6975c14968", "delivery": "lazy", "requiredAsset": "technique-catalogs-bundle", "selectionInput": "argus/surface-inventory@1", "fallback": "full-catalog" }
+    "atalanta": {
+      "catalogId": "argus/technique-catalog/atalanta@1",
+      "sha256": "605ccbde04dd96b38d96d61641498a6b480711f752eb41e14ce2252f31fe6f37",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    },
+    "ariadne": {
+      "catalogId": "argus/technique-catalog/ariadne@1",
+      "sha256": "625b77d94624f04636401603bc6b89a7679894e1649a695c106715d2c6ed0f21",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    },
+    "proteus": {
+      "catalogId": "argus/technique-catalog/proteus@1",
+      "sha256": "f81ec23ffad2d618e49663a615bd6a72720190e648ed2e833eb4415d4f8d1184",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    },
+    "metis": {
+      "catalogId": "argus/technique-catalog/metis@1",
+      "sha256": "7b52916db7332ca20ef1578971a11ef2bb00b7551385981e0d3108c1b70e9001",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    }
   },
   "orchestration": {
-    "requiredTools": ["Agent", "Read", "Bash"],
+    "requiredTools": [
+      "Agent",
+      "Read",
+      "Bash"
+    ],
     "requiredAssets": [
       "authorization-policies",
       "authorization-policy",
-    "capability-matrix",
-    "canonical-contracts",
-    "raci-contract",
-    "raci-matrix",
-    "engagement-policy",
-    "model-policy",
-    "orchestration-plan",
-    "orchestration-core-skill",
-    "qa-core-skill",
-    "runtime-adapters",
-    "runtime-library",
-    "runner-contract",
-    "runtime-schemas"
+      "capability-matrix",
+      "canonical-contracts",
+      "raci-contract",
+      "raci-matrix",
+      "engagement-policy",
+      "model-policy",
+      "orchestration-plan",
+      "orchestration-core-skill",
+      "qa-core-skill",
+      "runtime-adapters",
+      "runtime-library",
+      "runner-contract",
+      "runtime-schemas"
     ],
     "artifactPaths": [
       "ai_agents_internal/authorization.json",
@@ -94,7 +139,10 @@
     },
     "context7": {
       "kind": "mcp",
-      "serverPatterns": ["plugin:context7:context7", "context7"],
+      "serverPatterns": [
+        "plugin:context7:context7",
+        "context7"
+      ],
       "missingDisposition": "degraded",
       "fallback": "Use WebFetch against current official documentation and record the exact source URL."
     },
@@ -120,7 +168,10 @@
     },
     "playwright-mcp": {
       "kind": "mcp",
-      "serverPatterns": ["plugin:playwright:playwright", "playwright"],
+      "serverPatterns": [
+        "plugin:playwright:playwright",
+        "playwright"
+      ],
       "missingDisposition": "degraded",
       "fallback": "Use scripted CLI probes; browser lanes use the isolated hunt-driver. Shared MCP is never a fallback for authenticated or multi-step flows."
     },
@@ -134,311 +185,893 @@
     {
       "slug": "aegis",
       "lane": "security-automation",
-      "modes": ["A", "C", "D"],
-      "toolProfiles": ["official-docs"],
-      "doctrineProfiles": ["qa-core", "qa-framework-runner"],
+      "modes": [
+        "A",
+        "C",
+        "D"
+      ],
+      "toolProfiles": [
+        "official-docs"
+      ],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-framework-runner"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "riskActions": ["security-passive", "security-active", "persistent-mutation"],
-      "optionalCapabilities": ["context7"],
-      "artifactPaths": ["tests/security/"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "riskActions": [
+        "security-passive",
+        "security-active",
+        "persistent-mutation"
+      ],
+      "optionalCapabilities": [
+        "context7"
+      ],
+      "artifactPaths": [
+        "tests/security/"
+      ]
     },
     {
       "slug": "antigone",
       "lane": "accessibility-hunt",
-      "modes": ["A", "B"],
-      "toolProfiles": ["remote-spec"],
-      "doctrineProfiles": ["qa-core", "qa-browser"],
+      "modes": [
+        "A",
+        "B"
+      ],
+      "toolProfiles": [
+        "remote-spec"
+      ],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-browser"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "requiredCapabilities": ["browser-runtime"],
-      "riskActions": ["browser-read", "browser-state-change", "binary-evidence"],
-      "artifactPaths": ["bugs/ANG-*"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "requiredCapabilities": [
+        "browser-runtime"
+      ],
+      "riskActions": [
+        "browser-read",
+        "browser-state-change",
+        "binary-evidence"
+      ],
+      "artifactPaths": [
+        "bugs/ANG-*"
+      ]
     },
     {
       "slug": "ariadne",
       "lane": "journey-hunt",
-      "modes": ["A", "B"],
-      "toolProfiles": ["remote-spec"],
-      "doctrineProfiles": ["qa-core", "qa-browser"],
-      "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "riskActions": ["browser-read", "browser-state-change", "binary-evidence", "persistent-mutation"],
-      "optionalCapabilities": ["browser-runtime"],
-      "artifactPaths": ["bugs/ARI-*", "solution/STATE_MODEL.md"]
+      "modes": [
+        "A",
+        "B"
+      ],
+      "toolProfiles": [
+        "remote-spec"
+      ],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-browser"
+      ],
+      "techniqueCatalogs": [
+        "ariadne"
+      ],
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "riskActions": [
+        "browser-read",
+        "browser-state-change",
+        "binary-evidence",
+        "persistent-mutation"
+      ],
+      "optionalCapabilities": [
+        "browser-runtime"
+      ],
+      "artifactPaths": [
+        "bugs/ARI-*",
+        "solution/STATE_MODEL.md"
+      ]
     },
     {
       "slug": "aristarchus",
       "lane": "automation-review",
-      "modes": ["A", "C", "D"],
+      "modes": [
+        "A",
+        "C",
+        "D"
+      ],
       "toolProfiles": [],
-      "doctrineProfiles": ["qa-core", "qa-framework-runner", "qa-coverage-reporting"],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-framework-runner",
+        "qa-coverage-reporting"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash"],
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash"
+      ],
       "artifactPaths": []
     },
     {
       "slug": "asklepios",
       "lane": "suite-sanitation",
-      "modes": ["A", "D"],
-      "toolProfiles": ["official-docs"],
-      "doctrineProfiles": ["qa-core", "qa-framework-runner"],
+      "modes": [
+        "A",
+        "D"
+      ],
+      "toolProfiles": [
+        "official-docs"
+      ],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-framework-runner"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "requiredCapabilities": ["existing-suite"],
-      "optionalCapabilities": ["context7"],
-      "artifactPaths": ["solution/TEST-HEALTH.md"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "requiredCapabilities": [
+        "existing-suite"
+      ],
+      "optionalCapabilities": [
+        "context7"
+      ],
+      "artifactPaths": [
+        "solution/TEST-HEALTH.md"
+      ]
     },
     {
       "slug": "atalanta",
       "lane": "api-hunt",
-      "modes": ["A", "B"],
-      "toolProfiles": ["remote-spec"],
-      "doctrineProfiles": ["qa-core"],
-      "techniqueCatalogs": ["atalanta"],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "riskActions": ["read", "persistent-mutation"],
-      "artifactPaths": ["bugs/ATA-*"]
+      "modes": [
+        "A",
+        "B"
+      ],
+      "toolProfiles": [
+        "remote-spec"
+      ],
+      "doctrineProfiles": [
+        "qa-core"
+      ],
+      "techniqueCatalogs": [
+        "atalanta"
+      ],
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "riskActions": [
+        "read",
+        "persistent-mutation"
+      ],
+      "artifactPaths": [
+        "bugs/ATA-*"
+      ]
     },
     {
       "slug": "atlas",
       "lane": "automation-architecture",
-      "modes": ["A", "C", "D"],
-      "toolProfiles": ["official-docs"],
-      "doctrineProfiles": ["qa-core", "qa-framework-runner", "qa-coverage-reporting"],
+      "modes": [
+        "A",
+        "C",
+        "D"
+      ],
+      "toolProfiles": [
+        "official-docs"
+      ],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-framework-runner",
+        "qa-coverage-reporting"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "optionalCapabilities": ["context7"],
-      "artifactPaths": ["run-tests.sh", "solution/ARCHITECTURE.md", "solution/automation-status.json", "solution/coverage-observations.json"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "optionalCapabilities": [
+        "context7"
+      ],
+      "artifactPaths": [
+        "run-tests.sh",
+        "solution/ARCHITECTURE.md",
+        "solution/automation-status.json",
+        "solution/coverage-observations.json"
+      ]
     },
     {
       "slug": "charon",
       "lane": "database-hunt",
-      "modes": ["A", "B"],
-      "toolProfiles": ["remote-spec"],
-      "doctrineProfiles": ["qa-core"],
+      "modes": [
+        "A",
+        "B"
+      ],
+      "toolProfiles": [
+        "remote-spec"
+      ],
+      "doctrineProfiles": [
+        "qa-core"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "requiredCapabilities": ["db-access"],
-      "riskActions": ["database-read"],
-      "artifactPaths": ["bugs/CHA-*"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "requiredCapabilities": [
+        "db-access"
+      ],
+      "riskActions": [
+        "database-read"
+      ],
+      "artifactPaths": [
+        "bugs/CHA-*"
+      ]
     },
     {
       "slug": "daidalos",
       "lane": "ui-automation",
-      "modes": ["A", "C", "D"],
-      "toolProfiles": ["official-docs"],
-      "doctrineProfiles": ["qa-core", "qa-browser", "qa-framework-runner"],
+      "modes": [
+        "A",
+        "C",
+        "D"
+      ],
+      "toolProfiles": [
+        "official-docs"
+      ],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-browser",
+        "qa-framework-runner"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "requiredCapabilities": ["browser-runtime"],
-      "riskActions": ["browser-read", "browser-state-change", "binary-evidence", "persistent-mutation"],
-      "optionalCapabilities": ["context7"],
-      "artifactPaths": ["tests/ui/"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "requiredCapabilities": [
+        "browser-runtime"
+      ],
+      "riskActions": [
+        "browser-read",
+        "browser-state-change",
+        "binary-evidence",
+        "persistent-mutation"
+      ],
+      "optionalCapabilities": [
+        "context7"
+      ],
+      "artifactPaths": [
+        "tests/ui/"
+      ]
     },
     {
       "slug": "hermes",
       "lane": "performance-hunt",
-      "modes": ["A", "B"],
+      "modes": [
+        "A",
+        "B"
+      ],
       "toolProfiles": [],
-      "doctrineProfiles": ["qa-core"],
+      "doctrineProfiles": [
+        "qa-core"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "riskActions": ["read", "load"],
-      "artifactPaths": ["bugs/HER-*", "solution/PERF-REPORT.md"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "riskActions": [
+        "read",
+        "load"
+      ],
+      "artifactPaths": [
+        "bugs/HER-*",
+        "solution/PERF-REPORT.md"
+      ]
     },
     {
       "slug": "kalchas",
       "lane": "recon",
-      "modes": ["A", "B", "C", "D"],
-      "toolProfiles": ["remote-spec", "public-browser-recon"],
-      "doctrineProfiles": ["qa-core", "qa-browser", "qa-coverage-reporting"],
+      "modes": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "toolProfiles": [
+        "remote-spec",
+        "public-browser-recon"
+      ],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-browser",
+        "qa-coverage-reporting"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "riskActions": ["browser-read", "browser-state-change", "binary-evidence"],
-      "optionalCapabilities": ["browser-runtime", "playwright-mcp"],
-      "artifactPaths": ["ai_agents_internal/recon/", "solution/discovery/contract-drift.json", "solution/surface-inventory.json"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "riskActions": [
+        "browser-read",
+        "browser-state-change",
+        "binary-evidence"
+      ],
+      "optionalCapabilities": [
+        "browser-runtime",
+        "playwright-mcp"
+      ],
+      "artifactPaths": [
+        "ai_agents_internal/recon/",
+        "solution/discovery/contract-drift.json",
+        "solution/surface-inventory.json"
+      ]
     },
     {
       "slug": "kleio",
       "lane": "reporting",
-      "modes": ["A", "B", "C", "D"],
+      "modes": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
       "toolProfiles": [],
-      "doctrineProfiles": ["qa-core", "qa-framework-runner", "qa-coverage-reporting"],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-framework-runner",
+        "qa-coverage-reporting"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "artifactPaths": ["README.md", "solution/evidence-reference.json", "solution/coverage-result.json", "solution/final-summary.json", "solution/FINDINGS.md", "solution/ACCESSIBILITY-REPORT.md", "solution/IMPLEMENTATION-REPORT.md", "solution/TRACEABILITY.md"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "artifactPaths": [
+        "README.md",
+        "solution/evidence-reference.json",
+        "solution/coverage-result.json",
+        "solution/final-summary.json",
+        "solution/FINDINGS.md",
+        "solution/ACCESSIBILITY-REPORT.md",
+        "solution/IMPLEMENTATION-REPORT.md",
+        "solution/TRACEABILITY.md"
+      ]
     },
     {
       "slug": "lynceus",
       "lane": "presentation-hunt",
-      "modes": ["A", "B"],
+      "modes": [
+        "A",
+        "B"
+      ],
       "toolProfiles": [],
-      "doctrineProfiles": ["qa-core", "qa-browser"],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-browser"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "requiredCapabilities": ["browser-runtime"],
-      "riskActions": ["browser-read", "browser-state-change", "binary-evidence"],
-      "artifactPaths": ["bugs/LYN-*"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "requiredCapabilities": [
+        "browser-runtime"
+      ],
+      "riskActions": [
+        "browser-read",
+        "browser-state-change",
+        "binary-evidence"
+      ],
+      "artifactPaths": [
+        "bugs/LYN-*"
+      ]
     },
     {
       "slug": "metis",
       "lane": "strategy",
-      "modes": ["A", "B", "C", "D"],
+      "modes": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
       "toolProfiles": [],
-      "doctrineProfiles": ["qa-core", "qa-framework-runner", "qa-coverage-reporting"],
-      "techniqueCatalogs": ["metis"],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "artifactPaths": ["solution/TEST-STRATEGY.md", "solution/ORACLES.md"]
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-framework-runner",
+        "qa-coverage-reporting"
+      ],
+      "techniqueCatalogs": [
+        "metis"
+      ],
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "artifactPaths": [
+        "solution/TEST-STRATEGY.md",
+        "solution/ORACLES.md"
+      ]
     },
     {
       "slug": "minos",
       "lane": "triage",
-      "modes": ["A", "B"],
+      "modes": [
+        "A",
+        "B"
+      ],
       "toolProfiles": [],
-      "doctrineProfiles": ["qa-core", "qa-coverage-reporting"],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-coverage-reporting"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "artifactPaths": ["solution/BUG-LEDGER.md", "solution/bug-ledger.json", "solution/WHITEBOX-LEADS.md"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "artifactPaths": [
+        "solution/BUG-LEDGER.md",
+        "solution/bug-ledger.json",
+        "solution/WHITEBOX-LEADS.md"
+      ]
     },
     {
       "slug": "mnemosyne",
       "lane": "database-automation",
-      "modes": ["A", "C", "D"],
-      "toolProfiles": ["official-docs"],
-      "doctrineProfiles": ["qa-core", "qa-framework-runner"],
+      "modes": [
+        "A",
+        "C",
+        "D"
+      ],
+      "toolProfiles": [
+        "official-docs"
+      ],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-framework-runner"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "requiredCapabilities": ["db-access"],
-      "riskActions": ["database-read", "persistent-mutation"],
-      "optionalCapabilities": ["context7"],
-      "artifactPaths": ["tests/db/"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "requiredCapabilities": [
+        "db-access"
+      ],
+      "riskActions": [
+        "database-read",
+        "persistent-mutation"
+      ],
+      "optionalCapabilities": [
+        "context7"
+      ],
+      "artifactPaths": [
+        "tests/db/"
+      ]
     },
     {
       "slug": "nike",
       "lane": "performance-resilience-automation",
-      "modes": ["A", "C", "D"],
-      "toolProfiles": ["official-docs"],
-      "doctrineProfiles": ["qa-core", "qa-framework-runner"],
+      "modes": [
+        "A",
+        "C",
+        "D"
+      ],
+      "toolProfiles": [
+        "official-docs"
+      ],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-framework-runner"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "riskActions": ["read", "load", "chaos", "persistent-mutation"],
-      "optionalCapabilities": ["context7"],
-      "artifactPaths": ["tests/perf/", "tests/resilience/"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "riskActions": [
+        "read",
+        "load",
+        "chaos",
+        "persistent-mutation"
+      ],
+      "optionalCapabilities": [
+        "context7"
+      ],
+      "artifactPaths": [
+        "tests/perf/",
+        "tests/resilience/"
+      ]
     },
     {
       "slug": "odysseus",
       "lane": "orchestration",
-      "modes": ["A", "B", "C", "D"],
+      "modes": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
       "toolProfiles": [],
-      "doctrineProfiles": ["qa-core", "orchestration-core", "qa-framework-runner", "qa-coverage-reporting"],
+      "doctrineProfiles": [
+        "qa-core",
+        "orchestration-core",
+        "qa-framework-runner",
+        "qa-coverage-reporting"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "Agent"],
-      "artifactPaths": ["ai_agents_internal/preflight.json", "ai_agents_internal/dispatch-plan.md", "ai_agents_internal/model-decisions/*.json", "ai_agents_internal/model-telemetry.jsonl", "solution/lane-plan.json"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "TaskCreate",
+        "TaskGet",
+        "TaskList",
+        "TaskUpdate",
+        "Agent"
+      ],
+      "artifactPaths": [
+        "ai_agents_internal/preflight.json",
+        "ai_agents_internal/dispatch-plan.md",
+        "ai_agents_internal/model-decisions/*.json",
+        "ai_agents_internal/model-telemetry.jsonl",
+        "solution/lane-plan.json"
+      ]
     },
     {
       "slug": "orion",
       "lane": "ui-hunt",
-      "modes": ["A", "B"],
+      "modes": [
+        "A",
+        "B"
+      ],
       "toolProfiles": [],
-      "doctrineProfiles": ["qa-core", "qa-browser"],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-browser"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "requiredCapabilities": ["browser-runtime"],
-      "riskActions": ["browser-read", "browser-state-change", "binary-evidence"],
-      "artifactPaths": ["bugs/ORI-*"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "requiredCapabilities": [
+        "browser-runtime"
+      ],
+      "riskActions": [
+        "browser-read",
+        "browser-state-change",
+        "binary-evidence"
+      ],
+      "artifactPaths": [
+        "bugs/ORI-*"
+      ]
     },
     {
       "slug": "penelope",
       "lane": "ui-path-analysis",
-      "modes": ["A", "C", "D"],
-      "toolProfiles": ["remote-spec"],
-      "doctrineProfiles": ["qa-core", "qa-browser"],
+      "modes": [
+        "A",
+        "C",
+        "D"
+      ],
+      "toolProfiles": [
+        "remote-spec"
+      ],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-browser"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "requiredCapabilities": ["browser-runtime"],
-      "riskActions": ["browser-read", "browser-state-change", "binary-evidence"],
-      "artifactPaths": ["solution/paths/ui-*.md"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "requiredCapabilities": [
+        "browser-runtime"
+      ],
+      "riskActions": [
+        "browser-read",
+        "browser-state-change",
+        "binary-evidence"
+      ],
+      "artifactPaths": [
+        "solution/paths/ui-*.md"
+      ]
     },
     {
       "slug": "perseus",
       "lane": "security-hunt",
-      "modes": ["A", "B"],
+      "modes": [
+        "A",
+        "B"
+      ],
       "toolProfiles": [],
-      "doctrineProfiles": ["qa-core", "qa-browser"],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-browser"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "requiredCapabilities": ["browser-runtime"],
-      "riskActions": ["security-passive", "security-active", "browser-read", "browser-state-change", "binary-evidence"],
-      "artifactPaths": ["bugs/PER-*"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "requiredCapabilities": [
+        "browser-runtime"
+      ],
+      "riskActions": [
+        "security-passive",
+        "security-active",
+        "browser-read",
+        "browser-state-change",
+        "binary-evidence"
+      ],
+      "artifactPaths": [
+        "bugs/PER-*"
+      ]
     },
     {
       "slug": "pistis",
       "lane": "contract-analysis",
-      "modes": ["A", "C"],
-      "toolProfiles": ["remote-spec"],
-      "doctrineProfiles": ["qa-core"],
+      "modes": [
+        "A",
+        "C"
+      ],
+      "toolProfiles": [
+        "remote-spec"
+      ],
+      "doctrineProfiles": [
+        "qa-core"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "requiredCapabilities": ["multi-service"],
-      "artifactPaths": ["solution/paths/contract-*.md", "solution/contracts/"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "requiredCapabilities": [
+        "multi-service"
+      ],
+      "artifactPaths": [
+        "solution/paths/contract-*.md",
+        "solution/contracts/"
+      ]
     },
     {
       "slug": "proteus",
       "lane": "multi-protocol-hunt",
-      "modes": ["A", "B"],
-      "toolProfiles": ["remote-spec"],
-      "doctrineProfiles": ["qa-core"],
-      "techniqueCatalogs": ["proteus"],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "requiredCapabilities": ["non-rest-surface"],
-      "riskActions": ["security-passive", "security-active", "persistent-mutation"],
-      "artifactPaths": ["bugs/PRO-*"]
+      "modes": [
+        "A",
+        "B"
+      ],
+      "toolProfiles": [
+        "remote-spec"
+      ],
+      "doctrineProfiles": [
+        "qa-core"
+      ],
+      "techniqueCatalogs": [
+        "proteus"
+      ],
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "requiredCapabilities": [
+        "non-rest-surface"
+      ],
+      "riskActions": [
+        "security-passive",
+        "security-active",
+        "persistent-mutation"
+      ],
+      "artifactPaths": [
+        "bugs/PRO-*"
+      ]
     },
     {
       "slug": "talos",
       "lane": "api-automation",
-      "modes": ["A", "C", "D"],
-      "toolProfiles": ["official-docs"],
-      "doctrineProfiles": ["qa-core", "qa-framework-runner"],
+      "modes": [
+        "A",
+        "C",
+        "D"
+      ],
+      "toolProfiles": [
+        "official-docs"
+      ],
+      "doctrineProfiles": [
+        "qa-core",
+        "qa-framework-runner"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
-      "riskActions": ["read", "persistent-mutation"],
-      "optionalCapabilities": ["context7"],
-      "artifactPaths": ["solution/findings/conformance-red.json", "tests/api/"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "riskActions": [
+        "read",
+        "persistent-mutation"
+      ],
+      "optionalCapabilities": [
+        "context7"
+      ],
+      "artifactPaths": [
+        "solution/findings/conformance-red.json",
+        "tests/api/"
+      ]
     },
     {
       "slug": "theseus",
       "lane": "api-path-analysis",
-      "modes": ["A", "C", "D"],
-      "toolProfiles": ["remote-spec"],
-      "doctrineProfiles": ["qa-core"],
+      "modes": [
+        "A",
+        "C",
+        "D"
+      ],
+      "toolProfiles": [
+        "remote-spec"
+      ],
+      "doctrineProfiles": [
+        "qa-core"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "artifactPaths": ["solution/paths/api-*.md", "solution/paths/conformance-grid.json"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "artifactPaths": [
+        "solution/paths/api-*.md",
+        "solution/paths/conformance-grid.json"
+      ]
     },
     {
       "slug": "tiresias",
       "lane": "source-analysis",
-      "modes": ["A", "B"],
+      "modes": [
+        "A",
+        "B"
+      ],
       "toolProfiles": [],
-      "doctrineProfiles": ["qa-core"],
+      "doctrineProfiles": [
+        "qa-core"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash"],
-      "requiredCapabilities": ["source-access"],
-      "riskActions": ["security-passive"],
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash"
+      ],
+      "requiredCapabilities": [
+        "source-access"
+      ],
+      "riskActions": [
+        "security-passive"
+      ],
       "artifactPaths": []
     },
     {
       "slug": "tyche",
       "lane": "resilience-hunt",
-      "modes": ["A", "B"],
+      "modes": [
+        "A",
+        "B"
+      ],
       "toolProfiles": [],
-      "doctrineProfiles": ["qa-core"],
+      "doctrineProfiles": [
+        "qa-core"
+      ],
       "techniqueCatalogs": [],
-      "requiredTools": ["Read", "Grep", "Glob", "Bash", "Write"],
-      "riskActions": ["read", "chaos"],
-      "artifactPaths": ["bugs/TYC-*", "solution/RESILIENCE-REPORT.md"]
+      "requiredTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write"
+      ],
+      "riskActions": [
+        "read",
+        "chaos"
+      ],
+      "artifactPaths": [
+        "bugs/TYC-*",
+        "solution/RESILIENCE-REPORT.md"
+      ]
     }
   ]
 }

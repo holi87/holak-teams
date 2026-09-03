@@ -6,6 +6,7 @@ export const TECHNIQUE_CATALOG_SCHEMA = 'argus/technique-catalog@1';
 
 const ROLE_CONTRACTS = Object.freeze({
   atalanta: Object.freeze({ type: 'hunter', prefix: 'ATA', count: 22 }),
+  ariadne: Object.freeze({ type: 'hunter', prefix: 'ARI', count: 16 }),
   proteus: Object.freeze({ type: 'hunter', prefix: 'PRO', count: 15 }),
   metis: Object.freeze({ type: 'strategy' }),
 });
@@ -59,6 +60,12 @@ const ARCHETYPES = Object.freeze([
   'money-cross-view-recalculation',
   'effect-message-content',
   'perf-seeded-structural',
+  // The four classes a contract-led risk register does not produce on its own. They are
+  // listed here so a strategy catalog that omits one fails the build rather than a run.
+  'decision-gate-bypass',
+  'terminal-state-leak',
+  'post-config-revalidation',
+  'cardinality-scope',
 ]);
 const ROUTES = Object.freeze([
   'api', 'ui', 'security', 'performance', 'resilience', 'data',
@@ -92,6 +99,16 @@ const SEMANTIC_MARKERS = Object.freeze({
   'PRO-T13': ['exactly-once or at-least-once claim', 'acknowledgement boundary'],
   'PRO-T14': ['tampered-body', 'duplicate-event-ID'],
   'PRO-T15': ['link-local metadata', 'redirects are revalidated'],
+  // Ariadne's markers pin the six invariant classes that discretionary hunting has
+  // historically dropped first. They exist so a later edit cannot quietly soften a class
+  // into an optional suggestion: removing the phrase fails the catalog validator.
+  'ARI-T01': ['recorded verdict', 'rejected on the rule'],
+  'ARI-T02': ['terminal', 'present in it is a defect'],
+  'ARI-T03': ['no intervening read', 'does not cover the decide endpoint'],
+  'ARI-T04': ['re-checks the current criteria', 'no oracle may be narrowed away'],
+  'ARI-T05': ['scope noun', 'binds on the documented scope'],
+  'ARI-T12': ['independently from the requirements', 'both directions as separate candidates'],
+  'ARI-T15': ['observable edge that is reachable', "never the rule it feeds"],
 });
 
 const TOP_LEVEL = Object.freeze([
@@ -115,7 +132,7 @@ export function validateTechniqueCatalog(document) {
 
   const contract = ROLE_CONTRACTS[document.role];
   if (!contract) {
-    errors.push('/role must be one of atalanta, proteus, or metis');
+    errors.push(`/role must be one of ${Object.keys(ROLE_CONTRACTS).join(', ')}`);
     return errors;
   }
   expectEqual(errors, '/catalogId', document.catalogId, `argus/technique-catalog/${document.role}@1`);
@@ -135,7 +152,8 @@ export function assertTechniqueCatalog(document) {
 export function validateTechniqueCatalogSet(documents) {
   const errors = [];
   if (!Array.isArray(documents)) return ['/ must be an array of technique catalogs'];
-  if (documents.length !== 3) errors.push(`/ must contain exactly 3 catalogs; found ${documents.length}`);
+  const expected = Object.keys(ROLE_CONTRACTS).length;
+  if (documents.length !== expected) errors.push(`/ must contain exactly ${expected} catalogs; found ${documents.length}`);
   const roles = new Set();
   documents.forEach((document, index) => {
     const role = isObject(document) ? document.role : undefined;

@@ -46,8 +46,22 @@ for (const fragment of [
 assert(!controllerSkill.includes('qa-doctrine'), 'orchestration-core references legacy qa-doctrine instead of modular skills');
 assert(plan.roles.length === 27, `expected 27 roles, found ${plan.roles.length}`);
 assert(plan.deepHuntWave?.tier === 'frontier' && plan.deepHuntWave.afterWave === 'W2'
-  && sameSet(plan.deepHuntWave.roles, ['atalanta', 'orion']) && sameSet(plan.deepHuntWave.modes, ['A', 'B'])
-  && plan.deepHuntWave.brief.length >= 4, 'deep-hunt wave is not a named frontier wave after W2 in Modes A and B');
+  && sameSet(plan.deepHuntWave.roles, ['atalanta', 'ariadne', 'orion', 'tyche']) && sameSet(plan.deepHuntWave.modes, ['A', 'B'])
+  && plan.deepHuntWave.brief.length >= 6, 'deep-hunt wave is not a named frontier wave after W2 in Modes A and B');
+// The contract-conformance lanes are mechanised and score well; the invariant lanes are the
+// ones that go quiet under time pressure. Both belong in the second pass, so the second pass
+// cannot become a contract-only pass again.
+assert(plan.deepHuntWave.roles.includes('ariadne') && plan.deepHuntWave.roles.includes('tyche'),
+  'deep-hunt wave dropped the invariant and resilience lanes');
+assert(plan.mandatoryLanes?.policy === 'gates-satisfied-means-dispatched'
+  && sameSet(plan.mandatoryLanes.modes, ['A', 'B'])
+  && ['ariadne', 'atalanta', 'hermes', 'tyche', 'orion', 'perseus', 'lynceus', 'antigone']
+    .every((slug) => plan.mandatoryLanes.roles.includes(slug)),
+  'mandatory hunter lanes are not declared with the gates-satisfied dispatch policy');
+assert(plan.mandatoryLanes.rule.some((rule) => /additive/i.test(rule)),
+  'mandatoryLanes must state that a brief is additive and cannot remove a catalog obligation');
+assert(plan.mandatoryLanes.rule.some((rule) => /time pressure is not a disposition/i.test(rule)),
+  'mandatoryLanes must forbid holding a satisfied lane for time');
 assert(plan.roles.find((role) => role.slug === 'odysseus')?.dispatch === false, 'Odysseus is not a non-dispatched controller');
 for (const [wave, expected] of Object.entries(expectedWaves)) {
   const actual = plan.roles.filter((role) => role.wave === wave).map((role) => role.slug);
@@ -89,7 +103,7 @@ assert(sameSet(kleio.dependsOn, ['aristarchus']), 'projection did not remove gat
 assert(gatedA.omitted.length === 19, `gated projection must report 19 omitted roles, found ${gatedA.omitted.length}`);
 assert(gatedA.omitted.every((role) => role.reason === 'not-in-dispatchable-set'), 'gated projection omitted a disposition reason');
 assert(gatedA.deepHuntWave.roles.length === 0
-  && sameSet(gatedA.deepHuntWave.omitted.map((role) => role.slug), ['atalanta', 'orion'])
+  && sameSet(gatedA.deepHuntWave.omitted.map((role) => role.slug), ['atalanta', 'ariadne', 'orion', 'tyche'])
   && gatedA.deepHuntWave.omitted.every((role) => role.reason === 'not-in-dispatchable-set'),
   'gated projection did not report the deep-hunt hunters as named residuals');
 assertThrows(() => projectOrchestrationPlan(plan, matrix, 'A', ['unknown-role'], raci), 'unknown dispatchable role');

@@ -2,84 +2,227 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://holak-teams.local/argus/prompt-budgets.schema.json",
   "type": "object",
-  "required": ["schemaVersion", "baseline", "approvedCorpus", "budgets", "requiredPreloadedProfiles", "optionalProfiles"],
+  "required": [
+    "schemaVersion",
+    "baseline",
+    "approvedCorpus",
+    "budgets",
+    "requiredPreloadedProfiles",
+    "optionalProfiles"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
     "baseline": {
       "type": "object",
-      "required": ["claudeAgentWords", "codexTomlCharacters", "codexEstimatedTokens", "capturedAt", "sourceCommit"],
+      "required": [
+        "claudeAgentWords",
+        "codexTomlCharacters",
+        "codexEstimatedTokens",
+        "capturedAt",
+        "sourceCommit"
+      ],
       "properties": {
-        "claudeAgentWords": { "type": "integer", "minimum": 1 },
-        "codexTomlCharacters": { "type": "integer", "minimum": 1 },
-        "codexEstimatedTokens": { "type": "integer", "minimum": 1 },
-        "capturedAt": { "type": "string", "format": "date" },
-        "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" }
+        "claudeAgentWords": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "codexTomlCharacters": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "codexEstimatedTokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "capturedAt": {
+          "type": "string",
+          "format": "date"
+        },
+        "sourceCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        }
       },
       "additionalProperties": false
     },
     "approvedCorpus": {
       "type": "object",
-      "required": ["words", "sha256", "agents"],
+      "required": [
+        "words",
+        "sha256",
+        "agents"
+      ],
       "properties": {
-        "words": { "type": "integer", "minimum": 1 },
-        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "words": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
         "agents": {
           "type": "object",
           "minProperties": 1,
-          "additionalProperties": { "type": "integer", "minimum": 1 }
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "approvedFor": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false
     },
     "regressionApproval": {
       "type": "object",
-      "required": ["corpusSha256", "issue", "approvedBy", "reason", "allowedAgentIncreases"],
+      "required": [
+        "corpusSha256",
+        "issue",
+        "approvedBy",
+        "reason",
+        "allowedAgentIncreases"
+      ],
       "properties": {
-        "corpusSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-        "issue": { "type": "string", "pattern": "^#[0-9]+$" },
-        "approvedBy": { "type": "string", "minLength": 1 },
-        "reason": { "type": "string", "minLength": 1 },
+        "corpusSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "issue": {
+          "type": "string",
+          "pattern": "^#[0-9]+$"
+        },
+        "approvedBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
         "allowedAgentIncreases": {
           "type": "object",
           "minProperties": 1,
-          "additionalProperties": { "type": "integer", "minimum": 1 }
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       },
       "additionalProperties": false
     },
     "budgets": {
       "type": "object",
-      "required": ["maxClaudeAgentWords", "maxEffectiveClaudeWords", "maxAgentWords", "maxEffectiveAgentWords", "maxCodexEstimatedTokens", "minimumCodexTokenReduction", "minRunSkillWords", "maxRunSkillWords", "maxOdysseusAgentWords", "maxCodexCapabilityDeltaWords", "maxFrontmatterToolEntries", "maxToolNameBytesPerAgent", "maxToolNameBytesCorpus", "maxPlaywrightMcpEntries", "maxDescriptionWords", "duplicateParagraphMinWords", "maxDuplicatedDoctrineInstances"],
+      "required": [
+        "maxClaudeAgentWords",
+        "maxEffectiveClaudeWords",
+        "maxAgentWords",
+        "maxEffectiveAgentWords",
+        "maxCodexEstimatedTokens",
+        "minimumCodexTokenReduction",
+        "minRunSkillWords",
+        "maxRunSkillWords",
+        "maxOdysseusAgentWords",
+        "maxCodexCapabilityDeltaWords",
+        "maxFrontmatterToolEntries",
+        "maxToolNameBytesPerAgent",
+        "maxToolNameBytesCorpus",
+        "maxPlaywrightMcpEntries",
+        "maxDescriptionWords",
+        "duplicateParagraphMinWords",
+        "maxDuplicatedDoctrineInstances"
+      ],
       "properties": {
-        "maxClaudeAgentWords": { "type": "integer", "minimum": 1 },
-        "maxEffectiveClaudeWords": { "type": "integer", "minimum": 1 },
-        "maxAgentWords": { "type": "integer", "minimum": 1 },
-        "maxEffectiveAgentWords": { "type": "integer", "minimum": 1 },
-        "maxCodexEstimatedTokens": { "type": "integer", "minimum": 1 },
-        "minimumCodexTokenReduction": { "type": "integer", "minimum": 1 },
-        "minRunSkillWords": { "type": "integer", "minimum": 1 },
-        "maxRunSkillWords": { "type": "integer", "minimum": 1 },
-        "maxOdysseusAgentWords": { "type": "integer", "minimum": 1 },
-        "maxCodexCapabilityDeltaWords": { "type": "integer", "minimum": 1 },
-        "maxFrontmatterToolEntries": { "type": "integer", "minimum": 1 },
-        "maxToolNameBytesPerAgent": { "type": "integer", "minimum": 1 },
-        "maxToolNameBytesCorpus": { "type": "integer", "minimum": 1 },
-        "maxPlaywrightMcpEntries": { "type": "integer", "minimum": 0 },
-        "maxDescriptionWords": { "type": "integer", "minimum": 1 },
-        "duplicateParagraphMinWords": { "type": "integer", "minimum": 1 },
-        "maxDuplicatedDoctrineInstances": { "type": "integer", "minimum": 0 }
+        "maxClaudeAgentWords": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxEffectiveClaudeWords": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxAgentWords": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxEffectiveAgentWords": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxCodexEstimatedTokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "minimumCodexTokenReduction": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "minRunSkillWords": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxRunSkillWords": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxOdysseusAgentWords": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxCodexCapabilityDeltaWords": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxFrontmatterToolEntries": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxToolNameBytesPerAgent": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxToolNameBytesCorpus": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxPlaywrightMcpEntries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxDescriptionWords": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "duplicateParagraphMinWords": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxDuplicatedDoctrineInstances": {
+          "type": "integer",
+          "minimum": 0
+        }
       },
       "additionalProperties": false
     },
     "requiredPreloadedProfiles": {
       "type": "array",
-      "contains": { "const": "qa-core" },
+      "contains": {
+        "const": "qa-core"
+      },
       "uniqueItems": true
     },
     "optionalProfiles": {
       "type": "array",
-      "contains": { "const": "competition-profile" }
+      "contains": {
+        "const": "competition-profile"
+      }
     }
   },
   "additionalProperties": false

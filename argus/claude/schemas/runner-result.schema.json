@@ -4,36 +4,160 @@
   "title": "Argus runner result v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "mode", "status", "exitCode", "categories", "events"],
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "mode",
+    "status",
+    "exitCode",
+    "categories",
+    "events",
+    "generatedAt",
+    "deliveryGate",
+    "missingExpectedBugs"
+  ],
   "properties": {
-    "$schema": { "const": "argus/runner-result@1" },
-    "schemaVersion": { "const": 1 },
-    "mode": { "enum": ["baseline", "defect-evidence", "candidate-regression", "full-suite"] },
-    "status": { "enum": ["pass", "fail"] },
-    "exitCode": { "enum": [0, 10, 11, 12, 13, 14, 15] },
+    "$schema": {
+      "const": "argus/runner-result@1"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "mode": {
+      "enum": [
+        "baseline",
+        "defect-evidence",
+        "candidate-regression",
+        "full-suite"
+      ]
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "exitCode": {
+      "enum": [
+        0,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ]
+    },
     "categories": {
-      "type": "object", "additionalProperties": false,
-      "required": ["product", "automation", "infrastructure", "skip", "policy"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "automation",
+        "infrastructure",
+        "skip",
+        "policy"
+      ],
       "properties": {
-        "product": { "type": "integer", "minimum": 0 }, "automation": { "type": "integer", "minimum": 0 },
-        "infrastructure": { "type": "integer", "minimum": 0 }, "skip": { "type": "integer", "minimum": 0 },
-        "policy": { "type": "integer", "minimum": 0 }
+        "product": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "automation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "infrastructure": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skip": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "policy": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
-    "events": { "type": "array", "items": { "$ref": "#/$defs/event" } }
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deliveryGate": {
+      "type": "boolean"
+    },
+    "missingExpectedBugs": {
+      "type": "integer",
+      "minimum": 0
+    }
   },
   "$defs": {
     "event": {
-      "type": "object", "additionalProperties": false,
-      "required": ["caseId", "category", "status", "expected", "lifecycle", "bugId", "reason"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "category",
+        "status",
+        "expected",
+        "lifecycle",
+        "bugId",
+        "reason"
+      ],
       "properties": {
-        "caseId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$" },
-        "category": { "enum": ["product", "automation", "infrastructure", "skip", "policy"] },
-        "status": { "enum": ["pass", "fail", "skipped", "denied"] },
-        "expected": { "type": "boolean" },
-        "lifecycle": { "enum": ["discovered", "reproduced", "automated", "fixed", "closed", "n/a"] },
-        "bugId": { "type": ["string", "null"], "pattern": "^BUG-[0-9]{4}$" },
-        "reason": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$" }
+        "caseId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]+$"
+        },
+        "category": {
+          "enum": [
+            "product",
+            "automation",
+            "infrastructure",
+            "skip",
+            "policy"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "skipped",
+            "denied"
+          ]
+        },
+        "expected": {
+          "type": "boolean"
+        },
+        "lifecycle": {
+          "enum": [
+            "discovered",
+            "reproduced",
+            "automated",
+            "fixed",
+            "closed",
+            "n/a"
+          ]
+        },
+        "bugId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^BUG-[0-9]{4}$"
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]+$"
+        }
       }
     }
   }

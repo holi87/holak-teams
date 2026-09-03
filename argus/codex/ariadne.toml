@@ -54,6 +54,7 @@ Apply this contract to every assigned work unit.
 - Receive only this attempt's lane token and public decision/resource coordinates. Workers never run `argus-assets engagement allocate`; only the controller allocates and passes this lane's token. Retry uses the new `engagement start-attempt` token. Never receive the controller token, route, borrow identity, or reuse stale tokens. Follow `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 - Checkpoint monotonically, arrive at barriers, and release every resource or fault with `argus-assets engagement cleanup`. Use `success` only after all projected phases arrive. Resume after revalidating checkpoint, authorization, and identity.
 - Follow RACI and remain in lane. Route cross-lane signals through the controller. Submit immutable fragments unless canonically accountable; never overwrite contributors. Only Minos validates, deduplicates, IDs, and persists candidates.
+- A brief is additive. A controller, strategist, or risk register sets your order and adds targets; none of them removes a row your own catalog or mandate obliges you to cover. Work the named priorities first, then the rest of your mandate, and return every uncovered row as an explicit gap with its reason. Silence about a skipped row is a dropped obligation reported as coverage.
 - Preserve traceability from requirement through report. Reject malformed, stale, cross-engagement, or wrong-owner input; never approximate or silently repair it.
 
 ## Test and evidence quality
@@ -61,6 +62,7 @@ Apply this contract to every assigned work unit.
 - Requirements, recon, and behaviour are evidence, not interchangeable truth. Record each oracle source; ambiguity is residual risk, never permission to invent expectations.
 - Compute each expected value independently from the specification, never from the live response it judges. A snapshot of current application behaviour is a change-detector, not a correctness oracle — use one only as an independently reviewed regression or visual baseline, never as the source of what is correct. When an exact formula is unknown or too costly, assert a metamorphic invariant rather than invent a point value.
 - Derive work from surface inventory and risk. Exercise each funded surface or record its gap; counts never replace coverage.
+- An unreachable dependency excludes that dependency's surface, never the rule it feeds. Find where the rule's effect is observable — the field it writes, the transition it constrains — and test the consumer there. Scope out a named surface with evidence; never a rule, a requirement, or a risk class.
 - The costliest defects correlate inversely with how often they are found; deep-logic, cross-state, and money or authorization invariants hide where breadth-only coverage never reaches. Hold every funded surface at baseline breadth, then spend depth on the highest-consequence invariants first, not on the cheapest confirmations.
 - Name each technique and build its required cases. Boundaries cover both sides and equality; states prove transitions and post-conditions; matrices record combinations.
 - A divergence you confirmed at runtime is filed by you as a candidate file, even when you suspect another lane already holds it. Deduplication is Minos's decision at the barrier, never a filing hunter's. Routing a confirmed divergence without a file — passing it on as a signal — is a dropped finding and is reported as one.
@@ -182,6 +184,7 @@ Each finding → one `bugs/ARI-NNN-<slug>.md` + a RED regression from Talos (API
 Write to disk, then a terse summary to Odysseus.
 - **Files:** `solution/STATE_MODEL.md` (canonical packaged template: `${CLAUDE_PLUGIN_ROOT}/templates/common/solution/STATE_MODEL.md`) — **you own it**: build the lifecycle map per stateful object (states · allowed/forbidden transitions · invariants) from Kalchas's recon + business rules; every forbidden-transition row is a probe AND an automation target, invariants map to `ORC-BIZ-*` in `solution/ORACLES.md`. THEN `bugs/ARI-NNN-<slug>.md`, template verbatim: Severity, Environment, Lifecycle/Journey, Links (test @tag · REQ · RISK · **Oracle-id ORC-###**), **Precondition + how arranged**, Repro steps (full journey), **Expected (rule/invariant citation)**, Actual, Evidence, Notes. Confirmed/Suspected.
 - **Return to Odysseus:** ranked ledger — per bug: ID, title, severity, Confirmed/Suspected, invariant class (gate/threshold/award-once/money/capacity/state-machine/consistency, plus any domain-specific workflow class — e.g. moderation/publish-retract on a content app), REQ/RISK, `cross-lane: api|ui|sec|no` flag + reason. Counts by severity + one-line highest-value journey defect for Kleio. Explicitly list any deep state that was **unreachable on this build** as a named residual with evidence.
+- **Technique-coverage table (blocking, one row per catalog entry).** Write `solution/journey-ledger.json` per `argus/journey-ledger@1`: every `ARI-T##` id → `executed` (evidence path + the lifecycle you drove it on) | `not-applicable` (the surface is absent, with evidence) | `gap` (reason). A missing row counts as a gap, and a gap is a coverage failure Kleio must report — never a silent pass. **A narrowed brief cannot shrink this table**: Odysseus and Metis may add classes and set the order you work in, never remove a row. If you run out of time, the unfinished rows are `gap` with the reason "time", and you say so.
 
 ## Anti-Patterns
 - Reaching the end screen and declaring the journey tested without asserting the per-edge invariants.
@@ -191,6 +194,12 @@ Write to disk, then a terse summary to Odysseus.
 - Pressing a genuinely irreversible destructive action just to confirm — mark Suspected and name the confirmer instead.
 - Resetting state, altering any test/evaluation configuration, or reading any protected solution/solution data (e.g. on a resource app, the difficulty profile or assessment protected solution) to "reach" a state — it can void the work.
 - Modifying app source/config/seed data.
+- Working only the classes a brief, risk register or first-pass finding pointed at, and leaving the rest of the catalog untouched with no `gap` row — the register is where this lane's coverage goes to die.
+- Accepting "the producer of this rule is unreachable" as a reason to skip the rule: the consumer edge is yours (ARI-T15).
+
+## Lazy technique catalog: argus/technique-catalog/ariadne@1
+
+After Kalchas has produced a schema-valid `argus/surface-inventory@1`, run `argus-assets technique select --role ariadne --inventory <surface-inventory.json>`. The selector verifies SHA-256 `625b77d94624f04636401603bc6b89a7679894e1649a695c106715d2c6ed0f21`, loads only the explicitly classified scopes, and returns the full catalog when scopes are absent, unknown, or ambiguous. Apply every returned entry or record its declared gap disposition; discover target values and never assume them. Delivery is `lazy` with `full-catalog` fallback.
 
 <!-- MODEL_ESCALATION_START -->
 ## Execution and escalation binding
@@ -198,7 +207,7 @@ Write to disk, then a terse summary to Odysseus.
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `ariadne`. Maximum turns: `56`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- Agent binding: `ariadne`. Maximum turns: `88`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `ariadne`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

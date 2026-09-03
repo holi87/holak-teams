@@ -1,0 +1,304 @@
+{
+  "$schema": "argus/technique-catalog@1",
+  "schemaVersion": 1,
+  "catalogId": "argus/technique-catalog/ariadne@1",
+  "role": "ariadne",
+  "catalogType": "hunter",
+  "valuePolicy": "discover-never-assume",
+  "executionRule": "each-applicable-entry-covered-or-gap",
+  "absentSurfaceDisposition": "not-applicable-with-evidence",
+  "entries": [
+    {
+      "id": "ARI-T01",
+      "title": "Decision gate honours the automated verdict",
+      "scope": ["business-rule", "state-transition", "cross-role-workflow"],
+      "techniques": ["decision-table", "state-transition"],
+      "appliesWhen": "documented-control",
+      "construct": [
+        "Read every documented rule that says a recorded verdict, score, flag or eligibility result constrains a later commit action, and name the commit endpoint that must honour it",
+        "Arrange an entity whose recorded verdict is NEGATIVE by the documented rule, using the smallest legitimate input that produces it",
+        "Drive the commit action anyway with the actor the contract permits, then drive every downstream commit the entity unlocks",
+        "Arrange the mirror case with a POSITIVE verdict and drive the same commit, so an accepted commit is proof of the gate's absence rather than of a broken actor"
+      ],
+      "oracles": [
+        "A commit that the documented rule forbids is rejected on the rule, not merely on role, state or ownership",
+        "The verdict that gates the commit is read from the entity, quoted in the report, and matched against the documented threshold rather than assumed"
+      ],
+      "routes": ["journey", "api"]
+    },
+    {
+      "id": "ARI-T02",
+      "title": "Terminal state leaves every working queue and list",
+      "scope": ["state-transition", "data-exposure", "cross-role-workflow"],
+      "techniques": ["state-transition", "decision-table"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "Enumerate every terminal and closed state of the entity from the documented state machine, and every list, queue, counter and dashboard any role reads",
+        "Arrange one entity per terminal state through the legitimate transition that reaches it",
+        "Re-read every list and aggregate as every role, unfiltered and with each documented filter, and record whether the terminal entity is present",
+        "Compare the runtime's accepted filter values against the documented enum: an undeclared value the runtime accepts marks a list whose scope is wider than the contract"
+      ],
+      "oracles": [
+        "A work queue contains only the states the documentation says require action; a terminal entity present in it is a defect even when every control on its row is correctly disabled",
+        "A row rendered as read-only is not evidence of correct scope: the question is whether the row belongs in the response at all"
+      ],
+      "routes": ["journey", "api", "ui"]
+    },
+    {
+      "id": "ARI-T03",
+      "title": "Concurrent commit on the decision endpoint by the same actor",
+      "scope": ["concurrency", "state-transition", "business-rule"],
+      "techniques": ["state-transition", "concurrency-race"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "List every endpoint that commits an irreversible decision or moves an entity into a terminal state, and treat each as its own race target: an acquire or claim endpoint tested for races does not cover the decide endpoint",
+        "Arrange one entity in the exact pre-state the commit requires, with the same authorised actor for both requests",
+        "Fire N genuinely parallel requests with no intervening read, using conflicting payloads where the contract allows a choice, so a lost update is visible as two different recorded outcomes",
+        "Re-read the entity and its full transition history, and count committed transitions rather than HTTP successes"
+      ],
+      "oracles": [
+        "At most one commit takes effect: exactly one transition is recorded and the entity holds one outcome",
+        "Two success responses, two history rows, or two contradictory recorded decisions are the defect, whatever the status codes were"
+      ],
+      "routes": ["journey", "api"]
+    },
+    {
+      "id": "ARI-T04",
+      "title": "Post-configuration-change re-evaluation of in-flight entities",
+      "scope": ["business-rule", "cross-role-workflow", "data-integrity"],
+      "techniques": ["state-transition", "decision-table"],
+      "appliesWhen": "documented-control",
+      "construct": [
+        "Identify every configuration a privileged role can change that feeds a rule applied to existing entities: rate, threshold, limit, price, quota, eligibility parameter",
+        "Arrange three entities against one configuration value: one still in flight, one already decided, one already terminal",
+        "Change the configuration through the supported administrative path, then re-read all three entities and drive the next commit transition on the in-flight one",
+        "Assert the three oracles separately and file each violation as its own finding"
+      ],
+      "oracles": [
+        "Decided and terminal entities keep their recorded terms unchanged",
+        "An in-flight entity that no longer meets the new criteria is re-evaluated or visibly flagged",
+        "The commit transition re-checks the current criteria and is blocked or warned for an entity that now fails the rule",
+        "Live recomputation of a displayed value is never accepted as covering these three oracles, and no oracle may be narrowed away as out of scope"
+      ],
+      "routes": ["journey", "api"]
+    },
+    {
+      "id": "ARI-T05",
+      "title": "Scope of every cardinality rule: vary the actor, not the count",
+      "scope": ["business-rule", "authorization", "state-transition"],
+      "techniques": ["decision-table", "equivalence-partitioning"],
+      "appliesWhen": "documented-control",
+      "construct": [
+        "For every documented once, at most N, only the assigned, or per-period rule, quote the rule's scope noun first: per entity, per actor, per role, per period",
+        "Exhaust the limit on the documented scope with one actor, confirming the rule binds at all",
+        "Hold the documented scope fixed and vary every other dimension in turn: a second actor in the same role, a second entity, a later period, a reassignment of ownership",
+        "Where a legitimate path to a second actor does not exist, use a confirmed reassignment or claim defect as the arrangement step and cite it"
+      ],
+      "oracles": [
+        "The limit binds on the documented scope and only there: a per-entity rule that resets when the actor changes, or a per-actor rule that leaks across entities, is the defect",
+        "Reporting the existence of the limit is not a finding; the finding is the dimension on which it fails to bind",
+        "A rule exercised with a single actor is uncovered, never clean"
+      ],
+      "routes": ["journey", "api"]
+    },
+    {
+      "id": "ARI-T06",
+      "title": "Exact-boundary lifecycle state construction",
+      "scope": ["business-rule", "state-transition"],
+      "techniques": ["boundary-value-analysis", "state-transition"],
+      "appliesWhen": "documented-control",
+      "construct": [
+        "Read the rule's exact wording and constant from the requirements, recording whether the edge is inclusive or exclusive and what the domain's smallest step is",
+        "Arrange the exact boundary state through legitimate features rather than probing whatever reachable value exists",
+        "Drive B-minus-step, B, and B-plus-step at the state level, where the step is one unit of the domain and never a blind integer increment",
+        "Assert both the accept/reject flip and the transition or side-effect the rule governs"
+      ],
+      "oracles": [
+        "Acceptance flips at exactly the documented mark, and the governed transition fires or is refused accordingly",
+        "An HTTP status alone is not the oracle: the recorded state after the call is"
+      ],
+      "routes": ["journey", "api"]
+    },
+    {
+      "id": "ARI-T07",
+      "title": "Money and quantity recalculation after a later mutation",
+      "scope": ["business-rule", "data-integrity"],
+      "techniques": ["state-transition", "money-cross-view-recalculation"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "Apply a monetary or quantitative modifier that the documentation keys on a qualifying condition",
+        "Mutate the entity afterwards so it crosses the qualifying edge in each direction",
+        "Re-read every derived amount from present state, at the smallest unit the domain uses",
+        "Check the composition invariant after every mutation, not only at the end"
+      ],
+      "oracles": [
+        "A modifier recomputes from current state: it appears when the entity becomes eligible and is revoked when it stops being eligible",
+        "Derived totals equal the sum of their parts with no drift, and no combination of modifiers produces a value the documentation forbids"
+      ],
+      "routes": ["journey", "api"]
+    },
+    {
+      "id": "ARI-T08",
+      "title": "Commit-once under replay and double submission",
+      "scope": ["concurrency", "state-transition", "data-integrity"],
+      "techniques": ["state-transition", "concurrency-race"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "Enumerate every commit-style transition the journey performs and every side effect each one fires",
+        "Replay each commit twice with no intervening state read, both sequentially and in parallel",
+        "Where the contract declares an idempotency key, replay with the same key and with a fresh one, and compare",
+        "Count the entities, records and side effects created rather than reading the response body"
+      ],
+      "oracles": [
+        "Exactly one entity, one recorded transition and one side effect per commit, whatever the client did",
+        "A second call is rejected on the state machine, and a declared idempotency key is honoured"
+      ],
+      "routes": ["journey", "api", "ui"]
+    },
+    {
+      "id": "ARI-T09",
+      "title": "Contention on the last unit of a scarce resource",
+      "scope": ["concurrency", "business-rule"],
+      "techniques": ["concurrency-race", "boundary-value-analysis"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "Discover the capacity constant from the documentation or recon rather than assuming one",
+        "Arrange the resource down to exactly one remaining unit",
+        "Fire N genuinely parallel acquisition requests from distinct actors",
+        "Re-read the resource and every derived count afterwards"
+      ],
+      "oracles": [
+        "At most one acquisition succeeds and no derived count exceeds the documented capacity",
+        "A queue or waiting position, where documented, holds no duplicate entry for the same actor"
+      ],
+      "routes": ["journey", "api"]
+    },
+    {
+      "id": "ARI-T10",
+      "title": "Forbidden transition rejected without moving state",
+      "scope": ["state-transition", "business-rule"],
+      "techniques": ["state-transition", "decision-table"],
+      "appliesWhen": "always",
+      "construct": [
+        "Build the documented state machine as a decision table of pre-state by event, including the actor permitted for each edge",
+        "Drive every forbidden edge, including reversals out of terminal states and repeats of a completed transition",
+        "Re-read the entity after each rejected call and compare the recorded state and history against the pre-state",
+        "Drive every permitted edge as the control case, so a rejection is evidence of a guard rather than of a broken arrangement"
+      ],
+      "oracles": [
+        "A forbidden transition leaves the recorded state and history untouched and returns a message naming the rule or field, not a generic error",
+        "A permitted transition moves the state and fires its documented side effects exactly once"
+      ],
+      "routes": ["journey", "api"]
+    },
+    {
+      "id": "ARI-T11",
+      "title": "Deleted or withdrawn entity does not resurface",
+      "scope": ["state-transition", "data-exposure"],
+      "techniques": ["state-transition", "soft-delete-resurrection"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "Perform the documented delete, cancel or withdraw path and confirm it reports success",
+        "Re-read the entity directly and through every list, search, export, counter and aggregate that could surface it, as every role",
+        "For principal-like entities, attempt to authenticate or act as the removed principal",
+        "Attempt each transition the entity supported before removal"
+      ],
+      "oracles": [
+        "The entity is absent from every surface that should no longer carry it and cannot be transitioned or authenticated",
+        "Every dependent count reflects the removal at the smallest unit"
+      ],
+      "routes": ["journey", "api", "data"]
+    },
+    {
+      "id": "ARI-T12",
+      "title": "Cross-layer divergence pinned to the documented source",
+      "scope": ["business-rule", "cross-layer-consistency"],
+      "techniques": ["decision-table", "specification-based testing"],
+      "appliesWhen": "always",
+      "construct": [
+        "For every business value a user can see in more than one place, compute the documented expectation independently from the requirements before reading any layer",
+        "Record the value each layer returns for one identical input: interface, service response, stored record",
+        "Compare each layer against the independent expectation, never against another layer",
+        "Where a layer applies a factor, rounding or transformation, find its authority in the documentation and quote it or record that none exists"
+      ],
+      "oracles": [
+        "The layer that contradicts the documented formula carries the defect; agreement between two wrong layers is not correctness",
+        "Where the documentation is silent or ambiguous about which layer is authoritative, file both directions as separate candidates and say the direction is unresolved, rather than picking the convenient one",
+        "Three disagreeing values are three hypotheses, not one odd layer out"
+      ],
+      "routes": ["journey", "api", "ui"]
+    },
+    {
+      "id": "ARI-T13",
+      "title": "Authorisation at every role-transition seam",
+      "scope": ["authorization", "cross-role-workflow"],
+      "techniques": ["decision-table", "state-transition"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "Map every handoff where the journey crosses roles and list the actions each role may take at that point",
+        "Drive each action as the role that owns it, as a peer in the same role who does not own the entity, and as a role from another part of the system",
+        "Include read, list, download and export paths, not only write paths",
+        "Repeat the peer case after a legitimate reassignment, so ownership checks are tested against a moving owner"
+      ],
+      "oracles": [
+        "Every action is permitted exactly for the actors the documentation names, at every seam",
+        "A peer in the same role who does not own the entity is refused on ownership, and the refusal survives reassignment"
+      ],
+      "routes": ["journey", "api", "security"]
+    },
+    {
+      "id": "ARI-T14",
+      "title": "Dependent aggregates recompute after every state event",
+      "scope": ["data-integrity", "state-transition"],
+      "techniques": ["state-transition", "decision-table"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "List every counter, total, percentage, remaining-capacity figure and status summary the documentation defines, and the events that should move each",
+        "Record each aggregate before the event, drive the event, and record it again",
+        "Read the aggregate through every surface that exposes it, including any cached or summary endpoint",
+        "Drive the reversing event where one exists and check the aggregate returns"
+      ],
+      "oracles": [
+        "Every dependent aggregate reflects the new state at the smallest unit, on every surface, with no stale or orphaned value",
+        "An aggregate defined by no documented formula is a documentation gap to file, not a value to accept"
+      ],
+      "routes": ["journey", "api", "data"]
+    },
+    {
+      "id": "ARI-T15",
+      "title": "Documented rule with an unreachable producer still gets a scenario",
+      "scope": ["business-rule", "coverage-integrity"],
+      "techniques": ["decision-table", "specification-based testing"],
+      "appliesWhen": "documented-control",
+      "construct": [
+        "List every documented business rule whose producer is an internal component you cannot reach: a private service, a scheduler, a queue, a database job",
+        "For each, find the observable edge that is reachable: the field the producer writes into a response, the transition it is supposed to constrain, the record it stamps",
+        "Arrange the entity so the observable value takes each documented branch, using legitimate inputs that move it, and drive the consumer behaviour at that edge",
+        "Where no observable edge exists at all, record the surface as unreachable with evidence, naming the specific surface and not the rule"
+      ],
+      "oracles": [
+        "A rule whose consumer behaviour is observable has a scenario, however unreachable its producer is",
+        "An unreachable dependency justifies excluding that dependency's own surface, never the rule it feeds, and never a whole risk class"
+      ],
+      "routes": ["journey", "api", "reporting"]
+    },
+    {
+      "id": "ARI-T16",
+      "title": "The same fact agrees across every screen of the journey",
+      "scope": ["cross-layer-consistency", "business-rule"],
+      "techniques": ["use-case", "decision-table"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "Pick the facts the journey repeats: price, remaining capacity, progress, status, rating, computed terms",
+        "Walk the journey end to end and record each fact at every screen and endpoint that shows it",
+        "Drive a change that should move the fact, then walk the journey again",
+        "Include summary, list, detail and confirmation surfaces, which is where stale aggregates hide"
+      ],
+      "oracles": [
+        "The same fact reads identically everywhere at the smallest unit, before and after the change",
+        "A stale cached aggregate disagreeing with the live value is a defect, not a rendering delay, unless the documentation defines a staleness window"
+      ],
+      "routes": ["journey", "ui", "api"]
+    }
+  ]
+}

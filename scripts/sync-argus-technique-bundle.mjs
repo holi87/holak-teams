@@ -10,7 +10,7 @@ import { validateTechniqueCatalogSet } from '../argus/runtime/technique-catalogs
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CATALOG_ROOT = join(ROOT, 'argus', 'technique-catalogs');
 const OUTPUT = join(ROOT, 'argus', 'technique-catalogs.bundle.b64');
-const ROLES = ['atalanta', 'proteus', 'metis'];
+const ROLES = ['atalanta', 'ariadne', 'proteus', 'metis'];
 const mode = process.argv[2] ?? '--check';
 if (!['--write', '--check'].includes(mode)) fail('usage: scripts/sync-argus-technique-bundle.mjs [--write|--check]');
 

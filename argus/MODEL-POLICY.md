@@ -7,8 +7,8 @@ The adopted baseline assigns 12 high-consequence roles to frontier reasoning and
 | Agent | Tier | Claude | Effort | Codex | Effort | Max turns | Escalation | Fallback |
 |---|---|---|---|---|---|---:|---|---|
 | aegis | standard | sonnet | medium | terra | medium | 48 | execution | upward-only |
-| antigone | standard | sonnet | medium | terra | medium | 40 | judgment | upward-only |
-| ariadne | frontier | opus | max | sol | xhigh | 56 | judgment | frontier-fail-closed |
+| antigone | standard | sonnet | medium | terra | medium | 48 | judgment | upward-only |
+| ariadne | frontier | opus | max | sol | xhigh | 88 | judgment | frontier-fail-closed |
 | aristarchus | frontier | opus | max | sol | xhigh | 40 | judgment | frontier-fail-closed |
 | asklepios | standard | sonnet | medium | terra | medium | 40 | judgment | upward-only |
 | atalanta | frontier | opus | max | sol | xhigh | 64 | execution | frontier-fail-closed |
@@ -18,7 +18,7 @@ The adopted baseline assigns 12 high-consequence roles to frontier reasoning and
 | hermes | standard | sonnet | medium | terra | medium | 40 | analysis | upward-only |
 | kalchas | frontier | opus | max | sol | xhigh | 48 | analysis | frontier-fail-closed |
 | kleio | standard | sonnet | medium | terra | medium | 40 | judgment | upward-only |
-| lynceus | standard | sonnet | medium | terra | medium | 40 | judgment | upward-only |
+| lynceus | standard | sonnet | medium | terra | medium | 48 | judgment | upward-only |
 | metis | frontier | opus | max | sol | xhigh | 48 | analysis | frontier-fail-closed |
 | minos | frontier | opus | max | sol | xhigh | 48 | judgment | frontier-fail-closed |
 | mnemosyne | standard | sonnet | medium | terra | medium | 48 | execution | upward-only |
@@ -32,7 +32,7 @@ The adopted baseline assigns 12 high-consequence roles to frontier reasoning and
 | talos | standard | sonnet | medium | terra | medium | 56 | execution | upward-only |
 | theseus | standard | sonnet | medium | terra | medium | 40 | schema-bound | upward-only |
 | tiresias | frontier | opus | max | sol | xhigh | 48 | analysis | frontier-fail-closed |
-| tyche | frontier | opus | max | sol | xhigh | 48 | judgment | frontier-fail-closed |
+| tyche | frontier | opus | max | sol | xhigh | 72 | judgment | frontier-fail-closed |
 
 ## Routing rules
 

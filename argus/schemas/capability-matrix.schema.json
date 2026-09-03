@@ -4,60 +4,134 @@
   "title": "Argus capability matrix",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "supportedBuiltinTools", "legacyToolReplacements", "toolProfiles", "doctrineProfiles", "techniqueCatalogs", "orchestration", "capabilities", "agents"],
+  "required": [
+    "schemaVersion",
+    "supportedBuiltinTools",
+    "legacyToolReplacements",
+    "toolProfiles",
+    "doctrineProfiles",
+    "techniqueCatalogs",
+    "orchestration",
+    "capabilities",
+    "agents"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
     "supportedBuiltinTools": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9]*$"
+      }
     },
     "legacyToolReplacements": {
       "type": "object",
-      "additionalProperties": { "type": "string", "minLength": 1 },
-      "required": ["LS", "MultiEdit", "Task", "TodoWrite"]
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      },
+      "required": [
+        "LS",
+        "MultiEdit",
+        "Task",
+        "TodoWrite"
+      ]
     },
     "toolProfiles": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["official-docs", "remote-spec", "public-browser-recon"],
+      "required": [
+        "official-docs",
+        "remote-spec",
+        "public-browser-recon"
+      ],
       "properties": {
-        "official-docs": { "$ref": "#/$defs/toolProfile" },
-        "remote-spec": { "$ref": "#/$defs/toolProfile" },
-        "public-browser-recon": { "$ref": "#/$defs/toolProfile" }
+        "official-docs": {
+          "$ref": "#/$defs/toolProfile"
+        },
+        "remote-spec": {
+          "$ref": "#/$defs/toolProfile"
+        },
+        "public-browser-recon": {
+          "$ref": "#/$defs/toolProfile"
+        }
       }
     },
     "doctrineProfiles": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["orchestration-core", "qa-core", "qa-browser", "qa-framework-runner", "qa-coverage-reporting"],
+      "required": [
+        "orchestration-core",
+        "qa-core",
+        "qa-browser",
+        "qa-framework-runner",
+        "qa-coverage-reporting"
+      ],
       "patternProperties": {
         "^[a-z]+(?:-[a-z]+)*$": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["requiredAsset"],
-          "properties": { "requiredAsset": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" } }
+          "required": [
+            "requiredAsset"
+          ],
+          "properties": {
+            "requiredAsset": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
         }
       }
     },
     "techniqueCatalogs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["atalanta", "proteus", "metis"],
+      "required": [
+        "atalanta",
+        "ariadne",
+        "proteus",
+        "metis"
+      ],
       "patternProperties": {
-        "^(atalanta|proteus|metis)$": {
+        "^(atalanta|ariadne|proteus|metis)$": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["catalogId", "sha256", "delivery", "requiredAsset", "selectionInput", "fallback"],
+          "required": [
+            "catalogId",
+            "sha256",
+            "delivery",
+            "requiredAsset",
+            "selectionInput",
+            "fallback"
+          ],
           "properties": {
-            "catalogId": { "type": "string", "pattern": "^argus/technique-catalog/(atalanta|proteus|metis)@1$" },
-            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-            "delivery": { "const": "lazy" },
-            "requiredAsset": { "const": "technique-catalogs-bundle" },
-            "selectionInput": { "const": "argus/surface-inventory@1" },
-            "fallback": { "const": "full-catalog" }
+            "catalogId": {
+              "type": "string",
+              "pattern": "^argus/technique-catalog/(atalanta|ariadne|proteus|metis)@1$"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "delivery": {
+              "const": "lazy"
+            },
+            "requiredAsset": {
+              "const": "technique-catalogs-bundle"
+            },
+            "selectionInput": {
+              "const": "argus/surface-inventory@1"
+            },
+            "fallback": {
+              "const": "full-catalog"
+            }
           }
         }
       }
@@ -65,11 +139,21 @@
     "orchestration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["requiredTools", "requiredAssets", "artifactPaths"],
+      "required": [
+        "requiredTools",
+        "requiredAssets",
+        "artifactPaths"
+      ],
       "properties": {
-        "requiredTools": { "$ref": "#/$defs/stringList" },
-        "requiredAssets": { "$ref": "#/$defs/stringList" },
-        "artifactPaths": { "$ref": "#/$defs/stringList" }
+        "requiredTools": {
+          "$ref": "#/$defs/stringList"
+        },
+        "requiredAssets": {
+          "$ref": "#/$defs/stringList"
+        },
+        "artifactPaths": {
+          "$ref": "#/$defs/stringList"
+        }
       }
     },
     "capabilities": {
@@ -78,12 +162,33 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["kind", "missingDisposition", "fallback"],
+        "required": [
+          "kind",
+          "missingDisposition",
+          "fallback"
+        ],
         "properties": {
-          "kind": { "enum": ["browser", "mcp", "target"] },
-          "serverPatterns": { "$ref": "#/$defs/stringList" },
-          "missingDisposition": { "enum": ["degraded", "deferred", "skipped"] },
-          "fallback": { "type": "string", "minLength": 1 }
+          "kind": {
+            "enum": [
+              "browser",
+              "mcp",
+              "target"
+            ]
+          },
+          "serverPatterns": {
+            "$ref": "#/$defs/stringList"
+          },
+          "missingDisposition": {
+            "enum": [
+              "degraded",
+              "deferred",
+              "skipped"
+            ]
+          },
+          "fallback": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
@@ -94,35 +199,80 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slug", "lane", "modes", "requiredTools", "toolProfiles", "doctrineProfiles", "techniqueCatalogs", "artifactPaths"],
+        "required": [
+          "slug",
+          "lane",
+          "modes",
+          "requiredTools",
+          "toolProfiles",
+          "doctrineProfiles",
+          "techniqueCatalogs",
+          "artifactPaths"
+        ],
         "properties": {
-          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
-          "lane": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "lane": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
           "modes": {
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
-            "items": { "enum": ["A", "B", "C", "D"] }
+            "items": {
+              "enum": [
+                "A",
+                "B",
+                "C",
+                "D"
+              ]
+            }
           },
-          "requiredTools": { "$ref": "#/$defs/stringList" },
+          "requiredTools": {
+            "$ref": "#/$defs/stringList"
+          },
           "riskActions": {
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
             "items": {
               "enum": [
-                "binary-evidence", "browser-read", "browser-state-change", "chaos", "database-read",
-                "database-write", "destructive", "load", "persistent-mutation",
-                "read", "security-active", "security-passive"
+                "binary-evidence",
+                "browser-read",
+                "browser-state-change",
+                "chaos",
+                "database-read",
+                "database-write",
+                "destructive",
+                "load",
+                "persistent-mutation",
+                "read",
+                "security-active",
+                "security-passive"
               ]
             }
           },
-          "requiredCapabilities": { "$ref": "#/$defs/stringList" },
-          "optionalCapabilities": { "$ref": "#/$defs/stringList" },
-          "toolProfiles": { "$ref": "#/$defs/stringList" },
-          "doctrineProfiles": { "$ref": "#/$defs/stringList" },
-          "techniqueCatalogs": { "$ref": "#/$defs/stringList" },
-          "artifactPaths": { "$ref": "#/$defs/stringList" }
+          "requiredCapabilities": {
+            "$ref": "#/$defs/stringList"
+          },
+          "optionalCapabilities": {
+            "$ref": "#/$defs/stringList"
+          },
+          "toolProfiles": {
+            "$ref": "#/$defs/stringList"
+          },
+          "doctrineProfiles": {
+            "$ref": "#/$defs/stringList"
+          },
+          "techniqueCatalogs": {
+            "$ref": "#/$defs/stringList"
+          },
+          "artifactPaths": {
+            "$ref": "#/$defs/stringList"
+          }
         }
       }
     }
@@ -131,13 +281,22 @@
     "toolProfile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["tools"],
-      "properties": { "tools": { "$ref": "#/$defs/stringList" } }
+      "required": [
+        "tools"
+      ],
+      "properties": {
+        "tools": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
     },
     "stringList": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     }
   }
 }

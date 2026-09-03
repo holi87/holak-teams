@@ -14,52 +14,94 @@
     "executionRule"
   ],
   "properties": {
-    "$schema": { "const": "argus/technique-catalog@1" },
-    "schemaVersion": { "const": 1 },
+    "$schema": {
+      "const": "argus/technique-catalog@1"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
     "catalogId": {
       "enum": [
         "argus/technique-catalog/atalanta@1",
+        "argus/technique-catalog/ariadne@1",
         "argus/technique-catalog/proteus@1",
         "argus/technique-catalog/metis@1"
       ]
     },
-    "role": { "enum": ["atalanta", "proteus", "metis"] },
-    "catalogType": { "enum": ["hunter", "strategy"] },
-    "valuePolicy": { "const": "discover-never-assume" },
-    "executionRule": { "const": "each-applicable-entry-covered-or-gap" },
+    "role": {
+      "enum": [
+        "atalanta",
+        "ariadne",
+        "proteus",
+        "metis"
+      ]
+    },
+    "catalogType": {
+      "enum": [
+        "hunter",
+        "strategy"
+      ]
+    },
+    "valuePolicy": {
+      "const": "discover-never-assume"
+    },
+    "executionRule": {
+      "const": "each-applicable-entry-covered-or-gap"
+    },
     "absentSurfaceDisposition": {
       "const": "not-applicable-with-evidence"
     },
     "entries": {
       "type": "array",
-      "items": { "$ref": "#/$defs/hunterEntry" }
+      "items": {
+        "$ref": "#/$defs/hunterEntry"
+      }
     },
     "iso25010": {
       "type": "array",
       "minItems": 8,
       "maxItems": 8,
-      "items": { "$ref": "#/$defs/qualityCharacteristic" }
+      "items": {
+        "$ref": "#/$defs/qualityCharacteristic"
+      }
     },
-    "istqb": { "$ref": "#/$defs/istqb" },
+    "istqb": {
+      "$ref": "#/$defs/istqb"
+    },
     "journeyClasses": {
       "type": "array",
       "minItems": 5,
       "maxItems": 5,
-      "items": { "$ref": "#/$defs/journeyClass" }
+      "items": {
+        "$ref": "#/$defs/journeyClass"
+      }
     },
-    "boundaryRegister": { "$ref": "#/$defs/boundaryRegister" },
+    "boundaryRegister": {
+      "$ref": "#/$defs/boundaryRegister"
+    },
     "archetypes": {
       "type": "array",
-      "minItems": 8,
-      "maxItems": 8,
-      "items": { "$ref": "#/$defs/archetype" }
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "$ref": "#/$defs/archetype"
+      }
     }
   },
   "allOf": [
     {
-      "if": { "properties": { "catalogType": { "const": "hunter" } } },
+      "if": {
+        "properties": {
+          "catalogType": {
+            "const": "hunter"
+          }
+        }
+      },
       "then": {
-        "required": ["absentSurfaceDisposition", "entries"],
+        "required": [
+          "absentSurfaceDisposition",
+          "entries"
+        ],
         "properties": {
           "absentSurfaceDisposition": {},
           "entries": {},
@@ -72,9 +114,21 @@
       }
     },
     {
-      "if": { "properties": { "catalogType": { "const": "strategy" } } },
+      "if": {
+        "properties": {
+          "catalogType": {
+            "const": "strategy"
+          }
+        }
+      },
       "then": {
-        "required": ["iso25010", "istqb", "journeyClasses", "boundaryRegister", "archetypes"],
+        "required": [
+          "iso25010",
+          "istqb",
+          "journeyClasses",
+          "boundaryRegister",
+          "archetypes"
+        ],
         "properties": {
           "absentSurfaceDisposition": false,
           "entries": false,
@@ -87,42 +141,85 @@
       }
     },
     {
-      "if": { "properties": { "role": { "const": "atalanta" } } },
+      "if": {
+        "properties": {
+          "role": {
+            "const": "atalanta"
+          }
+        }
+      },
       "then": {
         "properties": {
-          "catalogId": { "const": "argus/technique-catalog/atalanta@1" },
-          "catalogType": { "const": "hunter" },
-          "entries": { "type": "array", "minItems": 22, "maxItems": 22 }
+          "catalogId": {
+            "const": "argus/technique-catalog/atalanta@1"
+          },
+          "catalogType": {
+            "const": "hunter"
+          },
+          "entries": {
+            "type": "array",
+            "minItems": 22,
+            "maxItems": 22
+          }
         }
       }
     },
     {
-      "if": { "properties": { "role": { "const": "proteus" } } },
+      "if": {
+        "properties": {
+          "role": {
+            "const": "proteus"
+          }
+        }
+      },
       "then": {
         "properties": {
-          "catalogId": { "const": "argus/technique-catalog/proteus@1" },
-          "catalogType": { "const": "hunter" },
-          "entries": { "type": "array", "minItems": 15, "maxItems": 15 }
+          "catalogId": {
+            "const": "argus/technique-catalog/proteus@1"
+          },
+          "catalogType": {
+            "const": "hunter"
+          },
+          "entries": {
+            "type": "array",
+            "minItems": 15,
+            "maxItems": 15
+          }
         }
       }
     },
     {
-      "if": { "properties": { "role": { "const": "metis" } } },
+      "if": {
+        "properties": {
+          "role": {
+            "const": "metis"
+          }
+        }
+      },
       "then": {
         "properties": {
-          "catalogId": { "const": "argus/technique-catalog/metis@1" },
-          "catalogType": { "const": "strategy" }
+          "catalogId": {
+            "const": "argus/technique-catalog/metis@1"
+          },
+          "catalogType": {
+            "const": "strategy"
+          }
         }
       }
     }
   ],
   "$defs": {
-    "nonEmptyString": { "type": "string", "minLength": 3 },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 3
+    },
     "uniqueStrings": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "$ref": "#/$defs/nonEmptyString" }
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
     },
     "lane": {
       "enum": [
@@ -141,27 +238,61 @@
     "hunterEntry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "scope", "techniques", "appliesWhen", "construct", "oracles", "routes"],
+      "required": [
+        "id",
+        "title",
+        "scope",
+        "techniques",
+        "appliesWhen",
+        "construct",
+        "oracles",
+        "routes"
+      ],
       "properties": {
-        "id": { "type": "string", "pattern": "^(ATA|PRO)-T(0[1-9]|1[0-9]|2[0-2])$" },
-        "title": { "$ref": "#/$defs/nonEmptyString" },
-        "scope": { "$ref": "#/$defs/uniqueStrings" },
-        "techniques": { "$ref": "#/$defs/uniqueStrings" },
-        "appliesWhen": { "enum": ["always", "surface-present", "documented-control"] },
-        "construct": { "$ref": "#/$defs/uniqueStrings" },
-        "oracles": { "$ref": "#/$defs/uniqueStrings" },
+        "id": {
+          "type": "string",
+          "pattern": "^(ATA|ARI|PRO)-T(0[1-9]|1[0-9]|2[0-2])$"
+        },
+        "title": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "scope": {
+          "$ref": "#/$defs/uniqueStrings"
+        },
+        "techniques": {
+          "$ref": "#/$defs/uniqueStrings"
+        },
+        "appliesWhen": {
+          "enum": [
+            "always",
+            "surface-present",
+            "documented-control"
+          ]
+        },
+        "construct": {
+          "$ref": "#/$defs/uniqueStrings"
+        },
+        "oracles": {
+          "$ref": "#/$defs/uniqueStrings"
+        },
         "routes": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/lane" }
+          "items": {
+            "$ref": "#/$defs/lane"
+          }
         }
       }
     },
     "qualityCharacteristic": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "focus", "coverageRule"],
+      "required": [
+        "id",
+        "focus",
+        "coverageRule"
+      ],
       "properties": {
         "id": {
           "enum": [
@@ -175,25 +306,43 @@
             "portability"
           ]
         },
-        "focus": { "$ref": "#/$defs/uniqueStrings" },
-        "coverageRule": { "const": "covered-or-named-residual-risk" }
+        "focus": {
+          "$ref": "#/$defs/uniqueStrings"
+        },
+        "coverageRule": {
+          "const": "covered-or-named-residual-risk"
+        }
       }
     },
     "istqb": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["process", "techniques", "mappingRule"],
+      "required": [
+        "process",
+        "techniques",
+        "mappingRule"
+      ],
       "properties": {
         "process": {
           "type": "array",
           "minItems": 5,
           "maxItems": 5,
           "prefixItems": [
-            { "const": "analysis" },
-            { "const": "design" },
-            { "const": "implementation" },
-            { "const": "execution" },
-            { "const": "completion" }
+            {
+              "const": "analysis"
+            },
+            {
+              "const": "design"
+            },
+            {
+              "const": "implementation"
+            },
+            {
+              "const": "execution"
+            },
+            {
+              "const": "completion"
+            }
           ],
           "items": false
         },
@@ -214,13 +363,21 @@
             ]
           }
         },
-        "mappingRule": { "const": "each-funded-row-names-technique-characteristic-lane-owner" }
+        "mappingRule": {
+          "const": "each-funded-row-names-technique-characteristic-lane-owner"
+        }
       }
     },
     "journeyClass": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "requiredOutcomes", "techniques", "tag", "coverageRule"],
+      "required": [
+        "id",
+        "requiredOutcomes",
+        "techniques",
+        "tag",
+        "coverageRule"
+      ],
       "properties": {
         "id": {
           "enum": [
@@ -231,36 +388,68 @@
             "moderation-approval"
           ]
         },
-        "requiredOutcomes": { "$ref": "#/$defs/uniqueStrings" },
+        "requiredOutcomes": {
+          "$ref": "#/$defs/uniqueStrings"
+        },
         "techniques": {
           "type": "array",
           "minItems": 2,
           "maxItems": 2,
           "prefixItems": [
-            { "const": "use-case" },
-            { "const": "state-transition" }
+            {
+              "const": "use-case"
+            },
+            {
+              "const": "state-transition"
+            }
           ],
           "items": false
         },
-        "tag": { "const": "@e2e" },
-        "coverageRule": { "const": "funded-or-justified" }
+        "tag": {
+          "const": "@e2e"
+        },
+        "coverageRule": {
+          "const": "funded-or-justified"
+        }
       }
     },
     "boundaryRegister": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["required", "artifact", "rowIdPattern", "kinds", "requiredColumns", "mandates"],
+      "required": [
+        "required",
+        "artifact",
+        "rowIdPattern",
+        "kinds",
+        "requiredColumns",
+        "mandates"
+      ],
       "properties": {
-        "required": { "const": true },
-        "artifact": { "const": "solution/TEST-STRATEGY.md" },
-        "rowIdPattern": { "const": "^BND-[0-9]{3}$" },
+        "required": {
+          "const": true
+        },
+        "artifact": {
+          "const": "solution/TEST-STRATEGY.md"
+        },
+        "rowIdPattern": {
+          "const": "^BND-[0-9]{3}$"
+        },
         "kinds": {
           "type": "array",
           "minItems": 8,
           "maxItems": 8,
           "uniqueItems": true,
           "items": {
-            "enum": ["threshold", "range", "limit", "enum", "page-size", "rate", "cutoff", "charset-field"]
+            "enum": [
+              "threshold",
+              "range",
+              "limit",
+              "enum",
+              "page-size",
+              "rate",
+              "cutoff",
+              "charset-field"
+            ]
           }
         },
         "requiredColumns": {
@@ -268,14 +457,30 @@
           "minItems": 8,
           "maxItems": 8,
           "prefixItems": [
-            { "const": "id" },
-            { "const": "source" },
-            { "const": "kind" },
-            { "const": "documentedRule" },
-            { "const": "exactBoundaryState" },
-            { "const": "technique" },
-            { "const": "laneOwner" },
-            { "const": "tag" }
+            {
+              "const": "id"
+            },
+            {
+              "const": "source"
+            },
+            {
+              "const": "kind"
+            },
+            {
+              "const": "documentedRule"
+            },
+            {
+              "const": "exactBoundaryState"
+            },
+            {
+              "const": "technique"
+            },
+            {
+              "const": "laneOwner"
+            },
+            {
+              "const": "tag"
+            }
           ],
           "items": false
         },
@@ -298,7 +503,13 @@
     "archetype": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "techniques", "lanes", "oracle", "coverageRule"],
+      "required": [
+        "id",
+        "techniques",
+        "lanes",
+        "oracle",
+        "coverageRule"
+      ],
       "properties": {
         "id": {
           "enum": [
@@ -309,18 +520,30 @@
             "soft-delete-resurrection",
             "money-cross-view-recalculation",
             "effect-message-content",
-            "perf-seeded-structural"
+            "perf-seeded-structural",
+            "decision-gate-bypass",
+            "terminal-state-leak",
+            "post-config-revalidation",
+            "cardinality-scope"
           ]
         },
-        "techniques": { "$ref": "#/$defs/uniqueStrings" },
+        "techniques": {
+          "$ref": "#/$defs/uniqueStrings"
+        },
         "lanes": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/lane" }
+          "items": {
+            "$ref": "#/$defs/lane"
+          }
         },
-        "oracle": { "$ref": "#/$defs/nonEmptyString" },
-        "coverageRule": { "const": "filled-or-justified" }
+        "oracle": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "coverageRule": {
+          "const": "filled-or-justified"
+        }
       }
     }
   }
