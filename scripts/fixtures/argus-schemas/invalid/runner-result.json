@@ -1,1 +1,18 @@
-{"$schema":"argus/runner-result@1","schemaVersion":1,"mode":"unknown","status":"green","exitCode":99,"categories":{"product":-1,"automation":0,"infrastructure":0,"skip":0,"policy":0},"events":[]}
+{
+  "$schema": "argus/runner-result@1",
+  "schemaVersion": 1,
+  "mode": "unknown",
+  "status": "green",
+  "exitCode": 99,
+  "generatedAt": "2026-09-03T18:00:00Z",
+  "deliveryGate": false,
+  "missingExpectedBugs": 0,
+  "categories": {
+    "product": -1,
+    "automation": 0,
+    "infrastructure": 0,
+    "skip": 0,
+    "policy": 0
+  },
+  "events": []
+}

@@ -29,6 +29,23 @@ Framework adapters write tab-separated records to `reports/outcomes.raw.tsv` (or
 case_id  category  status  expected  lifecycle  bug_id  reason
 ```
 
+The evaluator never invents an event. An empty event stream with a green native runner is a
+broken adapter and fails closed as a contract error in every mode: a run that produced no
+evidence cannot report a pass.
+
+An approved skip is one that appears in the quarantine register by case id. `expected=true`
+is written by the adapter about its own case, so it cannot also be the proof that the skip
+was approved; a skip with no register row breaks the gate.
+
+Where the caller names the confirmed defects (`--expected-bugs`), every one of them must
+appear as an event outside `baseline`. A selector that silently drops half the regression
+suite otherwise looks identical to a suite that ran it.
+
+The result carries `generatedAt`, `deliveryGate` and `missingExpectedBugs` so a reader
+holding only that file can tell what it is evidence of. `deliveryGate` is true only for
+`full-suite`; a `defect-evidence` result that overwrote a delivery-gate result is then
+visible as what it is, and the last write no longer decides what the run looked like.
+
 - category: `product`, `automation`, `infrastructure`, `skip`, or `policy`;
 - status: `pass`, `fail`, `skipped`, or `denied`;
 - expected: `true` only for an explicitly known product defect or approved skip;

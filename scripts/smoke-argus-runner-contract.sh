@@ -38,9 +38,10 @@ cat "$FIXTURES/defect-evidence.tsv" "$FIXTURES/automation-failure.tsv" >"$WORK/e
 
 evaluate() {
   local engine="$1" mode="$2" fixture="$3" native_exit="$4" expected_exit="$5" label="$6" output code
+  shift 6
   output="$WORK/$label.json"
   set +e
-  "$engine" --mode "$mode" --events "$fixture" --output "$output" --runner-exit "$native_exit"
+  "$engine" --mode "$mode" --events "$fixture" --output "$output" --runner-exit "$native_exit" "$@"
   code=$?
   set -e
   [ "$code" -eq "$expected_exit" ] || fail "$label exited $code instead of $expected_exit"
@@ -50,11 +51,20 @@ evaluate() {
 
 for index in "${!ENGINES[@]}"; do
   engine="${ENGINES[$index]}"
-  evaluate "$engine" baseline "$FIXTURES/baseline.tsv" 0 0 "baseline-$index"
+  # An approved skip needs a quarantine row; the same fixture without the register is an
+  # unapproved skip, because `expected=true` is written by the adapter about itself.
+  evaluate "$engine" baseline "$FIXTURES/baseline.tsv" 0 0 "baseline-$index" --quarantine "$FIXTURES/quarantine.tsv"
+  evaluate "$engine" baseline "$FIXTURES/baseline.tsv" 0 15 "baseline-unregistered-skip-$index"
+  # An empty event stream with a green native runner is a broken adapter, never a pass.
+  evaluate "$engine" baseline /dev/null 0 14 "baseline-no-events-$index"
+  evaluate "$engine" full-suite /dev/null 0 14 "full-no-events-$index"
+  # Every confirmed defect the caller names must appear as an event.
+  evaluate "$engine" defect-evidence "$FIXTURES/defect-evidence.tsv" 1 0 "evidence-expected-$index" --expected-bugs "$FIXTURES/expected-bugs.txt"
+  evaluate "$engine" defect-evidence "$FIXTURES/defect-evidence.tsv" 1 13 "evidence-missing-bug-$index" --expected-bugs "$FIXTURES/expected-bugs-missing.txt"
   evaluate "$engine" defect-evidence "$FIXTURES/defect-evidence.tsv" 1 0 "evidence-$index"
   evaluate "$engine" defect-evidence "$WORK/evidence-with-unexpected.tsv" 1 11 "evidence-unexpected-$index"
   evaluate "$engine" candidate-regression "$FIXTURES/candidate-regression.tsv" 0 0 "candidate-$index"
-  evaluate "$engine" full-suite "$FIXTURES/full-suite.tsv" 0 0 "full-$index"
+  evaluate "$engine" full-suite "$FIXTURES/full-suite.tsv" 0 0 "full-$index" --quarantine "$FIXTURES/quarantine.tsv"
   evaluate "$engine" candidate-regression "$FIXTURES/known-red.tsv" 1 10 "known-red-candidate-$index"
   evaluate "$engine" full-suite "$FIXTURES/known-red.tsv" 1 10 "known-red-full-$index"
   evaluate "$engine" full-suite "$FIXTURES/automation-failure.tsv" 1 11 "automation-$index"

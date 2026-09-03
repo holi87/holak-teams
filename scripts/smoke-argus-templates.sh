@@ -321,8 +321,15 @@ cmp "$WORK/typescript/scripts/quarantine-contract.sh" "$WORK/python/scripts/quar
 printf 'case.one\tatlas\tflaky-clock\t2099-01-01\t#18\n' >"$WORK/quarantine.tsv"
 : >"$WORK/quarantine-events.tsv"
 "$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-events.tsv" --ledger "$WORK/quarantine.tsv" --tagged-count 1
-"$WORK/typescript/scripts/runner-contract.sh" --mode baseline --events "$WORK/quarantine-events.tsv" --output "$WORK/quarantine-result.json" --runner-exit 0
+# The register is what approves the skip, so it is passed in: without it the same event
+# is an unapproved skip, which is the point of the check below.
+"$WORK/typescript/scripts/runner-contract.sh" --mode baseline --events "$WORK/quarantine-events.tsv" --output "$WORK/quarantine-result.json" --runner-exit 0 --quarantine "$WORK/quarantine.tsv"
 jq -e '.exitCode == 0 and .categories.skip == 1 and .events[0].expected' "$WORK/quarantine-result.json" >/dev/null || fail "valid quarantine was not an approved skip"
+set +e
+"$WORK/typescript/scripts/runner-contract.sh" --mode baseline --events "$WORK/quarantine-events.tsv" --output "$WORK/unregistered-skip.json" --runner-exit 0
+unregistered_code=$?
+set -e
+[ "$unregistered_code" -eq 15 ] || fail "a skip with no quarantine row was accepted as approved"
 printf 'case.one\tatlas\tflaky-clock\t2000-01-01\t#18\n' >"$WORK/quarantine.tsv"
 : >"$WORK/quarantine-events.tsv"
 if "$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-events.tsv" --ledger "$WORK/quarantine.tsv" --tagged-count 1; then fail "expired quarantine unexpectedly passed"; fi

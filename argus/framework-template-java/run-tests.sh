@@ -17,13 +17,21 @@ if [ "${1:-}" = -- ]; then shift; fi
 case "$MODE" in baseline|defect-evidence|candidate-regression|full-suite) ;; *) echo "INVALID RUNNER MODE: $MODE" >&2; exit 14 ;; esac
 EVENTS="${ARGUS_OUTCOME_FILE:-reports/outcomes.raw.tsv}"
 RESULT="reports/argus-runner-result.json"
+# An approved skip must exist in the quarantine register, and every confirmed defect the
+# ledger names must show up as an event. Both files are optional inputs: when they are
+# absent the contract still refuses to invent a pass, it simply has less to check against.
+QUARANTINE="${ARGUS_QUARANTINE:-solution/quarantine.tsv}"
+EXPECTED_BUGS="${ARGUS_EXPECTED_BUGS:-reports/expected-bugs.txt}"
+[ -f "$QUARANTINE" ] || QUARANTINE=""
+[ -f "$EXPECTED_BUGS" ] || EXPECTED_BUGS=""
 TEST_ROOT="${ARGUS_TEST_ROOT:-src/test/java}"
 mkdir -p reports reports/evidence
 rm -f "$EVENTS"
 emit_event() { printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >>"$EVENTS"; }
 finish_contract() {
   set +e
-  scripts/runner-contract.sh --mode "$MODE" --events "$EVENTS" --output "$RESULT" --runner-exit "$1"
+  scripts/runner-contract.sh --mode "$MODE" --events "$EVENTS" --output "$RESULT" --runner-exit "$1" \
+    ${QUARANTINE:+--quarantine "$QUARANTINE"} ${EXPECTED_BUGS:+--expected-bugs "$EXPECTED_BUGS"}
   contract_code=$?
   set -e
   echo "Argus contract: mode=$MODE result=$RESULT exit=$contract_code"
