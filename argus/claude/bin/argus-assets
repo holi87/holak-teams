@@ -66,7 +66,7 @@ import {
   writeFragment,
 } from '../lib/engagement.mjs';
 import { CONTRACT_KINDS, schemaId, validateCanonicalDocument } from '../lib/contracts.mjs';
-import { calculateCoverage, validateCoverageObservations, validateSurfaceInventory } from '../lib/coverage.mjs';
+import { calculateCoverage, validateCasePlan, validateCoverageObservations, validateSurfaceInventory } from '../lib/coverage.mjs';
 import { compileJsonSchema } from '../lib/json-schema.mjs';
 import {
   adapterSnapshotSha256,
@@ -1866,7 +1866,8 @@ function coverageCommand(args) {
   } catch (error) {
     fail(`coverage ${operation}: input is not valid JSON: ${error.message}`);
   }
-  const errors = [...validateSurfaceInventory(inventory), ...validateCoverageObservations(observations, inventory)];
+  const errors = [...validateCanonicalDocument('surface-inventory', inventory), ...validateCanonicalDocument('coverage-observations', observations)];
+  if (!errors.length) errors.push(...validateCoverageObservations(observations, inventory), ...validateCasePlan(inventory, observations));
   if (errors.length) fail(`coverage ${operation}: ${errors.join('; ')}`);
   if (operation === 'validate') {
     console.log(`PASS  coverage inventory=${options.inventory} observations=${options.observations}`);
@@ -3411,7 +3412,9 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
     else if (status !== 'skipped') status = 'deferred';
   }
   for (const id of missingOptional) {
-    actions.push(`${id}: ${matrix.capabilities[id].fallback}`);
+    actions.push(contract.slug === 'perseus' && id === 'browser-runtime'
+      ? 'browser-runtime: Run authorized CLI request-level security checks. Do not invoke the browser driver; record DOM-dependent checks as unavailable with residual risk.'
+      : `${id}: ${matrix.capabilities[id].fallback}`);
     if (status === 'ready') status = 'degraded';
   }
   if (missingCommands.length > 0) {

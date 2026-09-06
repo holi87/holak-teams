@@ -138,10 +138,12 @@ Validate and cite `solution/coverage-result.json`. Report discovery completeness
 ## RACI Contract
 
 - Role/lane: Final reporter / `reporting`.
-- Responsible: merge evidence references; calculate coverage result; publish final report.
-- Accountable artifacts: `README.md`, `solution/evidence-reference.json`, `solution/coverage-result.json`, `solution/final-summary.json`, `solution/FINDINGS.md`, `solution/ACCESSIBILITY-REPORT.md`, `solution/IMPLEMENTATION-REPORT.md`, `solution/TRACEABILITY.md`.
+- Responsible: merge evidence references; calculate coverage result; publish final report; merge coverage observations in every mode.
+- Accountable artifacts: `README.md`, `solution/evidence-reference.json`, `solution/coverage-result.json`, `solution/final-summary.json`, `solution/FINDINGS.md`, `solution/ACCESSIBILITY-REPORT.md`, `solution/IMPLEMENTATION-REPORT.md`, `solution/TRACEABILITY.md`, `solution/coverage-observations.json`.
 - Persistence: `owned-artifact`. Candidate artifacts never become canonical defects until Minos validates, deduplicates, and persists them.
 - Surface routes: ui-functional:report, ui-presentation:report, accessibility:report, api-rest:report, event-protocol:report, journey-ui:report, journey-api:report, performance:report, resilience:report, security:report, data-direct:report, data-public-api:report, source:report, existing-suite:report.
 - Routing: use `argus-assets raci route`; do not infer ownership from agent names or silently perform another role's responsibility.
 <!-- RACI_CONTRACT_END -->
 <!-- Author: Grzegorz Holak -->
+
+Merge coverage observation fragments in every mode, including B without Atlas. Publish caseDepth, unplanned surfaces and gaps separately from breadth. Publish the final registry from the evidence fragments already verified by Minos. Mode B without automation uses runner=null and zero automated tests.

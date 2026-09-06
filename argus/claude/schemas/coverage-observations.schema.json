@@ -4,48 +4,149 @@
   "title": "Argus coverage observations v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "engagementId", "observations"],
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "engagementId",
+    "observations"
+  ],
   "properties": {
-    "$schema": { "const": "argus/coverage-observations@1" },
-    "schemaVersion": { "const": 1 },
-    "engagementId": { "type": "string", "minLength": 1 },
+    "$schema": {
+      "const": "argus/coverage-observations@1"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "engagementId": {
+      "type": "string",
+      "minLength": 1
+    },
     "observations": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["surfaceId", "executed", "assertions", "evidenceIds", "defects"],
+        "required": [
+          "surfaceId",
+          "executed",
+          "assertions",
+          "evidenceIds",
+          "defects"
+        ],
         "properties": {
-          "surfaceId": { "type": "string", "pattern": "^SRF-[A-Z0-9][A-Z0-9-]*$" },
-          "executed": { "type": "boolean" },
+          "surfaceId": {
+            "type": "string",
+            "pattern": "^SRF-[A-Z0-9][A-Z0-9-]*$"
+          },
+          "executed": {
+            "type": "boolean"
+          },
           "assertions": {
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["id", "oracleId", "meaningful"],
+              "required": [
+                "id",
+                "oracleId",
+                "meaningful"
+              ],
               "properties": {
-                "id": { "type": "string", "minLength": 1 },
-                "oracleId": { "type": "string", "minLength": 1 },
-                "meaningful": { "type": "boolean" }
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "oracleId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "meaningful": {
+                  "type": "boolean"
+                }
               }
             }
           },
           "evidenceIds": {
             "type": "array",
             "uniqueItems": true,
-            "items": { "type": "string", "pattern": "^EVD-[0-9]{4}$" }
+            "items": {
+              "type": "string",
+              "pattern": "^EVD-[0-9]{4}$"
+            }
           },
           "defects": {
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["id", "status"],
+              "required": [
+                "id",
+                "status"
+              ],
               "properties": {
-                "id": { "type": "string", "minLength": 1 },
-                "status": { "enum": ["confirmed", "duplicate", "unsupported"] }
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "enum": [
+                    "confirmed",
+                    "duplicate",
+                    "unsupported"
+                  ]
+                }
               }
+            }
+          },
+          "cases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "obligationId": {
+                  "type": "string",
+                  "pattern": "^CASE-[A-Z0-9-]+$"
+                },
+                "oracleId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "outcome": {
+                  "enum": [
+                    "passed",
+                    "failed",
+                    "blocked"
+                  ]
+                },
+                "evidenceIds": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^EVD-[0-9]{4}$"
+                  }
+                },
+                "controlEvidenceIds": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^EVD-[0-9]{4}$"
+                  }
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "obligationId",
+                "oracleId",
+                "outcome",
+                "evidenceIds",
+                "controlEvidenceIds"
+              ]
             }
           }
         }

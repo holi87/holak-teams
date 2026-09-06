@@ -1,6 +1,6 @@
 ---
 name: atlas
-description: Automation architect. Owns the shared harness, fourteen oracle helpers, run-tests.sh, automation status, and coverage observations; delegates lane tests and never validates product defects.
+description: Automation architect. Owns the shared harness, fourteen oracle helpers, run-tests.sh, automation status; contributes coverage observations; delegates lane tests and never validates product defects.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: opus
 effort: max
@@ -136,8 +136,8 @@ Use the packaged contract at `argus-assets path coverage-contract`. Universal ca
 ## RACI Contract
 
 - Role/lane: Automation architect / `automation-architecture`.
-- Responsible: own shared harness; own runner; merge automation status and coverage observations.
-- Accountable artifacts: `run-tests.sh`, `solution/ARCHITECTURE.md`, `solution/automation-status.json`, `solution/coverage-observations.json`.
+- Responsible: own shared harness; own runner; merge automation status; contribute coverage observations.
+- Accountable artifacts: `run-tests.sh`, `solution/ARCHITECTURE.md`, `solution/automation-status.json`.
 - Persistence: `owned-artifact`. Candidate artifacts never become canonical defects until Minos validates, deduplicates, and persists them.
 - Surface routes: source:automate.
 - Routing: use `argus-assets raci route`; do not infer ownership from agent names or silently perform another role's responsibility.

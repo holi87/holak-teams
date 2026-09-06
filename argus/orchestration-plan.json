@@ -238,7 +238,7 @@
       "dispatch": true,
       "wave": "W2",
       "modes": ["A", "B"],
-      "gates": ["browser-runtime"],
+      "gates": [],
       "dependsOn": ["atlas"]
     },
     {

@@ -78,7 +78,7 @@
       { "path": "solution/evidence-reference.json", "owner": "kleio", "format": "json-document", "schema": "evidence-reference" },
       { "path": "solution/automation-status.json", "owner": "atlas", "format": "json-document", "schema": "automation-status" },
       { "path": "solution/surface-inventory.json", "owner": "kalchas", "format": "json-document", "schema": "surface-inventory" },
-      { "path": "solution/coverage-observations.json", "owner": "atlas", "format": "json-document", "schema": "coverage-observations" },
+      { "path": "solution/coverage-observations.json", "owner": "kleio", "format": "json-document", "schema": "coverage-observations" },
       { "path": "solution/coverage-result.json", "owner": "kleio", "format": "json-document", "schema": "coverage-result" },
       { "path": "solution/final-summary.json", "owner": "kleio", "format": "json-document", "schema": "final-summary" },
       { "path": "solution/FINDINGS.md", "owner": "kleio", "format": "markdown" },

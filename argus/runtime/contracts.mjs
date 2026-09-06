@@ -1,3 +1,4 @@
+import { validateFindingQuality } from './finding-quality.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -154,6 +155,7 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
     '',
     '## Runner outcome',
     '',
+    ...(document.runner ? [
     `- Mode: ${document.runner.mode}`,
     `- Status: ${document.runner.status}`,
     `- Exit code: ${document.runner.exitCode}`,
@@ -163,16 +165,20 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
     `- Infrastructure: ${document.runner.categories.infrastructure}`,
     `- Skip: ${document.runner.categories.skip}`,
     `- Policy: ${document.runner.categories.policy}`,
+    ] : ['Automation: unfunded; no framework runner was executed.']),
     '',
     ...(document.coverage ? [
       '## Surface-derived coverage',
       '',
       `- Result: ${document.coverage.resultPath}`,
       `- Discovery completeness: ${formatRatio(document.coverage.discoveryCompleteness)}`,
-      `- Execution coverage: ${formatRatio(document.coverage.executionCoverage)}`,
+      `- Execution coverage: ${formatRatio(document.coverage.executionCoverage)} (surface breadth)`,
       `- Assertion quality: ${formatRatio(document.coverage.assertionQuality)}`,
       `- Evidence quality: ${formatRatio(document.coverage.evidenceQuality)}`,
       `- Scoped outcomes: ${document.coverage.scopedOutcomes}`,
+      `- Required-case depth: ${(document.coverage.caseDepth?.coverage == null ? 'unknown (not fully planned)' : formatRatio(document.coverage.caseDepth.coverage))}`,
+      ...(document.coverage.caseDepth?.unplannedSurfaces ?? []).map(id => `- Unplanned depth: ${id}`),
+      ...(document.coverage.caseDepth?.gaps ?? []).map(gap => `- Case gap: ${gap.obligationId}: ${gap.reason}`),
       '',
     ] : []),
     '## Source contracts',
@@ -211,7 +217,7 @@ function canonicalValidator(kind, version) {
 }
 
 function semanticErrors(kind, document) {
-  if (kind === 'bug-ledger') return duplicateIds(document.bugs, 'bug');
+  if (kind === 'bug-ledger') return [...duplicateIds(document.bugs, 'bug'), ...validateFindingQuality(document.bugs)];
   if (kind === 'lane-plan') return validateLanePlan(document);
   if (COLLECTION_CONTRACTS[kind]) return validateOrderedCollection(document, COLLECTION_CONTRACTS[kind]);
   if (kind === 'surface-inventory') return validateSurfaceInventory(document);

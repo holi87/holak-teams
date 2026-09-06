@@ -26,3 +26,6 @@ Use this profile only for roles that plan, reconcile, judge, or report coverage.
 - The final human report is rendered from validated, versioned machine contracts. If an
   input is stale, malformed, cross-engagement, or owner-invalid, block the claim instead of
   approximating it.
+
+- Kalchas persists risk-derived `obligations` per surface (stable CASE id, dimensions, oracleId, applicability, weight) from Metis's plan. Critical combinations are explicit; other cases use justified representative selection. Execution owners return `cases` with outcome and distinct execution/control evidence IDs. An assertion-control probe must demonstrably fail for a deliberately wrong expected result; never alter the target to arrange it.
+- Report `caseDepth` separately from surface breadth. Missing obligation plans mean unknown depth, never full coverage. Missing/blocked cases and missing assertion-control evidence remain gaps. Reconcile evidence registry entries and bytes before accepting verified depth.

@@ -1,3 +1,5 @@
+import { calculateCoverage } from './coverage.mjs';
+import { reconcileCaseEvidence, reconcileFindings } from './finding-quality.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import {
   chmodSync,
@@ -410,6 +412,54 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     if (canonical.format === 'json-document') {
       const documents = contents.map((content) => JSON.parse(content));
       const document = mergeCanonicalDocuments(canonical.schema, documents);
+      if (canonical.schema === 'coverage-result') {
+        const readDocument = (kind, path) => {
+          const checked = validateCanonicalFragment(kind, readManagedFile(engagementPath(manifest, path), path));
+          if (checked.errors.length || checked.document.engagementId !== manifest.engagementId) throw new Error(`invalid ${kind} reconciliation input`);
+          return checked.document;
+        };
+        const inventory = readDocument('surface-inventory', 'solution/surface-inventory.json');
+        const observations = readDocument('coverage-observations', 'solution/coverage-observations.json');
+        if (observations.observations.some(row => row.cases?.length)) {
+          const evidence = readDocument('evidence-reference', 'solution/evidence-reference.json');
+          const errors = reconcileCaseEvidence(inventory, observations, evidence,
+            source => readManagedFile(engagementPath(manifest, source), 'coverage evidence'));
+          if (errors.length) throw new Error(errors.join('; '));
+        }
+        const calculated = calculateCoverage(inventory, observations);
+        const canonicalJson = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
+          ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+        if (canonicalJson({ ...document, generatedAt: null }) !== canonicalJson({ ...calculated, generatedAt: null })) throw new Error('coverage result does not match canonical inputs');
+      }
+      if (canonical.schema === 'final-summary' && document.coverage) {
+        const path = engagementPath(manifest, 'solution/coverage-result.json');
+        if (existsSync(path)) {
+          const checked = validateCanonicalFragment('coverage-result', readManagedFile(path, 'canonical case depth'));
+          if (checked.errors.length || checked.document.engagementId !== manifest.engagementId) throw new Error('invalid final coverage source');
+          const depth = checked.document.overall.caseDepth;
+          if (depth) {
+            document.coverage.caseDepth = depth;
+            if ((depth.coverage === null || depth.gaps.length || depth.unplannedSurfaces.length) && document.status === 'completed') document.status = 'degraded';
+          } else delete document.coverage.caseDepth;
+        } else if (document.coverage.caseDepth) throw new Error('case depth claim requires canonical coverage result');
+      }
+      if (canonical.schema === 'final-summary' && document.runner === null && (manifest.mode !== 'B' || document.counts.automated !== 0)) throw new Error('runner=null is only valid for Mode B without automation');
+      if (canonical.schema === 'bug-ledger' && document.bugs.some(bug => bug.status === 'confirmed')) {
+        const evidencePath = engagementPath(manifest, 'solution/evidence-reference.json');
+        const evidenceRecords = state.fragments['solution/evidence-reference.json'] ?? [];
+        // Minos runs before Kleio's reporting wave. Verify immutable contributions
+        // directly; requiring the later canonical evidence merge would deadlock.
+        const content = evidenceRecords.length ? JSON.stringify(mergeCanonicalDocuments('evidence-reference', evidenceRecords.map(record => {
+          const raw = readManagedFile(engagementPath(manifest, record.path), 'finding evidence fragment');
+          if (sha256(raw) !== record.sha256) throw new Error('finding evidence fragment digest drift');
+          return JSON.parse(raw);
+        }))) : readManagedFile(evidencePath, 'finding evidence registry');
+        const checked = validateCanonicalFragment('evidence-reference', content);
+        if (checked.errors.length) throw new Error(`invalid finding evidence registry: ${checked.errors.join('; ')}`);
+        const errors = reconcileFindings(document, checked.document,
+          source => readManagedFile(engagementPath(manifest, source), 'finding evidence'));
+        if (errors.length) throw new Error(`finding reconciliation failed: ${errors.join('; ')}`);
+      }
       output = `${JSON.stringify(document, null, 2)}\n`;
     } else if (canonical.format === 'json') output = `${JSON.stringify(contents.map((content) => JSON.parse(content)), null, 2)}\n`;
     else output = `${contents.join('\n\n')}\n`;

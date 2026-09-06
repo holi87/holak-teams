@@ -72,6 +72,8 @@ if (scenario === 'full') {
   assert(report.authorization.defaultReadOnly === false, 'full: explicit authorization fixture required');
 }
 if (scenario === 'partial') {
+  assert(bySlug.get('perseus').status === 'degraded' && bySlug.get('perseus').dispatchAllowed, 'partial: CLI security hunt must remain dispatchable without browser');
+  assert(bySlug.get('perseus').actions.some(action => action.includes('Run authorized CLI request-level security checks')), 'partial: security fallback must explicitly exclude DOM checks');
   assert(report.summary.blocked === 0, 'partial: optional gaps must not block the engagement');
   assert(bySlug.get('orion').status === 'deferred' && !bySlug.get('orion').dispatchAllowed, 'partial: browser lane must be deferred');
   assert(bySlug.get('charon').status === 'skipped' && !bySlug.get('charon').dispatchAllowed, 'partial: DB lane must be skipped');
