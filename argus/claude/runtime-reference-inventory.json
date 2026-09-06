@@ -4,8 +4,8 @@
   "agentsScanned": 27,
   "skillsScanned": 7,
   "entrypointsScanned": 1,
-  "runtimeFilesScanned": 8,
-  "runtimeImportsScanned": 13,
+  "runtimeFilesScanned": 9,
+  "runtimeImportsScanned": 16,
   "hooksScanned": 1,
   "pluginAssetReferences": [
     {
@@ -488,7 +488,8 @@
     {
       "value": "solution/coverage-observations.json",
       "consumers": [
-        "atlas"
+        "atlas",
+        "kleio"
       ]
     },
     {
@@ -2235,6 +2236,12 @@
           "consumer": "lib/contracts.mjs",
           "kind": "runtime",
           "mechanism": "runtime-import",
+          "reference": "./finding-quality.mjs"
+        },
+        {
+          "consumer": "lib/contracts.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
           "reference": "./json-schema.mjs"
         },
         {
@@ -2242,6 +2249,18 @@
           "kind": "runtime",
           "mechanism": "runtime-import",
           "reference": "./contracts.mjs"
+        },
+        {
+          "consumer": "lib/engagement.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./coverage.mjs"
+        },
+        {
+          "consumer": "lib/engagement.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./finding-quality.mjs"
         },
         {
           "consumer": "lib/engagement.mjs",

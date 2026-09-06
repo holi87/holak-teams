@@ -314,3 +314,7 @@ no-Selenium. `shared-skills/qa-core`, `qa-browser`, `qa-framework-runner`,
 `competition-profile` is explicit opt-in. The retired `qa-doctrine` monolith and
 `SHARED-DOCTRINE.md` compatibility pointer are no longer shipped. `COLOR-SCHEME.md` is a
 maintainer reference.
+
+## 4.9.1 discovery-quality fixes
+
+Confirmed findings require sourced, conditional oracles and verifiable reproduction evidence. Coverage separates surface breadth from required-case depth; missing plans remain unknown. CLI security hunting continues without a browser, and Mode B does not require unfunded automation. High-impact findings record independent reproduction or a named limitation; shared symptoms are merged only with causal evidence. See [the evaluation harness](../scripts/eval/discovery/README.md) for repeated, privately adjudicated application comparisons.

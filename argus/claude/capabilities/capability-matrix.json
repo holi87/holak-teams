@@ -408,8 +408,7 @@
       "artifactPaths": [
         "run-tests.sh",
         "solution/ARCHITECTURE.md",
-        "solution/automation-status.json",
-        "solution/coverage-observations.json"
+        "solution/automation-status.json"
       ]
     },
     {
@@ -585,7 +584,8 @@
         "solution/FINDINGS.md",
         "solution/ACCESSIBILITY-REPORT.md",
         "solution/IMPLEMENTATION-REPORT.md",
-        "solution/TRACEABILITY.md"
+        "solution/TRACEABILITY.md",
+        "solution/coverage-observations.json"
       ]
     },
     {
@@ -878,9 +878,7 @@
         "Bash",
         "Write"
       ],
-      "requiredCapabilities": [
-        "browser-runtime"
-      ],
+      "requiredCapabilities": [],
       "riskActions": [
         "security-passive",
         "security-active",
@@ -890,6 +888,9 @@
       ],
       "artifactPaths": [
         "bugs/PER-*"
+      ],
+      "optionalCapabilities": [
+        "browser-runtime"
       ]
     },
     {

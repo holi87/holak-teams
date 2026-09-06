@@ -27,3 +27,13 @@ Inaccessible and untestable items stay visible in the discovered inventory. They
 ## Proportionate targets
 
 The denominator is the inventory, so small and large targets scale naturally. Risk weighting changes depth priority, not whether a discovered surface exists. Any threshold used by an engagement must be derived from its risk policy and recorded outside this calculation; the canonical evaluator intentionally returns measurements, not a universal pass/fail gate.
+
+## Required-case depth (4.9.1)
+
+The legacy execution/assertion/evidence ratios above describe surface breadth and presence, not exhaustive behavioral coverage. Never label them case completeness.
+
+Each testable inventory item can carry `obligations`: stable `CASE-*` IDs with `dimensions` (operation, role, state, boundary, device, browser, risk-category), a sourced `oracleId`, `applicability`, and risk `weight` (1–5). Kalchas persists Metis's risk plan before execution. Explicitly enumerate critical combinations; justify representative selection for lower risks rather than expanding an arbitrary Cartesian product.
+
+Observations carry `cases` keyed by `obligationId`, the matching `oracleId`, an outcome (`passed`, `failed`, `blocked`), `evidenceIds`, and distinct `controlEvidenceIds`. A blocked case needs a reason. Control evidence demonstrates that an independently wrong expected value makes the assertion fail, without modifying the target. Neither a self-declared meaningful flag nor an evidence filename alone proves assertion strength.
+
+`overall.caseDepth` and each lane's `caseDepth` report planned, executed, and verified weights, verified/planned coverage, unplanned surfaces, and named gaps. Missing plans yield null depth, never 100%. Product failures count as executed tests; blocked/unexecuted or unsupported cases remain gaps. Legacy inputs remain readable with unknown depth. Before merging a canonical result the runtime recalculates it from canonical inputs and verifies case evidence paths and hashes against the current engagement's evidence registry. Do not treat an unmerged calculation as reconciled evidence.

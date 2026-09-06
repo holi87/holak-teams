@@ -91,3 +91,9 @@ scripts/sync-hephaestus-codex-variants.mjs --write
 4. Bump the correct semver level.
 5. Commit on a dedicated branch, push, and open a pull request.
 6. Confirm every required GitHub check passes before merge.
+
+## Argus 4.9.1 finding-quality repair
+
+This user-requested patch addresses #47–#53: conditional correctness oracles, canonical finding-proof reconciliation, required-case depth, browser-optional CLI security, mode-aware deliverables, independent reproduction limitations, and evidence-based deduplication. Kleio now merges coverage observations in every mode, including B without Atlas. New confirmed records require structured verification; old unproven records must remain suspected rather than receiving invented migration evidence.
+
+The release gate includes `scripts/smoke-argus-quality.mjs` and the maintainer-only `scripts/eval/discovery/smoke.mjs`. The latter exercises 12 live application fixtures and 24 paired adapter-protocol runs. It establishes harness behavior, not an Argus model-quality score. See the evaluation README for isolated host adapters, repeated equal-budget comparisons, private verdicts, and measured usage. No numerical model-quality improvement or threshold is asserted by this release. Existing package and prompt limits are retained.

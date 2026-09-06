@@ -6,10 +6,7 @@ user-invocable: false
 
 # Argus Orchestration Core
 
-Contract for `/argus:run` and Odysseus. Specialists report only to it;
-capability-selected skills own worker rules.
-Execute the engagement unless the user explicitly requests planning only.
-Then claim no execution or evidence.
+Execute the engagement unless the user explicitly requests planning only. Then claim no execution or evidence.
 
 ## Sources of authority
 
@@ -44,8 +41,7 @@ Modes compose only as a sequence; never widen a narrow request silently.
   runner in place. Deliver new or extended tests plus a coverage-delta report. Never
   scaffold a competing harness or second runner.
 
-A scoped request retains the mode's essential strategy, validation, and reporting.
-Unfunded or unavailable work is deferred with reason and residual risk, never dropped.
+Retain essential mode deliverables; report unfunded/unavailable work with reason and residual risk.
 
 ## Fail-closed preflight
 
@@ -94,7 +90,7 @@ After sealing, allocate Odysseus with `argus-assets engagement allocate --manife
 paths, and decision; never signing material. Workers checkpoint, honor locks/barriers, and
 clean on `success`, `failure`, or `interrupted`, preserving durable fragments/checkpoints.
 
-Advance W0–W4 in DAG order within the manifest ceiling. `selected-dispatchable-predecessors`
+Advance W0–W4 in DAG order within the manifest ceiling. The DAG overrides illustrative role start times. `selected-dispatchable-predecessors`
 waits only on dispatched predecessors. The immutable dispatchable projection filters phase
 participants, so gated roles create no false barrier. Advance after projected arrivals;
 worker `success` requires all declared arrivals, while failure never counts as one.
@@ -103,6 +99,8 @@ Heartbeats bind allocation/dispatch/attempt; retry starts a new generation.
 Route work through `argus-assets raci route`. Workers write owned outputs or immutable
 fragments; only the RACI owner validates and deterministically merges. Reject malformed,
 legacy, cross-engagement, duplicate, or wrong-owner fragments.
+
+Mode B accepts reproduction with evidence and runner=null. Automation duties in role prose apply only when funded and dispatchable; otherwise report automation-unfunded.
 
 Before framework work run `argus-assets template detect`; persist explicit `template select`.
 `adapt` forbids scaffolding; `build` allows `template scaffold` only at selected roots. The

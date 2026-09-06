@@ -114,3 +114,5 @@ Validate and cite `solution/coverage-result.json`. Report discovery completeness
 {{ARGUS_MODEL_ESCALATION_BLOCK}}
 {{ARGUS_RACI_CONTRACT_BLOCK}}
 <!-- Author: Grzegorz Holak -->
+
+Merge coverage observation fragments in every mode, including B without Atlas. Publish caseDepth, unplanned surfaces and gaps separately from breadth. Publish the final registry from the evidence fragments already verified by Minos. Mode B without automation uses runner=null and zero automated tests.

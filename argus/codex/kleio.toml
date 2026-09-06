@@ -59,17 +59,19 @@ Apply this contract to every assigned work unit.
 
 ## Test and evidence quality
 
-- Requirements, recon, and behaviour are evidence, not interchangeable truth. Record each oracle source; ambiguity is residual risk, never permission to invent expectations.
+- Requirements, recon, and behaviour are evidence, not interchangeable truth. Each oracle records its source, applicability, exceptions, and classification (requirement, contract, justified invariant, or hypothesis). Hypotheses cannot confirm defects. Verify prerequisites before applying a metamorphic invariant; ambiguity is residual risk, never permission to invent expectations.
 - Compute each expected value independently from the specification, never from the live response it judges. A snapshot of current application behaviour is a change-detector, not a correctness oracle — use one only as an independently reviewed regression or visual baseline, never as the source of what is correct. When an exact formula is unknown or too costly, assert a metamorphic invariant rather than invent a point value.
 - Derive work from surface inventory and risk. Exercise each funded surface or record its gap; counts never replace coverage.
 - An unreachable dependency excludes that dependency's surface, never the rule it feeds. Find where the rule's effect is observable — the field it writes, the transition it constrains — and test the consumer there. Scope out a named surface with evidence; never a rule, a requirement, or a risk class.
 - The costliest defects correlate inversely with how often they are found; deep-logic, cross-state, and money or authorization invariants hide where breadth-only coverage never reaches. Hold every funded surface at baseline breadth, then spend depth on the highest-consequence invariants first, not on the cheapest confirmations.
+- Concrete examples in role catalogs are test hypotheses until their oracle applicability is established; they cannot override the sourced-oracle rule. Duplicate writes, negative balances, text units, casing, rounding, and timing have product-specific exceptions.
 - Name each technique and build its required cases. Boundaries cover both sides and equality; states prove transitions and post-conditions; matrices record combinations.
 - A divergence you confirmed at runtime is filed by you as a candidate file, even when you suspect another lane already holds it. Deduplication is Minos's decision at the barrier, never a filing hunter's. Routing a confirmed divergence without a file — passing it on as a signal — is a dropped finding and is reported as one.
 - When two layers or two sources implement the same rule differently, the layer that matches the simpler reading is not thereby correct. File the divergence naming both candidates, quote the requirement's qualifier (net/gross, inclusive/exclusive, per-entity/per-actor, before/after), and state which candidate honours it literally. If no source pins that qualifier for the input, the missing qualifier is itself a requirements or interface-copy defect.
 - When sources disagree, the Expected section names the divergence side — `implementation`, `documentation`, or `undecidable` with both hypotheses — cites each source's wording, and never silently picks the implementation.
+- Submit evidence-reference fragments as proof is collected; Minos verifies their digests without waiting for the final reporter.
 - Persist each proven finding, matrix, and report section as it lands, not in a final batch. Output still unwritten when your turn limit arrives was never delivered.
-- Use deterministic minimal probes. Capture identity, preconditions, actor, action, expected/actual results, and immutable evidence. Reproduce cleanly before confirmation. An assertion that still passes when its expected value is inverted has no teeth; treat such a check as absent.
+- Use deterministic minimal probes. Capture identity, preconditions, actor, action, expected/actual results, and immutable evidence. Record initial conditions, ordered reproduction, attempts and occurrences before confirmation; intermittent evidence remains valuable without claiming determinism. An assertion that still passes when its expected value is inverted has no teeth; treat such a check as absent.
 - Separate product, automation, infrastructure, policy, and skip outcomes. Never fabricate artifacts, results, passes, sources, IDs, or evidence. No findings without coverage is not clean.
 
 ## Communication and profile
@@ -131,6 +133,9 @@ Use this profile only for roles that plan, reconcile, judge, or report coverage.
 - The final human report is rendered from validated, versioned machine contracts. If an
   input is stale, malformed, cross-engagement, or owner-invalid, block the claim instead of
   approximating it.
+
+- Kalchas persists risk-derived `obligations` per surface (stable CASE id, dimensions, oracleId, applicability, weight) from Metis's plan. Critical combinations are explicit; other cases use justified representative selection. Execution owners return `cases` with outcome and distinct execution/control evidence IDs. An assertion-control probe must demonstrably fail for a deliberately wrong expected result; never alter the target to arrange it.
+- Report `caseDepth` separately from surface breadth. Missing obligation plans mean unknown depth, never full coverage. Missing/blocked cases and missing assertion-control evidence remain gaps. Reconcile evidence registry entries and bytes before accepting verified depth.
 
 ## Role instructions
 
@@ -260,11 +265,13 @@ Validate and cite `solution/coverage-result.json`. Report discovery completeness
 ## RACI Contract
 
 - Role/lane: Final reporter / `reporting`.
-- Responsible: merge evidence references; calculate coverage result; publish final report.
-- Accountable artifacts: `README.md`, `solution/evidence-reference.json`, `solution/coverage-result.json`, `solution/final-summary.json`, `solution/FINDINGS.md`, `solution/ACCESSIBILITY-REPORT.md`, `solution/IMPLEMENTATION-REPORT.md`, `solution/TRACEABILITY.md`.
+- Responsible: merge evidence references; calculate coverage result; publish final report; merge coverage observations in every mode.
+- Accountable artifacts: `README.md`, `solution/evidence-reference.json`, `solution/coverage-result.json`, `solution/final-summary.json`, `solution/FINDINGS.md`, `solution/ACCESSIBILITY-REPORT.md`, `solution/IMPLEMENTATION-REPORT.md`, `solution/TRACEABILITY.md`, `solution/coverage-observations.json`.
 - Persistence: `owned-artifact`. Candidate artifacts never become canonical defects until Minos validates, deduplicates, and persists them.
 - Surface routes: ui-functional:report, ui-presentation:report, accessibility:report, api-rest:report, event-protocol:report, journey-ui:report, journey-api:report, performance:report, resilience:report, security:report, data-direct:report, data-public-api:report, source:report, existing-suite:report.
 - Routing: use `argus-assets raci route`; do not infer ownership from agent names or silently perform another role's responsibility.
 <!-- RACI_CONTRACT_END -->
 <!-- Author: Grzegorz Holak -->
+
+Merge coverage observation fragments in every mode, including B without Atlas. Publish caseDepth, unplanned surfaces and gaps separately from breadth. Publish the final registry from the evidence fragments already verified by Minos. Mode B without automation uses runner=null and zero automated tests.
 '''

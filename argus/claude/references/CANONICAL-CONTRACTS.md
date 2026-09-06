@@ -20,7 +20,7 @@ match with the engagement manifest.
 | `argus/automation-status@2` | `solution/automation-status.json` | Atlas | Deterministically ordered stable test IDs, owners, runner results, covered bugs, and evidence links. |
 | `argus/runner-result@1` | `reports/argus-runner-result.json` | Atlas | Runner mode, strict gate status, standardized exit code, and separate outcome categories. |
 | `argus/surface-inventory@1` | `solution/surface-inventory.json` | Kalchas | Discovered UI/API/event/data denominator, risk basis, accessibility, and discovery evidence. |
-| `argus/coverage-observations@1` | `solution/coverage-observations.json` | Atlas | Execution, meaningful assertions, evidence, and defect outcomes linked to stable surface IDs. |
+| `argus/coverage-observations@1` | `solution/coverage-observations.json` | Kleio | Execution, meaningful assertions, evidence, and defect outcomes linked to stable surface IDs. |
 | `argus/coverage-result@1` | `solution/coverage-result.json` | Kleio | Traceable discovery, risk-weighted execution, assertion, evidence, scope, and defect-neutral calculations. |
 | `argus/final-summary@1` | `solution/final-summary.json` | Kleio | Engagement outcome, counts, source contracts, final narrative. |
 
@@ -123,3 +123,15 @@ Run `argus-assets schema validate --kind <contract> --input <file>` before submi
 canonical structured fragment. Validation failure is a stop condition, not a warning.
 The same command has the explicitly separate `preflight-report` report-only reader described
 above; successful validation does not make a report eligible for fragment submission or merge.
+
+## Finding quality and case depth in 4.9.1
+
+The release repairs previously permissive validation of the existing proof requirements. A `confirmed` ledger entry now needs nonempty evidence and `verification`: build identity, a conditional sourced oracle (kind/sourceRef/evidenceId/applicability/exceptions), reproduction (initialState/steps/attempts/occurrences/evidenceIds), disputedOracle, and independent verification (status/executor/evidenceIds/reason). Multiple origin IDs require a causal mergeRationale. Hypotheses cannot confirm defects. Intermittent reproduction may record fewer occurrences than attempts; never fabricate a second success.
+
+Critical/Blocker or disputed-oracle findings require either a different executor's independently collected reproduction evidence, or an explicit unavailable limitation. Unavailable independence is reported honestly and does not invent an independent pass. Similar class/entity keys identify related candidates, not proven identical causes.
+
+Hunters submit immutable evidence-reference fragments as they collect proof. Minos validates those digest-bound contributions when merging confirmed findings; he does not wait for Kleio's later final registry merge. The merge rejects unresolved, changed, missing, or out-of-boundary files and foreign engagement registries. The oracle citation and runtime proof must be archived as redacted evidence inside the boundary; a remote URL alone is not a reproducible proof artifact.
+
+Existing unconfirmed records remain readable. When resuming a pre-4.9.1 ledger, supply real verification evidence before confirming; otherwise keep it suspected or finish it with the original runtime. Never auto-fill historical proof. Contract identifiers stay at their current versions because this patch enforces documented validity requirements and adds optional depth fields rather than replacing artifact identities.
+
+Mode B without funded automation can use `runner: null` in its final summary with zero automated tests. Other modes cannot merge a null runner. The rendered report explicitly says no framework runner was executed.

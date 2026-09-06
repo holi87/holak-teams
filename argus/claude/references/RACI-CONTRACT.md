@@ -50,7 +50,7 @@ The accountable owner is also the sole owner of that artifact's `fragment → ca
 | `solution/evidence-reference.json` | kleio |
 | `solution/automation-status.json` | atlas |
 | `solution/surface-inventory.json` | kalchas |
-| `solution/coverage-observations.json` | atlas |
+| `solution/coverage-observations.json` | kleio |
 | `solution/coverage-result.json` | kleio |
 | `solution/final-summary.json` | kleio |
 | `solution/FINDINGS.md` | kleio |
@@ -90,7 +90,7 @@ The accountable owner is also the sole owner of that artifact's `fragment → ca
 | runner-lifecycle | automated → fixed | minos |
 | runner-lifecycle | fixed → closed | minos |
 | evidence | collected → immutable | kleio |
-| coverage-observations | collected → merged | atlas |
+| coverage-observations | collected → merged | kleio |
 | coverage-result | inputs-ready → calculated | kleio |
 | automation | planned → implemented | atlas |
 | automation | implemented → passed | atlas |
@@ -110,12 +110,12 @@ The accountable owner is also the sole owner of that artifact's `fragment → ca
 | aristarchus | Automation quality judge | automation-review | result-envelope | — |
 | asklepios | Test-suite sanitation specialist | suite-sanitation | candidate-file | `solution/TEST-HEALTH.md` |
 | atalanta | REST API and public-data hunter | api-hunt | candidate-file | — |
-| atlas | Automation architect | automation-architecture | owned-artifact | `run-tests.sh`, `solution/ARCHITECTURE.md`, `solution/automation-status.json`, `solution/coverage-observations.json` |
+| atlas | Automation architect | automation-architecture | owned-artifact | `run-tests.sh`, `solution/ARCHITECTURE.md`, `solution/automation-status.json` |
 | charon | Direct-database hunter | database-hunt | candidate-file | — |
 | daidalos | UI and accessibility automation engineer | ui-automation | tests-only | — |
 | hermes | Performance hunter | performance-hunt | candidate-file | `solution/PERF-REPORT.md` |
 | kalchas | System reconnaissance analyst | recon | owned-artifact | `solution/discovery/contract-drift.json`, `solution/surface-inventory.json` |
-| kleio | Final reporter | reporting | owned-artifact | `README.md`, `solution/evidence-reference.json`, `solution/coverage-result.json`, `solution/final-summary.json`, `solution/FINDINGS.md`, `solution/ACCESSIBILITY-REPORT.md`, `solution/IMPLEMENTATION-REPORT.md`, `solution/TRACEABILITY.md` |
+| kleio | Final reporter | reporting | owned-artifact | `README.md`, `solution/evidence-reference.json`, `solution/coverage-result.json`, `solution/final-summary.json`, `solution/FINDINGS.md`, `solution/ACCESSIBILITY-REPORT.md`, `solution/IMPLEMENTATION-REPORT.md`, `solution/TRACEABILITY.md`, `solution/coverage-observations.json` |
 | lynceus | UI presentation hunter | presentation-hunt | candidate-file | — |
 | metis | Test strategist | strategy | owned-artifact | `solution/TEST-STRATEGY.md`, `solution/ORACLES.md` |
 | minos | Defect authority and triage lead | triage | owned-artifact | `solution/BUG-LEDGER.md`, `solution/bug-ledger.json`, `solution/WHITEBOX-LEADS.md` |

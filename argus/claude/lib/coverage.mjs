@@ -54,7 +54,7 @@ export function validateCoverageObservations(document, inventory) {
 }
 
 export function calculateCoverage(inventory, observations) {
-  const errors = [...validateSurfaceInventory(inventory), ...validateCoverageObservations(observations, inventory)];
+  const errors = [...validateSurfaceInventory(inventory), ...validateCoverageObservations(observations, inventory), ...validateCasePlan(inventory, observations)];
   if (errors.length) throw new Error(errors.join('; '));
   const byId = new Map(observations.observations.map((item) => [item.surfaceId, item]));
   const lanes = [...new Set(inventory.items.map((item) => item.lane))].sort();
@@ -81,6 +81,7 @@ function summarize(items, byId) {
   const assertedWeight = sum(executed.filter((item) => byId.get(item.id).assertions.some((assertion) => assertion.meaningful && assertion.oracleId)).map((item) => item.riskWeight));
   const evidencedWeight = sum(executed.filter((item) => byId.get(item.id).evidenceIds.length > 0).map((item) => item.riskWeight));
   return {
+    caseDepth: caseDepth(items, byId),
     discoveredItems: items.length, testableItems: testable.length, scopedItems: items.length - testable.length,
     riskWeight: { denominator, executed: executedWeight, asserted: assertedWeight, evidenced: evidencedWeight },
     executionCoverage: ratio(executedWeight, denominator), assertionQuality: ratio(assertedWeight, executedWeight), evidenceQuality: ratio(evidencedWeight, executedWeight),
@@ -99,3 +100,53 @@ function validEvidence(values) { return Array.isArray(values) && values.every((v
 function ratio(numerator, denominator) { return denominator === 0 ? null : Number((numerator / denominator).toFixed(4)); }
 function sum(values) { return values.reduce((total, value) => total + value, 0); }
 function unique(values) { return [...new Set(values)]; }
+
+export function validateCasePlan(inventory, observations) {
+  const errors = [];
+  const planned = new Map();
+  for (const surface of inventory.items ?? []) {
+    for (const item of surface.obligations ?? []) {
+      if (planned.has(item.id)) errors.push(`duplicate case obligation: ${item.id}`);
+      planned.set(item.id, { ...item, surfaceId: surface.id });
+      const dimensions = Object.keys(item.dimensions ?? {});
+      if (!dimensions.length || dimensions.some(key => !['operation', 'role', 'state', 'boundary', 'browser', 'device', 'risk-category'].includes(key))) errors.push(`${item.id}: invalid case dimensions`);
+      if (!item.oracleId || !item.applicability || !Number.isInteger(item.weight) || item.weight < 1 || item.weight > 5) errors.push(`${item.id}: incomplete case obligation`);
+    }
+  }
+  const seen = new Set();
+  for (const observation of observations.observations ?? []) {
+    for (const item of observation.cases ?? []) {
+      if (seen.has(item.obligationId)) errors.push(`duplicate case observation: ${item.obligationId}`);
+      seen.add(item.obligationId);
+      const obligation = planned.get(item.obligationId);
+      if (!obligation || obligation.surfaceId !== observation.surfaceId) errors.push(`unknown or wrong-surface obligation: ${item.obligationId}`);
+      if (['passed', 'failed'].includes(item.outcome) && observation.executed !== true) errors.push(`${item.obligationId}: executed case on an unexecuted surface`);
+      if (obligation && item.oracleId !== obligation.oracleId) errors.push(`${item.obligationId}: oracle mismatch`);
+      if (!['passed', 'failed', 'blocked'].includes(item.outcome)) errors.push(`${item.obligationId}: invalid outcome`);
+      if (!validEvidence(item.evidenceIds) || !validEvidence(item.controlEvidenceIds)) errors.push(`${item.obligationId}: invalid evidence`);
+      if (item.outcome === 'blocked' && !item.reason) errors.push(`${item.obligationId}: blocked case requires reason`);
+      if (item.controlEvidenceIds?.some(id => item.evidenceIds?.includes(id))) errors.push(`${item.obligationId}: assertion control must have distinct evidence`);
+    }
+  }
+  return errors;
+}
+
+function caseDepth(items, byId) {
+  let planned = 0, executed = 0, verified = 0;
+  const gaps = [], unplannedSurfaces = [];
+  for (const surface of items.filter(item => item.accessibility === 'testable')) {
+    if (!surface.obligations?.length) unplannedSurfaces.push(surface.id);
+    const observed = new Map((byId.get(surface.id)?.cases ?? []).map(item => [item.obligationId, item]));
+    for (const obligation of surface.obligations ?? []) {
+      planned += obligation.weight;
+      const result = observed.get(obligation.id);
+      const ran = result && ['passed', 'failed'].includes(result.outcome);
+      if (ran) executed += obligation.weight;
+      const supported = ran && result.evidenceIds.length && result.controlEvidenceIds.length;
+      if (supported) verified += obligation.weight;
+      else gaps.push({ obligationId: obligation.id, reason: result?.reason || (ran ? 'Missing execution or assertion-control evidence' : 'Not executed') });
+    }
+  }
+  return { plannedWeight: planned, executedWeight: executed, verifiedWeight: verified,
+    coverage: unplannedSurfaces.length ? null : ratio(verified, planned), unplannedSurfaces, gaps };
+}
