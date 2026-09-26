@@ -9,11 +9,13 @@ import { connect } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { deriveId, deriveInt } from './corpus/derive.mjs';
+import { attr, elementById, escapeHtml, hasClass, page, submitForm, tagsByName, textOf } from './corpus/html.mjs';
 import { controls, corpusDigest, corpusDir, corpusFiles, corpusVersion, modules, probe, seedIds, seeds, startApplication, truthFor } from './corpus/index.mjs';
 
 const CORPUS_SEEDS = [1, 19, 734];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const FORBIDDEN_KEY = /corpus|enabled|seed|truth|faulty|criterion/i;
+const smokeStarted = performance.now();
 let executions = 0;
 
 // Static acceptance: node: builtins and corpus-relative imports only; no nondeterminism sources.
@@ -48,9 +50,28 @@ assert.equal(deriveInt(5, 'fixed', 4, 4), 4);
 assert.throws(() => deriveInt(1, 'bad', 5, 4));
 assert.throws(() => deriveId(-1, 'objectId'));
 
+// HTML helpers: the page shell and the regex-based probe extraction.
+assert.equal(escapeHtml(`<a href="x">'&'</a>`), '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;');
+const shell = page({ title: 'A & B', lang: 'pl', body: '<p>x</p>' });
+assert(shell.startsWith('<!doctype html>\n<html lang="pl">') && shell.includes('<meta charset="utf-8">') && shell.includes('<title>A &amp; B</title>'), 'page() must emit lang, charset and title');
+assert.match(page({ title: 't', body: '' }), /<html lang="en">/);
+const fragment = '<p id="a" class="x y">One &amp; <b>two</b></p><input type="checkbox" checked name=\'n\' aria-label="Pick &quot;me&quot;"><p>Three</p>';
+assert.deepEqual(tagsByName(fragment, 'p').map(element => textOf(element)), ['One & two', 'Three']);
+const [checkbox] = tagsByName(fragment, 'input');
+assert.equal(attr(checkbox, 'checked'), '');
+assert.equal(attr(checkbox, 'name'), 'n');
+assert.equal(attr(checkbox, 'aria-label'), 'Pick "me"');
+assert.equal(attr(checkbox, 'label'), null);
+assert.equal(textOf(elementById(fragment, 'a')), 'One & two');
+assert(hasClass(tagsByName(fragment, 'p')[0], 'y') && !hasClass(tagsByName(fragment, 'p')[1], 'y'));
+
 // Corpus structure.
 assert.equal(corpusVersion, 'argus-eval-corpus@2');
-assert(seeds.length >= 12, `expected at least 12 seeds, found ${seeds.length}`);
+assert.deepEqual(modules.map(module => module.id), ['orders', 'accounts', 'workflow', 'tenant-authz', 'order-events', 'storefront-ui', 'a11y-forms', 'catalog-perf']);
+assert.equal(seeds.length, 22, `expected exactly 22 seeds, found ${seeds.length}`);
+const surfaceCounts = Object.fromEntries(['api', 'authz', 'events', 'ui', 'a11y', 'perf'].map(surface => [surface, seeds.filter(seed => seed.surface === surface).length]));
+assert.deepEqual(surfaceCounts, { api: 3, authz: 5, events: 4, ui: 3, a11y: 4, perf: 3 }, 'seed counts per surface');
+assert(controls.length >= 12, `expected at least 12 controls, found ${controls.length}`);
 const allIds = [...seedIds, ...controls.map(control => control.id)];
 assert.equal(new Set(allIds).size, allIds.length, 'seed and control ids must be unique');
 assert.deepEqual(seedIds, seeds.map(seed => seed.id));
@@ -111,12 +132,22 @@ function forbiddenKeys(value, path = '$') {
 const privateStrings = [corpusVersion, ...allIds, ...seeds.map(seed => seed.criterion)];
 const leaks = text => privateStrings.filter(value => text.includes(value));
 
+// Hunter-visible HTML pages of the UI modules, including states that render extra markup.
+const HTML_PAGES = ['/shop', '/shop/cart', '/shop/checkout', '/shop/orders', '/shop/wishlist', '/account/signup', '/account/settings'];
+const ENTRY_LINKS = ['/shop', '/account/signup', '/account/settings', '/docs'];
+
 async function publicSurface(app) {
   const contractResponse = await fetch(`${app.url}/contract`);
   const contractText = await contractResponse.text();
   const index = await (await fetch(`${app.url}/`)).text();
   const docs = await (await fetch(`${app.url}/docs`)).text();
-  return { status: contractResponse.status, contractText, index, docs };
+  const pages = {};
+  for (const path of HTML_PAGES) pages[`GET ${path}`] = await (await fetch(new URL(path, app.url))).text();
+  const product = app.contract.modules['storefront-ui'].products.find(item => !item.soldOut);
+  assert.equal((await submitForm(app.url, '/shop/cart/add', { productId: product.id, qty: '2' })).status, 303);
+  for (const path of ['/shop/cart', '/shop/checkout']) pages[`GET ${path} with a cart line`] = await (await fetch(new URL(path, app.url))).text();
+  pages['POST /account/signup with invalid fields'] = (await submitForm(app.url, '/account/signup', { email: 'invalid', password: 'short' })).text;
+  return { status: contractResponse.status, contractText, index, docs, pages };
 }
 
 // A reachable non-loopback address must refuse the connection when the app binds 127.0.0.1 only.
@@ -148,7 +179,12 @@ for (const seed of CORPUS_SEEDS) {
       assert.deepEqual(Object.keys(contract.modules), modules.map(module => module.id));
       assert.deepEqual(forbiddenKeys(contract), [], 'public contract must not carry private keys');
       for (const [name, text] of Object.entries({ contract: surface.contractText, index: surface.index, docs: surface.docs })) assert.deepEqual(leaks(text), [], `${name} leaks private corpus data`);
-      assert(surface.index.includes('href="/docs"'), 'index must link /docs');
+      for (const [name, html] of Object.entries(surface.pages)) {
+        assert.deepEqual(leaks(html), [], `${name} leaks private corpus data`);
+        assert(!/data-testid/i.test(html), `${name} must not carry test hooks`);
+        assert(html.startsWith('<!doctype html>\n<html lang="en">') && html.includes('<meta charset="utf-8">') && /<title>[^<]+<\/title>/.test(html), `${name} must be a complete HTML5 document`);
+      }
+      for (const path of ENTRY_LINKS) assert(surface.index.includes(`href="${path}"`), `index must link ${path}`);
       for (const href of [...surface.index.matchAll(/href="([^"]+)"/g)].map(match => match[1])) {
         const linked = await fetch(new URL(href, app.url));
         await linked.arrayBuffer();
@@ -203,4 +239,4 @@ await withApp(1, [], async app => {
 });
 
 const surfaceCount = new Set(seeds.map(seed => seed.surface)).size;
-console.log(`PASS  corpus v2: ${seeds.length} seeds, ${surfaceCount} surfaces, ${controls.length} controls, ${executions} probe executions`);
+console.log(`PASS  corpus v2: ${seeds.length} seeds, ${surfaceCount} surfaces, ${controls.length} controls, ${executions} probe executions (${((performance.now() - smokeStarted) / 1000).toFixed(1)} s)`);
