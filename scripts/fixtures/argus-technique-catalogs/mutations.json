@@ -6,8 +6,17 @@
       "catalog": "atalanta",
       "operation": "remove",
       "pointer": "/entries/21",
-      "rejects": ["schema", "runtime"],
+      "rejects": ["runtime"],
       "runtimeIncludes": "exactly 22 entries"
+    },
+    {
+      "name": "atalanta-unregistered-role",
+      "catalog": "atalanta",
+      "operation": "replace",
+      "pointer": "/role",
+      "value": "unregistered-hunter",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "registered capability-matrix catalog role"
     },
     {
       "name": "atalanta-duplicate-id",
@@ -58,7 +67,7 @@
       "catalog": "proteus",
       "operation": "remove",
       "pointer": "/entries/14",
-      "rejects": ["schema", "runtime"],
+      "rejects": ["runtime"],
       "runtimeIncludes": "exactly 15 entries"
     },
     {

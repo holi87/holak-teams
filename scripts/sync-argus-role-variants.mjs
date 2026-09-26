@@ -20,6 +20,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   validateTechniqueCatalog,
+  validateTechniqueCatalogContracts,
   validateTechniqueCatalogSet,
 } from '../argus/runtime/technique-catalogs.mjs';
 
@@ -63,6 +64,7 @@ const ROUTE_SURFACES = Object.freeze({
   performance: 'performance',
   resilience: 'resilience',
   data: 'data-public-api',
+  'data-direct': 'data-direct',
   accessibility: 'accessibility',
   journey: 'journey-api',
   contract: 'event-protocol',
@@ -288,6 +290,9 @@ function loadDoctrineProfiles(definitions) {
 
 function loadTechniqueCatalogs(definitions, ownership) {
   assert(definitions && typeof definitions === 'object', 'capability matrix techniqueCatalogs are missing');
+  // The matrix declarations are the catalog contracts (type, id prefix, entry count).
+  const contractErrors = validateTechniqueCatalogContracts(definitions);
+  assert(contractErrors.length === 0, `capability matrix technique catalog registry is invalid: ${contractErrors.join('; ')}`);
   const schema = readSourceJson(
     join(SCHEMAS_ROOT, 'technique-catalog.schema.json'),
     'technique catalog schema',
@@ -301,14 +306,14 @@ function loadTechniqueCatalogs(definitions, ownership) {
     const raw = readSourceFile(path, `${id}: technique catalog`, TECHNIQUE_CATALOGS_ROOT);
     const document = JSON.parse(raw.toString('utf8'));
     assert(validateSchema(document), `${id}: technique catalog JSON Schema failed: ${JSON.stringify(validateSchema.errors)}`);
-    const semanticErrors = validateTechniqueCatalog(document);
+    const semanticErrors = validateTechniqueCatalog(document, definitions);
     assert(semanticErrors.length === 0, `${id}: technique catalog semantic validation failed: ${semanticErrors.join('; ')}`);
     assert(document.catalogId === definition.catalogId, `${id}: capability catalogId drift`);
     assert(sha256(raw) === definition.sha256, `${id}: reviewed technique catalog digest drift`);
     validateCatalogRoutes(document, ownership);
     result.set(id, { document, sha256: definition.sha256 });
   }
-  const setErrors = validateTechniqueCatalogSet([...result.values()].map((entry) => entry.document));
+  const setErrors = validateTechniqueCatalogSet([...result.values()].map((entry) => entry.document), definitions);
   assert(setErrors.length === 0, `technique catalog set is invalid: ${setErrors.join('; ')}`);
   return result;
 }

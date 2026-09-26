@@ -247,7 +247,7 @@ Usage:
   argus-assets launch verify --request <json> --authorization <json> --receipt <path> --trust-store <path>
   argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--artifact-root <path>] [--output <json|->]
   argus-assets template <detect|select|scaffold> [options]
-  argus-assets technique scopes|select --role <atalanta|proteus|metis> [--inventory <surface-inventory.json>]
+  argus-assets technique scopes|select --role <${techniqueCatalogRoles().join('|')}> [--inventory <surface-inventory.json>]
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
   argus-assets copy-template <typescript|java|python> <empty-destination>
@@ -304,7 +304,7 @@ temporary directory, diff against the target's existing harness, and merge expli
 
 function techniqueCommand(args) {
   const [operation, ...rest] = args;
-  if (!['scopes', 'select'].includes(operation)) fail('usage: argus-assets technique scopes|select --role <atalanta|proteus|metis> [--inventory <surface-inventory.json>]');
+  if (!['scopes', 'select'].includes(operation)) fail(`usage: argus-assets technique scopes|select --role <${techniqueCatalogRoles().join('|')}> [--inventory <surface-inventory.json>]`);
   const options = parseNamedOptions(rest, operation === 'scopes' ? new Set(['--role']) : new Set(['--role', '--inventory']));
   requireOptions(options, operation === 'scopes' ? ['role'] : ['role', 'inventory'], `technique ${operation}`);
   const declaration = matrix.techniqueCatalogs?.[options.role];
@@ -330,8 +330,9 @@ function techniqueCommand(args) {
   catch (error) { fail(`technique select: inventory is not valid JSON: ${error.message}`); }
   const inventoryErrors = validateSurfaceInventory(inventory);
   if (inventoryErrors.length) fail(`technique select: invalid surface inventory: ${inventoryErrors.join('; ')}`);
+  const scopePattern = techniqueScopePattern();
   const invalidScopes = inventory.items.flatMap((item) => item.techniqueScopes ?? []).filter((scope) =>
-    typeof scope !== 'string' || !/^(atalanta|proteus|metis):[a-z0-9]+(?:-[a-z0-9]+)*$/.test(scope));
+    typeof scope !== 'string' || !scopePattern.test(scope));
   if (invalidScopes.length) fail(`technique select: invalid techniqueScopes: ${[...new Set(invalidScopes)].join(', ')}`);
 
   const declared = [...new Set(inventory.items.flatMap((item) => item.techniqueScopes ?? [])
@@ -376,7 +377,8 @@ function loadTechniqueCatalog(role, declaration) {
   let document;
   try { document = JSON.parse(record.source); }
   catch (error) { fail(`technique select: ${role} catalog is not valid JSON: ${error.message}`); }
-  if (document.$schema !== 'argus/technique-catalog@1' || document.catalogId !== declaration.catalogId || document.role !== role) {
+  if (document.$schema !== 'argus/technique-catalog@1' || document.catalogId !== declaration.catalogId || document.role !== role ||
+    document.catalogType !== declaration.catalogType) {
     fail(`technique select: ${role} catalog identity mismatch`);
   }
   return document;
@@ -443,6 +445,21 @@ function techniqueIds(document) {
 function techniqueScopes(document) {
   if (document.catalogType === 'hunter') return [...new Set(document.entries.flatMap((entry) => entry.scope))].sort();
   return [...new Set([...document.iso25010, ...document.journeyClasses, ...document.archetypes].map((entry) => entry.id))].sort();
+}
+
+// Catalog roles come only from the capability matrix, so a matrix declaration is enough for
+// the selector to accept that role's namespaced techniqueScopes; no role list lives in code.
+function techniqueCatalogRoles() {
+  const roles = Object.keys(plainObject(matrix.techniqueCatalogs) ? matrix.techniqueCatalogs : {});
+  const invalid = roles.filter((role) => !/^[a-z][a-z0-9-]*$/.test(role));
+  if (invalid.length) fail(`capability matrix declares invalid technique catalog roles: ${invalid.join(', ')}`);
+  return roles;
+}
+
+function techniqueScopePattern() {
+  const roles = techniqueCatalogRoles();
+  if (roles.length === 0) fail('technique select: capability matrix declares no technique catalogs');
+  return new RegExp(`^(?:${roles.join('|')}):[a-z0-9]+(?:-[a-z0-9]+)*$`);
 }
 
 function templateCommand(args) {

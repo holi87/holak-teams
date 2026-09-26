@@ -93,18 +93,14 @@
     "techniqueCatalogs": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "atalanta",
-        "ariadne",
-        "proteus",
-        "metis"
-      ],
+      "minProperties": 1,
       "patternProperties": {
-        "^(atalanta|ariadne|proteus|metis)$": {
+        "^[a-z][a-z0-9-]*$": {
           "type": "object",
           "additionalProperties": false,
           "required": [
             "catalogId",
+            "catalogType",
             "sha256",
             "delivery",
             "requiredAsset",
@@ -114,7 +110,22 @@
           "properties": {
             "catalogId": {
               "type": "string",
-              "pattern": "^argus/technique-catalog/(atalanta|ariadne|proteus|metis)@1$"
+              "pattern": "^argus/technique-catalog/[a-z][a-z0-9-]*@1$"
+            },
+            "catalogType": {
+              "enum": [
+                "hunter",
+                "strategy"
+              ]
+            },
+            "idPrefix": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "entryCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 99
             },
             "sha256": {
               "type": "string",
@@ -132,7 +143,39 @@
             "fallback": {
               "const": "full-catalog"
             }
-          }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "catalogType": {
+                    "const": "hunter"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "idPrefix",
+                  "entryCount"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "catalogType": {
+                    "const": "strategy"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "idPrefix": false,
+                  "entryCount": false
+                }
+              }
+            }
+          ]
         }
       }
     },

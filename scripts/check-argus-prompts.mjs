@@ -229,7 +229,9 @@ function assertProfileAssignments(capabilityMatrix, counts) {
     const actual = capabilityMatrix.agents.filter((agent) => agent.toolProfiles.includes(profile)).length;
     assert(actual === count, `${profile}: expected ${count} assignments, found ${actual}`);
   }
-  for (const catalog of ['atalanta', 'ariadne', 'proteus', 'metis']) {
+  const catalogs = Object.keys(capabilityMatrix.techniqueCatalogs ?? {});
+  assert(catalogs.length > 0, 'capability matrix declares no technique catalogs');
+  for (const catalog of catalogs) {
     const owners = capabilityMatrix.agents.filter((agent) => agent.techniqueCatalogs.includes(catalog)).map((agent) => agent.slug);
     assert(equal(owners, [catalog]), `${catalog}: technique catalog assignment drifted`);
   }

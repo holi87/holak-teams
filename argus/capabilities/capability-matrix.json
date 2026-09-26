@@ -63,6 +63,9 @@
   "techniqueCatalogs": {
     "atalanta": {
       "catalogId": "argus/technique-catalog/atalanta@1",
+      "catalogType": "hunter",
+      "idPrefix": "ATA",
+      "entryCount": 22,
       "sha256": "605ccbde04dd96b38d96d61641498a6b480711f752eb41e14ce2252f31fe6f37",
       "delivery": "lazy",
       "requiredAsset": "technique-catalogs-bundle",
@@ -71,6 +74,9 @@
     },
     "ariadne": {
       "catalogId": "argus/technique-catalog/ariadne@1",
+      "catalogType": "hunter",
+      "idPrefix": "ARI",
+      "entryCount": 16,
       "sha256": "625b77d94624f04636401603bc6b89a7679894e1649a695c106715d2c6ed0f21",
       "delivery": "lazy",
       "requiredAsset": "technique-catalogs-bundle",
@@ -79,6 +85,9 @@
     },
     "proteus": {
       "catalogId": "argus/technique-catalog/proteus@1",
+      "catalogType": "hunter",
+      "idPrefix": "PRO",
+      "entryCount": 15,
       "sha256": "f81ec23ffad2d618e49663a615bd6a72720190e648ed2e833eb4415d4f8d1184",
       "delivery": "lazy",
       "requiredAsset": "technique-catalogs-bundle",
@@ -87,6 +96,7 @@
     },
     "metis": {
       "catalogId": "argus/technique-catalog/metis@1",
+      "catalogType": "strategy",
       "sha256": "7b52916db7332ca20ef1578971a11ef2bb00b7551385981e0d3108c1b70e9001",
       "delivery": "lazy",
       "requiredAsset": "technique-catalogs-bundle",
