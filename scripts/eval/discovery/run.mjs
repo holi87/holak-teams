@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { randomInt } from 'node:crypto';
-import { startApplication } from './apps.mjs';
+import * as builtInCorpus from './corpus/index.mjs';
 // Usage: node scripts/eval/discovery/run.mjs <comparison-config.json> <new-output-directory>
 // Each host adapter receives ONLY a public request path, and returns findings/usage.
 const [configPath, outputPath] = process.argv.slice(2);
@@ -14,9 +14,19 @@ const config = JSON.parse(readFileSync(resolve(configPath)));
 if (!Array.isArray(config.variants) || config.variants.length !== 2 || !Number.isInteger(config.repeats) || config.repeats < 2 || !Number.isInteger(config.seconds) || config.seconds < 1 || !Number.isInteger(config.tokens) || config.tokens < 1) throw new Error('two variants, repeats>=2, and positive equal time/token budgets required');
 for (const variant of config.variants) if (!variant.name || !/^[a-f0-9]{40}$/.test(variant.revision ?? '') || !Array.isArray(variant.command) || !variant.command.length || !isAbsolute(variant.command[0])) throw new Error('variant requires name, immutable revision, and command argv');
 if (new Set(config.variants.map(variant => variant.name)).size !== 2) throw new Error('variant names must be distinct');
-const corpus = config.corpusModule ? await import(pathToFileURL(resolve(dirname(resolve(configPath)), config.corpusModule)))
-  : { families: ['orders', 'accounts', 'workflow'], startApplication };
-if (!Array.isArray(corpus.families) || !corpus.families.length || typeof corpus.startApplication !== 'function') throw new Error('invalid private corpus module');
+// A corpus v2 module (built-in or private) is one composite application: the faulty build
+// enables every seed, the corrected build none.
+const source = config.corpusModule ? await import(pathToFileURL(resolve(dirname(resolve(configPath)), config.corpusModule)))
+  : builtInCorpus;
+if (!Array.isArray(source.seedIds) || !source.seedIds.length || typeof source.startApplication !== 'function' || typeof source.truthFor !== 'function') throw new Error('invalid private corpus module');
+const corpus = {
+  families: ['suite'],
+  startApplication: async ({ seed, faulty }) => {
+    const enabledSeeds = faulty ? [...source.seedIds] : [];
+    const app = await source.startApplication({ seed, enabledSeeds });
+    return { url: app.url, truth: source.truthFor(enabledSeeds), close: app.close };
+  },
+};
 const output = resolve(outputPath); mkdirSync(output, { mode: 0o700 });
 const runs = [];
 for (let repeat = 0; repeat < config.repeats; repeat++) {
