@@ -3,7 +3,7 @@
   "$id": "https://holak-teams.local/argus/model-policy.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "policyId", "baseline", "tiers", "fallbackPolicies", "escalationProfiles", "mechanicalDowngrade", "routing", "telemetry", "roles"],
+  "required": ["schemaVersion", "policyId", "baseline", "tiers", "fallbackPolicies", "escalationProfiles", "mechanicalDowngrade", "routing", "telemetry", "controllerBudget", "roles"],
   "properties": {
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
@@ -53,6 +53,15 @@
       }
     },
     "telemetry": { "type": "object" },
+    "controllerBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "closeoutReserveTurns"],
+      "properties": {
+        "agent": { "const": "odysseus" },
+        "closeoutReserveTurns": { "type": "integer", "minimum": 10, "maximum": 100 }
+      }
+    },
     "roles": {
       "type": "array",
       "minItems": 27,

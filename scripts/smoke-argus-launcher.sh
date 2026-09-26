@@ -33,6 +33,31 @@ set -e
 jq -e '.requestedTurns == 4 and .completedTurns == 3 and .outcome == "error_max_turns" and .supervisorObserved == true' \
   "$WORK/small-turn-cap.json" >/dev/null || fail 'small native turn-cap behavior was not observed at the exact boundary'
 
+# The controller turn cap lives in four places that must never drift: the model-policy
+# controllerBudget role, the launcher constant (source and packaged copy), and the
+# maxTurns const of both native-launch schemas (source and packaged copies). argus-assets
+# derives the signed cap from the policy; the authenticated launches below prove it.
+readonly REVIEWED_CONTROLLER_TURNS=400
+policy_controller="$(jq -er '.controllerBudget.agent' "$ROOT/argus/model-policy.json")" || fail 'model policy has no controllerBudget agent'
+[ "$policy_controller" = odysseus ] || fail "model policy controllerBudget names $policy_controller instead of odysseus"
+policy_controller_turns="$(jq -er --arg agent "$policy_controller" '.roles[] | select(.slug == $agent) | .maxTurns' "$ROOT/argus/model-policy.json")" || \
+  fail 'model policy has no controller role turn cap'
+[ "$policy_controller_turns" = "$REVIEWED_CONTROLLER_TURNS" ] || \
+  fail "model policy controller maxTurns $policy_controller_turns differs from the reviewed $REVIEWED_CONTROLLER_TURNS-turn cap"
+for launcher_copy in "$ROOT/argus/bin/argus-launch" "$ROOT/argus/claude/bin/argus-launch"; do
+  launcher_turns="$(sed -n 's/^readonly CONTROLLER_MAX_TURNS=\([0-9][0-9]*\)$/\1/p' "$launcher_copy")"
+  [ "$(printf '%s\n' "$launcher_turns" | grep -c .)" -eq 1 ] || fail "$launcher_copy must declare readonly CONTROLLER_MAX_TURNS exactly once"
+  [ "$launcher_turns" = "$policy_controller_turns" ] || \
+    fail "$launcher_copy CONTROLLER_MAX_TURNS=$launcher_turns differs from model-policy $policy_controller maxTurns $policy_controller_turns"
+done
+for schema_copy in \
+  "$ROOT/argus/schemas/native-launch-authorization.schema.json" "$ROOT/argus/schemas/native-launch-receipt.schema.json" \
+  "$ROOT/argus/claude/schemas/native-launch-authorization.schema.json" "$ROOT/argus/claude/schemas/native-launch-receipt.schema.json"; do
+  schema_turns="$(jq -er '.properties.maxTurns.const' "$schema_copy")" || fail "$schema_copy has no maxTurns const"
+  [ "$schema_turns" = "$policy_controller_turns" ] || \
+    fail "$schema_copy maxTurns const $schema_turns differs from model-policy $policy_controller maxTurns $policy_controller_turns"
+done
+
 prepare_signer() {
   local root="$1" key_id="$2"
   mkdir -p "$root"
@@ -124,7 +149,7 @@ run_authenticated_launch() {
   jq -e '.checks[] | select(.id == "native-host-execution" and .status == "pass")' \
     "$artifact/ai_agents_internal/preflight.json" >/dev/null || fail "$name native preflight check did not pass"
   jq -e --arg target "$(jq -r .target "$request")" --arg artifact "$artifact" \
-    '.target == $target and .artifactRoot == $artifact and .maxTurns == 96 and .sandboxPolicy == "os-native-target-readonly@2" and .environmentPolicy == "argus-launch-allowlist@1"' \
+    '.target == $target and .artifactRoot == $artifact and .maxTurns == 400 and .sandboxPolicy == "os-native-target-readonly@2" and .environmentPolicy == "argus-launch-allowlist@1"' \
     "$authorization" >/dev/null || fail "$name signed authorization omitted exact launch bindings"
   env_file="$artifact/ai_agents_internal/fixture-child-environment.txt"
   [ "$(grep -c '^ARGUS_' "$env_file")" -eq 4 ] || { cat "$env_file" >&2; fail "$name child received an unexpected Argus environment variable"; }
@@ -135,8 +160,8 @@ run_authenticated_launch() {
     ! grep -q "^$forbidden=" "$env_file" || fail "$name inherited forbidden capability $forbidden"
   done
   grep -Fq -- '--max-turns' "$artifact/ai_agents_internal/fixture-claude-arguments.txt" || fail "$name Claude argv omitted --max-turns"
-  grep -Fxq '96' "$artifact/ai_agents_internal/fixture-claude-arguments.txt" || fail "$name Claude argv omitted the exact 96-turn cap"
-  jq -e '.requestedTurns == 97 and .completedTurns == 96 and .outcome == "error_max_turns" and .supervisorObserved == true' \
+  grep -Fxq '400' "$artifact/ai_agents_internal/fixture-claude-arguments.txt" || fail "$name Claude argv omitted the exact 400-turn cap"
+  jq -e '.requestedTurns == 401 and .completedTurns == 400 and .outcome == "error_max_turns" and .supervisorObserved == true' \
     "$artifact/ai_agents_internal/fixture-turn-cap-behavior.json" >/dev/null || fail "$name did not observe exact native turn-cap termination behavior"
 }
 
@@ -164,6 +189,48 @@ if "$CLI" launch verify --request "$WORK/path-operator/request.json" \
   --trust-store "$WORK/path-operator/model-trust.json" >/dev/null 2>&1; then
   fail 'signed launch authorization accepted changed arguments'
 fi
+
+# A signed document carrying the retired 96-turn cap cannot be verified.
+jq '.maxTurns = 96' "$WORK/path-operator/authorization.json" >"$WORK/path-operator/retired-cap-authorization.json"
+chmod 600 "$WORK/path-operator/retired-cap-authorization.json"
+if "$CLI" launch verify --request "$WORK/path-operator/request.json" \
+  --authorization "$WORK/path-operator/retired-cap-authorization.json" \
+  --receipt "$WORK/path artifacts/ai_agents_internal/native-launch-receipt.json" \
+  --trust-store "$WORK/path-operator/model-trust.json" >/dev/null 2>"$WORK/retired-cap.stderr"; then
+  fail 'signed launch authorization accepted a turn cap other than the controller cap'
+fi
+grep -Fq '/maxTurns' "$WORK/retired-cap.stderr" || { cat "$WORK/retired-cap.stderr" >&2; fail 'retired turn-cap rejection did not name maxTurns'; }
+
+# Even a fully verified authorization cannot start Claude when its signed cap differs
+# from the launcher's own constant: a packaged launcher copy with a drifted constant
+# must refuse after launch verify and before spawning the controller.
+drift_plugin="$WORK/drift-plugin"
+cp -R "$ROOT/argus/claude" "$drift_plugin"
+sed 's/^readonly CONTROLLER_MAX_TURNS=400$/readonly CONTROLLER_MAX_TURNS=399/' "$ROOT/argus/claude/bin/argus-launch" >"$drift_plugin/bin/argus-launch"
+grep -Fxq 'readonly CONTROLLER_MAX_TURNS=399' "$drift_plugin/bin/argus-launch" || fail 'drift launcher fixture did not change the controller constant'
+mkdir -p "$WORK/drift-target" "$WORK/drift-artifacts"
+prepare_signer "$WORK/drift-operator" runtime-drift
+PATH="$FIXTURE_PATH:$PATH" "$drift_plugin/bin/argus-launch" claude --target "$WORK/drift-target" \
+  --artifact-root "$WORK/drift-artifacts" --mode B --engagement-id launcher-drift \
+  --trust-store "$WORK/drift-operator/model-trust.json" --runtime-key-id runtime-drift \
+  --request-output "$WORK/drift-operator/request.json" --launch-authorization "$WORK/drift-operator/authorization.json" \
+  --wait-seconds 30 >"$WORK/drift.stdout" 2>"$WORK/drift.stderr" &
+drift_pid=$!
+wait_for_file "$WORK/drift-operator/request.json" || { cat "$WORK/drift.stderr" >&2; fail 'drift launch request was not created'; }
+jq -e --argjson turns "$REVIEWED_CONTROLLER_TURNS" '.maxTurns == $turns' "$WORK/drift-operator/request.json" >/dev/null || \
+  fail 'argus-assets did not sign the model-policy controller cap into the launch request'
+sign_request "$WORK/drift-operator" "$WORK/drift-operator/request.json" "$WORK/drift-operator/authorization.json"
+set +e
+wait "$drift_pid"
+drift_status=$?
+set -e
+[ "$drift_status" -ne 0 ] || fail 'launcher accepted a signed turn cap that differs from its controller constant'
+grep -Fq 'signed launch authorization turn cap differs from the launcher controller cap' "$WORK/drift.stderr" || {
+  cat "$WORK/drift.stderr" >&2
+  fail 'drifted launcher constant was not rejected by the signed-cap cross-check'
+}
+[ -f "$WORK/drift-artifacts/ai_agents_internal/native-launch-receipt.json" ] || fail 'drift launch failed before launch verify'
+[ ! -e "$WORK/drift-artifacts/ai_agents_internal/fixture-claude-arguments.txt" ] || fail 'drift launcher started the controller'
 
 # A public environment string must never satisfy the mandatory native check.
 mkdir -p "$WORK/direct-target" "$WORK/direct-artifacts"
@@ -290,6 +357,63 @@ if "$CLI" launch request --target "$WORK/alias-target" --workspace "$WORK/alias-
   fail 'launch request accepted a missing supervisor process'
 fi
 
+# --unattested is a keyless downgrade for hosts with no operator key material. Every case
+# runs with a fresh HOME and no inherited trust store so the host's own keys never leak in.
+mkdir -p "$WORK/unattested-target" "$WORK/unattested-operator"
+chmod 700 "$WORK/unattested-operator"
+printf '{}\n' >"$WORK/unattested-operator/model-trust.json"
+run_unattested_case() {
+  local name="$1" home="$WORK/unattested-home-$1"
+  shift
+  mkdir -p "$home"
+  env -u ARGUS_MODEL_TRUST_STORE HOME="$home" PATH="$FIXTURE_BIN:$PATH" "$@" \
+    "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-$name" \
+    --mode A --engagement-id "launcher-unattested-$name" --unattested --dry-run \
+    >"$WORK/unattested-$name.stdout" 2>"$WORK/unattested-$name.stderr"
+}
+expect_unattested_refusal() {
+  local name="$1" status="$2" message="$3"
+  [ "$status" -ne 0 ] || fail "unattested $name downgrade was accepted"
+  grep -Fq -- "$message" "$WORK/unattested-$name.stderr" || { cat "$WORK/unattested-$name.stderr" >&2; fail "unattested $name refusal did not report: $message"; }
+  [ ! -e "$WORK/unattested-artifacts-$name" ] || fail "unattested $name refusal created the artifact root"
+}
+
+# (a) A keyless dry run reports the controller cap and the explicit UNATTESTED marker.
+set +e
+run_unattested_case dry-run
+unattested_status=$?
+set -e
+[ "$unattested_status" -eq 0 ] || { cat "$WORK/unattested-dry-run.stderr" >&2; fail 'unattested dry run failed on a host without key material'; }
+grep -Fq "maxTurns=$REVIEWED_CONTROLLER_TURNS" "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run omitted the controller turn cap'
+grep -Fq 'attestation=UNATTESTED' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run omitted the UNATTESTED marker'
+
+# (b) Keyless mode cannot be mixed with attested launch options.
+set +e
+env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-combined" PATH="$FIXTURE_BIN:$PATH" \
+  "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-combined" \
+  --mode A --engagement-id launcher-unattested-combined --unattested --dry-run \
+  --trust-store "$WORK/unattested-operator/model-trust.json" \
+  >"$WORK/unattested-combined.stdout" 2>"$WORK/unattested-combined.stderr"
+unattested_status=$?
+set -e
+expect_unattested_refusal combined "$unattested_status" '--unattested cannot be combined'
+
+# (c) An inherited trust-store variable proves key material exists on this host.
+set +e
+run_unattested_case env-trust-store ARGUS_MODEL_TRUST_STORE="$WORK/unattested-operator/model-trust.json"
+unattested_status=$?
+set -e
+expect_unattested_refusal env-trust-store "$unattested_status" 'ARGUS_MODEL_TRUST_STORE is set'
+
+# (d) The default host trust store is the operator's kill switch for keyless launches.
+mkdir -p "$WORK/unattested-home-host-trust-store/.config/argus"
+printf '{}\n' >"$WORK/unattested-home-host-trust-store/.config/argus/model-trust.json"
+set +e
+run_unattested_case host-trust-store
+unattested_status=$?
+set -e
+expect_unattested_refusal host-trust-store "$unattested_status" 'a host model trust store exists'
+
 if "$LAUNCHER" codex >/dev/null 2>&1; then fail 'launcher accepted Codex without a native turn cap'; fi
 if PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" claude --target "$WORK/path target" --artifact-root "$WORK/invalid-mode" \
   --mode Z --engagement-id invalid-mode --trust-store "$WORK/path-operator/model-trust.json" \
@@ -299,4 +423,4 @@ if PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" claude --target "$WORK/path target" --a
 fi
 
 "$LAUNCHER" doctor >/dev/null
-printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior, direct/replay rejection, and fail-closed Codex\n'
+printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'

@@ -24,7 +24,7 @@
     "runtime": { "const": "claude" },
     "model": { "const": "opus" },
     "effort": { "const": "max" },
-    "maxTurns": { "const": 96 },
+    "maxTurns": { "const": 400 },
     "mode": { "enum": ["A", "B", "C", "D"] },
     "targetKind": { "enum": ["path", "url"] },
     "target": { "type": "string", "minLength": 1 },

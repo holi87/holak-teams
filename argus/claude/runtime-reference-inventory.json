@@ -2071,6 +2071,12 @@
           "reference": "model-policy"
         },
         {
+          "consumer": "runtime:controllerMaxTurns",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "model-policy"
+        },
+        {
           "consumer": "runtime:modelCommand",
           "kind": "command",
           "mechanism": "cli-require-asset",

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   buildModelRoutingPreview,
   buildModelTelemetryEvent,
+  controllerTurnBudget,
   modelAuthenticatedDocumentSha256,
   modelAuthenticationPayload,
   modelDecisionIntegritySha256,
@@ -64,6 +65,22 @@ assert(policy.baseline.frontierRoles === derivedCounts.frontier && policy.baseli
 assert(policy.baseline.decision === `adopt-${derivedCounts.frontier}-frontier-${derivedCounts.standard}-standard`, 'baseline decision differs from the derived role tiers');
 assert(policy.tiers.frontier.codex.model === 'sol' && policy.tiers.standard.codex.model === 'terra', 'Codex tier mapping drifted');
 assert(policy.tiers.frontier.claude.model === 'opus' && policy.tiers.standard.claude.model === 'sonnet', 'Claude tier mapping drifted');
+
+// The controller turn budget binds the native launch cap and its closeout reserve.
+const controllerBudget = controllerTurnBudget(policy);
+assert(stable(controllerBudget) === stable({ agent: 'odysseus', maxTurns: 400, closeoutReserveTurns: 30 }), `controller turn budget drifted: ${stable(controllerBudget)}`);
+const shortController = structuredClone(policy);
+shortController.roles.find(({ slug }) => slug === 'odysseus').maxTurns = 299;
+assertPolicyRejected(shortController, 'controller maxTurns must be at least 300', 'a controller cap below 300 turns was accepted');
+const oversizedReserve = structuredClone(policy);
+oversizedReserve.controllerBudget.closeoutReserveTurns = 101;
+assertPolicyRejected(oversizedReserve, 'closeoutReserveTurns must be an integer from 10 to floor(maxTurns/4)=100', 'a closeout reserve above a quarter of the cap was accepted');
+assert(validatePolicySchema(oversizedReserve).length > 0, 'model policy schema accepted a closeout reserve above 100');
+const missingBudget = structuredClone(policy);
+delete missingBudget.controllerBudget;
+assertPolicyRejected(missingBudget, 'controllerBudget is required', 'a policy without a controller budget was accepted');
+assert(validatePolicySchema(missingBudget).length > 0, 'model policy schema accepted a missing controller budget');
+assertThrows(() => controllerTurnBudget(missingBudget), 'controllerTurnBudget resolved a policy without a controller budget');
 
 const claudePreview = buildModelRoutingPreview(policy, adapters, { slug: 'aegis', runtime: 'claude' });
 assert(claudePreview.status === 'ready' && claudePreview.missingCapabilities.length === 0, 'native Claude baseline is not ready');
@@ -143,7 +160,7 @@ for (const forbidden of ['prompt', 'completion', 'target', 'url', 'path', 'accou
   assert(!Object.hasOwn(telemetry, forbidden), `telemetry leaked ${forbidden}`);
 }
 
-console.log('PASS  Argus model routing: derived tier counts, allowlisted standard path, native Claude enforcement, fail-closed Codex, authenticated frontier decisions, immutable telemetry');
+console.log('PASS  Argus model routing: derived tier counts, controller turn budget, allowlisted standard path, native Claude enforcement, fail-closed Codex, authenticated frontier decisions, immutable telemetry');
 
 function decide(snapshot, overrides, activePolicy = policy) {
   const decision = resolveModelDecision(activePolicy, snapshot, { ...context, ...overrides });
@@ -209,4 +226,5 @@ function assertThrows(operation, message) {
 
 function readJson(relativePath) { return JSON.parse(readFileSync(join(ROOT, relativePath), 'utf8')); }
 function same(left, right) { return JSON.stringify([...left].sort()) === JSON.stringify([...right].sort()); }
+function stable(record) { return JSON.stringify(Object.fromEntries(Object.entries(record).sort(([left], [right]) => left.localeCompare(right)))); }
 function assert(value, message) { if (!value) throw new Error(message); }
