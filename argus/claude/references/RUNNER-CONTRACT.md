@@ -225,7 +225,8 @@ tamper pass whose variant is exempt or not applicable emits nothing for that tes
 
 Intermittent defects have one definition. A regression declares its repetition `n`
 (SD-11), derived from the ledger entry's `verification.reproduction`: with
-`p = occurrences / attempts`, `n = 1` when `p = 1`, otherwise
+`p = occurrences / attempts`, `n = 1` when `p = 1` or the entry has no reproduction
+record, otherwise
 `n = min(200, ceil(ln 0.05 / ln(1 - p)))`, raised at most once to the 99% bound
 `min(200, ceil(ln 0.01 / ln(1 - p)))` after an unreproduced run. One test invocation
 repeats the reproduction from fresh state up to `n` times and fails at the first oracle
