@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 25188,
-      "sha256": "7927c4323d22f13acad6a91681655f0d4a9d3be44f80b623e6251c02f8afc6ac"
+      "bytes": 25906,
+      "sha256": "973216945fff16bfa95a4248b6ad3b40ef8156cfac78117634a921fc410a1bd6"
     },
     {
       "id": "browser-isolation",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 38,
-      "bytes": 138791,
-      "sha256": "1c24699d7bbef96141ca2bb38da17a8f4f7fc9c695cc957edc84779be50838b5"
+      "bytes": 139117,
+      "sha256": "2e73d67c64d6063e3336e109183f1ca6d92af039efe3edf352c79e1a0edee136"
     },
     {
       "id": "capability-matrix",
@@ -209,8 +209,8 @@
       "source": "argus/model-policy.json",
       "destination": "capabilities/model-policy.json",
       "files": 1,
-      "bytes": 9203,
-      "sha256": "941f6ac83eb2de4f1c8a1a6cd9994719d7b920f42f233d2282294c0c2bb2231c"
+      "bytes": 9289,
+      "sha256": "92b8380b0e18203288ab3031527e45d968deffd0535b9f3f65fc378a4e4ae1bb"
     },
     {
       "id": "runtime-adapters",
@@ -218,8 +218,8 @@
       "source": "argus/runtime-adapters.json",
       "destination": "capabilities/runtime-adapters.json",
       "files": 1,
-      "bytes": 4173,
-      "sha256": "525a4699a9c06260b0a95e11b5c39a6e4c1dd50dac5e165ae35c2f79ed5d3de3"
+      "bytes": 4209,
+      "sha256": "ed746a74b9783972642742f96de07b59206b9906d6ec4de03c65b7180ad31e59"
     },
     {
       "id": "template-policy",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 9,
-      "bytes": 240169,
-      "sha256": "042e6a0469f715f944d89c51354874cc064553c9471d65f231303f7d49ae586d"
+      "bytes": 242381,
+      "sha256": "d6635d5740d25f4a92f82dc3704adf58f1d27495e6c55958dee588856f50ad7a"
     },
     {
       "id": "common-template",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 55784,
-    "sha256": "19609c74c6b96b783c3d2ec62541032d1c074ae2fa57fa2bc255aa5d6a8460ac"
+    "bytes": 55968,
+    "sha256": "5d32f9b5f3835fd6b56681fedfc79424314554c36cad8fa2213e3b438bb5d458"
   }
 }
