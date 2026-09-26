@@ -8,6 +8,14 @@ const schema = JSON.parse(readFileSync(join(ROOT, 'schemas', 'orchestration-plan
 const validateSchema = compileJsonSchema(schema);
 const MODES = Object.freeze(['A', 'B', 'C', 'D']);
 const WAVE_ORDER = Object.freeze(['W0', 'W1', 'W2', 'W3', 'W4']);
+const PASS_KINDS = Object.freeze(['proof', 'deep-hunt']);
+const CONTROL_PHASES = Object.freeze(['preflight', 'complete']);
+const CONTROLLER = 'odysseus';
+const DEFAULT_VALIDATOR = 'minos';
+// Lanes whose output reaches the ledger only through Minos: their candidates can bounce, so
+// they must stay reachable (standby) while the first proof phase runs.
+const PROOF_CANDIDATE_PERSISTENCE = Object.freeze(['candidate-file', 'fragment-only']);
+const ROUTED_STATUSES = Object.freeze(['bounced', 'needs-oracle', 'quarantined', 'suspected', 'confirmed']);
 
 export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
   const errors = validateSchema(plan).map(formatSchemaError);
@@ -20,9 +28,17 @@ export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
   const roles = [...planBySlug.values()];
   const knownGates = new Set(Object.keys(capabilityMatrix.capabilities ?? {}));
   compareSets(planBySlug.keys(), matrixBySlug.keys(), 'role roster', errors);
+  let proofCandidates = null;
   if (raci !== undefined) {
     if (!isObject(raci) || !Array.isArray(raci.agents)) errors.push('RACI must contain an agents array');
-    else compareSets(planBySlug.keys(), uniqueMap(raci.agents, 'RACI', errors).keys(), 'RACI roster', errors);
+    else {
+      const raciBySlug = uniqueMap(raci.agents, 'RACI', errors);
+      compareSets(planBySlug.keys(), raciBySlug.keys(), 'RACI roster', errors);
+      proofCandidates = [...raciBySlug.values()]
+        .filter((agent) => PROOF_CANDIDATE_PERSISTENCE.includes(agent.persistence))
+        .map((agent) => agent.slug)
+        .sort();
+    }
   }
 
   for (const [slug, role] of planBySlug) {
@@ -62,21 +78,20 @@ export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
     }
   }
 
-  const deepHunt = plan.deepHuntWave;
+  const deepHunt = plan.deepHunt;
   if (deepHunt !== undefined) {
-    if (!isObject(deepHunt)) errors.push('deepHuntWave: must be an object');
+    if (!isObject(deepHunt)) errors.push('deepHunt: must be an object');
     else {
-      if (!WAVE_ORDER.includes(deepHunt.afterWave)) errors.push('deepHuntWave.afterWave: must name a declared wave');
       for (const mode of Array.isArray(deepHunt.modes) ? deepHunt.modes : []) {
-        if (!MODES.includes(mode)) errors.push(`deepHuntWave.modes: unknown mode ${String(mode)}`);
+        if (!MODES.includes(mode)) errors.push(`deepHunt.modes: unknown mode ${String(mode)}`);
       }
       for (const slug of Array.isArray(deepHunt.roles) ? deepHunt.roles : []) {
         const role = planBySlug.get(slug);
-        if (!role) errors.push(`deepHuntWave.roles: unknown role ${String(slug)}`);
-        else if (!role.dispatch) errors.push(`deepHuntWave.roles: ${slug} is not dispatched`);
+        if (!role) errors.push(`deepHunt.roles: unknown role ${String(slug)}`);
+        else if (!role.dispatch) errors.push(`deepHunt.roles: ${slug} is not dispatched`);
         else {
           for (const mode of Array.isArray(deepHunt.modes) ? deepHunt.modes : []) {
-            if (!role.modes.includes(mode)) errors.push(`deepHuntWave.roles: ${slug} is inactive in Mode ${mode}`);
+            if (!stringList(role.modes).includes(mode)) errors.push(`deepHunt.roles: ${slug} is inactive in Mode ${mode}`);
           }
         }
       }
@@ -117,8 +132,30 @@ export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
     }
   }
 
-  validateDependencies(planBySlug, errors);
+  const phases = phaseList(plan);
+  validatePhases(plan, phases, planBySlug, proofCandidates, errors);
+  validateProofLoop(plan.proofLoop, planBySlug, proofCandidates, errors);
+  validateDependencies(planBySlug, phases, errors);
   return [...new Set(errors)];
+}
+
+// Derives the ordered engagement phases for one mode: the controller-owned preflight and
+// complete bracket every plan phase active in that mode. Participants and standby lanes are
+// narrowed to the selected roles, so the result is exactly the manifest phasePlan.
+export function derivePhasePlan(plan, capabilityMatrix, mode, selectedAgents, raci) {
+  const errors = validateOrchestrationPlan(plan, capabilityMatrix, raci);
+  if (errors.length > 0) throw new Error(`invalid orchestration plan: ${errors.join('; ')}`);
+  if (!MODES.includes(mode)) throw new Error(`unknown Argus mode: ${mode}`);
+  if (selectedAgents !== undefined && !Array.isArray(selectedAgents)) throw new Error('selected agents must be an array of role slugs');
+
+  const planBySlug = new Map(plan.roles.map((role) => [role.slug, role]));
+  const selected = new Set(selectedAgents ?? plan.roles.filter((role) => role.modes.includes(mode)).map((role) => role.slug));
+  for (const slug of selected) {
+    const role = planBySlug.get(slug);
+    if (!role) throw new Error(`unknown selected role: ${slug}`);
+    if (!role.modes.includes(mode)) throw new Error(`role is not active in Mode ${mode}: ${slug}`);
+  }
+  return buildPhasePlan(plan, mode, selected);
 }
 
 export function projectOrchestrationPlan(plan, capabilityMatrix, mode, dispatchableSlugs, raci) {
@@ -161,29 +198,216 @@ export function projectOrchestrationPlan(plan, capabilityMatrix, mode, dispatcha
           omittedDependencies: role.dependsOn.filter((slug) => !selectedSlugs.has(slug)),
         })),
     })),
-    deepHuntWave: projectDeepHuntWave(plan.deepHuntWave, mode, selectedSlugs),
+    phases: buildPhasePlan(plan, mode, new Set([...selectedSlugs, CONTROLLER])),
+    deepHunt: projectDeepHunt(plan.deepHunt, mode, selectedSlugs),
+    proofLoop: projectProofLoop(plan.proofLoop, selectedSlugs),
+    huntingBrief: [...plan.huntingBrief],
     omitted: active
       .filter((role) => !selectedSlugs.has(role.slug))
       .map((role) => ({ slug: role.slug, reason: 'not-in-dispatchable-set' })),
   };
 }
 
-function projectDeepHuntWave(deepHunt, mode, selectedSlugs) {
-  if (!isObject(deepHunt) || !Array.isArray(deepHunt.modes) || !deepHunt.modes.includes(mode)) return null;
-  const roles = Array.isArray(deepHunt.roles) ? deepHunt.roles : [];
+function buildPhasePlan(plan, mode, selected) {
+  const control = (id) => ({
+    id,
+    wave: 'controller',
+    kind: 'control',
+    skippable: false,
+    participants: selected.has(CONTROLLER) ? [CONTROLLER] : [],
+    standby: [],
+  });
+  const phases = plan.phases
+    .filter((phase) => phase.modes.includes(mode))
+    .map((phase) => {
+      const participants = phase.participants.filter((slug) => selected.has(slug)).sort();
+      const standby = phase.standby.filter((slug) => selected.has(slug) && !participants.includes(slug)).sort();
+      return {
+        id: phase.id,
+        wave: phase.wave,
+        kind: phase.kind,
+        ...(PASS_KINDS.includes(phase.kind) ? { pass: phase.pass } : {}),
+        skippable: phase.skippable,
+        participants,
+        standby,
+      };
+    });
+  return [control('preflight'), ...phases, control('complete')];
+}
+
+function projectDeepHunt(deepHunt, mode, selectedSlugs) {
+  if (!deepHunt.modes.includes(mode)) return null;
   return {
-    afterWave: deepHunt.afterWave,
     tier: deepHunt.tier,
+    maxPasses: deepHunt.maxPasses,
+    continueWhen: deepHunt.continueWhen,
     brief: [...deepHunt.brief],
-    roles: roles.filter((slug) => selectedSlugs.has(slug)),
-    omitted: roles
+    roles: deepHunt.roles.filter((slug) => selectedSlugs.has(slug)),
+    omitted: deepHunt.roles
       .filter((slug) => !selectedSlugs.has(slug))
       .map((slug) => ({ slug, reason: 'not-in-dispatchable-set' })),
   };
 }
 
-function validateDependencies(planBySlug, errors) {
+function projectProofLoop(proofLoop, selectedSlugs) {
+  const validatorSelected = selectedSlugs.has(proofLoop.validator);
+  // Clusters partition the validator's passes. Without a selected validator no pass runs,
+  // so no cluster is projected even when some of its lanes are selected.
+  const clusters = validatorSelected
+    ? proofLoop.validatorPasses.clusters
+      .map((cluster) => ({ id: cluster.id, lanes: cluster.lanes.filter((slug) => selectedSlugs.has(slug)) }))
+      .filter((cluster) => cluster.lanes.length > 0)
+    : [];
+  return {
+    validator: proofLoop.validator,
+    validatorSelected,
+    oracleDesk: proofLoop.oracleDesk,
+    oracleDeskSelected: selectedSlugs.has(proofLoop.oracleDesk),
+    maxRepairRounds: proofLoop.maxRepairRounds,
+    clusters,
+    routes: proofLoop.routes.map((route) => ({ ...route })),
+    independentReproduction: { ...proofLoop.independentReproduction },
+    acceptedOracleKinds: [...proofLoop.acceptedOracleKinds],
+    justifiedInvariantClasses: [...proofLoop.justifiedInvariantClasses],
+    exhaustion: proofLoop.exhaustion,
+  };
+}
+
+// Phases are the execution order; role waves and dependencies must agree with it. Every
+// check tolerates malformed input because schema errors are reported alongside these.
+function validatePhases(plan, phases, planBySlug, proofCandidates, errors) {
+  const deepHunt = isObject(plan.deepHunt) ? plan.deepHunt : {};
+  const deepHuntRoles = stringList(deepHunt.roles);
+  const proofLoop = isObject(plan.proofLoop) ? plan.proofLoop : {};
+  const validator = typeof proofLoop.validator === 'string' ? proofLoop.validator : DEFAULT_VALIDATOR;
+
+  const ids = phases.map((phase) => phase.id);
+  if (new Set(ids).size !== ids.length || ids.some((id) => CONTROL_PHASES.includes(id))) {
+    errors.push('phases: ids must be unique and must not be preflight or complete');
+  }
+
+  let highestWave = -1;
+  for (const phase of phases) {
+    const id = String(phase.id);
+    const waveIndex = WAVE_ORDER.indexOf(phase.wave);
+    if (waveIndex !== -1 && waveIndex < highestWave) errors.push(`${id}: phase order regresses wave ${phase.wave}`);
+    highestWave = Math.max(highestWave, waveIndex);
+
+    const phaseModes = stringList(phase.modes);
+    const participants = stringList(phase.participants);
+    const standby = stringList(phase.standby);
+    for (const slug of new Set([...participants, ...standby])) {
+      const role = planBySlug.get(slug);
+      if (!role) errors.push(`${id}: unknown role ${slug}`);
+      else if (role.dispatch !== true) errors.push(`${id}: ${slug} is not dispatched`);
+      else if (!stringList(role.modes).some((mode) => phaseModes.includes(mode))) errors.push(`${id}: ${slug} is inactive in every phase mode`);
+    }
+    for (const slug of participants) {
+      if (standby.includes(slug)) errors.push(`${id}: ${slug} is both participant and standby`);
+    }
+
+    validatePhaseIdentity(phase, id, errors);
+    const isPass = PASS_KINDS.includes(phase.kind) && Number.isInteger(phase.pass);
+    if (isPass && phase.pass <= 1 && phase.skippable === true) errors.push(`${id}: the first pass must not be skippable`);
+    else if (isPass && phase.pass >= 2 && phase.skippable !== true) errors.push(`${id}: passes after the first must be skippable`);
+    else if (!isPass && phase.skippable === true) errors.push(`${id}: only deep-hunt and proof passes after the first may be skippable`);
+
+    if (phase.kind === 'deep-hunt' && !sameList(participants, deepHuntRoles)) {
+      errors.push(`${id}: participants differ from deepHunt.roles`);
+    }
+    if (phase.kind === 'proof') {
+      if (participants.length !== 1 || participants[0] !== validator) {
+        errors.push(`${id}: proof phase must have exactly the validator ${validator} as participant`);
+      }
+      const required = typeof proofLoop.oracleDesk === 'string' ? [proofLoop.oracleDesk] : [];
+      if (phase.pass === 0 && proofCandidates !== null) required.push(...proofCandidates);
+      if (Number.isInteger(phase.pass) && phase.pass >= 1) required.push(...deepHuntRoles);
+      for (const slug of new Set(required)) {
+        if (!standby.includes(slug) && !participants.includes(slug)) errors.push(`${id}: standby must include ${slug}`);
+      }
+    }
+  }
+
+  const maxPasses = Number.isInteger(deepHunt.maxPasses) ? deepHunt.maxPasses : 0;
+  const deepModes = stringList(deepHunt.modes);
+  const automation = phases.find((phase) => phase.id === 'automation');
+  for (const mode of MODES) {
+    const expected = ['discovery', 'hunting', 'proof'];
+    if (deepModes.includes(mode)) {
+      for (let pass = 1; pass <= maxPasses; pass += 1) expected.push(`deep-hunt-${pass}`, `deep-proof-${pass}`);
+    }
+    if (automation && stringList(automation.participants).some((slug) => stringList(planBySlug.get(slug)?.modes).includes(mode))) {
+      expected.push('automation');
+    }
+    expected.push('verification', 'reporting');
+    const actual = phases.filter((phase) => stringList(phase.modes).includes(mode)).map((phase) => String(phase.id));
+    if (!sameList(actual, expected, true)) errors.push(`Mode ${mode}: phase sequence is invalid: ${actual.join('->')}`);
+  }
+
+  const firstPhase = firstPhaseIndexes(phases);
+  for (const [slug, role] of planBySlug) {
+    if (role.dispatch !== true) continue;
+    for (const mode of stringList(role.modes)) {
+      const participates = phases.some((phase) => stringList(phase.modes).includes(mode) && stringList(phase.participants).includes(slug));
+      if (!participates) errors.push(`${slug}: participates in no phase in Mode ${mode}`);
+    }
+    const first = phases[firstPhase.get(slug)];
+    if (first && WAVE_ORDER.includes(first.wave) && role.wave !== first.wave) {
+      errors.push(`${slug}: wave ${String(role.wave)} differs from its first phase ${first.id} (${first.wave})`);
+    }
+  }
+}
+
+// Phase ids name their kind and pass, so a phase cannot keep a familiar id while changing
+// what the runtime does with it.
+function validatePhaseIdentity(phase, id, errors) {
+  const deep = /^deep-(hunt|proof)-([1-9][0-9]*)$/u.exec(id);
+  let kind = 'work';
+  let pass;
+  if (id === 'proof') [kind, pass] = ['proof', 0];
+  else if (deep) [kind, pass] = [deep[1] === 'hunt' ? 'deep-hunt' : 'proof', Number(deep[2])];
+  if (phase.kind !== kind) errors.push(`${id}: kind must be ${kind}`);
+  if (pass !== undefined && phase.pass !== pass) errors.push(`${id}: pass must be ${pass}`);
+  if (!PASS_KINDS.includes(phase.kind) && phase.pass !== undefined) errors.push(`${id}: pass is only allowed on proof and deep-hunt phases`);
+}
+
+function validateProofLoop(proofLoop, planBySlug, proofCandidates, errors) {
+  if (!isObject(proofLoop)) return;
+  for (const field of ['validator', 'oracleDesk']) {
+    const role = planBySlug.get(proofLoop[field]);
+    if (!role || role.dispatch !== true) errors.push(`proofLoop.${field}: ${String(proofLoop[field])} is not a dispatched role`);
+  }
+
+  const clusters = Array.isArray(proofLoop.validatorPasses?.clusters) ? proofLoop.validatorPasses.clusters.filter(isObject) : [];
+  const clusterIds = new Set();
+  const listed = new Map();
+  for (const cluster of clusters) {
+    if (clusterIds.has(cluster.id)) errors.push(`proofLoop clusters repeat id ${String(cluster.id)}`);
+    clusterIds.add(cluster.id);
+    for (const slug of stringList(cluster.lanes)) {
+      if (!planBySlug.has(slug)) errors.push(`proofLoop clusters name unknown role ${slug}`);
+      listed.set(slug, (listed.get(slug) ?? 0) + 1);
+    }
+  }
+  for (const [slug, count] of listed) {
+    if (count > 1) errors.push(`proofLoop clusters list ${slug} more than once`);
+  }
+  for (const slug of proofCandidates ?? []) {
+    if (!listed.has(slug)) errors.push(`proofLoop clusters must cover ${slug}`);
+  }
+
+  const routes = Array.isArray(proofLoop.routes) ? proofLoop.routes.filter(isObject) : [];
+  for (const status of ROUTED_STATUSES) {
+    if (routes.filter((route) => route.status === status).length !== 1) errors.push(`proofLoop routes: ${status} must be routed exactly once`);
+  }
+  if (stringList(proofLoop.justifiedInvariantClasses).length > 0 && !stringList(proofLoop.acceptedOracleKinds).includes('justified-invariant')) {
+    errors.push('proofLoop.justifiedInvariantClasses: requires the justified-invariant oracle kind');
+  }
+}
+
+function validateDependencies(planBySlug, phases, errors) {
   const waveIndex = new Map(WAVE_ORDER.map((wave, index) => [wave, index]));
+  const firstPhase = firstPhaseIndexes(phases);
   const edges = new Map();
   for (const [slug, role] of planBySlug) {
     const dependencies = Array.isArray(role.dependsOn) ? role.dependsOn : [];
@@ -200,6 +424,11 @@ function validateDependencies(planBySlug, errors) {
       const predecessorWave = waveIndex.get(predecessor.wave);
       if (roleWave !== undefined && predecessorWave !== undefined && predecessorWave > roleWave) {
         errors.push(`${slug}: dependency ${dependency} is assigned to a future wave`);
+      }
+      const rolePhase = firstPhase.get(slug);
+      const predecessorPhase = firstPhase.get(dependency);
+      if (rolePhase !== undefined && predecessorPhase !== undefined && predecessorPhase > rolePhase) {
+        errors.push(`${slug}: dependency ${dependency} starts in a later phase`);
       }
     }
   }
@@ -248,6 +477,24 @@ function sameList(left, right, ordered = false) {
   if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
   if (ordered) return left.every((value, index) => value === right[index]);
   return [...left].sort().every((value, index) => value === [...right].sort()[index]);
+}
+
+function phaseList(plan) {
+  return Array.isArray(plan.phases) ? plan.phases.filter(isObject) : [];
+}
+
+function firstPhaseIndexes(phases) {
+  const result = new Map();
+  phases.forEach((phase, index) => {
+    for (const slug of stringList(phase.participants)) {
+      if (!result.has(slug)) result.set(slug, index);
+    }
+  });
+  return result;
+}
+
+function stringList(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === 'string') : [];
 }
 
 function formatSchemaError(error) {

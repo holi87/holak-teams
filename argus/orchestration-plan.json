@@ -1,33 +1,76 @@
 {
-  "$schema": "argus/orchestration-plan@1",
-  "schemaVersion": 1,
+  "$schema": "argus/orchestration-plan@2",
+  "schemaVersion": 2,
   "capabilityMatrix": "capabilities/capability-matrix.json",
   "raci": "references/raci.json",
   "dependencyPolicy": "selected-dispatchable-predecessors",
   "modeCounts": {
     "A": 27,
     "B": 16,
-    "C": 14,
-    "D": 14
+    "C": 15,
+    "D": 15
   },
-  "deepHuntWave": {
-    "afterWave": "W2",
+  "deepHunt": {
     "modes": ["A", "B"],
     "tier": "frontier",
-    "roles": ["atalanta", "ariadne", "orion", "tyche"],
+    "maxPasses": 3,
+    "continueWhen": "new-confirmed-defects",
+    "roles": ["antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus", "orion", "perseus", "proteus", "tiresias", "tyche"],
     "brief": [
       "conformance RED rows without a disposition",
       "open contract-drift rows",
       "open risk-register rows",
       "the hottest defect clusters from the first triage pass",
       "every technique-catalog row still marked gap after the first pass, invariant classes before contract rows",
-      "every documented business rule whose consumer edge is reachable but whose producer was called unreachable"
+      "every documented business rule whose consumer edge is reachable but whose producer was called unreachable",
+      "every suspected defect routed to its filing lane, with the exact missing proof items Minos recorded",
+      "every bounced candidate still unresolved after the proof-repair rounds, with its repair.missing list",
+      "every open WHITEBOX-LEADS row owned by this lane and every Tiresias TIR lead routed to this lane surface",
+      "every quarantined defect whose evidence must be re-collected under a fresh arranged state",
+      "sibling variants of every defect confirmed in the previous pass: the same root-cause pattern on neighbouring operations, screens, roles, states, and data shapes",
+      "every technique-catalog row reported executed without a described arranged precondition in the previous pass"
     ]
+  },
+  "huntingBrief": [
+    "every Tiresias TIR lead and source candidate whose owning lane or surface route is this lane",
+    "every Metis RISK row and ORC oracle mapped to this lane surface, highest priority first",
+    "every Kalchas contract-drift row on this lane surface",
+    "Penelope, Theseus, and Pistis baseline paths and Atlas helpers are consumed when present and are never a precondition for starting"
+  ],
+  "proofLoop": {
+    "validator": "minos",
+    "oracleDesk": "metis",
+    "maxRepairRounds": 2,
+    "validatorPasses": {
+      "order": "clusters-then-consolidator",
+      "clusters": [
+        { "id": "api-data", "lanes": ["atalanta", "charon", "pistis", "proteus", "talos", "theseus"] },
+        { "id": "security-source", "lanes": ["perseus", "tiresias"] },
+        { "id": "ui-journey", "lanes": ["antigone", "ariadne", "daidalos", "lynceus", "orion", "penelope"] },
+        { "id": "nonfunctional-suite", "lanes": ["asklepios", "hermes", "tyche"] }
+      ]
+    },
+    "routes": [
+      { "status": "bounced", "to": "filing-lane", "carries": "repair.missing" },
+      { "status": "needs-oracle", "to": "oracle-desk", "carries": "behaviour, evidence, candidate readings" },
+      { "status": "quarantined", "to": "filing-lane", "carries": "quarantine.reasons" },
+      { "status": "suspected", "to": "independent-reproducer", "carries": "steps and oracle" },
+      { "status": "confirmed", "to": "independent-reproducer", "carries": "steps and oracle", "when": "severity Blocker or Critical, or disputedOracle" }
+    ],
+    "independentReproduction": {
+      "candidates": "raci.surfaceRoutes[].reproduce",
+      "selection": "first selected dispatchable candidate for the manifestation surface that is not the finder, an origin lane, or the collector of original reproduction evidence",
+      "freshState": "new synthetic accounts and data under the reproducer namespace and a new browser context; the initial state is recorded before the first step",
+      "unavailable": "no eligible candidate means independent.status=unavailable with its reason, never a claim of independent verification"
+    },
+    "acceptedOracleKinds": ["requirement", "contract", "justified-invariant"],
+    "justifiedInvariantClasses": ["server-error", "crash", "data-loss", "authz-breach", "layer-disagreement"],
+    "exhaustion": "After maxRepairRounds a finding keeps its non-confirmed status and is a named residual in the ledger header and final report; it is never dropped."
   },
   "mandatoryLanes": {
     "policy": "gates-satisfied-means-dispatched",
     "modes": ["A", "B"],
-    "roles": ["ariadne", "atalanta", "hermes", "tyche", "orion", "perseus", "lynceus", "antigone"],
+    "roles": ["antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus", "orion", "perseus", "proteus", "tiresias", "tyche"],
     "rule": [
       "A hunter whose capability gates are satisfied is dispatched and returns its technique-coverage table. Time pressure is not a disposition.",
       "A lane may be omitted only when a gate is unmet, and the unmet gate is recorded in coverage-result.json as the reason.",
@@ -41,6 +84,147 @@
     { "id": "W2", "barrierAfter": true },
     { "id": "W3", "barrierAfter": true },
     { "id": "W4", "barrierAfter": true }
+  ],
+  "phases": [
+    {
+      "id": "discovery",
+      "wave": "W0",
+      "kind": "work",
+      "modes": ["A", "B", "C", "D"],
+      "skippable": false,
+      "participants": ["kalchas", "metis", "tiresias", "atlas"],
+      "standby": []
+    },
+    {
+      "id": "hunting",
+      "wave": "W1",
+      "kind": "work",
+      "modes": ["A", "B", "C", "D"],
+      "skippable": false,
+      "participants": [
+        "antigone", "ariadne", "asklepios", "atalanta", "charon", "daidalos", "hermes", "lynceus",
+        "orion", "penelope", "perseus", "pistis", "proteus", "talos", "theseus", "tyche"
+      ],
+      "standby": []
+    },
+    {
+      "id": "proof",
+      "wave": "W1",
+      "kind": "proof",
+      "pass": 0,
+      "modes": ["A", "B", "C", "D"],
+      "skippable": false,
+      "participants": ["minos"],
+      "standby": [
+        "metis", "antigone", "ariadne", "asklepios", "atalanta", "charon", "hermes", "lynceus",
+        "orion", "perseus", "proteus", "tiresias", "tyche"
+      ]
+    },
+    {
+      "id": "deep-hunt-1",
+      "wave": "W2",
+      "kind": "deep-hunt",
+      "pass": 1,
+      "modes": ["A", "B"],
+      "skippable": false,
+      "participants": [
+        "antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus",
+        "orion", "perseus", "proteus", "tiresias", "tyche"
+      ],
+      "standby": []
+    },
+    {
+      "id": "deep-proof-1",
+      "wave": "W2",
+      "kind": "proof",
+      "pass": 1,
+      "modes": ["A", "B"],
+      "skippable": false,
+      "participants": ["minos"],
+      "standby": [
+        "metis", "antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus",
+        "orion", "perseus", "proteus", "tiresias", "tyche"
+      ]
+    },
+    {
+      "id": "deep-hunt-2",
+      "wave": "W2",
+      "kind": "deep-hunt",
+      "pass": 2,
+      "modes": ["A", "B"],
+      "skippable": true,
+      "participants": [
+        "antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus",
+        "orion", "perseus", "proteus", "tiresias", "tyche"
+      ],
+      "standby": []
+    },
+    {
+      "id": "deep-proof-2",
+      "wave": "W2",
+      "kind": "proof",
+      "pass": 2,
+      "modes": ["A", "B"],
+      "skippable": true,
+      "participants": ["minos"],
+      "standby": [
+        "metis", "antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus",
+        "orion", "perseus", "proteus", "tiresias", "tyche"
+      ]
+    },
+    {
+      "id": "deep-hunt-3",
+      "wave": "W2",
+      "kind": "deep-hunt",
+      "pass": 3,
+      "modes": ["A", "B"],
+      "skippable": true,
+      "participants": [
+        "antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus",
+        "orion", "perseus", "proteus", "tiresias", "tyche"
+      ],
+      "standby": []
+    },
+    {
+      "id": "deep-proof-3",
+      "wave": "W2",
+      "kind": "proof",
+      "pass": 3,
+      "modes": ["A", "B"],
+      "skippable": true,
+      "participants": ["minos"],
+      "standby": [
+        "metis", "antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus",
+        "orion", "perseus", "proteus", "tiresias", "tyche"
+      ]
+    },
+    {
+      "id": "automation",
+      "wave": "W3",
+      "kind": "work",
+      "modes": ["A", "C", "D"],
+      "skippable": false,
+      "participants": ["aegis", "atlas", "daidalos", "mnemosyne", "nike", "talos"],
+      "standby": []
+    },
+    {
+      "id": "verification",
+      "wave": "W3",
+      "kind": "work",
+      "modes": ["A", "B", "C", "D"],
+      "skippable": false,
+      "participants": ["aristarchus", "metis", "minos"],
+      "standby": []
+    },
+    {
+      "id": "reporting",
+      "wave": "W4",
+      "kind": "work",
+      "modes": ["A", "B", "C", "D"],
+      "skippable": false,
+      "participants": ["kleio"],
+      "standby": []
+    }
   ],
   "roles": [
     {
@@ -110,7 +294,7 @@
       "slug": "tiresias",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W1",
+      "wave": "W0",
       "modes": ["A", "B"],
       "gates": ["source-access"],
       "dependsOn": ["kalchas"]
@@ -119,34 +303,34 @@
       "slug": "aegis",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W3",
       "modes": ["A", "C", "D"],
       "gates": [],
-      "dependsOn": ["atlas"]
+      "dependsOn": ["atlas", "minos"]
     },
     {
       "slug": "antigone",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "B"],
       "gates": ["browser-runtime"],
-      "dependsOn": ["penelope"]
+      "dependsOn": ["kalchas", "metis", "tiresias"]
     },
     {
       "slug": "ariadne",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "B"],
       "gates": [],
-      "dependsOn": ["atlas", "penelope", "theseus"]
+      "dependsOn": ["kalchas", "metis", "tiresias"]
     },
     {
       "slug": "asklepios",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "D"],
       "gates": ["existing-suite"],
       "dependsOn": ["kalchas"]
@@ -155,25 +339,25 @@
       "slug": "atalanta",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "B"],
       "gates": [],
-      "dependsOn": ["theseus"]
+      "dependsOn": ["kalchas", "metis", "tiresias"]
     },
     {
       "slug": "charon",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "B"],
       "gates": ["db-access"],
-      "dependsOn": ["kalchas"]
+      "dependsOn": ["kalchas", "metis", "tiresias"]
     },
     {
       "slug": "daidalos",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "C", "D"],
       "gates": ["browser-runtime"],
       "dependsOn": ["atlas", "penelope"]
@@ -182,79 +366,79 @@
       "slug": "hermes",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "B"],
       "gates": [],
-      "dependsOn": ["atlas"]
+      "dependsOn": ["kalchas", "metis", "tiresias"]
     },
     {
       "slug": "lynceus",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "B"],
       "gates": ["browser-runtime"],
-      "dependsOn": ["penelope"]
+      "dependsOn": ["kalchas", "metis", "tiresias"]
     },
     {
       "slug": "minos",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
-      "modes": ["A", "B"],
+      "wave": "W1",
+      "modes": ["A", "B", "C", "D"],
       "gates": [],
-      "dependsOn": ["kalchas"]
+      "dependsOn": ["kalchas", "metis"]
     },
     {
       "slug": "mnemosyne",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W3",
       "modes": ["A", "C", "D"],
       "gates": ["db-access"],
-      "dependsOn": ["kalchas"]
+      "dependsOn": ["kalchas", "minos"]
     },
     {
       "slug": "nike",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W3",
       "modes": ["A", "C", "D"],
       "gates": [],
-      "dependsOn": ["atlas"]
+      "dependsOn": ["atlas", "minos"]
     },
     {
       "slug": "orion",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "B"],
       "gates": ["browser-runtime"],
-      "dependsOn": ["penelope"]
+      "dependsOn": ["kalchas", "metis", "tiresias"]
     },
     {
       "slug": "perseus",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "B"],
       "gates": [],
-      "dependsOn": ["atlas"]
+      "dependsOn": ["kalchas", "metis", "tiresias"]
     },
     {
       "slug": "proteus",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "B"],
       "gates": ["non-rest-surface"],
-      "dependsOn": ["theseus"]
+      "dependsOn": ["kalchas", "metis", "tiresias"]
     },
     {
       "slug": "talos",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "C", "D"],
       "gates": [],
       "dependsOn": ["atlas", "theseus"]
@@ -263,10 +447,10 @@
       "slug": "tyche",
       "kind": "specialist",
       "dispatch": true,
-      "wave": "W2",
+      "wave": "W1",
       "modes": ["A", "B"],
       "gates": [],
-      "dependsOn": ["atlas"]
+      "dependsOn": ["kalchas", "metis", "tiresias"]
     },
     {
       "slug": "aristarchus",
