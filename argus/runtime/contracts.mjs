@@ -1,7 +1,7 @@
 import { validateFindingQuality } from './finding-quality.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateCoverageObservations, validateSurfaceInventory } from './coverage.mjs';
 import { compileJsonSchema } from './json-schema.mjs';
@@ -18,12 +18,23 @@ export const CONTRACT_KINDS = Object.freeze([
   'coverage-result',
   'model-escalation-request',
   'runner-result',
+  'capability-evidence',
 ]);
 
 const COLLECTION_CONTRACTS = Object.freeze({
   'lane-plan': { field: 'lanes', key: 'lane', label: 'lane' },
   'evidence-reference': { field: 'references', key: 'id', label: 'evidence reference' },
   'automation-status': { field: 'tests', key: 'testId', label: 'automation test' },
+});
+
+// Recon capability gates and the only proof kind that can prove each one. The keys must
+// equal the capability-matrix capabilities of kind "target" (asserted by the schema smoke).
+const CAPABILITY_PROOF_KINDS = Object.freeze({
+  'db-access': 'db-select',
+  'existing-suite': 'suite-root',
+  'multi-service': 'service-map',
+  'non-rest-surface': 'protocol-surface',
+  'source-access': 'source-root',
 });
 
 const SCHEMAS = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas');
@@ -223,6 +234,7 @@ function semanticErrors(kind, document) {
   if (kind === 'surface-inventory') return validateSurfaceInventory(document);
   if (kind === 'coverage-observations') return validateCoverageObservations(document);
   if (kind === 'runner-result') return validateRunnerResult(document);
+  if (kind === 'capability-evidence') return validateCapabilityEvidence(document);
   return [];
 }
 
@@ -302,6 +314,49 @@ function validateRunnerResult(document) {
     if (document.categories[category] !== count) errors.push(`runner category ${category} count differs from events`);
   }
   return errors;
+}
+
+function validateCapabilityEvidence(document) {
+  const errors = [];
+  const seen = new Set();
+  for (const gate of document.gates) {
+    const { capability, proof } = gate;
+    if (seen.has(capability)) errors.push(`duplicate capability gate: ${capability}`);
+    seen.add(capability);
+    if (!proof) continue;
+    const expectedKind = CAPABILITY_PROOF_KINDS[capability];
+    if (proof.kind !== expectedKind) {
+      errors.push(`${capability} proof kind must be ${expectedKind}, not ${proof.kind}`);
+      continue;
+    }
+    if (proof.kind === 'source-root' && !isStrictlyInside(proof.path, proof.fileRead)) {
+      errors.push('source-access proof fileRead must be inside its source root path');
+    }
+    if (proof.kind === 'suite-root' && !isStrictlyInside(proof.path, proof.testFile)) {
+      errors.push('existing-suite proof testFile must be inside its suite root path');
+    }
+    if (proof.kind === 'service-map') {
+      const origins = new Set();
+      const names = new Set();
+      for (const service of proof.services) {
+        const origin = service.origin.toLowerCase();
+        if (origins.has(origin)) errors.push(`multi-service proof repeats service origin: ${service.origin}`);
+        if (names.has(service.name)) errors.push(`multi-service proof repeats service name: ${service.name}`);
+        origins.add(origin);
+        names.add(service.name);
+      }
+    }
+  }
+  for (const capability of Object.keys(CAPABILITY_PROOF_KINDS)) {
+    if (!seen.has(capability)) errors.push(`missing capability gate: ${capability}`);
+  }
+  return errors;
+}
+
+// Lexical containment only; the gate resolver re-checks the physical paths itself.
+function isStrictlyInside(root, candidate) {
+  const path = posix.relative(root, candidate);
+  return path !== '' && path !== '..' && !path.startsWith('../') && !posix.isAbsolute(path);
 }
 
 function duplicateIds(items, label) {

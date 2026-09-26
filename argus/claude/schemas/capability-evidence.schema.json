@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/capability-evidence.schema.json",
+  "title": "Argus recon capability evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "engagementId", "owner", "gates"],
+  "properties": {
+    "$schema": { "const": "argus/capability-evidence@1" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "owner": { "const": "kalchas" },
+    "gates": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/gate" }
+    }
+  },
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "verdict", "summary", "evidenceIds"],
+      "properties": {
+        "capability": { "enum": ["db-access", "existing-suite", "multi-service", "non-rest-surface", "source-access"] },
+        "verdict": { "enum": ["proven", "absent", "unverified"] },
+        "summary": { "type": "string", "minLength": 1 },
+        "evidenceIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^EVD-[0-9]{4}$" }
+        },
+        "proof": { "$ref": "#/$defs/proof" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["verdict"], "properties": { "verdict": { "const": "proven" } } },
+          "then": { "required": ["proof"], "properties": { "evidenceIds": { "minItems": 1 } } }
+        }
+      ]
+    },
+    "proof": {
+      "title": "Proof discriminated by kind; every kind resolves to exactly one closed shape",
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["db-select", "source-root", "suite-root", "protocol-surface", "service-map"] }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "db-select" } } },
+          "then": { "$ref": "#/$defs/dbSelectProof" }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "source-root" } } },
+          "then": { "$ref": "#/$defs/sourceRootProof" }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "suite-root" } } },
+          "then": { "$ref": "#/$defs/suiteRootProof" }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "protocol-surface" } } },
+          "then": { "$ref": "#/$defs/protocolSurfaceProof" }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "service-map" } } },
+          "then": { "$ref": "#/$defs/serviceMapProof" }
+        }
+      ]
+    },
+    "dbSelectProof": {
+      "title": "Successful read-only SELECT; the closed shape has no field that can hold a credential",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "client", "host", "port", "database", "observed"],
+      "properties": {
+        "kind": { "const": "db-select" },
+        "client": { "type": "string", "minLength": 1 },
+        "host": { "type": "string", "pattern": "^[^\\s/?#@]+$" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "database": { "type": "string", "minLength": 1 },
+        "observed": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sourceRootProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "language", "fileRead"],
+      "properties": {
+        "kind": { "const": "source-root" },
+        "path": { "type": "string", "pattern": "^/" },
+        "language": { "type": "string", "minLength": 1 },
+        "fileRead": { "type": "string", "pattern": "^/" }
+      }
+    },
+    "suiteRootProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "runner", "testFile"],
+      "properties": {
+        "kind": { "const": "suite-root" },
+        "path": { "type": "string", "pattern": "^/" },
+        "runner": { "type": "string", "minLength": 1 },
+        "testFile": { "type": "string", "pattern": "^/" }
+      }
+    },
+    "protocolSurfaceProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "protocols", "surfaceIds"],
+      "properties": {
+        "kind": { "const": "protocol-surface" },
+        "protocols": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["graphql", "grpc", "websocket", "sse", "messaging", "webhook"] }
+        },
+        "surfaceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^SRF-[A-Z0-9][A-Z0-9-]*$" }
+        }
+      }
+    },
+    "serviceMapProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "services"],
+      "properties": {
+        "kind": { "const": "service-map" },
+        "services": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/service" }
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "origin"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "origin": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s/?#@]+$" }
+      }
+    }
+  }
+}
