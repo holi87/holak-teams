@@ -275,6 +275,12 @@ else
   fail "[argus] (l3) TypeScript runtime adapter"
 fi
 
+if "$ROOT/scripts/smoke-argus-runtime-java.sh"; then
+  pass "[argus] (l4) Java runtime adapter: JUnit outcome listener, Launcher-discovery inventory, and ledger join"
+else
+  fail "[argus] (l4) Java runtime adapter"
+fi
+
 if "$ROOT/scripts/smoke-argus-coverage.sh"; then
   pass "[argus] (m) target-derived, risk-weighted coverage and defect-neutral quality metrics"
 else

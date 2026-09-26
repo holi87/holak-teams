@@ -1,3 +1,5 @@
 # Argus aggregated-summary listener — picked up by the JUnit Platform launcher
 # (the one Surefire drives) and run in-process for the whole TestPlan.
 qa.support.SummaryListener
+# Argus outcome adapter — inert unless scripts/runner-lib.sh exports ARGUS_RUNNER_MODE.
+qa.support.argus.ArgusOutcomeListener
