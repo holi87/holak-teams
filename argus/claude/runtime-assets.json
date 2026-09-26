@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 25906,
-      "sha256": "973216945fff16bfa95a4248b6ad3b40ef8156cfac78117634a921fc410a1bd6"
+      "bytes": 34714,
+      "sha256": "55acd724b9980000342ec25b3c766a3d0bb0a53ba3993ce9ae16b2bd3cf2519d"
     },
     {
       "id": "browser-isolation",
@@ -174,7 +174,7 @@
       "destination": "schemas",
       "files": 38,
       "bytes": 139117,
-      "sha256": "2e73d67c64d6063e3336e109183f1ca6d92af039efe3edf352c79e1a0edee136"
+      "sha256": "69884f1f3b4bc4a5d09dff07a85658f89cd0062d36491df643d466a05af2dd92"
     },
     {
       "id": "capability-matrix",

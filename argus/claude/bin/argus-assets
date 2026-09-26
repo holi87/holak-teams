@@ -588,7 +588,7 @@ function launchCommand(args) {
       claudeExecutable,
       claudeExecutableSha256: sha256File(claudeExecutable),
       claudeVersion,
-      sandboxPolicy: 'os-native-target-readonly@2',
+      sandboxPolicy: 'os-native-target-readonly@3',
       sandboxProbePath,
       sandboxProbeDevice: sandboxProbe.device,
       sandboxProbeInode: sandboxProbe.inode,

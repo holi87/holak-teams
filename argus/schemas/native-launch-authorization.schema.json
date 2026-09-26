@@ -35,7 +35,7 @@
     "claudeExecutable": { "type": "string", "pattern": "^/" },
     "claudeExecutableSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "claudeVersion": { "type": "string", "minLength": 1 },
-    "sandboxPolicy": { "const": "os-native-target-readonly@2" },
+    "sandboxPolicy": { "const": "os-native-target-readonly@3" },
     "sandboxProbePath": { "type": "string", "pattern": "^/" },
     "sandboxProbeDevice": { "type": "integer", "minimum": 0 },
     "sandboxProbeInode": { "type": "integer", "minimum": 1 },
