@@ -60,6 +60,7 @@ expect_row() {
 expect_events() {
   local file="$1" label="$2"
   shift 2
+  [ -f "$file" ] || fail "$label emitted no events"
   printf '%s\n' "$@" | sort >"$WORK/$label.expected"
   sort "$file" >"$WORK/$label.actual"
   diff -u "$WORK/$label.expected" "$WORK/$label.actual" >&2 || fail "$label events differ from the SD-5/SD-6 expectation"

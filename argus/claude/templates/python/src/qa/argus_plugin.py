@@ -220,7 +220,13 @@ def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config
     # collision suffixes are identical in the inventory, a filtered run, and every xdist worker.
     # Failed collect reports are already counted in session.testsfailed at this point.
     state.collection_errors = session.testsfailed
-    metas = describe_items(items, state.ledger)
+    try:
+        metas = describe_items(items, state.ledger)
+    except Exception as exc:  # noqa: BLE001 - never turn an adapter defect into a collection crash
+        state.record_failure("-", "adapter-describe-failed", type(exc).__name__)
+        if state.inventory_only:
+            (state.reports / "test-inventory.tsv").unlink(missing_ok=True)
+        return
     for item, meta in zip(items, metas):
         item.stash[META_KEY] = meta
     if state.inventory_only:
@@ -237,8 +243,10 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None):
     except BaseException:
         # KeyboardInterrupt or pytest.exit() escaped mid-test: no teardown report follows.
         if not item.stash.get(DONE_KEY, False):
-            meta = meta_for(item, state)
-            emit_outcome(state, item, meta, INTERRUPTED)
+            try:
+                emit_outcome(state, item, meta_for(item, state), INTERRUPTED)
+            except Exception as exc:  # noqa: BLE001 - never mask the interruption itself
+                state.record_failure(sanitize(item.nodeid) or "-", "adapter-compose-failed", type(exc).__name__)
         raise
 
 
@@ -262,7 +270,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]):
             del item.stash[PHASES_KEY]
             compose(state, item, phases)
     except Exception as exc:  # noqa: BLE001 - the adapter must never break the native run
-        state.record_failure(meta_for(item, state).case_id, "adapter-compose-failed", type(exc).__name__)
+        state.record_failure(sanitize(item.nodeid) or "-", "adapter-compose-failed", type(exc).__name__)
     return report
 
 
@@ -560,7 +568,7 @@ def inventory_row(meta: CaseMeta) -> str:
 
 def load_ledger(path: Path) -> Ledger:
     """SD-4 join over ``bugs[].id`` and ``bugs[].origin[]`` for bug-ledger@1 and @2."""
-    if not path.is_file():
+    if not path.exists():
         return Ledger("missing")
     invalid = Ledger("invalid")
     try:
