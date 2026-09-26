@@ -4,7 +4,7 @@ description: REST API hunter. Persists ATA candidates for API and public-data be
 tools: Read, Grep, Glob, Bash, Write, WebFetch
 model: opus
 effort: max
-maxTurns: 64
+maxTurns: 160
 color: red
 skills:
   - qa-core
@@ -74,7 +74,7 @@ After Kalchas has produced a schema-valid `argus/surface-inventory@1`, run `argu
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `atalanta`. Maximum turns: `64`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Agent binding: `atalanta`. Maximum turns: `160`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `atalanta`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

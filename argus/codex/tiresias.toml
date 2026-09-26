@@ -162,7 +162,7 @@ You persist no deliverables to disk — return EVERYTHING in your RESULT envelop
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `tiresias`. Maximum turns: `48`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Agent binding: `tiresias`. Maximum turns: `140`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `tiresias`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

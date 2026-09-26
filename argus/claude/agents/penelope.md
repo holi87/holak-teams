@@ -2,9 +2,9 @@
 name: penelope
 description: UI baseline analyst. Owns solution/paths/ui-* specifications and submits incidental PEN leads; Orion confirms functional defects and Daidalos automates the baseline.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: sonnet
-effort: medium
-maxTurns: 40
+model: opus
+effort: max
+maxTurns: 80
 color: yellow
 skills:
   - qa-core
@@ -75,7 +75,7 @@ Write to disk, then return a summary to Odysseus. Never return path specs only i
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `penelope`. Maximum turns: `40`. Declared signals: schema-validation-failure, ambiguity, repeated-failure, turn-limit.
+- Agent binding: `penelope`. Maximum turns: `80`. Declared signals: schema-validation-failure, ambiguity, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `penelope`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

@@ -4,7 +4,7 @@ description: Recon analyst. Maps target surfaces, roles, states, and access gate
 tools: Read, Grep, Glob, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot
 model: opus
 effort: max
-maxTurns: 48
+maxTurns: 120
 color: cyan
 skills:
   - qa-core
@@ -91,7 +91,7 @@ Build `solution/surface-inventory.json` as `argus/surface-inventory@1` using `ar
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `kalchas`. Maximum turns: `48`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Agent binding: `kalchas`. Maximum turns: `120`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `kalchas`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

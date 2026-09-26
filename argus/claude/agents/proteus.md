@@ -2,9 +2,9 @@
 name: proteus
 description: Event and non-REST hunter. Persists PRO candidates for GraphQL, gRPC, WebSocket, SSE, messaging, and webhooks; REST belongs to Atalanta and validation to Minos.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: sonnet
-effort: medium
-maxTurns: 48
+model: opus
+effort: max
+maxTurns: 140
 color: red
 skills:
   - qa-core
@@ -75,7 +75,7 @@ After Kalchas has produced a schema-valid `argus/surface-inventory@1`, run `argu
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `proteus`. Maximum turns: `48`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Agent binding: `proteus`. Maximum turns: `140`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `proteus`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

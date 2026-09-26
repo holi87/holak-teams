@@ -2,9 +2,9 @@
 name: lynceus
 description: UI presentation hunter. Persists LYN candidates for layout, format, locale, and rendering; functional behavior belongs to Orion, accessibility to Antigone, and validation to Minos.
 tools: Read, Grep, Glob, Bash, Write
-model: sonnet
-effort: medium
-maxTurns: 48
+model: opus
+effort: max
+maxTurns: 160
 color: red
 skills:
   - qa-core
@@ -98,7 +98,7 @@ Each finding → one `LYN-NNN` bug file + RED regression from Daidalos via Odyss
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `lynceus`. Maximum turns: `48`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- Agent binding: `lynceus`. Maximum turns: `160`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `lynceus`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

@@ -4,7 +4,7 @@ description: Test strategist. Owns TEST-STRATEGY and ORACLES from Kalchas invent
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
 effort: max
-maxTurns: 48
+maxTurns: 80
 color: cyan
 skills:
   - qa-core
@@ -93,7 +93,7 @@ Use `argus-assets path coverage-contract`. Risk-rank the stable `SRF-*` inventor
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `metis`. Maximum turns: `48`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Agent binding: `metis`. Maximum turns: `80`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `metis`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

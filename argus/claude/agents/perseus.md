@@ -4,7 +4,7 @@ description: Security hunter. Persists PER candidates from authorized STRIDE and
 tools: Read, Grep, Glob, Bash, Write
 model: opus
 effort: max
-maxTurns: 56
+maxTurns: 160
 color: red
 skills:
   - qa-core
@@ -106,7 +106,7 @@ Each finding → one `PER-NNN` bug file (cite OWASP/CWE class + STRIDE) + a RED 
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `perseus`. Maximum turns: `56`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- Agent binding: `perseus`. Maximum turns: `160`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `perseus`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

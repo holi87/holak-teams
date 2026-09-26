@@ -3,11 +3,12 @@
   "schemaVersion": 1,
   "policyId": "argus/model-policy@1",
   "baseline": {
-    "decision": "adopt-12-frontier-15-standard",
-    "frontierRoles": 12,
-    "standardRoles": 15,
+    "decision": "adopt-27-frontier-0-standard",
+    "frontierRoles": 27,
+    "standardRoles": 0,
     "mechanicalFullRoles": 0,
-    "benchmark": "model-policy.benchmark.json"
+    "benchmark": "model-policy.benchmark.json",
+    "standardAllowlist": []
   },
   "tiers": {
     "frontier": {
@@ -161,24 +162,24 @@
   "roles": [
     {
       "slug": "aegis",
-      "tier": "standard",
-      "maxTurns": 48,
+      "tier": "frontier",
+      "maxTurns": 100,
       "escalationProfile": "execution",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "antigone",
-      "tier": "standard",
-      "maxTurns": 48,
+      "tier": "frontier",
+      "maxTurns": 140,
       "escalationProfile": "judgment",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "ariadne",
       "tier": "frontier",
-      "maxTurns": 88,
+      "maxTurns": 160,
       "escalationProfile": "judgment",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
@@ -186,23 +187,23 @@
     {
       "slug": "aristarchus",
       "tier": "frontier",
-      "maxTurns": 40,
+      "maxTurns": 120,
       "escalationProfile": "judgment",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "asklepios",
-      "tier": "standard",
-      "maxTurns": 40,
+      "tier": "frontier",
+      "maxTurns": 100,
       "escalationProfile": "judgment",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "atalanta",
       "tier": "frontier",
-      "maxTurns": 64,
+      "maxTurns": 160,
       "escalationProfile": "execution",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
@@ -210,63 +211,63 @@
     {
       "slug": "atlas",
       "tier": "frontier",
-      "maxTurns": 64,
+      "maxTurns": 100,
       "escalationProfile": "analysis",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "charon",
-      "tier": "standard",
-      "maxTurns": 40,
+      "tier": "frontier",
+      "maxTurns": 120,
       "escalationProfile": "execution",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "daidalos",
-      "tier": "standard",
-      "maxTurns": 56,
+      "tier": "frontier",
+      "maxTurns": 140,
       "escalationProfile": "execution",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "hermes",
-      "tier": "standard",
-      "maxTurns": 40,
+      "tier": "frontier",
+      "maxTurns": 120,
       "escalationProfile": "analysis",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "kalchas",
       "tier": "frontier",
-      "maxTurns": 48,
+      "maxTurns": 120,
       "escalationProfile": "analysis",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "kleio",
-      "tier": "standard",
-      "maxTurns": 40,
+      "tier": "frontier",
+      "maxTurns": 120,
       "escalationProfile": "judgment",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "lynceus",
-      "tier": "standard",
-      "maxTurns": 48,
+      "tier": "frontier",
+      "maxTurns": 160,
       "escalationProfile": "judgment",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "metis",
       "tier": "frontier",
-      "maxTurns": 48,
+      "maxTurns": 80,
       "escalationProfile": "analysis",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
@@ -274,25 +275,25 @@
     {
       "slug": "minos",
       "tier": "frontier",
-      "maxTurns": 48,
+      "maxTurns": 200,
       "escalationProfile": "judgment",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "mnemosyne",
-      "tier": "standard",
-      "maxTurns": 48,
+      "tier": "frontier",
+      "maxTurns": 100,
       "escalationProfile": "execution",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "nike",
-      "tier": "standard",
-      "maxTurns": 56,
+      "tier": "frontier",
+      "maxTurns": 100,
       "escalationProfile": "execution",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
@@ -306,63 +307,63 @@
     {
       "slug": "orion",
       "tier": "frontier",
-      "maxTurns": 64,
+      "maxTurns": 160,
       "escalationProfile": "execution",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "penelope",
-      "tier": "standard",
-      "maxTurns": 40,
+      "tier": "frontier",
+      "maxTurns": 80,
       "escalationProfile": "schema-bound",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "perseus",
       "tier": "frontier",
-      "maxTurns": 56,
+      "maxTurns": 160,
       "escalationProfile": "judgment",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "pistis",
-      "tier": "standard",
-      "maxTurns": 40,
+      "tier": "frontier",
+      "maxTurns": 80,
       "escalationProfile": "schema-bound",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "proteus",
-      "tier": "standard",
-      "maxTurns": 48,
+      "tier": "frontier",
+      "maxTurns": 140,
       "escalationProfile": "execution",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "talos",
-      "tier": "standard",
-      "maxTurns": 56,
+      "tier": "frontier",
+      "maxTurns": 140,
       "escalationProfile": "execution",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "theseus",
-      "tier": "standard",
-      "maxTurns": 40,
+      "tier": "frontier",
+      "maxTurns": 100,
       "escalationProfile": "schema-bound",
-      "fallbackPolicy": "upward-only",
+      "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
     },
     {
       "slug": "tiresias",
       "tier": "frontier",
-      "maxTurns": 48,
+      "maxTurns": 140,
       "escalationProfile": "analysis",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false
@@ -370,7 +371,7 @@
     {
       "slug": "tyche",
       "tier": "frontier",
-      "maxTurns": 72,
+      "maxTurns": 160,
       "escalationProfile": "judgment",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false

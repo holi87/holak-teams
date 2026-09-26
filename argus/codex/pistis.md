@@ -3,12 +3,12 @@ schema: argus/codex-provenance@1
 slug: pistis
 display_name: Pistis
 runtime_config: argus/codex/pistis.toml
-runtime_config_sha256: 10145f4078d46ef9bcde24f562da596da44c68f49df9615399c3f2ac9be6d03c
-developer_instructions_sha256: 91dc76d6235903eab9f6052546c04d3178053fc5bc7f0a076fa8507dcadff82c
+runtime_config_sha256: c88f8c7b46b778d719121c7813dd62431893e6deb725f10102bbdd0e6e566ab7
+developer_instructions_sha256: bd016d685d2e2c9d80e07e37cac8fb16886843c71118f357348ad9fbb9440137
 canonical_source: argus/roles/pistis.md
 canonical_source_sha256: d2beee9a3c2b5c987bded4cf5e92923f5aa27a82fc17f0b12d6b8c0b34fe857a
-model: terra
-model_reasoning_effort: medium
+model: sol
+model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 doctrine_profiles: ["qa-core"]
 technique_catalogs: []

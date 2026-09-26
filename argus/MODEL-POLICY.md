@@ -2,37 +2,40 @@
 
 Policy ID: `argus/model-policy@1`. The machine-readable source is [`model-policy.json`](model-policy.json).
 
-The adopted baseline assigns 12 high-consequence roles to frontier reasoning and 15 bounded execution roles to standard reasoning. No complete role uses the mechanical tier.
+The adopted baseline (`adopt-27-frontier-0-standard`) assigns 27 roles to frontier reasoning and 0 roles to standard reasoning. Both counts are derived from the role tiers below, and validation rejects a baseline whose counts or decision string differ from them. No complete role uses the mechanical tier.
+
+- Frontier floor: every role whose escalation profile is `orchestration`, `judgment`, or `analysis`, and every RACI lane ending in `-hunt`, always uses the frontier tier.
+- A standard role is valid only with a matching `baseline.standardAllowlist` entry that names it and states a justification of at least 20 characters; an allowlist entry for a role that is not standard is rejected.
 
 | Agent | Tier | Claude | Effort | Codex | Effort | Max turns | Escalation | Fallback |
 |---|---|---|---|---|---|---:|---|---|
-| aegis | standard | sonnet | medium | terra | medium | 48 | execution | upward-only |
-| antigone | standard | sonnet | medium | terra | medium | 48 | judgment | upward-only |
-| ariadne | frontier | opus | max | sol | xhigh | 88 | judgment | frontier-fail-closed |
-| aristarchus | frontier | opus | max | sol | xhigh | 40 | judgment | frontier-fail-closed |
-| asklepios | standard | sonnet | medium | terra | medium | 40 | judgment | upward-only |
-| atalanta | frontier | opus | max | sol | xhigh | 64 | execution | frontier-fail-closed |
-| atlas | frontier | opus | max | sol | xhigh | 64 | analysis | frontier-fail-closed |
-| charon | standard | sonnet | medium | terra | medium | 40 | execution | upward-only |
-| daidalos | standard | sonnet | medium | terra | medium | 56 | execution | upward-only |
-| hermes | standard | sonnet | medium | terra | medium | 40 | analysis | upward-only |
-| kalchas | frontier | opus | max | sol | xhigh | 48 | analysis | frontier-fail-closed |
-| kleio | standard | sonnet | medium | terra | medium | 40 | judgment | upward-only |
-| lynceus | standard | sonnet | medium | terra | medium | 48 | judgment | upward-only |
-| metis | frontier | opus | max | sol | xhigh | 48 | analysis | frontier-fail-closed |
-| minos | frontier | opus | max | sol | xhigh | 48 | judgment | frontier-fail-closed |
-| mnemosyne | standard | sonnet | medium | terra | medium | 48 | execution | upward-only |
-| nike | standard | sonnet | medium | terra | medium | 56 | execution | upward-only |
+| aegis | frontier | opus | max | sol | xhigh | 100 | execution | frontier-fail-closed |
+| antigone | frontier | opus | max | sol | xhigh | 140 | judgment | frontier-fail-closed |
+| ariadne | frontier | opus | max | sol | xhigh | 160 | judgment | frontier-fail-closed |
+| aristarchus | frontier | opus | max | sol | xhigh | 120 | judgment | frontier-fail-closed |
+| asklepios | frontier | opus | max | sol | xhigh | 100 | judgment | frontier-fail-closed |
+| atalanta | frontier | opus | max | sol | xhigh | 160 | execution | frontier-fail-closed |
+| atlas | frontier | opus | max | sol | xhigh | 100 | analysis | frontier-fail-closed |
+| charon | frontier | opus | max | sol | xhigh | 120 | execution | frontier-fail-closed |
+| daidalos | frontier | opus | max | sol | xhigh | 140 | execution | frontier-fail-closed |
+| hermes | frontier | opus | max | sol | xhigh | 120 | analysis | frontier-fail-closed |
+| kalchas | frontier | opus | max | sol | xhigh | 120 | analysis | frontier-fail-closed |
+| kleio | frontier | opus | max | sol | xhigh | 120 | judgment | frontier-fail-closed |
+| lynceus | frontier | opus | max | sol | xhigh | 160 | judgment | frontier-fail-closed |
+| metis | frontier | opus | max | sol | xhigh | 80 | analysis | frontier-fail-closed |
+| minos | frontier | opus | max | sol | xhigh | 200 | judgment | frontier-fail-closed |
+| mnemosyne | frontier | opus | max | sol | xhigh | 100 | execution | frontier-fail-closed |
+| nike | frontier | opus | max | sol | xhigh | 100 | execution | frontier-fail-closed |
 | odysseus | frontier | opus | max | sol | xhigh | 96 | orchestration | frontier-fail-closed |
-| orion | frontier | opus | max | sol | xhigh | 64 | execution | frontier-fail-closed |
-| penelope | standard | sonnet | medium | terra | medium | 40 | schema-bound | upward-only |
-| perseus | frontier | opus | max | sol | xhigh | 56 | judgment | frontier-fail-closed |
-| pistis | standard | sonnet | medium | terra | medium | 40 | schema-bound | upward-only |
-| proteus | standard | sonnet | medium | terra | medium | 48 | execution | upward-only |
-| talos | standard | sonnet | medium | terra | medium | 56 | execution | upward-only |
-| theseus | standard | sonnet | medium | terra | medium | 40 | schema-bound | upward-only |
-| tiresias | frontier | opus | max | sol | xhigh | 48 | analysis | frontier-fail-closed |
-| tyche | frontier | opus | max | sol | xhigh | 72 | judgment | frontier-fail-closed |
+| orion | frontier | opus | max | sol | xhigh | 160 | execution | frontier-fail-closed |
+| penelope | frontier | opus | max | sol | xhigh | 80 | schema-bound | frontier-fail-closed |
+| perseus | frontier | opus | max | sol | xhigh | 160 | judgment | frontier-fail-closed |
+| pistis | frontier | opus | max | sol | xhigh | 80 | schema-bound | frontier-fail-closed |
+| proteus | frontier | opus | max | sol | xhigh | 140 | execution | frontier-fail-closed |
+| talos | frontier | opus | max | sol | xhigh | 140 | execution | frontier-fail-closed |
+| theseus | frontier | opus | max | sol | xhigh | 100 | schema-bound | frontier-fail-closed |
+| tiresias | frontier | opus | max | sol | xhigh | 140 | analysis | frontier-fail-closed |
+| tyche | frontier | opus | max | sol | xhigh | 160 | judgment | frontier-fail-closed |
 
 ## Routing rules
 
@@ -53,4 +56,5 @@ The adopted baseline assigns 12 high-consequence roles to frontier reasoning and
 ## Benchmark
 
 The committed `model-policy.benchmark.json` compares representative synthesis, judgment, and schema-bound work on quality markers, latency, input/output tokens, and provider-reported cost without storing prompts, completions, targets, accounts, or evidence.
-It measures three work classes, not individual roles: its `decision` field records which baseline was in force when the runs were recorded, and it is never the evidence for a particular role-to-tier assignment. That evidence lives in the answer-key review recorded in `AI-OPERATOR-BOOKLET-MAPPING.md`. Re-record with `node scripts/benchmark-argus-model-policy.mjs --record` when the baseline moves; the recorded timestamp shows when a stamp was last earned.
+The benchmark is historical: it was recorded under an earlier baseline, and its `decision`, `policyId`, and per-scenario tiers keep the values that were in force when the runs were recorded. It measures three work classes, not individual roles, and it is never the evidence for a particular role-to-tier assignment. That evidence lives in the answer-key review recorded in `AI-OPERATOR-BOOKLET-MAPPING.md`.
+`node scripts/benchmark-argus-model-policy.mjs --check` validates the recorded evidence and prints non-fatal NOTE lines when the current policy identity, baseline decision, or a scenario role tier has drifted from the recorded values. Re-record with `--record` when fresh comparative evidence is wanted; the recorded timestamp shows when a stamp was last earned.

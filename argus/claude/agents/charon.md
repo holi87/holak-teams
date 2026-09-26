@@ -2,9 +2,9 @@
 name: charon
 description: Gated direct-database hunter. Persists CHA candidates from read-only DB analysis when db-access is ready; public-data behavior belongs to Atalanta and canonical validation to Minos.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: sonnet
-effort: medium
-maxTurns: 40
+model: opus
+effort: max
+maxTurns: 120
 color: red
 skills:
   - qa-core
@@ -88,7 +88,7 @@ Write to disk, then return a summary to Odysseus. Never return findings only in 
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `charon`. Maximum turns: `40`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Agent binding: `charon`. Maximum turns: `120`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `charon`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

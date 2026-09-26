@@ -34,6 +34,10 @@ const EXPECTED_MECHANICAL_DOWNGRADE = {
   requiresValidatorPass: true,
   forbiddenWhenQualityJudgment: true,
 };
+// Roles whose escalation profile carries orchestration, judgment, or analysis work
+// never run below the frontier tier, whatever the baseline allowlist says.
+export const FRONTIER_FLOOR_PROFILES = ['orchestration', 'judgment', 'analysis'];
+const MIN_STANDARD_JUSTIFICATION = 20;
 
 export function validateModelPolicy(policy, expectedSlugs = []) {
   const errors = [];
@@ -43,8 +47,26 @@ export function validateModelPolicy(policy, expectedSlugs = []) {
   const slugs = roles.map((role) => role.slug);
   if (new Set(slugs).size !== slugs.length) errors.push('role slugs must be unique');
   if (expectedSlugs.length && JSON.stringify([...slugs].sort()) !== JSON.stringify([...expectedSlugs].sort())) errors.push('policy role inventory differs from the canonical roster');
-  const counts = Object.groupBy ? Object.groupBy(roles, (role) => role.tier) : roles.reduce((result, role) => ((result[role.tier] ??= []).push(role), result), {});
-  if ((counts.frontier ?? []).length !== 12 || (counts.standard ?? []).length !== 15) errors.push('baseline split must be 12 frontier and 15 standard roles');
+  const baseline = policy?.baseline ?? {};
+  const frontierCount = roles.filter((role) => role.tier === 'frontier').length;
+  const standardCount = roles.filter((role) => role.tier === 'standard').length;
+  if (baseline.frontierRoles !== frontierCount || baseline.standardRoles !== standardCount) {
+    errors.push(`baseline counts must equal the role tiers: ${frontierCount} frontier and ${standardCount} standard`);
+  }
+  if (baseline.mechanicalFullRoles !== 0) errors.push('baseline mechanicalFullRoles must be 0');
+  const expectedDecision = `adopt-${frontierCount}-frontier-${standardCount}-standard`;
+  if (baseline.decision !== expectedDecision) errors.push(`baseline decision must be ${expectedDecision}`);
+  if (!Array.isArray(baseline.standardAllowlist)) errors.push('baseline.standardAllowlist must be an array');
+  const allowlisted = new Set();
+  for (const entry of Array.isArray(baseline.standardAllowlist) ? baseline.standardAllowlist : []) {
+    const slug = entry?.slug;
+    if (allowlisted.has(slug)) errors.push(`baseline.standardAllowlist ${slug}: duplicate entry`);
+    allowlisted.add(slug);
+    if (!roles.some((role) => role.slug === slug && role.tier === 'standard')) errors.push(`baseline.standardAllowlist ${slug}: entry must name an existing standard role`);
+    if (typeof entry?.justification !== 'string' || entry.justification.trim().length < MIN_STANDARD_JUSTIFICATION) {
+      errors.push(`baseline.standardAllowlist ${slug}: justification must be at least ${MIN_STANDARD_JUSTIFICATION} characters`);
+    }
+  }
   if (stableJson(policy?.tiers) !== stableJson(EXPECTED_TIERS)) errors.push('tier models, effort, rank, quality, and mechanical eligibility differ from the adopted mapping');
   if (stableJson(policy?.mechanicalDowngrade) !== stableJson(EXPECTED_MECHANICAL_DOWNGRADE)) errors.push('mechanical downgrade eligibility differs from the bounded-subrole contract');
   if (policy?.routing?.decisionDirectory !== 'ai_agents_internal/model-decisions' || policy?.routing?.decisionSchema !== 'argus/model-decision@2') {
@@ -54,6 +76,11 @@ export function validateModelPolicy(policy, expectedSlugs = []) {
   if (policy?.telemetry?.schema !== 'argus/model-telemetry-event@2') errors.push('telemetry schema must be argus/model-telemetry-event@2');
   for (const role of roles) {
     if (!policy?.tiers?.[role.tier]) errors.push(`${role.slug}: unknown tier ${role.tier}`);
+    else if (role.tier !== 'frontier' && role.tier !== 'standard') errors.push(`${role.slug}: a full role must use the frontier or standard tier`);
+    if (FRONTIER_FLOOR_PROFILES.includes(role.escalationProfile) && role.tier !== 'frontier') {
+      errors.push(`${role.slug}: ${role.escalationProfile} roles require the frontier tier`);
+    }
+    if (role.tier === 'standard' && !allowlisted.has(role.slug)) errors.push(`${role.slug}: standard tier requires a justified baseline.standardAllowlist entry`);
     if (!Number.isInteger(role.maxTurns) || role.maxTurns < 1) errors.push(`${role.slug}: maxTurns must be a positive integer`);
     if (!policy?.escalationProfiles?.[role.escalationProfile]?.length) errors.push(`${role.slug}: escalation profile is missing or empty`);
     if (!policy?.fallbackPolicies?.[role.fallbackPolicy]) errors.push(`${role.slug}: fallback policy is missing`);

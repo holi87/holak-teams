@@ -3,8 +3,8 @@ schema: argus/codex-provenance@1
 slug: minos
 display_name: Minos
 runtime_config: argus/codex/minos.toml
-runtime_config_sha256: 2c8e7096dd908dffc3a20a1d7ae355237e681aa4e757acd33c391e4e7c09ab68
-developer_instructions_sha256: f39b60eeb0b23a35e1b794c0834fcd47090b9a240606a4adb4a57349ab9eeef9
+runtime_config_sha256: 9109e232ca23b1ebf96de80e971d6681c3eba73983c77249180fe4443d79d366
+developer_instructions_sha256: 15422419d839124944a2ef98f42149b6d8ef383007587ebbeb4b009c7a05ee02
 canonical_source: argus/roles/minos.md
 canonical_source_sha256: 6d927118e5f4649cf7e0be47925264ac7ef535c8db17ca0f1d85ac3e022ebfe7
 model: sol
