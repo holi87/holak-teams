@@ -8,56 +8,126 @@ The built-in corpus v2 (`corpus/`, version `argus-eval-corpus@2`) is one loopbac
 
 Use the optional private `corpusModule` configuration field for genuinely held-out modules before drawing broad generalization claims. That evaluator-only ES module follows the corpus v2 contract: it exports `corpusVersion`, `seeds`, `seedIds`, `startApplication({seed, enabledSeeds, port})` returning `{url, port, contract, close}` on loopback, `truthFor(enabledSeeds)`, and optionally `probe(id, url, contract)` and `corpusDigest()`. It is never passed to the adapter.
 
-The evaluator retains private truth in its own process and writes it only to the separate, private output directory. Hunters receive only a URL, public contract, artifact directory, and equal budgets. Do not give hunters the repository, evaluator sources, private result directory, answer keys, or verdicts. Host adapters **must launch the normal Argus isolated runtime** and keep those locations outside its readable boundary; a temporary working directory alone is not an OS sandbox. Keep the host's runtime/operator signers isolated as in normal engagements. The adapter must enforce the token budget, report measured tokens/cost, and preserve reports and redacted probe evidence. The evaluator independently enforces elapsed time and rejects missing, failed, or over-budget results. Never run an untrusted adapter.
+The evaluator keeps private truth in its own process and writes it only to the sealed part of the output directory. Hunters receive only the public hunt request: a loopback URL, the public contract URL, an empty artifact directory, the mode, and the budget. Do not give hunters the repository, evaluator sources, the output directory, answer keys, or verdicts. Host adapters **must launch the normal Argus isolated runtime**; a temporary working directory alone is not an OS sandbox. Never run an untrusted adapter.
+
+### Sealing and contamination
+
+Every directory the evaluator creates is 0700 and physical (its realpath equals itself):
+
+- `<output>/sealed/` holds `private-runs.json`, `canary.txt`, and `runs/<runId>/` (completed runs).
+- `<output>/active/<runId>/` holds `request.json` (0600), `result.json`, `usage.json`, `launcher.log`, and `artifacts/`, the artifact root. The artifact root starts empty and is the hunter's only writable root; request, result, and usage live outside it, so a hunter cannot forge them. After the run, the whole directory moves to `sealed/runs/<runId>/`, and `artifactRoot` in the private results is that sealed path.
+
+While an adapter runs, `sealed/` is `chmod 000`. The OS sandbox denies chmod outside the artifact root, so a hunter cannot undo the seal. After the adapter exits (or is killed at its budget), the evaluator kills the adapter's whole process group before it restores 0700, so no straggler in that group sees the directory reopen. Interrupting `run.mjs` (SIGINT or SIGTERM) also kills the group and restores the mode.
+
+At start, the evaluator writes a random `ARGUS-EVAL-CANARY-<32 hex>` to `sealed/canary.txt` and records only its SHA-256. After each run it scans the artifact root: regular files up to 5 MB, and every relative file name, skipping `node_modules` and symbolic links. Any of these makes the run `contaminated`:
+
+- the canary;
+- an absolute path of the evaluator repository, the output directory, or the corpus directory (the run's own artifact root path is exempt, because Argus records it);
+- a corpus source file name, such as `tenant-authz.mjs` or `corpus/index.mjs`. Every file counts qualified by its directory; files with a hyphenated stem also count by their bare name. A private `corpusModule` contributes its optional `corpusDir` and `corpusFiles()` exports, or else its own directory and file name.
+
+A contaminated run is excluded from metrics, makes `run.mjs` exit 1, and blocks recording a baseline. An exact seed ID or an unreadable entry makes the run `suspect` only: it is flagged for review but still scored.
+
+**Residual risk.** The Argus OS sandbox confines writes, not reads (`file-read*` on macOS, `--ro-bind / /` on Linux). A hunter can therefore read the evaluator repository, including corpus sources and git objects, and anything else the evaluating user can read. Sealing protects only this comparison's private results, and only against processes in the adapter's process group (a process that calls `setsid` escapes the post-exit kill). The scan detects traces, not reads that leave none. For a recorded baseline, run the adapters as a separate OS user or in a container that cannot read the repository, and state the isolation used. Keep variant checkouts outside the evaluator repository and the output directory; otherwise their plugin paths match a forbidden evaluator path.
 
 ## Paired, repeated comparison
 
-Write a host-local configuration with two immutable revisions and executable argument arrays:
+Write a host-local `argus-eval/comparison-config@2` configuration (`schemas/comparison-config.schema.json`):
 
 ```json
 {
+  "schema": "argus-eval/comparison-config@2",
   "variants": [
     {"name":"baseline","revision":"<full-baseline-commit>","command":["/secure/argus-eval-baseline-adapter"]},
     {"name":"candidate","revision":"<full-candidate-commit>","command":["/secure/argus-eval-candidate-adapter"]}
   ],
+  "modes": ["B"],
+  "builds": ["faulty", "corrected"],
   "repeats": 3,
-  "seconds": 600,
-  "tokens": 50000
+  "secondsByMode": {"A": 28800, "B": 14400},
+  "tokens": null,
+  "workRoot": "/secure/argus-eval-work",
+  "adapterEnv": ["ANTHROPIC_API_KEY"]
 }
 ```
 
-The host adapter receives the absolute public request JSON path as its final argument. It starts the chosen revision with the normal authenticated launcher, using the target, mode B, and artifact root from that request. Do not bypass launcher authorization to make an evaluation pass. Write `result.json` at the requested path:
+- `variants`: one or two, each with a name (`^[a-z][a-z0-9-]{0,31}$`, distinct), an immutable 40-hex revision, and an argument array whose first element is an absolute executable path.
+- `modes`: a non-empty subset of `A` (hunt plus regression automation) and `B` (hunt). Default `["B"]`.
+- `builds`: `faulty` (every seed enabled) and/or `corrected` (none). Default both.
+- `repeats`: 2 to 20.
+- `seeds`: optional, one integer from 1 to 999999 per repeat. When absent, each repeat draws a random seed. Either way every run records its seed, so a comparison can be rerun with pinned seeds.
+- `secondsByMode`: the wall-clock budget per run, 1800 to 86400 seconds. Defaults: A 8 h (28800), B 4 h (14400). These are deliberately generous starting values; calibrate them later to at least twice the observed p95 elapsed time.
+- `tokens`: `null` (the default) means uncapped but measured. An integer cap marks a run that exceeds it `overBudget`; that is a flag, not an invalid run.
+- `workRoot`: an absolute directory whose realpath equals itself. The default is the physical system temporary directory (on macOS `/private/var/folders/...`, never the `/var/folders/...` alias that `argus-launch` rejects as non-physical). A relative output directory is created under it. The output directory is always created at its physical location, so every path in a hunt request is physical.
+- `adapterEnv`: extra environment variable names (`^[A-Z][A-Z0-9_]{0,63}$`) passed to the adapter with their values when present. `PATH`, `HOME`, and `TMPDIR` are always passed unchanged and may not be listed; nothing else is passed. The launcher isolates `CLAUDE_CONFIG_DIR` inside the artifact root, so the launched Claude has no stored login: list `ANTHROPIC_API_KEY`.
+- `replay`: reserved for Mode A regression replay; this revision accepts only `{"enabled": false}`.
+- `corpusModule`: an optional private corpus (above), resolved relative to the configuration file.
+- `testMode`: smoke tests only; allowed only with `ARGUS_EVAL_SMOKE=1`, and lowers the seconds minimum to 1.
+
+For every repeat, mode, and build, each variant runs once, in alternating order on odd repeats, against a fresh application started with the repeat seed. Its run ID is `r<repeat>-<mode>-<build>-<variant>`.
+
+### Host adapter contract
+
+The adapter receives the absolute path of the public `argus-eval/hunt-request@2` (`schemas/hunt-request.schema.json`) as its final argument, with `active/<runId>/` as its working directory:
 
 ```json
-{"findings":[{"id":"ATA-001","report":"bugs/ATA-001.md"}],"tokens":1234,"cost":0.05}
+{"schema":"argus-eval/hunt-request@2","runId":"r0-B-faulty-baseline","revision":"<full-baseline-commit>","target":"http://127.0.0.1:53124","contractUrl":"http://127.0.0.1:53124/contract","mode":"B","artifactRoot":"/secure/out/active/r0-B-faulty-baseline/artifacts","resultPath":"/secure/out/active/r0-B-faulty-baseline/result.json","usagePath":"/secure/out/active/r0-B-faulty-baseline/usage.json","logPath":"/secure/out/active/r0-B-faulty-baseline/launcher.log","budget":{"seconds":14400,"tokens":null}}
 ```
 
-Tokens and cost are measured provider usage, not estimates or invented zeros. Adapters are revision-specific; review their checkout binding and isolation before running them. Both variants use the same faulty or corrected build, repeat seed, scope, and budget per repeat; execution order alternates.
+The request carries no truth, seed, build, or enabled flags. On an evaluation host with no operator key material, the adapter launches by default with `argus-launch claude --unattested --mode <request.mode> --target <request.target> --artifact-root <request.artifactRoot> --engagement-id <id> --provision-browser`. The launcher's downgrade guard refuses `--unattested` whenever `ARGUS_MODEL_TRUST_STORE` or `~/.config/argus/model-trust.json` exists. The adapter must then run attested with its isolated signer, and must never move, hide, or delete a trust store to obtain unattested mode. The OS sandbox, the Claude version check, and the native turn cap still apply. The product default remains attested; unattested launch is an evaluation-host option, and `result.json` must carry `launchAssurance`.
+
+The adapter writes `argus-eval/adapter-result@2` (`schemas/adapter-result.schema.json`) to `resultPath`, never inside the artifact root:
+
+```json
+{"schema":"argus-eval/adapter-result@2","status":"completed","launcherExitCode":0,"usage":{"source":"claude-cli-result-json","inputTokens":120000,"outputTokens":30000,"cacheReadTokens":900000,"cacheCreationTokens":40000,"totalTokens":1090000,"costUsd":12.5,"numTurns":88,"controllerTurnCapHit":false},"subject":{"pluginVersion":"<plugin version>","pluginDigest":"<sha256 of the plugin tree>"},"reason":null,"launchAssurance":"unattested"}
+```
+
+`status` is `completed`, `launcher-refused`, `launcher-failed`, or `revision-mismatch`. Usage is measured provider usage from the Claude CLI result JSON; when none is available, `source` is `unavailable` and every value is `null`, never an estimate or an invented zero. Adapters report no findings. They are revision-specific; review their checkout binding and isolation before running them.
+
+The evaluator decides each run's status:
+
+- `awaiting-adjudication`: a valid `completed` result, within budget, not contaminated.
+- `timed-out`: the evaluator killed the adapter's process group at `secondsByMode[mode]`. The run's artifacts are still extracted and it stays scorable, but flagged.
+- `invalid-run`: `result.json` is missing or invalid and the run did not time out, `launchAssurance` is neither `attested` nor `unattested`, the status is not `completed`, or the adapter could not start.
+- `contaminated`: see "Sealing and contamination".
+
+Each run records `launchAssurance` (`unreported` when the result omits it). Paired variants must share the same launch assurance: when valid runs record more than one value, the printed summary gains `"assuranceMismatch": true`. `run.mjs` exits 1 when any run is invalid or contaminated, or on an assurance mismatch.
+
+### Evaluator-side extraction
+
+After the adapter exits, whatever the outcome, the evaluator (`lib/extract.mjs`) reads `solution/bug-ledger.json` from the artifact root and validates it against `argus/schemas/bug-ledger.schema.json`:
+
+- Confirmed rows are the findings. Suspected, needs-oracle, bounced, and quarantined rows are recorded as suspected. Duplicate and rejected rows are not candidates.
+- A row's report is the first `bugs/*.md` named `<origin>-*.md` or `<origin>.md`. Its confirmation time is the report's (or else the ledger's) modification time relative to the run start, clamped to the run's elapsed time.
+- `bugs/*.md` reports whose stem matches no ledger origin are listed as `unledgeredReports`.
+- The framework root is the directory containing both `run-tests.sh` and `scripts/runner-contract.sh`, searched to depth 4 (skipping `node_modules`, `ai_agents_internal`, and `reports`).
+- Symbolic links and files over 2 MB are ignored.
+
+A missing or invalid ledger scores as zero findings, which is an Argus delivery defect, not an invalid run.
 
 ```bash
 node scripts/eval/discovery/run.mjs /secure/comparison.json /secure/new-comparison-output
 ```
 
-All runs initially remain `UNSCORED`. Read each report, acceptance criterion, and evidence, then independently reproduce findings. Write a verdict array per run, in recorded run order:
+All runs initially remain `UNSCORED`; the private results are `<output>/sealed/private-runs.json` (`argus-eval/private-runs@2`). Read each extracted finding's report, acceptance criterion, and evidence, then independently reproduce it. Write a verdict array per run, in recorded run order, keyed by ledger bug ID:
 
 ```json
-[[{"findingId":"ATA-001","outcome":"real","seedId":"quantity-boundary","reason":"The above-maximum quantity was persisted","evidenceRef":"reports/independent-repro.txt","independentlyReproduced":true,"confirmedAtMs":12000}]]
+[[{"findingId":"BUG-0001","outcome":"real","seedId":"quantity-boundary","reason":"The above-maximum quantity was persisted","evidenceRef":"reports/independent-repro.txt","independentlyReproduced":true,"confirmedAtMs":12000}]]
 ```
 
-Use `real`, `false-positive`, or `duplicate`. Legitimate unseeded findings use `real` without `seedId`; never penalize them merely for being absent from the private key. Confirmation time is elapsed milliseconds from run start, established by recorded evidence. Verdict evidence must exist inside the run's artifact boundary. The one-row example illustrates the format, not a complete comparison.
+Use `real`, `false-positive`, or `duplicate`. Legitimate unseeded findings use `real` without `seedId`; never penalize them merely for being absent from the private key. Confirmation time is elapsed milliseconds from run start, established by recorded evidence. Verdict evidence must exist inside the run's sealed artifact root. The one-row example illustrates the format, not a complete comparison.
 
 ```bash
-node scripts/eval/discovery/adjudicate.mjs /secure/new-comparison-output/private-runs.json /secure/verdicts.json
+node scripts/eval/discovery/adjudicate.mjs /secure/new-comparison-output/sealed/private-runs.json /secure/verdicts.json
 ```
 
-The result includes per-run recall, critical recall, precision, independent reproduction, first-confirmation time, measured tokens/cost, and cost per real finding, plus per-revision repeated-run means. Missing verdicts or invalid runs block the comparative score. Do not interpret a zero-finding corrected run as perfect precision (precision is undefined there); inspect reported counts and false positives too. Archive raw per-run results alongside means so instability stays visible.
+The result includes per-run recall, critical recall, precision, independent reproduction, first-confirmation time, measured tokens/cost, and cost per real finding, plus per-revision repeated-run means. Missing verdicts, invalid or contaminated runs, and runs without measured usage block the comparative score. Timed-out runs are extracted and flagged, but they can be scored only when the adapter recorded usage before the kill, which a killed launcher normally does not, so set budgets generously. Do not interpret a zero-finding corrected run as perfect precision (precision is undefined there); inspect reported counts and false positives too. Archive raw per-run results alongside means so instability stays visible.
 
 ## Approving a prompt corpus with benchmark evidence
 
 A scored comparison is the evidence that lets a changed Argus prompt corpus pass `node scripts/check-argus-prompts.mjs` without a pending approval. Save the adjudication output, check out the candidate revision, and re-stamp `argus/prompt-budgets.json`:
 
 ```bash
-node scripts/eval/discovery/adjudicate.mjs /secure/new-comparison-output/private-runs.json /secure/verdicts.json >/secure/adjudication.json
+node scripts/eval/discovery/adjudicate.mjs /secure/new-comparison-output/sealed/private-runs.json /secure/verdicts.json >/secure/adjudication.json
 node scripts/approve-argus-prompts.mjs --approved-for "<release and reason>" \
   --benchmark /secure/adjudication.json --baseline-variant baseline --candidate-variant candidate --write
 ```
@@ -66,4 +136,4 @@ The tool accepts only a `scored` adjudication and reads the `revision`, `runs`, 
 
 ## Baseline and release checks
 
-`node scripts/eval/discovery/smoke-corpus.mjs` runs the corpus probe matrix for three input seeds (all seeds enabled, none enabled, and each seed alone): every seed probe must be true exactly when its seed is enabled, and every control must hold. It also checks the public endpoints for private data, contract determinism across restarts and builds, same-port restarts that replay derived IDs, the loopback-only bind, and that `corpus/` imports only `node:` builtins. `node scripts/eval/discovery/smoke.mjs` tests adjudication handling of false positives, unseeded findings, missing verdicts, and reproduction metrics, then runs 8 paired protocol runs with a stub adapter. These are deterministic harness baselines, **not an Argus model benchmark**. The release gate runs `node scripts/eval/run-smokes.mjs`, which executes every `smoke*.mjs` under `scripts/eval`. No numerical improvement in Argus recall is claimed by 4.9.1; collect a complete adjudicated paired comparison before setting a model-quality release threshold.
+`node scripts/eval/discovery/smoke-corpus.mjs` runs the corpus probe matrix for three input seeds (all seeds enabled, none enabled, and each seed alone): every seed probe must be true exactly when its seed is enabled, and every control must hold. It also checks the public endpoints for private data, contract determinism across restarts and builds, same-port restarts that replay derived IDs, the loopback-only bind, and that `corpus/` imports only `node:` builtins. `node scripts/eval/discovery/smoke.mjs` tests adjudication handling of false positives, unseeded findings, missing verdicts, and reproduction metrics and the configuration rules, then runs 16 paired protocol runs (modes A and B, both builds, pinned seeds) with a stub adapter, plus stub cases for a forged `result.json` inside the artifact root, contamination, a timed-out budget, the sealed directory, launch assurance, and the token cap. `node scripts/eval/discovery/smoke-extract.mjs` covers evaluator-side extraction: valid, invalid, and missing ledgers, symbolic links, unledgered reports, framework detection, and oversize files. These are deterministic harness baselines, **not an Argus model benchmark**. The release gate runs `node scripts/eval/run-smokes.mjs`, which executes every `smoke*.mjs` under `scripts/eval`. No numerical improvement in Argus recall is claimed by 4.9.1; collect a complete adjudicated paired comparison before setting a model-quality release threshold.

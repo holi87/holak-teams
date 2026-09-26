@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/scripts/eval/discovery/schemas/hunt-request.schema.json",
+  "title": "Argus discovery evaluation public hunt request v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "runId", "revision", "target", "contractUrl", "mode", "artifactRoot", "resultPath", "usagePath", "logPath", "budget"],
+  "properties": {
+    "schema": { "const": "argus-eval/hunt-request@2" },
+    "runId": { "type": "string", "pattern": "^r[0-9]{1,2}-[AB]-(?:faulty|corrected)-[a-z][a-z0-9-]{0,31}$" },
+    "revision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "target": { "type": "string", "pattern": "^http://(?:127\\.0\\.0\\.1|localhost|\\[::1\\]):[0-9]{1,5}$" },
+    "contractUrl": { "type": "string", "pattern": "^http://(?:127\\.0\\.0\\.1|localhost|\\[::1\\]):[0-9]{1,5}/contract$" },
+    "mode": { "enum": ["A", "B"] },
+    "artifactRoot": { "$ref": "#/$defs/absolutePath" },
+    "resultPath": { "$ref": "#/$defs/absolutePath" },
+    "usagePath": { "$ref": "#/$defs/absolutePath" },
+    "logPath": { "$ref": "#/$defs/absolutePath" },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seconds", "tokens"],
+      "properties": {
+        "seconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+        "tokens": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "absolutePath": { "type": "string", "pattern": "^/(?:[^/\\u0000]+/)*[^/\\u0000]+$" }
+  }
+}

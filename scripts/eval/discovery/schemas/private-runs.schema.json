@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/scripts/eval/discovery/schemas/private-runs.schema.json",
+  "title": "Argus discovery evaluation private run record v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "createdAt", "config", "corpus", "canarySha256", "runs"],
+  "properties": {
+    "schema": { "const": "argus-eval/private-runs@2" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "config": { "$ref": "#/$defs/config" },
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "digest"],
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "digest": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "canarySha256": { "$ref": "#/$defs/sha256" },
+    "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "absolutePath": { "type": "string", "pattern": "^/(?:[^/\\u0000]+/)*[^/\\u0000]+$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "strings": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "revision", "command"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+        "revision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "command": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "variants", "modes", "builds", "repeats", "seeds", "secondsByMode", "tokens", "workRoot", "adapterEnv", "replay", "corpusModule", "testMode"],
+      "properties": {
+        "schema": { "const": "argus-eval/comparison-config@2" },
+        "variants": { "type": "array", "minItems": 1, "maxItems": 2, "items": { "$ref": "#/$defs/variant" } },
+        "modes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["A", "B"] } },
+        "builds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["faulty", "corrected"] } },
+        "repeats": { "type": "integer", "minimum": 2, "maximum": 20 },
+        "seeds": { "type": ["array", "null"], "items": { "type": "integer", "minimum": 1, "maximum": 999999 } },
+        "secondsByMode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["A", "B"],
+          "properties": {
+            "A": { "type": "integer", "minimum": 1, "maximum": 86400 },
+            "B": { "type": "integer", "minimum": 1, "maximum": 86400 }
+          }
+        },
+        "tokens": { "type": ["integer", "null"], "minimum": 1 },
+        "workRoot": { "type": "string", "pattern": "^/" },
+        "adapterEnv": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" } },
+        "replay": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": { "enabled": { "type": "boolean" } }
+        },
+        "corpusModule": { "type": ["string", "null"], "pattern": "^/" },
+        "testMode": { "type": "boolean" }
+      }
+    },
+    "truth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "module", "surface", "severity", "criterion"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "module": { "type": "string", "minLength": 1 },
+        "surface": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["Blocker", "Critical", "Major", "Minor", "Trivial"] },
+        "criterion": { "type": "string", "minLength": 1 }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["envNames", "exitCode", "signal", "spawnError", "resultState", "resultErrors", "result"],
+      "properties": {
+        "envNames": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" } },
+        "exitCode": { "type": ["integer", "null"] },
+        "signal": { "type": ["string", "null"], "minLength": 1 },
+        "spawnError": { "type": ["string", "null"], "minLength": 1 },
+        "resultState": { "enum": ["valid", "missing", "invalid"] },
+        "resultErrors": { "$ref": "#/$defs/strings" },
+        "result": { "type": ["object", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "resultState": { "const": "valid" } } },
+          "then": { "properties": { "result": { "type": "object" } } }
+        }
+      ]
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "origin", "lane", "severity", "status", "wired", "testId", "title", "reportPath", "evidenceIds", "confirmedAtMs"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^BUG-[0-9]{4}$" },
+        "origin": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "lane": { "type": "string", "minLength": 1 },
+        "severity": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["confirmed", "suspected", "needs-oracle", "bounced", "quarantined"] },
+        "wired": { "type": "boolean" },
+        "testId": { "type": ["string", "null"], "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "reportPath": { "type": ["string", "null"], "pattern": "^bugs/[^/]+\\.md$" },
+        "evidenceIds": { "$ref": "#/$defs/strings" },
+        "confirmedAtMs": { "$ref": "#/$defs/count" }
+      }
+    },
+    "extraction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ledger", "ledgerErrors", "findings", "suspected", "unledgeredReports", "framework"],
+      "properties": {
+        "ledger": { "enum": ["present", "missing", "invalid"] },
+        "ledgerErrors": { "$ref": "#/$defs/strings" },
+        "findings": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              { "$ref": "#/$defs/finding" },
+              { "properties": { "status": { "const": "confirmed" } } }
+            ]
+          }
+        },
+        "suspected": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              { "$ref": "#/$defs/finding" },
+              { "properties": { "status": { "enum": ["suspected", "needs-oracle", "bounced", "quarantined"] } } }
+            ]
+          }
+        },
+        "unledgeredReports": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^bugs/[^/]+\\.md$" } },
+        "framework": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["root", "candidates"],
+          "properties": {
+            "root": { "type": ["string", "null"], "pattern": "^(?:\\.|[^/\\u0000]+(?:/[^/\\u0000]+){0,3})$" },
+            "candidates": { "$ref": "#/$defs/count" }
+          }
+        }
+      }
+    },
+    "contamination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "hits", "totalHits", "scannedFiles", "skippedFiles"],
+      "properties": {
+        "status": { "enum": ["clean", "suspect", "contaminated"] },
+        "hits": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "file", "match"],
+            "properties": {
+              "kind": { "enum": ["canary", "forbidden-path", "corpus-file", "seed-id", "unreadable"] },
+              "file": { "type": "string", "minLength": 1 },
+              "match": { "type": ["string", "null"], "minLength": 1 }
+            }
+          }
+        },
+        "totalHits": { "$ref": "#/$defs/count" },
+        "scannedFiles": { "$ref": "#/$defs/count" },
+        "skippedFiles": { "$ref": "#/$defs/count" }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "variant", "revision", "repeat", "seed", "mode", "build", "enabledSeeds", "truth", "url", "port", "contract", "status", "reason", "launchAssurance", "startedAt", "elapsedMs", "timedOut", "overBudget", "artifactRoot", "adapter", "extraction", "contamination", "replay"],
+      "properties": {
+        "runId": { "type": "string", "pattern": "^r[0-9]{1,2}-[AB]-(?:faulty|corrected)-[a-z][a-z0-9-]{0,31}$" },
+        "variant": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+        "revision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "repeat": { "type": "integer", "minimum": 0, "maximum": 19 },
+        "seed": { "type": "integer", "minimum": 1, "maximum": 999999 },
+        "mode": { "enum": ["A", "B"] },
+        "build": { "enum": ["faulty", "corrected"] },
+        "enabledSeeds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } },
+        "truth": { "type": "array", "items": { "$ref": "#/$defs/truth" } },
+        "url": { "type": "string", "pattern": "^http://(?:127\\.0\\.0\\.1|localhost|\\[::1\\]):[0-9]{1,5}$" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "contract": { "type": "object" },
+        "status": { "enum": ["awaiting-adjudication", "timed-out", "invalid-run", "contaminated"] },
+        "reason": { "type": ["string", "null"], "minLength": 1 },
+        "launchAssurance": { "enum": ["attested", "unattested", "unreported"] },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "elapsedMs": { "$ref": "#/$defs/count" },
+        "timedOut": { "type": "boolean" },
+        "overBudget": { "type": "boolean" },
+        "artifactRoot": { "$ref": "#/$defs/absolutePath" },
+        "adapter": { "$ref": "#/$defs/adapter" },
+        "extraction": { "$ref": "#/$defs/extraction" },
+        "contamination": { "$ref": "#/$defs/contamination" },
+        "replay": { "type": "null" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "awaiting-adjudication" } } },
+          "then": {
+            "properties": {
+              "reason": { "type": "null" },
+              "timedOut": { "const": false },
+              "adapter": { "properties": { "resultState": { "const": "valid" } } },
+              "contamination": { "properties": { "status": { "enum": ["clean", "suspect"] } } }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "timed-out" } } },
+          "then": { "properties": { "timedOut": { "const": true } } }
+        }
+      ]
+    }
+  }
+}
