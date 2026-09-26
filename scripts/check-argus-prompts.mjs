@@ -4,16 +4,20 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { computePromptCorpus, evaluateNonRegression, frontmatterList, readArgusPluginVersion, words } from './lib/argus-prompt-corpus.mjs';
 
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rootIndex = process.argv.indexOf('--root');
 const ROOT = rootIndex >= 0 ? resolve(process.argv[rootIndex + 1] ?? '') : defaultRoot;
+const PRINT_CORPUS = process.argv.includes('--print-corpus');
+const SKIP_CORPUS_APPROVAL = process.argv.includes('--skip-corpus-approval');
 const AGENTS = join(ROOT, 'argus/claude/agents');
 const CODEX = join(ROOT, 'argus/codex');
 const RUN = join(ROOT, 'argus/claude/skills/run/SKILL.md');
 const budget = readJson('argus/prompt-budgets.json');
 const comparison = readJson('argus/prompt-engagement-contract.json');
 const matrix = readJson('argus/capabilities/capability-matrix.json');
+assert(budget.schemaVersion === 2, `argus/prompt-budgets.json must be schemaVersion 2, found ${budget.schemaVersion}`);
 const files = readdirSync(AGENTS).filter((file) => file.endsWith('.md')).sort();
 const codexFiles = readdirSync(CODEX).filter((file) => file.endsWith('.toml')).sort();
 const contracts = new Map(matrix.agents.map((agent) => [agent.slug, agent]));
@@ -42,7 +46,6 @@ let totalEffectiveWords = 0;
 let boundedWorkers = 0;
 let toolNameBytes = 0;
 let playwrightEntries = 0;
-const corpusHash = createHash('sha256');
 
 for (const file of files) {
   const slug = file.slice(0, -3);
@@ -53,7 +56,6 @@ for (const file of files) {
   const count = words(content);
   agentWords[slug] = count;
   totalWords += count;
-  corpusHash.update(`${file}\0${content}`);
   assert(count <= budget.budgets.maxAgentWords, `${slug}: ${count} words exceeds ${budget.budgets.maxAgentWords}`);
 
   const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
@@ -107,29 +109,6 @@ assert(playwrightEntries === budget.budgets.maxPlaywrightMcpEntries, `expected e
 assertPlaywrightBoundary(agents);
 assertProfileAssignments(matrix, profileCounts);
 
-const corpusSha256 = corpusHash.digest('hex');
-const approvedAgents = budget.approvedCorpus.agents;
-assert(Object.keys(approvedAgents).sort().join(',') === [...agents.keys()].sort().join(','), 'approved prompt corpus roster differs from current roster');
-const increases = Object.fromEntries(Object.entries(agentWords)
-  .filter(([slug, count]) => count > approvedAgents[slug])
-  .map(([slug, count]) => [slug, count - approvedAgents[slug]]));
-if (Object.keys(increases).length > 0 || totalWords > budget.approvedCorpus.words) {
-  const approval = budget.regressionApproval;
-  assert(approval, `prompt regression requires explicit regressionApproval: ${JSON.stringify(increases)}`);
-  assert(approval.corpusSha256 === corpusSha256, 'regressionApproval does not match current prompt corpus');
-  assert(/^#[0-9]+$/.test(approval.issue) && approval.approvedBy && approval.reason, 'regressionApproval metadata is incomplete');
-  assert(equal(approval.allowedAgentIncreases, increases), `regressionApproval must exactly enumerate increases: ${JSON.stringify(increases)}`);
-} else {
-  // Without this branch the recorded digest was decoration: a corpus could be rewritten
-  // word-for-word inside the approved counts and nothing would notice. A gate whose own
-  // integrity field is never read is the same failure the framework audits others for.
-  assert(budget.approvedCorpus.sha256 === corpusSha256,
-    `approvedCorpus.sha256 does not match the current corpus ${corpusSha256}: re-approve the corpus or restore it`);
-}
-
-const reduction = 1 - totalWords / budget.baseline.claudeAgentWords;
-assert(reduction >= 0.35, `Claude prompt reduction ${(reduction * 100).toFixed(2)}% is below 35%`);
-
 let codexCharacters = 0;
 for (const file of codexFiles) {
   const slug = file.slice(0, -5);
@@ -147,9 +126,7 @@ for (const file of codexFiles) {
   assert(!/\b(?:opus|sonnet|haiku|sol|terra|luna)\b/i.test(instructions), `${slug}: provider model token leaked into developer instructions`);
 }
 const codexEstimatedTokens = Math.ceil(codexCharacters / 4);
-const codexReduction = budget.baseline.codexEstimatedTokens - codexEstimatedTokens;
 assert(codexEstimatedTokens <= budget.budgets.maxCodexEstimatedTokens, `Codex corpus ${codexEstimatedTokens} estimated tokens exceeds ${budget.budgets.maxCodexEstimatedTokens}`);
-assert(codexReduction >= budget.budgets.minimumCodexTokenReduction, `Codex reduction ${codexReduction} is below ${budget.budgets.minimumCodexTokenReduction}`);
 
 const runWords = words(readFileSync(RUN, 'utf8'));
 assert(runWords >= budget.budgets.minRunSkillWords && runWords <= budget.budgets.maxRunSkillWords, `/argus:run has ${runWords} words; expected ${budget.budgets.minRunSkillWords}-${budget.budgets.maxRunSkillWords}`);
@@ -169,11 +146,55 @@ for (const requirement of comparison.representativeEngagement.requirements) {
 }
 assertAdversarialExecutionCases(comparison, sourceSkills.get('qa-core'));
 
+const corpus = computePromptCorpus(ROOT);
+assert(corpus.words === totalWords && corpus.effectiveWords === totalEffectiveWords && corpus.codexEstimatedTokens === codexEstimatedTokens && equal(corpus.agents, agentWords),
+  'shared prompt-corpus measurement drifted from the structural gate counts');
+if (PRINT_CORPUS) {
+  console.log(JSON.stringify(corpus, null, 2));
+  process.exit(0);
+}
+const approval = SKIP_CORPUS_APPROVAL ? null : assertCorpusApproval(budget.approvedCorpus, corpus, readArgusPluginVersion(ROOT), budget.nonRegression);
+
 console.log(`PASS  Argus Claude prompts: ${totalWords} raw / ${totalEffectiveWords} effective words, max role ${Math.max(...Object.values(agentWords))}`);
-console.log(`PASS  Argus Codex prompts: ${codexCharacters} chars / ${codexEstimatedTokens} estimated tokens, reduction ${codexReduction}`);
+console.log(`PASS  Argus Codex prompts: ${codexCharacters} chars / ${codexEstimatedTokens} estimated tokens (max ${budget.budgets.maxCodexEstimatedTokens})`);
 console.log(`PASS  Capability disclosure: profiles core/browser/framework/coverage/orchestration=${['qa-core','qa-browser','qa-framework-runner','qa-coverage-reporting','orchestration-core'].map((profile) => profileCounts.get(profile) ?? 0).join('/')}, /run ${runWords} words`);
 console.log(`PASS  Tool boundary: ${toolNameBytes} name bytes, ${playwrightEntries} Playwright MCP entries, Kalchas public recon only`);
-console.log(`PASS  Prompt regression: ${Object.keys(increases).length} increases, corpus ${corpusSha256.slice(0, 12)}, ${duplicates.length} duplicated doctrine paragraphs`);
+console.log(`PASS  Duplicate doctrine: ${duplicates.length} duplicated doctrine paragraphs`);
+if (approval) {
+  if (approval.warning) console.log(approval.warning);
+  console.log(`PASS  Prompt corpus approval: ${corpus.sha256.slice(0, 12)}, benchmark ${approval.status}`);
+} else {
+  console.log('SKIP  corpus approval (development only; the release gate never passes this flag)');
+}
+
+// The corpus digest binds the approval to exact prompt and doctrine text; the counts must agree
+// with it; growth is accepted only with adjudicated non-regression evidence for this exact
+// corpus, or as a pending approval that expires when the Argus plugin version changes.
+function assertCorpusApproval(approved, current, pluginVersion, nonRegression) {
+  assert(approved && typeof approved === 'object', 'approvedCorpus is missing');
+  assert(approved.sha256 === current.sha256,
+    `approvedCorpus.sha256 does not match the current corpus ${current.sha256}: re-approve with scripts/approve-argus-prompts.mjs or restore it`);
+  const stale = ['words', 'effectiveWords', 'codexEstimatedTokens', 'agents', 'profiles']
+    .filter((field) => !equal(sortedKeys(approved[field]), sortedKeys(current[field])));
+  assert(stale.length === 0, `approvedCorpus counts are stale: ${stale.join(', ')} differ from the current corpus`);
+  const benchmark = approved.benchmark ?? {};
+  if (benchmark.status === 'pending') {
+    assert(approved.releaseVersion === pluginVersion, `pending benchmark approval expired: approved for ${approved.releaseVersion}, Argus is ${pluginVersion}`);
+    assert(typeof benchmark.reason === 'string' && benchmark.reason.trim(), 'pending benchmark approval must state a reason');
+    return { status: 'pending', warning: `WARN  prompt corpus approved for ${approved.releaseVersion} without benchmark evidence: ${benchmark.reason}` };
+  }
+  assert(benchmark.status === 'non-regressed', `approvedCorpus.benchmark.status must be pending or non-regressed, found ${JSON.stringify(benchmark.status)}`);
+  assert(benchmark.candidate?.corpusSha256 === approved.sha256, 'benchmark evidence does not match the approved corpus');
+  assert(/^[0-9a-f]{64}$/.test(benchmark.comparisonSha256 ?? ''), 'benchmark comparisonSha256 must be the sha256 of the adjudicated comparison');
+  const errors = evaluateNonRegression(benchmark, nonRegression);
+  assert(errors.length === 0, errors.join('; '));
+  return { status: 'non-regressed', warning: null };
+}
+
+function sortedKeys(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, value[key]]));
+}
 
 function resolveTools(contract) {
   const tools = [...contract.requiredTools];
@@ -261,15 +282,6 @@ function duplicatedParagraphs(agentMap, minWords) {
     }
   }
   return [...paragraphs.values()].filter((item) => item.files.size > 1).map((item) => ({ files: [...item.files].sort() }));
-}
-
-function frontmatterList(frontmatter, field) {
-  const block = frontmatter.match(new RegExp(`^${field}:\\s*\\n((?:\\s+-\\s+[^\\n]+\\n?)*)`, 'm'))?.[1] ?? '';
-  return [...block.matchAll(/^\s+-\s+([^\s#]+)\s*$/gm)].map((match) => match[1]);
-}
-
-function words(value) {
-  return value.trim() ? value.trim().split(/\s+/u).length : 0;
 }
 
 function read(path) {

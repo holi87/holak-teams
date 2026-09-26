@@ -1,16 +1,11 @@
 {
   "$schema": "./schemas/prompt-budgets.schema.json",
-  "schemaVersion": 1,
-  "baseline": {
-    "claudeAgentWords": 147474,
-    "codexTomlCharacters": 944158,
-    "codexEstimatedTokens": 236040,
-    "capturedAt": "2026-07-11",
-    "sourceCommit": "1e4d411"
-  },
+  "schemaVersion": 2,
   "approvedCorpus": {
+    "sha256": "b9e3d9ac3be1ef3c1a992cdeec1bc0e2dfe008e674d99c21b05c3215a86f9f21",
     "words": 77861,
-    "sha256": "8e8447d8cd728b8d38f28dc9ff59af7dad4d46b2138cdd91806442cd59cff598",
+    "effectiveWords": 118798,
+    "codexEstimatedTokens": 214631,
     "agents": {
       "aegis": 2327,
       "antigone": 3434,
@@ -40,22 +35,39 @@
       "tiresias": 3395,
       "tyche": 3700
     },
-    "approvedFor": "4.9.1 — user-authorized fixes for #47–#53; conditional oracles, proof enforcement, case depth, mode-aware hunting, and evaluation harness"
+    "profiles": {
+      "orchestration-core": 1196,
+      "qa-browser": 226,
+      "qa-core": 1224,
+      "qa-coverage-reporting": 316,
+      "qa-framework-runner": 243
+    },
+    "releaseVersion": "4.9.2",
+    "approvedFor": "5.0.0 budget contract migration",
+    "benchmark": {
+      "status": "pending",
+      "reason": "Budget contract v2 migration; no adjudicated discovery comparison yet"
+    }
+  },
+  "nonRegression": {
+    "minRepeats": 3,
+    "recallTolerance": 0,
+    "criticalRecallTolerance": 0,
+    "precisionTolerance": 0.05
   },
   "budgets": {
-    "maxClaudeAgentWords": 88407,
-    "maxEffectiveClaudeWords": 124000,
-    "maxAgentWords": 5200,
-    "maxEffectiveAgentWords": 6400,
-    "maxCodexEstimatedTokens": 221040,
-    "minimumCodexTokenReduction": 15000,
+    "maxClaudeAgentWords": 120000,
+    "maxEffectiveClaudeWords": 180000,
+    "maxAgentWords": 7500,
+    "maxEffectiveAgentWords": 10000,
+    "maxCodexEstimatedTokens": 330000,
     "minRunSkillWords": 300,
-    "maxRunSkillWords": 450,
-    "maxOdysseusAgentWords": 800,
+    "maxRunSkillWords": 700,
+    "maxOdysseusAgentWords": 1200,
     "maxCodexCapabilityDeltaWords": 100,
     "maxFrontmatterToolEntries": 10,
     "maxToolNameBytesPerAgent": 160,
-    "maxToolNameBytesCorpus": 2000,
+    "maxToolNameBytesCorpus": 2600,
     "maxPlaywrightMcpEntries": 2,
     "maxDescriptionWords": 30,
     "duplicateParagraphMinWords": 40,

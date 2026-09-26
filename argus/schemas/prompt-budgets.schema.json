@@ -4,8 +4,8 @@
   "type": "object",
   "required": [
     "schemaVersion",
-    "baseline",
     "approvedCorpus",
+    "nonRegression",
     "budgets",
     "requiredPreloadedProfiles",
     "optionalProfiles"
@@ -15,23 +15,30 @@
       "type": "string"
     },
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
-    "baseline": {
+    "approvedCorpus": {
       "type": "object",
       "required": [
-        "claudeAgentWords",
-        "codexTomlCharacters",
+        "sha256",
+        "words",
+        "effectiveWords",
         "codexEstimatedTokens",
-        "capturedAt",
-        "sourceCommit"
+        "agents",
+        "profiles",
+        "releaseVersion",
+        "approvedFor",
+        "benchmark"
       ],
       "properties": {
-        "claudeAgentWords": {
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "words": {
           "type": "integer",
           "minimum": 1
         },
-        "codexTomlCharacters": {
+        "effectiveWords": {
           "type": "integer",
           "minimum": 1
         },
@@ -39,81 +46,54 @@
           "type": "integer",
           "minimum": 1
         },
-        "capturedAt": {
-          "type": "string",
-          "format": "date"
-        },
-        "sourceCommit": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{7,40}$"
-        }
-      },
-      "additionalProperties": false
-    },
-    "approvedCorpus": {
-      "type": "object",
-      "required": [
-        "words",
-        "sha256",
-        "agents"
-      ],
-      "properties": {
-        "words": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "sha256": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        },
         "agents": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "type": "integer",
-            "minimum": 1
-          }
+          "$ref": "#/$defs/wordCounts"
+        },
+        "profiles": {
+          "$ref": "#/$defs/wordCounts"
+        },
+        "releaseVersion": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
         },
         "approvedFor": {
           "type": "string",
           "minLength": 1
+        },
+        "benchmark": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/pendingBenchmark"
+            },
+            {
+              "$ref": "#/$defs/nonRegressedBenchmark"
+            }
+          ]
         }
       },
       "additionalProperties": false
     },
-    "regressionApproval": {
+    "nonRegression": {
       "type": "object",
       "required": [
-        "corpusSha256",
-        "issue",
-        "approvedBy",
-        "reason",
-        "allowedAgentIncreases"
+        "minRepeats",
+        "recallTolerance",
+        "criticalRecallTolerance",
+        "precisionTolerance"
       ],
       "properties": {
-        "corpusSha256": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+        "minRepeats": {
+          "type": "integer",
+          "minimum": 1
         },
-        "issue": {
-          "type": "string",
-          "pattern": "^#[0-9]+$"
+        "recallTolerance": {
+          "$ref": "#/$defs/unitInterval"
         },
-        "approvedBy": {
-          "type": "string",
-          "minLength": 1
+        "criticalRecallTolerance": {
+          "$ref": "#/$defs/unitInterval"
         },
-        "reason": {
-          "type": "string",
-          "minLength": 1
-        },
-        "allowedAgentIncreases": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "type": "integer",
-            "minimum": 1
-          }
+        "precisionTolerance": {
+          "$ref": "#/$defs/unitInterval"
         }
       },
       "additionalProperties": false
@@ -126,7 +106,6 @@
         "maxAgentWords",
         "maxEffectiveAgentWords",
         "maxCodexEstimatedTokens",
-        "minimumCodexTokenReduction",
         "minRunSkillWords",
         "maxRunSkillWords",
         "maxOdysseusAgentWords",
@@ -160,10 +139,6 @@
           "type": "integer",
           "minimum": 1
         },
-        "minimumCodexTokenReduction": {
-          "type": "integer",
-          "minimum": 1
-        },
         "minRunSkillWords": {
           "type": "integer",
           "minimum": 1
@@ -193,8 +168,8 @@
           "minimum": 1
         },
         "maxPlaywrightMcpEntries": {
-          "type": "integer",
-          "minimum": 0
+          "description": "Exact count, not a ceiling: the only Playwright MCP tools are Kalchas's read-only public recon pair. A security invariant, never raised for prompt growth.",
+          "const": 2
         },
         "maxDescriptionWords": {
           "type": "integer",
@@ -213,6 +188,10 @@
     },
     "requiredPreloadedProfiles": {
       "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "contains": {
         "const": "qa-core"
       },
@@ -220,10 +199,121 @@
     },
     "optionalProfiles": {
       "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "contains": {
         "const": "competition-profile"
-      }
+      },
+      "uniqueItems": true
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "unitInterval": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "wordCounts": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "pendingBenchmark": {
+      "type": "object",
+      "required": [
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "const": "pending"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "nonRegressedBenchmark": {
+      "type": "object",
+      "required": [
+        "status",
+        "comparisonSha256",
+        "adjudicatedAt",
+        "baseline",
+        "candidate"
+      ],
+      "properties": {
+        "status": {
+          "const": "non-regressed"
+        },
+        "comparisonSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "adjudicatedAt": {
+          "type": "string",
+          "format": "date"
+        },
+        "baseline": {
+          "$ref": "#/$defs/benchmarkRun"
+        },
+        "candidate": {
+          "$ref": "#/$defs/benchmarkRun"
+        }
+      },
+      "additionalProperties": false
+    },
+    "benchmarkRun": {
+      "type": "object",
+      "required": [
+        "revision",
+        "corpusSha256",
+        "runs",
+        "meanRecall",
+        "meanCriticalRecall",
+        "meanPrecision"
+      ],
+      "properties": {
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "corpusSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "meanRecall": {
+          "$ref": "#/$defs/unitInterval"
+        },
+        "meanCriticalRecall": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/unitInterval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meanPrecision": {
+          "$ref": "#/$defs/unitInterval"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
 }
