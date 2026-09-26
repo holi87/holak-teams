@@ -73,7 +73,12 @@ quarantine tag and has exactly one row in `solution/quarantine.tsv`:
 that tag from native execution, while `scripts/quarantine-contract.sh` emits an approved
 skip for each valid row. A tag/ledger count mismatch, malformed row, or expired entry is
 a policy failure (exit 13), never a silent skip. The portable quarantine evaluator is
-byte-identical across TypeScript, Java, and Python templates.
+byte-identical across TypeScript, Java, and Python templates. `--inventory
+reports/test-inventory.tsv` is the preferred form and joins by case id: a ledger row
+without a quarantined inventory row (`quarantine-entry-orphaned`), a quarantined row
+without a ledger row (`quarantine-unregistered`), and a quarantined regression
+(`regression-quarantine-forbidden`, never an approved skip) are policy failures.
+`--tagged-count` is the legacy count comparison.
 
 If the underlying runner fails without adapter events, the wrapper emits an unexpected
 `infrastructure` outcome. In `defect-evidence`, an absent/empty adapter file is a contract
@@ -258,3 +263,75 @@ The reason field of an adapter event comes only from SD-4, SD-5, and SD-6
 `scripts/runner-lib.sh`, `scripts/runner-contract.sh`, and the portable lane-plan,
 environment, inventory, evidence, and counterfactual gates emit. No other reason token
 is valid.
+
+### Runner library and gates
+
+`scripts/runner-lib.sh` owns the run. A runtime `run-tests.sh` sets `ARGUS_RUNTIME`,
+`ARGUS_PACKAGE_MANAGER`, and `TEST_ROOT`, defines the hooks `argus_native_prepare`,
+`argus_native_inventory`, `argus_native_run <baseline|full|regression> <lanes-csv> <pass>
+[passthrough...]`, `argus_native_collect <pass>`, and optionally `argus_native_post
+<mode>`, sources the library, and calls `argus_main "$@"`. Hooks run with errexit
+suspended, report their own failures through `scripts/outcome-event.sh`, and return a
+status; they never `exit`. Any unexpected stop is `wrapper infrastructure fail
+wrapper-command-failed`.
+
+The steps run in this order; a denial finishes the run through `scripts/runner-contract.sh`.
+
+1. Mode parsing (an invalid mode exits 14 without a result), removal of stale events,
+   inventory, expected-bugs, counterfactual-plan, and adapter-status files, and an absolute
+   `ARGUS_OUTCOME_FILE`.
+2. Template selection, before any other event: `template-selection-missing-or-incompatible`.
+3. `full-suite` with framework selectors: `runner-selection` `full-suite-narrowing-forbidden`.
+4. The lane plan (SD-8) through `scripts/lane-plan.sh validate`: `lane-plan-invalid`,
+   `lane-plan-empty`, `lane.<lane>` `lane-prerequisite-missing`, and in `full-suite`
+   `lane-decision-missing`; each disabled lane records `lane.<lane> policy pass
+   lane-disabled.<reason>`. Under `ARGUS_CONTRACT_SMOKE=1` the run instead records
+   `contract-smoke-mode`, selects only the `contract-smoke` lane, skips the lane plan,
+   readiness, and environment steps, and its result has `deliveryGate: false` in every mode.
+5. The engagement fault-injection opt-in (below), then `argus_native_prepare`.
+6. Readiness: `ARGUS_READINESS_URLS` (space-separated; an explicitly empty value probes
+   nothing), otherwise `API_URL` for an enabled api, perf, security, or resilience lane and
+   `UI_URL` for an enabled ui lane: `readiness infrastructure fail target-not-ready`.
+7. The engagement reset opt-in (below), then `scripts/environment-gate.sh` (SD-9). A
+   declared reset runs only with `ARGUS_ENVIRONMENT_RESET=execute` and within
+   `ARGUS_RESET_TIMEOUT_SECONDS` (default 300): `environment-reset-executed`, or
+   `environment-reset-failed` (exit 12); without the opt-in it records
+   `environment-reset-not-requested`. A declared verify always runs within
+   `ARGUS_VERIFY_TIMEOUT_SECONDS` (default 120): `environment-baseline-verified`, or
+   `environment-not-at-baseline` (exit 12). Policy denials (exit 13):
+   `environment-plan-invalid`, `environment-timeout-invalid`, and in `full-suite`
+   `environment-decision-missing` or `environment-baseline-unproven` (no executed reset and
+   no passing verify).
+8. The collect-only inventory pass: a failure or an empty inventory is `test-inventory
+   automation fail test-inventory-failed`.
+9. `scripts/quarantine-contract.sh --inventory`.
+10. The evidence passes. This contract version runs one `live` pass per mode (`baseline`
+    selects baseline, `full-suite` full, `defect-evidence` and `candidate-regression`
+    regression). Each pass stores native artifacts in its own `reports/evidence/passes/<pass>/`
+    through `argus_native_collect` (`evidence-collect.<pass>` `evidence-collect-failed` on
+    failure). A green native run without an adapter status is `adapter automation fail
+    outcome-adapter-missing`; an `error` or malformed status is `outcome-adapter-failed`.
+11. `argus_native_post`, whose status counts as a native status.
+12. In `baseline` and `full-suite`, `scripts/lane-plan.sh verify`: an enabled lane executed
+    when a product, automation, or infrastructure event's case id equals, or extends with
+    `.<suffix>`, an inventory row of that lane (`lane.<lane> policy pass lane-executed`);
+    otherwise `lane.<lane> skip skipped lane-not-executed` (exit 15).
+13. `scripts/runner-contract.sh` with `--quarantine` and `--expected-bugs` when those files
+    exist and `--contract-smoke` under a contract smoke.
+
+**Engagement opt-ins.** Inside an Argus engagement (`ARGUS_ENGAGEMENT_MANIFEST` set),
+`ARGUS_ENVIRONMENT_RESET=execute` and `ARGUS_FAULT_INJECTION=authorized` are requests, not
+permissions. When the reset opt-in is set, before the environment gate (action
+`destructive`, exclusive window `reset`), and when the fault opt-in is set, before any
+native hook (action `chaos`, exclusive window `fault`), the library reads
+`argus-assets engagement status` and requires the window to be held, then requires an
+`allow` from `argus-assets authorization check` with `--lane "$ARGUS_ENGAGEMENT_LANE"`,
+`--target` from `ARGUS_AUTHORIZATION_TARGET` (default `API_URL`, then `UI_URL`),
+`--manifest` from `ARGUS_AUTHORIZATION_MANIFEST` (default `authorization.json` next to the
+engagement manifest), `--source-trust` from `ARGUS_AUTHORIZATION_SOURCE_TRUST` (default
+`manifest`), and, when set, `ARGUS_AUTHORIZATION_ACCOUNT`, `_NAMESPACE`, `_MUTATION`
+(default `environment:reset` for a reset), `_RATE`, `_CONCURRENCY`, `_TOTAL_REQUESTS`, and
+`_DURATION`. A missing CLI, lane, target, window, or decision refuses the run with
+`environment policy denied environment-reset-unauthorized` or `fault-injection policy
+denied fault-injection-unauthorized` (exit 13) before anything destructive starts. Outside
+an engagement the opt-in of the operator who owns the target stands.

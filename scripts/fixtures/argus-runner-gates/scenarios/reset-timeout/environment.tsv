@@ -1,0 +1,3 @@
+# kind<TAB>command<TAB>note
+reset	scripts/reset-environment.sh	fixture-reset
+verify	scripts/verify-baseline.sh	read-only-probe

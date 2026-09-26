@@ -2,7 +2,7 @@
 # Portable Argus runner-mode contract evaluator shared by every runtime template.
 set -euo pipefail
 
-mode="" events="" output="" runner_exit="0" quarantine="" expected_bugs=""
+mode="" events="" output="" runner_exit="0" quarantine="" expected_bugs="" contract_smoke=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --mode) mode="${2:-}"; shift 2 ;;
@@ -11,6 +11,7 @@ while [ "$#" -gt 0 ]; do
     --runner-exit) runner_exit="${2:-}"; shift 2 ;;
     --quarantine) quarantine="${2:-}"; shift 2 ;;
     --expected-bugs) expected_bugs="${2:-}"; shift 2 ;;
+    --contract-smoke) contract_smoke=1; shift ;;
     *) printf 'runner-contract: unknown option %s\n' "$1" >&2; exit 14 ;;
   esac
 done
@@ -137,9 +138,10 @@ tmp_output="${output}.$$.$RANDOM.tmp"
   printf '  "mode": "%s",\n  "status": "%s",\n  "exitCode": %s,\n' "$mode" "$([ "$exit_code" -eq 0 ] && printf pass || printf fail)" "$exit_code"
   # Provenance so a reader holding only this file can tell what it is evidence of. Without
   # it, a defect-evidence result overwriting a delivery gate result is indistinguishable
-  # from the delivery gate passing.
+  # from the delivery gate passing. A contract smoke proves the scaffold, never the target,
+  # so it is not a delivery gate even in full-suite mode.
   printf '  "generatedAt": "%s",\n  "deliveryGate": %s,\n  "missingExpectedBugs": %s,\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$([ "$mode" = full-suite ] && printf true || printf false)" "$missing_expected"
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$([ "$mode" = full-suite ] && [ "$contract_smoke" -eq 0 ] && printf true || printf false)" "$missing_expected"
   printf '  "categories": {"product": %s, "automation": %s, "infrastructure": %s, "skip": %s, "policy": %s},\n' "$product" "$automation" "$infrastructure" "$skip" "$policy"
   printf '  "events": ['
   comma=""

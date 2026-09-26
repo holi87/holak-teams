@@ -72,11 +72,20 @@ for index in "${!ENGINES[@]}"; do
   evaluate "$engine" full-suite "$FIXTURES/policy-denial.tsv" 1 13 "policy-$index"
   evaluate "$engine" defect-evidence /dev/null 1 14 "missing-evidence-$index"
   evaluate "$engine" full-suite "$FIXTURES/unapproved-skip.tsv" 0 15 "skip-$index"
+  # A contract smoke proves the scaffold, not the target: never a delivery gate.
+  evaluate "$engine" full-suite "$FIXTURES/full-suite.tsv" 0 0 "full-contract-smoke-$index" --quarantine "$FIXTURES/quarantine.tsv" --contract-smoke
+  jq -e '.deliveryGate == true' "$WORK/full-$index.json" >/dev/null || fail "full-suite result $index is not marked as the delivery gate"
+  jq -e '.deliveryGate == false' "$WORK/full-contract-smoke-$index.json" >/dev/null || fail "contract smoke result $index was marked as a delivery gate"
 done
 
 for runner in "$ROOT/argus/framework-template/run-tests.sh" "$ROOT/argus/framework-template-java/run-tests.sh" "$ROOT/argus/framework-template-python/run-tests.sh"; do
   grep -Fq 'baseline|defect-evidence|candidate-regression|full-suite' "$runner" || fail "$(basename "$(dirname "$runner")") does not expose all modes"
   grep -Fq 'reports/argus-runner-result.json' "$runner" || fail "$(basename "$(dirname "$runner")") does not emit the canonical result"
+done
+for library in "$ROOT/argus/framework-template/scripts/runner-lib.sh" "$ROOT/argus/framework-template-java/scripts/runner-lib.sh" "$ROOT/argus/framework-template-python/scripts/runner-lib.sh"; do
+  grep -Fq 'baseline|defect-evidence|candidate-regression|full-suite' "$library" || fail "$(basename "$(dirname "$(dirname "$library")")") runner library does not expose all modes"
+  grep -Fq 'reports/argus-runner-result.json' "$library" || fail "$(basename "$(dirname "$(dirname "$library")")") runner library does not emit the canonical result"
+  cmp "$library" "$ROOT/argus/framework-template-common/scripts/runner-lib.sh" >/dev/null || fail "$library drifted from the common runner library"
 done
 
 jq -e '.categories == {"product":1,"automation":1,"infrastructure":1,"skip":1,"policy":1}' "$WORK/full-0.json" >/dev/null || fail "full-suite categories are not distinct"

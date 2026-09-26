@@ -1,0 +1,7 @@
+# lane<TAB>state<TAB>owner<TAB>prerequisites<TAB>reason
+api	enabled	talos	API_URL	-
+ui	enabled	daidalos	UI_URL	-
+perf	disabled	nike	PERF_BUDGET_MS	not-yet-planned
+security	disabled	aegis	SECURITY_ENABLED	not-yet-planned
+db	disabled	mnemosyne	DB_URL	not-yet-planned
+resilience	disabled	nike	-	not-yet-planned
