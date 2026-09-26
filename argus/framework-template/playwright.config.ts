@@ -14,11 +14,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0, // determinism: fix flakiness at the source, never hide it behind retries
   workers: process.env.WORKERS ? Number(process.env.WORKERS) : undefined,
-  // Playwright-native reporters only: list (console), html (humans), json (tooling).
+  // list (console), html (humans), json (tooling), and the Argus outcome adapter, which
+  // stays inert unless scripts/runner-lib.sh exports ARGUS_RUNNER_MODE.
   reporter: [
     ['list'],
     ['html', { outputFolder: 'reports/html', open: 'never' }],
     ['json', { outputFile: 'reports/results.json' }],
+    ['./scripts/argus-playwright-reporter.mjs'],
   ],
   // Visual regression: first run creates baselines next to the spec; refresh with
   // --update-snapshots. Baselines are render-environment-specific — keep per-browser,

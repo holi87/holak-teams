@@ -1,0 +1,33 @@
+{
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
+  "engagementId": "typescript-runtime-adapter",
+  "bugs": [
+    {
+      "id": "BUG-0001",
+      "origin": ["ATA-001"],
+      "title": "Observed behaviour diverges from the specified behaviour",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-001",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0001",
+      "evidenceIds": []
+    },
+    {
+      "id": "BUG-0002",
+      "origin": ["ATA-002"],
+      "title": "Suspected divergence without a cited oracle",
+      "severity": "Minor",
+      "priority": "P3",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-002",
+      "status": "needs-oracle",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    }
+  ]
+}

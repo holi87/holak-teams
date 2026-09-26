@@ -263,6 +263,12 @@ else
   fail "[argus] (l2) capability-based template contract"
 fi
 
+if "$ROOT/scripts/smoke-argus-runtime-typescript.sh"; then
+  pass "[argus] (l3) TypeScript runtime adapter: collection inventory, ledger join, SD-5 classification, and SD-6 pass mapping"
+else
+  fail "[argus] (l3) TypeScript runtime adapter"
+fi
+
 if "$ROOT/scripts/smoke-argus-coverage.sh"; then
   pass "[argus] (m) target-derived, risk-weighted coverage and defect-neutral quality metrics"
 else
