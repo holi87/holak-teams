@@ -50,6 +50,18 @@ node scripts/eval/discovery/adjudicate.mjs /secure/new-comparison-output/private
 
 The result includes per-run recall, critical recall, precision, independent reproduction, first-confirmation time, measured tokens/cost, and cost per real finding, plus per-revision repeated-run means. Missing verdicts or invalid runs block the comparative score. Do not interpret a zero-finding corrected run as perfect precision (precision is undefined there); inspect reported counts and false positives too. Archive raw per-run results alongside means so instability stays visible.
 
+## Approving a prompt corpus with benchmark evidence
+
+A scored comparison is the evidence that lets a changed Argus prompt corpus pass `node scripts/check-argus-prompts.mjs` without a pending approval. Save the adjudication output, check out the candidate revision, and re-stamp `argus/prompt-budgets.json`:
+
+```bash
+node scripts/eval/discovery/adjudicate.mjs /secure/new-comparison-output/private-runs.json /secure/verdicts.json >/secure/adjudication.json
+node scripts/approve-argus-prompts.mjs --approved-for "<release and reason>" \
+  --benchmark /secure/adjudication.json --baseline-variant baseline --candidate-variant candidate --write
+```
+
+The tool accepts only a `scored` adjudication and reads the `revision`, `runs`, `meanRecall`, `meanCriticalRecall`, and `meanPrecision` of the two named comparison rows. It refuses when `argus/claude/agents` or `argus/shared-skills` differ from the candidate revision, hashes both revisions' agent prompts and doctrine profiles from git with the gate's own encoding, and records the SHA-256 of the adjudication file. It refuses to write a regressed approval: each variant needs at least `nonRegression.minRepeats` runs, and every candidate mean must reach the baseline mean minus its tolerance (critical recall only when both sides have one). Without `--write` it prints the proposed `approvedCorpus`. Without a scored comparison, `--benchmark-pending <reason>` records a pending approval that the gate accepts, with a warning, only while the Argus plugin version equals its `releaseVersion`.
+
 ## Baseline and release checks
 
 `node scripts/eval/discovery/smoke.mjs` runs 12 live HTTP fixture executions across two input seeds, including faulty and corrected variants, then tests adjudication handling of false positives, unseeded findings, missing verdicts, and reproduction metrics. This is a deterministic harness baseline, **not an Argus model benchmark**. It runs in the release gate. No numerical improvement in Argus recall is claimed by 4.9.1; collect a complete adjudicated paired comparison before setting a model-quality release threshold.
