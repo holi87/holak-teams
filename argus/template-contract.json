@@ -1,7 +1,7 @@
 {
   "$schema": "./schemas/template-contract.schema.json",
-  "schemaVersion": 1,
-  "contractId": "argus/template-contract@1",
+  "schemaVersion": 2,
+  "contractId": "argus/template-contract@2",
   "runner": {
     "modes": ["baseline", "defect-evidence", "candidate-regression", "full-suite"],
     "result": "reports/argus-runner-result.json",
@@ -9,10 +9,19 @@
     "events": "reports/outcomes.raw.tsv",
     "evidenceRoot": "reports/evidence",
     "categories": ["product", "automation", "infrastructure", "skip", "policy"],
-    "exitCodes": [0, 10, 11, 12, 13, 14, 15]
+    "exitCodes": [0, 10, 11, 12, 13, 14, 15],
+    "library": "scripts/runner-lib.sh",
+    "inventory": "reports/test-inventory.tsv",
+    "expectedBugs": "reports/expected-bugs.txt",
+    "counterfactualPlan": "reports/counterfactual-plan.tsv",
+    "adapterStatus": "reports/argus-adapter-status.txt",
+    "passArtifacts": "reports/evidence/passes",
+    "evidencePasses": ["live", "repeat", "cf-correct", "cf-tamper"],
+    "activation": "ARGUS_RUNNER_MODE"
   },
   "tags": {
-    "lanes": ["api", "ui", "perf", "security", "db"],
+    "lanes": ["api", "ui", "perf", "security", "db", "resilience"],
+    "harnessLanes": ["contract-smoke", "setup"],
     "bugLinked": "regression",
     "bugProvenance": "@bug:<canonical-or-origin>",
     "quarantine": "quarantine",
@@ -27,26 +36,56 @@
     "ledger": "solution/quarantine.tsv",
     "columns": ["case_id", "owner", "reason", "expires_on", "issue"],
     "selection": "Excluded from native execution in every mode and emitted as an approved skip only while the ledger entry is valid.",
-    "missingOrExpired": "Policy failure; never a silent omission."
+    "missingOrExpired": "Policy failure; never a silent omission.",
+    "forbiddenFor": ["regression"]
+  },
+  "lanePlan": {
+    "file": "solution/test-lanes.tsv",
+    "columns": ["lane", "state", "owner", "prerequisites", "reason"],
+    "states": ["enabled", "disabled"],
+    "undecided": "not-yet-planned"
+  },
+  "environment": {
+    "file": "solution/environment.tsv",
+    "columns": ["kind", "command", "note"],
+    "kinds": ["reset", "verify"],
+    "resetOptIn": "ARGUS_ENVIRONMENT_RESET=execute",
+    "resetAuthorizationAction": "destructive",
+    "undecided": "not-yet-planned"
+  },
+  "counterfactual": {
+    "directory": "solution/counterfactual",
+    "fixtureSchema": "argus/counterfactual-fixture@1",
+    "requiredTamper": "observed-defect",
+    "exemptions": ["front-end-logic", "timing-or-load", "data-layer", "fault-injection", "non-http-protocol"]
   },
   "templates": {
     "typescript": {
       "framework": "playwright",
       "runner": "playwright-test",
       "packageManagers": ["npm"],
-      "extensionPoints": ["package-manager-adapter", "test-root", "harness-root", "ci-command"]
+      "extensionPoints": ["package-manager-adapter", "test-root", "harness-root", "ci-command"],
+      "adapter": "scripts/argus-playwright-reporter.mjs",
+      "provenanceMarker": "@bug:<canonical-or-origin>",
+      "laneMarker": "playwright-project"
     },
     "java": {
       "framework": "junit-playwright-restassured",
       "runner": "junit5",
       "packageManagers": ["maven"],
-      "extensionPoints": ["build-tool-adapter", "test-root", "harness-root", "ci-command"]
+      "extensionPoints": ["build-tool-adapter", "test-root", "harness-root", "ci-command"],
+      "adapter": "qa.support.argus.ArgusOutcomeListener",
+      "provenanceMarker": "@Tag(\"bug:<canonical-or-origin>\")",
+      "laneMarker": "@Tag(\"<lane>\")"
     },
     "python": {
       "framework": "pytest-playwright-httpx",
       "runner": "pytest",
       "packageManagers": ["pip"],
-      "extensionPoints": ["environment-manager-adapter", "test-root", "harness-root", "ci-command"]
+      "extensionPoints": ["environment-manager-adapter", "test-root", "harness-root", "ci-command"],
+      "adapter": "qa.argus_plugin",
+      "provenanceMarker": "@pytest.mark.bug(\"<canonical-or-origin>\")",
+      "laneMarker": "pytest.mark.<lane>"
     }
   }
 }

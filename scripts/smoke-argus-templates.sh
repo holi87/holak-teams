@@ -110,6 +110,54 @@ expect_selection_failure() {
 
 "$ROOT/scripts/smoke-argus-bug-coverage-parser.sh"
 
+# The v2 template contract pins the runner kit, lane vocabulary, lane plan,
+# environment, counterfactual, and per-runtime adapter/marker values. Each targeted
+# drift must fail validation; the source and installed contracts must both pass.
+REPO_ROOT="$ROOT" node --input-type=module <<'NODE' || fail "template contract v2 validation regressed"
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const root = process.env.REPO_ROOT;
+const { validateTemplateContract } = await import(pathToFileURL(join(root, 'argus', 'runtime', 'template-policy.mjs')).href);
+const source = JSON.parse(readFileSync(join(root, 'argus', 'template-contract.json'), 'utf8'));
+const installed = JSON.parse(readFileSync(join(root, 'argus', 'claude', 'capabilities', 'template-contract.json'), 'utf8'));
+const problems = [];
+for (const [label, contract] of [['source', source], ['installed', installed]]) {
+  const errors = validateTemplateContract(contract);
+  if (errors.length) problems.push(`${label} contract rejected: ${errors.join('; ')}`);
+}
+const mutations = [
+  ['schema version 1', (c) => { c.schemaVersion = 1; }, 'template contract identity is invalid'],
+  ['contract id @1', (c) => { c.contractId = 'argus/template-contract@1'; }, 'template contract identity is invalid'],
+  ['runner library', (c) => { c.runner.library = 'scripts/runner.sh'; }, 'runner library, inventory, or evidence-pass contract is invalid'],
+  ['runner activation', (c) => { delete c.runner.activation; }, 'runner library, inventory, or evidence-pass contract is invalid'],
+  ['evidence passes', (c) => { c.runner.evidencePasses = ['live', 'repeat', 'cf-correct']; }, 'runner library, inventory, or evidence-pass contract is invalid'],
+  ['resilience lane', (c) => { c.tags.lanes = c.tags.lanes.filter((lane) => lane !== 'resilience'); }, 'lane tag contract is invalid'],
+  ['harness lanes', (c) => { c.tags.harnessLanes = ['contract-smoke']; }, 'lane tag contract is invalid'],
+  ['quarantine forbiddenFor', (c) => { c.quarantine.forbiddenFor = []; }, 'quarantine must be forbidden for regression tests'],
+  ['lane plan missing', (c) => { delete c.lanePlan; }, 'lane plan contract is invalid'],
+  ['lane plan states', (c) => { c.lanePlan.states = ['enabled', 'disabled', 'skipped']; }, 'lane plan contract is invalid'],
+  ['environment reset action', (c) => { c.environment.resetAuthorizationAction = 'read'; }, 'environment contract is invalid'],
+  ['environment kinds', (c) => { c.environment.kinds = ['reset']; }, 'environment contract is invalid'],
+  ['counterfactual tamper', (c) => { c.counterfactual.requiredTamper = 'any'; }, 'counterfactual contract is invalid'],
+  ['counterfactual exemptions', (c) => { c.counterfactual.exemptions.push('other'); }, 'counterfactual contract is invalid'],
+  ['java lane marker', (c) => { delete c.templates.java.laneMarker; }, 'java template adapter or marker contract is invalid'],
+  ['python adapter', (c) => { c.templates.python.adapter = ' '; }, 'python template adapter or marker contract is invalid'],
+  ['typescript provenance', (c) => { c.templates.typescript.provenanceMarker = null; }, 'typescript template adapter or marker contract is invalid'],
+];
+for (const [label, mutate, expected] of mutations) {
+  const contract = structuredClone(source);
+  mutate(contract);
+  const errors = validateTemplateContract(contract);
+  if (!errors.includes(expected)) problems.push(`${label}: expected "${expected}", got ${JSON.stringify(errors)}`);
+}
+if (problems.length) {
+  for (const problem of problems) console.error(problem);
+  process.exit(1);
+}
+NODE
+
 # The supported materialisation interface composes common + runtime layers into a byte-
 # and mode-exact copy of each complete maintainer source tree.
 for runtime in typescript java python; do
@@ -265,7 +313,12 @@ mkdir -p "$WORK/targets/typescript" "$WORK/targets/java" "$WORK/targets/python"
 for runtime in typescript java python; do
   "$CLI" template scaffold --selection "$WORK/$runtime-selection.json" --destination "$WORK/$runtime" >/dev/null
   jq -e --arg runtime "$runtime" '.runtime == $runtime and .action == "build" and .choiceSource == "explicit-user" and .unsupported == []' "$WORK/$runtime/ai_agents_internal/template-selection.json" >/dev/null || fail "$runtime scaffold omitted its selection record"
-  jq -e '.sharedContract == "argus/template-contract@1" and (.extensionPoints | length) >= 4 and (.tagAdapter | has("contract-smoke")) and (.tagAdapter | has("quarantine")) and (.tagAdapter | has("regression")) and .tagAdapter["bug-provenance"] == "@bug:<canonical-or-origin>"' "$WORK/$runtime/argus-template.json" >/dev/null || fail "$runtime extension or tag contract is missing"
+  case "$runtime" in
+    typescript) provenance='@bug:<canonical-or-origin>' ;;
+    java) provenance='@Tag("bug:<canonical-or-origin>")' ;;
+    python) provenance='@pytest.mark.bug("<canonical-or-origin>")' ;;
+  esac
+  jq -e --arg provenance "$provenance" --arg runtime "$runtime" --slurpfile contract "$ROOT/argus/template-contract.json" '.sharedContract == "argus/template-contract@2" and (.extensionPoints | length) >= 4 and (.tagAdapter | has("contract-smoke")) and (.tagAdapter | has("quarantine")) and (.tagAdapter | has("regression")) and ((.tagAdapter.lane // "") | length) > 0 and .tagAdapter["bug-provenance"] == $provenance and .tagAdapter["bug-provenance"] == $contract[0].templates[$runtime].provenanceMarker and .tagAdapter.lane == $contract[0].templates[$runtime].laneMarker and .adapter == $contract[0].templates[$runtime].adapter' "$WORK/$runtime/argus-template.json" >/dev/null || fail "$runtime extension or tag contract is missing"
   test -f "$WORK/$runtime/solution/bug-ledger.example.json" || fail "$runtime scaffold omitted the canonical bug-ledger example"
   "$CLI" schema validate --kind bug-ledger --input "$WORK/$runtime/solution/bug-ledger.example.json" >/dev/null || fail "$runtime bug-ledger example is schema-invalid"
 done

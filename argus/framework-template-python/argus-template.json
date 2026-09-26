@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
   "runtime": "python",
-  "sharedContract": "argus/template-contract@1",
+  "sharedContract": "argus/template-contract@2",
   "framework": "pytest-playwright-httpx",
   "runner": "pytest",
+  "adapter": "qa.argus_plugin",
   "packageManagers": ["pip"],
   "layoutPlaceholders": { "testRoot": "tests", "harnessRoot": "src" },
-  "tagAdapter": { "contract-smoke": "pytest.mark.contract_smoke", "quarantine": "pytest.mark.quarantine", "regression": "pytest.mark.regression", "bug-provenance": "@bug:<canonical-or-origin>" },
+  "tagAdapter": { "contract-smoke": "pytest.mark.contract_smoke", "quarantine": "pytest.mark.quarantine", "regression": "pytest.mark.regression", "bug-provenance": "@pytest.mark.bug(\"<canonical-or-origin>\")", "lane": "pytest.mark.<lane>" },
   "extensionPoints": ["environment-manager-adapter", "test-root", "harness-root", "ci-command"],
   "unsupportedByDefault": ["uv", "poetry", "unittest"]
 }

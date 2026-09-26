@@ -48,10 +48,22 @@ records provenance and lets the coverage gate join the test to
 `solution/bug-ledger.json`; it never selects a runner mode. Every defect regression must
 carry both markers.
 
+`argus/template-contract@2` also pins the shared runner kit (`scripts/runner-lib.sh`,
+`reports/test-inventory.tsv`, `reports/expected-bugs.txt`,
+`reports/counterfactual-plan.tsv`, `reports/argus-adapter-status.txt`, and per-pass
+artifacts below `reports/evidence/passes`), the evidence passes `live`, `repeat`,
+`cf-correct`, and `cf-tamper`, the product lanes `api`, `ui`, `perf`, `security`, `db`,
+and `resilience`, the harness lanes `contract-smoke` and `setup`, and each runtime's
+outcome adapter, provenance marker, and lane marker. `RUNNER-CONTRACT.md` SD-1 to SD-7
+define activation, case ids, inventory, the ledger join, classification, and product
+events; SD-8 to SD-11 below define the target-owned declarations and markers.
+
 `solution/quarantine.tsv` has five tab-separated fields with no header:
 `case_id`, `owner`, safe reason token, ISO `expires_on`, and issue token. A quarantined
 test is excluded only while a matching non-expired record exists; every valid entry emits
 an approved skip. Missing, malformed, unowned, or expired entries are policy failures.
+Quarantine is forbidden for regression tests (`quarantine.forbiddenFor`): a quarantined
+regression is a policy failure, never an approved skip.
 
 ## Supported and unsupported capabilities
 
@@ -60,3 +72,85 @@ JUnit 5 with Maven, and pytest with pip/venv. Detection still recognizes pnpm, Y
 Gradle, uv, Poetry, Jest, Vitest, TestNG, unittest, and other languages. Those are reported
 as explicit adaptation requirements, never silently converted to a supported tool. Add a
 template-specific adapter at the named extension point; do not duplicate shared doctrine.
+
+## Template contract v2 declarations (SD-8 to SD-11)
+
+These sections are normative for `argus/template-contract@2`. SD-1 to SD-7 live in
+`RUNNER-CONTRACT.md`. A safe token below matches `^[A-Za-z0-9_.:-]+$`.
+
+### SD-8 Lane plan
+
+`solution/test-lanes.tsv` has 5 tab-separated fields; `#` starts a comment. Each product
+lane (`api`, `ui`, `perf`, `security`, `db`, `resilience`) appears exactly once.
+
+| Field | Values |
+|---|---|
+| `lane` | one product lane |
+| `state` | `enabled` or `disabled` |
+| `owner` | `^[a-z][a-z0-9-]*$` |
+| `prerequisites` | `-`, or comma-separated environment variable names matching `^[A-Z][A-Z0-9_]*$` |
+| `reason` | a safe token, required when `disabled`; `not-yet-planned` means undecided |
+
+A disabled lane is removed from native selection, never skipped at runtime. Tests never
+self-skip on prerequisites: a missing prerequisite of an enabled lane is a runner-level
+gate outcome, not a skipped test.
+
+### SD-9 Environment
+
+`solution/environment.tsv` has 3 tab-separated fields; `#` starts a comment. It holds
+exactly one `reset` row and one `verify` row.
+
+| Field | Values |
+|---|---|
+| `kind` | `reset` or `verify` |
+| `command` | `-`, or a path matching `^scripts/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*[.]sh$` that exists and is executable; it runs without arguments and is never `eval`'d |
+| `note` | a safe token; `not-yet-planned` means undecided |
+
+Reset runs only with `ARGUS_ENVIRONMENT_RESET=execute`. It is a `destructive` target
+action: the caller holds the destructive authorization grant and the exclusive reset
+window. Verify is read-only.
+
+### SD-10 Counterfactual fixture
+
+`solution/counterfactual/BUG-NNNN.json` proves that a regression distinguishes correct
+from defective behaviour without contacting the target. It carries `$schema`
+`argus/counterfactual-fixture@1`, `schemaVersion` 1, `bugId`, and then exactly one of two
+shapes.
+
+- Fixture: `oracle` `{kind: requirement | contract | justified-invariant, sourceRef}`; an
+  optional `contract` `{operationId, status}`; `exchanges`, each
+  `{id: ^[a-z0-9-]{1,40}$, request: {method (uppercase), path (starting with "/"),
+  optional query map}, response: {status, headers (lowercase names), body}}`; `subject`
+  (an exchange id); and `tampers` `[{id, response}]` with at least one entry, unique ids,
+  and a required `observed-defect` tamper. A tamper replaces the subject response
+  entirely.
+- Exemption: `exemption` `{reason, justification}` where `reason` is one of
+  `front-end-logic`, `timing-or-load`, `data-layer`, `fault-injection`, or
+  `non-http-protocol`, and `justification` has 1 to 500 characters.
+
+Matching compares method and path exactly, plus any listed query parameters. An
+unmatched request gets `501 {"argusStub": "unmatched"}` and raises
+`ArgusCounterfactualError`.
+
+The inventory pass writes `reports/counterfactual-plan.tsv`: one row per expected bug with
+4 tab-separated fields.
+
+| Field | Values |
+|---|---|
+| `bug_id` | canonical `BUG-NNNN` |
+| `status` | `fixture`, `exempt`, `missing`, or `invalid` |
+| `tamper_ids` | comma-separated tamper ids, or `-` |
+| `reason` | the exemption reason; for `invalid` one of `schema-invalid`, `missing-observed-defect`, or `correct-violates-contract`; otherwise `-` |
+
+### SD-11 Markers
+
+| Runtime | Provenance | Lane | Repetition (SD-6) |
+|---|---|---|---|
+| TypeScript | tag `@bug:<token>` | the Playwright project | tag `@repetition:<n>` |
+| Java | `@Tag("bug:<token>")` | exactly one lane `@Tag("<lane>")` | `@Tag("repetition:<n>")` |
+| Python | `@pytest.mark.bug("<token>")` | exactly one lane marker (`contract_smoke` maps to `contract-smoke`) | `@pytest.mark.repetition(<n>)` |
+
+Each regression test carries exactly one provenance token. The repetition marker is
+optional, at most one per test, and absent means `n = 1`; it is the only place a test
+declares repetition and never enables a runner retry. The `contract-smoke` lane runs only
+under `ARGUS_CONTRACT_SMOKE=1`, and then exclusively. The `setup` lane is harness-only.
