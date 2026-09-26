@@ -51,7 +51,7 @@ const authorization = {
   claudeExecutable,
   claudeExecutableSha256: sha256File(claudeExecutable),
   claudeVersion: execFileSync(claudeExecutable, ['--version'], { encoding: 'utf8' }).trim(),
-  sandboxPolicy: 'os-native-target-readonly@2',
+  sandboxPolicy: 'os-native-target-readonly@3',
   sandboxProbePath,
   sandboxProbeDevice: sandboxProbe.dev,
   sandboxProbeInode: sandboxProbe.ino,

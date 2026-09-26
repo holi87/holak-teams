@@ -58,6 +58,28 @@ for schema_copy in \
     fail "$schema_copy maxTurns const $schema_turns differs from model-policy $policy_controller maxTurns $policy_controller_turns"
 done
 
+# os-native-target-readonly@3 widens the @2 Darwin profile only by what headless Chromium
+# needs: one scoped IOKit user-client class and the org.chromium mach namespace. A bare or
+# additional iokit, mach, or ipc rule is a sandbox regression.
+count_fixed() { grep -cF -- "$1" "$2" || true; }
+for launcher_copy in "$ROOT/argus/bin/argus-launch" "$ROOT/argus/claude/bin/argus-launch"; do
+  [ "$(count_fixed 'global-name-regex #"^org\.chromium\."' "$launcher_copy")" -eq 2 ] || \
+    fail "$launcher_copy must scope exactly two mach rules to the org.chromium namespace"
+  [ "$(count_fixed "'(allow mach-register (global-name-regex #\"^org\\.chromium\\.\"))'" "$launcher_copy")" -eq 1 ] || \
+    fail "$launcher_copy must register only org.chromium mach names"
+  [ "$(count_fixed "'(allow mach-lookup (global-name-regex #\"^org\\.chromium\\.\"))'" "$launcher_copy")" -eq 1 ] || \
+    fail "$launcher_copy must look up only org.chromium mach names"
+  [ "$(count_fixed "'(allow iokit-open (iokit-user-client-class \"RootDomainUserClient\"))'" "$launcher_copy")" -eq 1 ] || \
+    fail "$launcher_copy must scope IOKit access to the RootDomainUserClient user-client class"
+  [ "$(count_fixed '(allow iokit' "$launcher_copy")" -eq 1 ] || fail "$launcher_copy carries an additional IOKit rule"
+  [ "$(count_fixed '(allow mach' "$launcher_copy")" -eq 2 ] || fail "$launcher_copy carries an additional mach rule"
+  [ "$(count_fixed '(allow ipc' "$launcher_copy")" -eq 0 ] || fail "$launcher_copy carries an ipc rule"
+  for bare_rule in '(allow iokit-open)' '(allow mach-lookup)' '(allow mach-register)' '(allow mach*)'; do
+    [ "$(count_fixed "$bare_rule" "$launcher_copy")" -eq 0 ] || fail "$launcher_copy carries the unscoped rule $bare_rule"
+  done
+  [ "$(count_fixed 'os-native-target-readonly@2' "$launcher_copy")" -eq 0 ] || fail "$launcher_copy still names sandbox policy @2"
+done
+
 prepare_signer() {
   local root="$1" key_id="$2"
   mkdir -p "$root"
@@ -149,7 +171,7 @@ run_authenticated_launch() {
   jq -e '.checks[] | select(.id == "native-host-execution" and .status == "pass")' \
     "$artifact/ai_agents_internal/preflight.json" >/dev/null || fail "$name native preflight check did not pass"
   jq -e --arg target "$(jq -r .target "$request")" --arg artifact "$artifact" \
-    '.target == $target and .artifactRoot == $artifact and .maxTurns == 400 and .sandboxPolicy == "os-native-target-readonly@2" and .environmentPolicy == "argus-launch-allowlist@1"' \
+    '.target == $target and .artifactRoot == $artifact and .maxTurns == 400 and .sandboxPolicy == "os-native-target-readonly@3" and .environmentPolicy == "argus-launch-allowlist@1"' \
     "$authorization" >/dev/null || fail "$name signed authorization omitted exact launch bindings"
   env_file="$artifact/ai_agents_internal/fixture-child-environment.txt"
   [ "$(grep -c '^ARGUS_' "$env_file")" -eq 4 ] || { cat "$env_file" >&2; fail "$name child received an unexpected Argus environment variable"; }
@@ -231,6 +253,25 @@ grep -Fq 'signed launch authorization turn cap differs from the launcher control
 }
 [ -f "$WORK/drift-artifacts/ai_agents_internal/native-launch-receipt.json" ] || fail 'drift launch failed before launch verify'
 [ ! -e "$WORK/drift-artifacts/ai_agents_internal/fixture-claude-arguments.txt" ] || fail 'drift launcher started the controller'
+
+# An authenticated dry run verifies the signed request, then reports the exact sandbox and
+# environment policies without starting the controller.
+mkdir -p "$WORK/dry-run-target" "$WORK/dry-run-artifacts"
+prepare_signer "$WORK/dry-run-operator" runtime-dry-run
+PATH="$FIXTURE_PATH:$PATH" "$LAUNCHER" claude --target "$WORK/dry-run-target" \
+  --artifact-root "$WORK/dry-run-artifacts" --mode B --engagement-id launcher-dry-run \
+  --trust-store "$WORK/dry-run-operator/model-trust.json" --runtime-key-id runtime-dry-run \
+  --request-output "$WORK/dry-run-operator/request.json" --launch-authorization "$WORK/dry-run-operator/authorization.json" \
+  --wait-seconds 30 --dry-run >"$WORK/dry-run.stdout" 2>"$WORK/dry-run.stderr" &
+dry_run_pid=$!
+wait_for_file "$WORK/dry-run-operator/request.json" || { cat "$WORK/dry-run.stderr" >&2; fail 'authenticated dry-run request was not created'; }
+jq -e '.sandboxPolicy == "os-native-target-readonly@3" and .environmentPolicy == "argus-launch-allowlist@1"' \
+  "$WORK/dry-run-operator/request.json" >/dev/null || fail 'launch request did not bind sandbox policy @3'
+sign_request "$WORK/dry-run-operator" "$WORK/dry-run-operator/request.json" "$WORK/dry-run-operator/authorization.json"
+if ! wait "$dry_run_pid"; then cat "$WORK/dry-run.stderr" >&2; fail 'authenticated dry run failed'; fi
+grep -Fq 'sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist@1' "$WORK/dry-run.stdout" || \
+  { cat "$WORK/dry-run.stdout" >&2; fail 'authenticated dry run omitted sandbox policy @3'; }
+[ ! -e "$WORK/dry-run-artifacts/ai_agents_internal/fixture-claude-arguments.txt" ] || fail 'authenticated dry run started the controller'
 
 # A public environment string must never satisfy the mandatory native check.
 mkdir -p "$WORK/direct-target" "$WORK/direct-artifacts"
@@ -386,6 +427,7 @@ set -e
 [ "$unattested_status" -eq 0 ] || { cat "$WORK/unattested-dry-run.stderr" >&2; fail 'unattested dry run failed on a host without key material'; }
 grep -Fq "maxTurns=$REVIEWED_CONTROLLER_TURNS" "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run omitted the controller turn cap'
 grep -Fq 'attestation=UNATTESTED' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run omitted the UNATTESTED marker'
+grep -Fq 'sandbox=os-native-target-readonly@3 ' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run omitted sandbox policy @3'
 
 # (b) Keyless mode cannot be mixed with attested launch options.
 set +e
@@ -422,5 +464,59 @@ if PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" claude --target "$WORK/path target" --a
   fail 'launcher accepted an invalid mode'
 fi
 
+# probe-browser proves headless Chromium runs inside the @3 profile. A host without a
+# resolvable Playwright module skips. A failure is fatal on Darwin, and on Linux (Chromium
+# under bwrap is unverified) only with REQUIRE_BROWSER_PROBE=1, which also forbids a skip.
+require_browser_probe=false
+if [ "$(uname -s)" = Darwin ] || [ "${REQUIRE_BROWSER_PROBE:-0}" = 1 ]; then require_browser_probe=true; fi
+set +e
+"$LAUNCHER" probe-browser >"$WORK/probe-browser.stdout" 2>"$WORK/probe-browser.stderr"
+probe_browser_status=$?
+set -e
+case "$probe_browser_status" in
+  0)
+    grep -Eq '^PASS  headless Chromium runs inside os-native-target-readonly@3 \(module=/.+ version=.+\)$' "$WORK/probe-browser.stdout" || \
+      { cat "$WORK/probe-browser.stdout" >&2; fail 'probe-browser passed without its PASS line'; }
+    probe_module="$(sed -n 's/^PASS .*(module=\(.*\) version=.*)$/\1/p' "$WORK/probe-browser.stdout")"
+    "$LAUNCHER" probe-browser --module "$probe_module" >"$WORK/probe-browser-module.stdout" 2>"$WORK/probe-browser-module.stderr" || \
+      { cat "$WORK/probe-browser-module.stderr" >&2; fail 'probe-browser rejected the module it resolved itself'; }
+    ;;
+  3)
+    grep -Fxq 'SKIP  no Playwright module resolvable on this host' "$WORK/probe-browser.stdout" || fail 'probe-browser skipped without its SKIP line'
+    [ "${REQUIRE_BROWSER_PROBE:-0}" != 1 ] || fail 'REQUIRE_BROWSER_PROBE=1 but no Playwright module is resolvable'
+    printf 'SKIP  browser probe: no Playwright module resolvable on this host\n'
+    ;;
+  2)
+    cat "$WORK/probe-browser.stderr" >&2
+    ! $require_browser_probe || fail 'headless Chromium does not run inside os-native-target-readonly@3'
+    printf 'WARN  headless Chromium failed under the unverified Linux bwrap policy; set REQUIRE_BROWSER_PROBE=1 to enforce\n'
+    ;;
+  *) cat "$WORK/probe-browser.stderr" >&2; fail "probe-browser returned unexpected status $probe_browser_status" ;;
+esac
+
+# An explicit module is validated before any browser starts.
+mkdir -p "$WORK/not-playwright"
+printf '{"name":"not-playwright","version":"1.0.0"}\n' >"$WORK/not-playwright/package.json"
+: >"$WORK/not-playwright/index.mjs"
+for bad_module in relative/playwright "$WORK/not-playwright" "$WORK/missing-playwright"; do
+  set +e
+  "$LAUNCHER" probe-browser --module "$bad_module" >/dev/null 2>&1
+  bad_module_status=$?
+  set -e
+  [ "$bad_module_status" -eq 2 ] || fail "probe-browser accepted the invalid module $bad_module (status $bad_module_status)"
+done
+if "$LAUNCHER" probe-browser --unknown >/dev/null 2>&1; then fail 'probe-browser accepted an unknown option'; fi
+if "$LAUNCHER" doctor --unknown >/dev/null 2>&1; then fail 'doctor accepted an unknown option'; fi
+
+# doctor reruns the unchanged write-denial sandbox probes against the @3 profile.
 "$LAUNCHER" doctor >/dev/null
-printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'
+if [ "$probe_browser_status" -ne 2 ]; then
+  "$LAUNCHER" doctor --browser >"$WORK/doctor-browser.stdout" 2>"$WORK/doctor-browser.stderr" || \
+    { cat "$WORK/doctor-browser.stderr" >&2; fail 'doctor --browser failed'; }
+  if [ "$probe_browser_status" -eq 0 ]; then
+    grep -Fq 'PASS  headless Chromium runs inside os-native-target-readonly@3' "$WORK/doctor-browser.stdout" || fail 'doctor --browser omitted the browser probe'
+  else
+    grep -Fq 'WARN  no Playwright module is resolvable' "$WORK/doctor-browser.stdout" || fail 'doctor --browser did not warn about the skipped browser probe'
+  fi
+fi
+printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'

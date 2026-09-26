@@ -27,9 +27,11 @@ fail() { printf 'FAIL  %s\n' "$*" >&2; exit 2; }
 
 capability_file=''
 sandbox_probe_dir=''
+browser_probe_work=''
 cleanup_launch_files() {
   if [ -n "$capability_file" ] && [ -e "$capability_file" ]; then rm -f "$capability_file"; fi
   if [ -n "$sandbox_probe_dir" ] && [ -d "$sandbox_probe_dir" ]; then rmdir "$sandbox_probe_dir" 2>/dev/null || true; fi
+  if [ -n "$browser_probe_work" ] && [ -d "$browser_probe_work" ]; then rm -rf "$browser_probe_work"; fi
 }
 trap cleanup_launch_files EXIT
 
@@ -45,7 +47,8 @@ require_host_commands() {
 usage() {
   cat <<'EOF'
 Usage:
-  argus-launch doctor
+  argus-launch doctor [--browser]
+  argus-launch probe-browser [--module <absolute-dir>]
   argus-launch claude --target <url-or-absolute-path> --artifact-root <absolute-path> \
     --mode <A|B|C|D> --engagement-id <id> --trust-store <absolute-path> \
     --runtime-key-id <id> --request-output <absolute-path> \
@@ -66,6 +69,15 @@ attestation; the OS-level sandbox (target/artifact-root immutability) still runs
 The resulting engagement is reported as UNATTESTED — a named residual risk with no
 cryptographic proof of sandbox/turn-cap/model-dispatch integrity — in every downstream
 report, never silently. Default behavior (no --unattested) is unchanged and stays fail-closed.
+
+probe-browser needs no Claude CLI. It resolves a host Playwright package (--module, else
+`npm root -g`, then the Homebrew and system global node_modules), runs its headless Chromium
+shell inside the launch sandbox with the launch HOME/PATH/TMPDIR, and takes one screenshot.
+Exit 0 is PASS, 2 is FAIL, 3 is SKIP (no Playwright module). doctor --browser runs it after
+the sandbox probes: a SKIP only warns, a FAIL fails doctor.
+
+Sandbox policy os-native-target-readonly@3 adds to @2 only org.chromium-scoped mach names and
+the RootDomainUserClient IOKit user client; file writes stay confined to the artifact root.
 
 Codex execution remains unavailable until its CLI exposes a native hard turn cap.
 EOF
@@ -179,6 +191,12 @@ sandbox_exec() {
       local profile escaped_artifact
       profile="$(mktemp "$artifact_root/ai_agents_internal/tmp/argus-sandbox.XXXXXX")"
       escaped_artifact="$(escape_sandbox_value "$artifact_root")"
+      # os-native-target-readonly@3 = @2 plus the minimum headless Chromium needs, found by
+      # probe-browser under sandbox denial reporting: one IOKit user-client class (the
+      # RootDomainUserClient power-management client; without it Chromium dies with
+      # SEGV_ACCERR) and the org.chromium mach namespace for its MachPortRendezvousServer.
+      # The GPU-process IOSurfaceRootUserClient and AGXDeviceUserClient denials are non-fatal
+      # (software compositing) and stay denied. File writes remain confined to the artifact root.
       printf '%s\n' \
         '(version 1)' \
         '(deny default)' \
@@ -190,13 +208,17 @@ sandbox_exec() {
         '(allow network*)' \
         '(allow sysctl-read)' \
         '(allow file-read*)' \
-        "(allow file-write* (subpath \"$escaped_artifact\"))" >"$profile"
+        "(allow file-write* (subpath \"$escaped_artifact\"))" \
+        '(allow iokit-open (iokit-user-client-class "RootDomainUserClient"))' \
+        '(allow mach-register (global-name-regex #"^org\.chromium\."))' \
+        '(allow mach-lookup (global-name-regex #"^org\.chromium\."))' >"$profile"
       (cd "$workspace" && sandbox-exec -f "$profile" "$@")
       local result=$?
       rm -f "$profile"
       return "$result"
       ;;
     Linux)
+      # Headless Chromium under this bwrap policy is unverified; probe-browser reports it.
       command -v bwrap >/dev/null 2>&1 || fail 'bubblewrap is unavailable'
       bwrap --die-with-parent --new-session --unshare-all --share-net \
         --ro-bind / / --bind "$artifact_root" "$artifact_root" --dev /dev --proc /proc \
@@ -274,8 +296,163 @@ sandbox_probe() {
   rm -rf "$work"
 }
 
+# Stops a process, then its descendants depth-first, then kills them all. The stop freezes the
+# tree so nothing forks away between listing and killing (Chromium runs in its own session).
+kill_process_tree() {
+  local parent="$1" child
+  kill -STOP "$parent" 2>/dev/null || true
+  for child in $(ps -A -o pid= -o ppid= 2>/dev/null | awk -v parent="$parent" '$2 == parent { print $1 }'); do
+    kill_process_tree "$child"
+  done
+  kill -KILL "$parent" 2>/dev/null || true
+}
+
+# Runs "$@" in the background and kills its whole process tree after $1 seconds, because
+# coreutils timeout may be absent. Returns the command status, or 124 at the deadline.
+run_with_deadline() {
+  local deadline=$((SECONDS + $1)) pid status=0
+  shift
+  "$@" </dev/null &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      kill_process_tree "$pid"
+      wait "$pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 0.2
+  done
+  wait "$pid" || status=$?
+  return "$status"
+}
+
+# Prints the package version when $1 is a Playwright package root with an ESM entry point.
+playwright_module_version() {
+  local directory="$1"
+  [ -d "$directory" ] && [ -f "$directory/package.json" ] && [ -f "$directory/index.mjs" ] || return 1
+  jq -er 'select(.name == "playwright") | (.version // "unknown") | tostring' "$directory/package.json" 2>/dev/null
+}
+
+resolve_playwright_module() {
+  local npm_root='' candidate
+  if command -v npm >/dev/null 2>&1; then
+    npm_root="$(run_with_deadline 10 npm root -g 2>/dev/null)" || npm_root=''
+    case "$npm_root" in /*) ;; *) npm_root='' ;; esac
+    case "$npm_root" in *$'\n'*) npm_root='' ;; esac
+  fi
+  for candidate in ${npm_root:+"$npm_root/playwright"} /opt/homebrew/lib/node_modules/playwright \
+    /usr/local/lib/node_modules/playwright /usr/lib/node_modules/playwright; do
+    if playwright_module_version "$candidate" >/dev/null; then
+      (cd "$candidate" && pwd -P)
+      return
+    fi
+  done
+  return 1
+}
+
+# The probe runs as an ES module through `node -e`, so its arguments start at argv[1].
+# Its own watchdog fires before the launcher's 60 s tree kill to report a readable reason.
+# Some Chromium builds ignore a graceful close until Playwright force-kills them 30 s later;
+# the screenshot already decided the outcome, so the close is bounded and Playwright's exit
+# handler kills the browser process group when the probe exits.
+BROWSER_PROBE_SCRIPT='import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+const [moduleDir, profileDir, screenshotPath] = process.argv.slice(1);
+const watchdog = setTimeout(() => {
+  process.stderr.write("browser probe watchdog expired after 50 s inside the sandbox\n");
+  process.exit(1);
+}, 50000);
+let context;
+try {
+  const version = String(JSON.parse(readFileSync(join(moduleDir, "package.json"), "utf8")).version ?? "unknown");
+  const { chromium } = await import(pathToFileURL(join(moduleDir, "index.mjs")).href);
+  context = await chromium.launchPersistentContext(profileDir, { headless: true });
+  const page = context.pages()[0] ?? await context.newPage();
+  await page.setContent("<p>argus</p>");
+  const image = await page.screenshot({ path: screenshotPath });
+  if (image.length < 8 || image.readUInt32BE(0) !== 0x89504e47) throw new Error("screenshot is not a PNG image");
+  process.stdout.write(`ARGUS_BROWSER_PROBE_OK ${version}\n`);
+} catch (error) {
+  process.stderr.write(`${error?.message ?? error}\n`);
+  process.exitCode = 1;
+}
+if (context) await Promise.race([context.close().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 5000))]);
+clearTimeout(watchdog);
+process.exit(process.exitCode ?? 0);'
+
+browser_probe_job() {
+  local work="$1" module="$2"
+  set +e
+  sandbox_exec "$work/artifact" "$work/artifact" env -i HOME="${HOME:-}" PATH="${PATH:-/usr/bin:/bin}" \
+    TMPDIR="$work/artifact/ai_agents_internal/tmp" \
+    node --input-type=module -e "$BROWSER_PROBE_SCRIPT" "$module" "$work/artifact/profile" "$work/artifact/probe.png" \
+    >"$work/artifact/probe.stdout" 2>"$work/artifact/probe.stderr"
+}
+
+# Returns 0 (PASS), 2 (FAIL) or 3 (SKIP: no Playwright module). Callers must not rely on
+# errexit inside it: every failure path is explicit.
+probe_browser() {
+  local module="$1" work status=0 probe_version reason
+  if [ -n "$module" ]; then
+    module="$(physical_directory "$module" 'Playwright module')" || exit 2
+    playwright_module_version "$module" >/dev/null || \
+      fail "Playwright module needs a package.json named playwright and an index.mjs: $module"
+  else
+    module="$(resolve_playwright_module)" || {
+      printf 'SKIP  no Playwright module resolvable on this host\n'
+      return 3
+    }
+  fi
+  browser_probe_work="$(mktemp -d)" || fail 'cannot create the browser probe directory'
+  browser_probe_work="$(cd "$browser_probe_work" && pwd -P)" || fail 'cannot resolve the browser probe directory'
+  work="$browser_probe_work"
+  mkdir -p "$work/artifact/ai_agents_internal/tmp" || fail 'cannot create the browser probe artifact root'
+  run_with_deadline 60 browser_probe_job "$work" "$module" || status=$?
+  probe_version="$(sed -n 's/^ARGUS_BROWSER_PROBE_OK \(.*\)$/\1/p' "$work/artifact/probe.stdout" 2>/dev/null | head -n 1)" || probe_version=''
+  if [ "$status" -eq 0 ] && [ -n "$probe_version" ] && [ -s "$work/artifact/probe.png" ]; then
+    printf 'PASS  headless Chromium runs inside os-native-target-readonly@3 (module=%s version=%s)\n' "$module" "$probe_version"
+    rm -rf "$work"
+    browser_probe_work=''
+    return 0
+  fi
+  case "$status" in
+    0) reason='exited without the probe marker or a screenshot' ;;
+    124) reason='was killed after 60 s' ;;
+    *) reason="exited with status $status" ;;
+  esac
+  printf 'FAIL  headless Chromium %s inside os-native-target-readonly@3 (module=%s); sandbox denials are in the system log\n' \
+    "$reason" "$module" >&2
+  head -n 5 "$work/artifact/probe.stderr" >&2 2>/dev/null || true
+  rm -rf "$work"
+  browser_probe_work=''
+  return 2
+}
+
 case "${1:-}" in
+  probe-browser)
+    shift
+    probe_module=''
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --module) [ "$#" -ge 2 ] || fail '--module requires a path'; probe_module="$2"; shift 2 ;;
+        *) usage; fail "unknown probe-browser option: $1" ;;
+      esac
+    done
+    require_host_commands
+    probe_status=0
+    probe_browser "$probe_module" || probe_status=$?
+    exit "$probe_status"
+    ;;
   doctor)
+    shift
+    doctor_browser=false
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --browser) doctor_browser=true; shift ;;
+        *) usage; fail "unknown doctor option: $1" ;;
+      esac
+    done
     require_host_commands
     command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
     claude_executable="$(command -v claude)"
@@ -288,6 +465,16 @@ case "${1:-}" in
     claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
     [ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
     sandbox_probe
+    if $doctor_browser; then
+      # A separate process keeps probe-browser's own exits (fail, SKIP) out of doctor's flow.
+      browser_status=0
+      "$LAUNCHER_PATH" probe-browser || browser_status=$?
+      case "$browser_status" in
+        0) ;;
+        3) printf 'WARN  no Playwright module is resolvable on this host; browser lanes will be unavailable\n' ;;
+        *) fail 'headless Chromium does not run inside the launch sandbox (see the probe-browser output above)' ;;
+      esac
+    fi
     printf 'PASS  Claude matches the reviewed native max-turns/error_max_turns contract and the OS sandbox passed behavior probes; signed launch authorization is still required for enforcement\n'
     exit 0
     ;;
@@ -422,7 +609,7 @@ if $unattested; then
   prompt="/argus:run target=$target artifact-root=$artifact_root mode=$mode unattestedLaunch=true engagementId=$engagement_id"
   command=("$claude_executable" -p --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
   if $dry_run; then
-    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@2 environment=argus-launch-unattested@1 attestation=UNATTESTED\n' \
+    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@3 environment=argus-launch-unattested@1 attestation=UNATTESTED\n' \
       "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root"
     exit 0
   fi
@@ -488,7 +675,7 @@ if $dry_run; then
   capability_file=''
   rmdir "$sandbox_probe_dir"
   sandbox_probe_dir=''
-  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@2 environment=argus-launch-allowlist@1\n' \
+  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist@1\n' \
     "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$(jq -r .launchId "$receipt")"
   exit 0
 fi
