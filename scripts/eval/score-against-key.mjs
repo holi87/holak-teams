@@ -7,6 +7,9 @@
 //
 //   node scripts/eval/score-against-key.mjs --run <engagement-root> [--key <path>]
 //                                           [--verdicts <path>] [--json] [--candidates-only]
+//                                           [--entries-only]
+//
+// `--overrides <path>` is an alias of `--verdicts <path>`, kept for `make eval OVERRIDES=...`.
 //
 // WHY THIS TOOL DOES NOT SCORE BY ITSELF
 //
@@ -23,6 +26,27 @@
 // earned, never counted as missed, and their presence makes the run UNSCORED with a non-zero
 // exit code.
 //
+// WHAT IS SCORED
+//
+// Both sides of a run are adjudicated. Every key entry gets a credit (full | partial | miss),
+// which yields the points. Every finding the run reported gets an outcome (real |
+// false-positive | duplicate), which yields precision. A run that files twenty reports to
+// earn three hits is not the run that files three, and only precision tells them apart.
+// A finding with no outcome is `unadjudicated` and makes the run UNSCORED exactly like an
+// entry with no verdict.
+//
+// Finding keys, the names a verdict file uses for reported findings:
+//   - with solution/bug-ledger.json: one finding per ledger row, keyed by its id (BUG-NNNN;
+//     a row without an id is keyed by its triage label `bug-ledger[i]`). A bug file whose
+//     name is a row's id or origin, alone or followed by `-<slug>` (ATA-001-a.md), is that
+//     row's report, not a separate finding;
+//   - plus every bug file that matches no ledger row, keyed by its basename (PRO-001-c.md);
+//   - with no ledger: every bug file, keyed by its basename.
+//
+// precision = real / (real + false-positive + duplicate), over adjudicated findings only.
+// It is null when no finding is adjudicated (an empty run, or --entries-only). A duplicate
+// is never real: the first report earns the finding, every repeat costs precision.
+//
 // Key file shape:
 // {
 //   "keyId": "loanflow-2026-08",
@@ -37,17 +61,45 @@
 // `partialPoints` is what a partial credit is worth for that entry. Set it explicitly when
 // the key defines its own partial scale; it defaults to half the entry's points.
 //
-// Verdict file shape (one row per key entry, written after reading the criteria):
-// { "01": { "credit": "full", "reason": "...", "matchedBy": "ATA-004-password-hash-leak.md" } }
-//   credit: full | partial | miss
+// Verdict file v2 (one row per key entry and one per finding, written after reading the
+// acceptance criteria and the body of each report):
+// {
+//   "entries": {
+//     "01": { "credit": "full", "reason": "...", "matchedBy": "ATA-004-password-hash-leak.md" }
+//   },
+//   "findings": {
+//     "BUG-0001":     { "outcome": "real", "reason": "...", "entryIds": ["01"] },
+//     "BUG-0002":     { "outcome": "duplicate", "reason": "...", "duplicateOf": "BUG-0001" },
+//     "PRO-001-c.md": { "outcome": "false-positive", "reason": "..." }
+//   }
+// }
+//   credit: full | partial | miss. matchedBy names the finding that earns the credit: by its
+//     key, by the basename of the bug file behind a ledger row, or by its triage label.
+//   outcome: real | false-positive | duplicate. Every verdict needs a reason. A duplicate
+//     must name the finding it repeats in duplicateOf. entryIds (optional) lists the key
+//     entries a finding covers.
 //
-// Exit codes: 0 fully adjudicated | 20 unadjudicated entries remain | 21 contested candidate
-// left unresolved | 1 usage or input error.
+// A legacy v1 file, entry verdicts at the top level ({ "01": { "credit": ... } }), is read as
+// entry verdicts only, so every finding stays unadjudicated. --entries-only scores the entries
+// without requiring finding outcomes and prints `precision not measured (--entries-only)`.
+//
+// Contested verdicts are surfaced for a human to resolve, never silently scored:
+//   - one finding carries the verdict for several credited entries (it may genuinely cover
+//     both, so it is confirmed, not rejected);
+//   - an entry credited full or partial through a finding judged false-positive or duplicate;
+//   - a finding judged real whose entryIds include an entry judged miss.
+//
+// Exit codes:
+//   0   fully adjudicated and consistent (always 0 with --candidates-only)
+//   20  UNSCORED: an entry has no verdict, or a finding has no outcome (unless --entries-only)
+//   21  contested verdicts left unresolved
+//   1   usage or input error: missing run, unreadable key, malformed verdict file
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
 const CREDITS = Object.freeze(['full', 'partial', 'miss']);
+const OUTCOMES = Object.freeze(['real', 'false-positive', 'duplicate']);
 const CANDIDATE_LIMIT = 3;
 const STRONG_CANDIDATE = 0.75;
 
@@ -58,9 +110,16 @@ const keyPath = resolve(args.key ?? process.env.ARGUS_ANSWER_KEY
 const key = readJson(keyPath);
 assert(Array.isArray(key.entries) && key.entries.length > 0, `${keyPath}: key has no entries`);
 const verdictPath = args.verdicts ?? args.overrides;
-const verdicts = verdictPath ? readJson(resolve(verdictPath)) : {};
+if (verdictPath === true) fail('--verdicts <path> (or --overrides <path>) needs a path');
 const candidatesOnly = Boolean(args['candidates-only']);
+const entriesOnly = Boolean(args['entries-only']);
 const warnings = [];
+const verdicts = verdictPath
+  ? normalizeVerdicts(readJson(resolve(verdictPath)), verdictPath)
+  : { format: null, entries: {}, findings: {} };
+if (verdicts.format === 'legacy' && !entriesOnly && !candidatesOnly) {
+  warn(`${verdictPath} is a legacy v1 verdict file — read as entry verdicts only; finding outcomes need the v2 shape { entries, findings }, or pass --entries-only`);
+}
 
 // A typo or a deleted engagement must fail loudly. An all-miss table is a legitimate
 // result for a real run that found nothing, so it may never double as an error report.
@@ -68,7 +127,8 @@ if (!isDirectory(runRoot)) fail(`--run ${runRoot} is not a directory`);
 if (!isDirectory(join(runRoot, 'bugs')) && !isDirectory(join(runRoot, 'solution'))) {
   fail(`--run ${runRoot} has neither bugs/ nor solution/ — not an Argus engagement root`);
 }
-if (!existsSync(join(runRoot, 'solution', 'bug-ledger.json'))) {
+const ledgerPresent = existsSync(join(runRoot, 'solution', 'bug-ledger.json'));
+if (!ledgerPresent) {
   warn('solution/bug-ledger.json not found — triaging bugs/ only; Minos has not written the canonical ledger yet');
 }
 
@@ -90,8 +150,20 @@ if (documents.length === 0) {
   warn('no documents to triage — this reflects an empty run, not a triage failure');
 }
 
-const rows = key.entries.map((entry) => adjudicate(entry, documents, verdicts[entry.id]));
-const contested = reportContestedVerdicts(rows);
+const entryIds = new Set(key.entries.map((entry) => String(entry.id)));
+const findings = deriveFindings(ledgerPresent, ledger, bugFiles.map((path) => basename(path)));
+const findingKeys = new Set(findings.map((finding) => finding.key));
+const findingReferences = indexFindingReferences(findings);
+reportStaleVerdicts(verdicts, entryIds, findingKeys);
+
+const rows = key.entries.map((entry) => adjudicate(entry, documents, ownValue(verdicts.entries, entry.id)));
+for (const row of rows) row.matchedFindings = resolveMatchedFindings(row, findingReferences);
+const findingRows = findings.map((finding) =>
+  adjudicateFinding(finding, ownValue(verdicts.findings, finding.key), entryIds, findingKeys));
+const contested = [
+  ...reportContestedVerdicts(rows, findingReferences),
+  ...reportInconsistentFindings(rows, findingRows),
+];
 const adjudicated = rows.filter((row) => row.credit !== 'unadjudicated');
 const unadjudicated = rows.filter((row) => row.credit === 'unadjudicated');
 const earned = adjudicated.reduce((sum, row) => sum + row.earned, 0);
@@ -99,7 +171,10 @@ const maximum = key.maximum ?? key.entries.reduce((sum, entry) => sum + entry.po
 const adjudicatedMaximum = adjudicated.reduce((sum, row) => sum + row.points, 0);
 const counts = { full: 0, partial: 0, miss: 0, unadjudicated: 0 };
 for (const row of rows) counts[row.credit] += 1;
-const complete = unadjudicated.length === 0;
+const findingSummary = summarizeFindings(findingRows, entriesOnly);
+const unadjudicatedFindings = findingRows.filter((row) => row.outcome === 'unadjudicated');
+const findingsComplete = entriesOnly || unadjudicatedFindings.length === 0;
+const complete = unadjudicated.length === 0 && findingsComplete;
 const exitCode = candidatesOnly ? 0 : !complete ? 20 : contested.length > 0 ? 21 : 0;
 
 if (args.json) {
@@ -107,11 +182,14 @@ if (args.json) {
     keyId: key.keyId ?? basename(keyPath),
     runRoot,
     verdictFile: verdictPath ? resolve(verdictPath) : null,
+    verdictFormat: verdicts.format,
+    entriesOnly,
     complete,
     scored: complete ? earned : null,
     maximum,
     adjudicatedPoints: adjudicatedMaximum,
     counts,
+    findings: findingSummary,
     contested,
     warnings,
     rows,
@@ -127,19 +205,269 @@ if (args.json) {
     console.log(`| ${row.id} | ${row.layer} | ${row.points} | ${row.credit} | ${earnedCell} | ${formatCandidates(row.candidates)} |`);
   }
   console.log('');
+  if (!entriesOnly) {
+    if (findingRows.length === 0) {
+      console.log('No findings reported: no ledger rows and no bug files.');
+    } else {
+      console.log('| finding | reported as | outcome |');
+      console.log('|---------|-------------|---------|');
+      for (const row of findingRows) {
+        const outcome = row.outcome === 'duplicate' ? `duplicate of ${row.duplicateOf}` : row.outcome;
+        console.log(`| ${row.key} | ${formatFindingSources(row)} | ${outcome} |`);
+      }
+    }
+    console.log('');
+  }
   if (complete) {
     console.log(`full ${counts.full} / partial ${counts.partial} / miss ${counts.miss} — ${round(earned)} of ${maximum} points`);
   } else {
-    console.log(`UNSCORED — ${counts.unadjudicated} of ${rows.length} entries have no verdict.`);
+    const missing = [];
+    if (counts.unadjudicated > 0) missing.push(`${counts.unadjudicated} of ${rows.length} entries have no verdict`);
+    if (!findingsComplete) missing.push(`${unadjudicatedFindings.length} of ${findingRows.length} findings have no outcome`);
+    console.log(`UNSCORED — ${missing.join('; ')}.`);
     console.log(`Adjudicated so far: ${round(earned)} of ${adjudicatedMaximum} adjudicated points (${maximum} total).`);
-    console.log('Write a verdict row for every entry, then re-run. Candidates above are search hits, not evidence of coverage.');
+    if (!findingsComplete) {
+      console.log(`Findings without an outcome: ${unadjudicatedFindings.map((row) => row.key).join(', ')}`);
+    }
+    const todo = entriesOnly ? 'a verdict row for every entry' : 'a verdict row for every entry and an outcome for every finding';
+    console.log(`Write ${todo}, then re-run. Candidates above are search hits, not evidence of coverage.`);
   }
+  console.log(formatFindingSummary(findingSummary, entriesOnly));
   for (const row of contested) {
-    console.log(`CONTESTED  ${row.source} carries the verdict for ${row.ids.join(', ')} — confirm each is genuinely covered by that one report.`);
+    console.log(`CONTESTED  ${row.message}`);
   }
 }
 
 process.exit(exitCode);
+
+// v2 keeps entry verdicts and finding outcomes apart. v1 put entry verdicts at the top level
+// and never carried finding outcomes, so it is recognized by any top-level value that holds a
+// credit and read as entries only.
+function normalizeVerdicts(document, source) {
+  assert(isPlainObject(document), `${source}: a verdict file must be a JSON object`);
+  if (Object.values(document).some((value) => isPlainObject(value) && 'credit' in value)) {
+    return { format: 'legacy', entries: document, findings: {} };
+  }
+  const unknown = Object.keys(document).filter((name) => name !== 'entries' && name !== 'findings');
+  assert(unknown.length === 0,
+    `${source}: unknown top-level field ${unknown.join(', ')} — a v2 verdict file holds only "entries" and "findings"`);
+  for (const name of ['entries', 'findings']) {
+    assert(document[name] === undefined || isPlainObject(document[name]),
+      `${source}: "${name}" must be an object keyed by ${name === 'entries' ? 'key entry id' : 'finding key'}`);
+  }
+  return { format: 'v2', entries: document.entries ?? {}, findings: document.findings ?? {} };
+}
+
+// A ledger row and the bug files it originates from are ONE reported finding; counting the
+// twin file again would charge the run twice for one report. Only a file no row claims is a
+// finding of its own.
+function deriveFindings(hasLedger, ledgerRows, fileNames) {
+  const derived = [];
+  const claimed = new Set();
+  if (hasLedger) {
+    ledgerRows.forEach((row, index) => {
+      const label = `bug-ledger[${index}]`;
+      const origins = ledgerOrigins(row);
+      const files = fileNames.filter((name) => matchesOrigin(name, origins));
+      for (const name of files) claimed.add(name);
+      const id = typeof row?.id === 'string' && row.id.trim().length > 0 ? row.id.trim() : null;
+      derived.push({ key: id ?? label, kind: 'ledger', label, files });
+    });
+  }
+  for (const name of fileNames) {
+    if (!claimed.has(name)) derived.push({ key: name, kind: 'bug-file', label: name, files: [name] });
+  }
+  const seen = new Set();
+  for (const finding of derived) {
+    assert(!seen.has(finding.key),
+      `finding key ${finding.key} is not unique — solution/bug-ledger.json repeats a row id`);
+    seen.add(finding.key);
+  }
+  return derived;
+}
+
+// Every name an adjudicator may reasonably write in matchedBy: the finding key, the triage
+// label the candidates column prints, and each bug file behind the finding (with or without
+// its .md suffix). Matching is case-insensitive.
+function indexFindingReferences(derived) {
+  const index = new Map();
+  const add = (name, findingKey) => {
+    const normalized = name.toLowerCase();
+    if (!index.has(normalized)) index.set(normalized, new Set());
+    index.get(normalized).add(findingKey);
+  };
+  for (const finding of derived) {
+    add(finding.key, finding.key);
+    add(finding.label, finding.key);
+    for (const name of finding.files) {
+      add(name, finding.key);
+      add(name.replace(/\.md$/i, ''), finding.key);
+    }
+  }
+  return index;
+}
+
+function resolveReference(name, index) {
+  return [...(index.get(name.trim().toLowerCase()) ?? [])];
+}
+
+function matchedByNames(row) {
+  return [row.verdictMatchedBy].flat()
+    .filter((name) => typeof name === 'string' && name.trim().length > 0);
+}
+
+// Resolution feeds the consistency checks. A name that is ambiguous or names nothing in this
+// run cannot be checked, so it is surfaced instead of being guessed.
+function resolveMatchedFindings(row, index) {
+  const resolved = [];
+  for (const name of matchedByNames(row)) {
+    const matches = resolveReference(name, index);
+    if (matches.length === 1) {
+      if (!resolved.includes(matches[0])) resolved.push(matches[0]);
+    } else if (matches.length > 1) {
+      warn(`entry ${row.id}: matchedBy ${name} is ambiguous (${matches.join(', ')}) — name one finding key`);
+    } else if (row.credit === 'full' || row.credit === 'partial') {
+      warn(`entry ${row.id}: matchedBy ${name} names no finding in this run — the consistency checks cannot see it`);
+    }
+  }
+  return resolved;
+}
+
+function adjudicateFinding(finding, verdict, knownEntryIds, knownFindingKeys) {
+  const label = `finding ${finding.key}`;
+  let outcome = 'unadjudicated';
+  let reportedEntryIds = [];
+  // null is a placeholder row, exactly as for entries: still unadjudicated.
+  if (verdict !== undefined && verdict !== null) {
+    assert(isPlainObject(verdict), `${label}: verdict must be an object with outcome and reason`);
+    assert(OUTCOMES.includes(verdict.outcome),
+      `${label}: outcome must be real, false-positive or duplicate (got ${JSON.stringify(verdict.outcome)})`);
+    assert(typeof verdict.reason === 'string' && verdict.reason.trim().length > 0,
+      `${label}: verdict needs a reason naming the evidence behind the outcome`);
+    if (verdict.entryIds !== undefined) {
+      assert(Array.isArray(verdict.entryIds)
+        && verdict.entryIds.every((id) => (typeof id === 'string' && id.length > 0) || Number.isInteger(id)),
+      `${label}: entryIds must be an array of key entry ids`);
+      reportedEntryIds = [...new Set(verdict.entryIds.map(String))];
+      for (const id of reportedEntryIds) {
+        assert(knownEntryIds.has(id), `${label}: entryIds names ${id}, which is not an entry of the answer key`);
+      }
+    }
+    if (verdict.outcome === 'duplicate') {
+      assert(typeof verdict.duplicateOf === 'string' && verdict.duplicateOf.trim().length > 0,
+        `${label}: a duplicate verdict must name the finding it repeats in duplicateOf`);
+      assert(verdict.duplicateOf !== finding.key, `${label}: a finding cannot duplicate itself`);
+      if (!knownFindingKeys.has(verdict.duplicateOf)) {
+        warn(`${label}: duplicateOf ${verdict.duplicateOf} names no finding in this run`);
+      }
+    } else {
+      assert(verdict.duplicateOf === undefined, `${label}: duplicateOf is valid only on a duplicate outcome`);
+    }
+    outcome = verdict.outcome;
+  }
+  return {
+    key: finding.key,
+    kind: finding.kind,
+    label: finding.label,
+    files: finding.files,
+    outcome,
+    reason: verdict?.reason ?? null,
+    entryIds: reportedEntryIds,
+    duplicateOf: outcome === 'duplicate' ? verdict.duplicateOf : null,
+  };
+}
+
+// A verdict whose key matches nothing is not an error by itself (a run can be re-merged), but
+// it usually means a misspelled key, which leaves the real row unadjudicated.
+function reportStaleVerdicts(normalized, knownEntryIds, knownFindingKeys) {
+  for (const id of Object.keys(normalized.entries)) {
+    if (!knownEntryIds.has(id)) warn(`entry verdict ${id} names no entry of the answer key`);
+  }
+  for (const id of Object.keys(normalized.findings)) {
+    if (!knownFindingKeys.has(id)) warn(`finding verdict ${id} names no ledger row or bug file in this run`);
+  }
+}
+
+// The two halves of the verdict file must tell one story. Credit earned through a report the
+// same file calls false or a repeat, or a real report claiming an entry the file calls a miss,
+// is a contradiction for the adjudicator to settle, not for this tool to pick a side in.
+function reportInconsistentFindings(entryRows, adjudicatedFindings) {
+  const byKey = new Map(adjudicatedFindings.map((row) => [row.key, row]));
+  const byEntry = new Map(entryRows.map((row) => [String(row.id), row]));
+  const inconsistent = [];
+  for (const row of entryRows) {
+    if (row.credit !== 'full' && row.credit !== 'partial') continue;
+    for (const findingKey of row.matchedFindings) {
+      const finding = byKey.get(findingKey);
+      if (finding?.outcome !== 'false-positive' && finding?.outcome !== 'duplicate') continue;
+      const judged = finding.outcome === 'duplicate' ? `duplicate of ${finding.duplicateOf}` : finding.outcome;
+      inconsistent.push({
+        kind: 'credit-through-non-real-finding',
+        entry: row.id,
+        finding: findingKey,
+        outcome: finding.outcome,
+        message: `entry ${row.id} is credited ${row.credit} through ${findingKey}, which is judged ${judged} — credit a real report or change one verdict.`,
+      });
+    }
+  }
+  for (const finding of adjudicatedFindings) {
+    if (finding.outcome !== 'real') continue;
+    for (const id of finding.entryIds) {
+      if (byEntry.get(id)?.credit !== 'miss') continue;
+      inconsistent.push({
+        kind: 'real-finding-covers-missed-entry',
+        entry: id,
+        finding: finding.key,
+        outcome: finding.outcome,
+        message: `${finding.key} is judged real and claims entry ${id}, but entry ${id} is judged miss — reconcile the two verdicts.`,
+      });
+    }
+  }
+  for (const item of inconsistent) warn(item.message);
+  return inconsistent;
+}
+
+function summarizeFindings(adjudicatedFindings, precisionSkipped) {
+  const tally = { real: 0, falsePositive: 0, duplicate: 0, unadjudicated: 0 };
+  for (const row of adjudicatedFindings) {
+    if (row.outcome === 'real') tally.real += 1;
+    else if (row.outcome === 'false-positive') tally.falsePositive += 1;
+    else if (row.outcome === 'duplicate') tally.duplicate += 1;
+    else tally.unadjudicated += 1;
+  }
+  const judged = tally.real + tally.falsePositive + tally.duplicate;
+  return {
+    total: adjudicatedFindings.length,
+    ...tally,
+    precision: precisionSkipped || judged === 0 ? null : tally.real / judged,
+    keys: adjudicatedFindings.map((row) => row.key),
+    rows: adjudicatedFindings,
+  };
+}
+
+function formatFindingSummary(summary, precisionSkipped) {
+  if (precisionSkipped) return 'precision not measured (--entries-only)';
+  const judged = summary.real + summary.falsePositive + summary.duplicate;
+  const precision = summary.precision === null
+    ? 'not measured (no adjudicated findings)'
+    : `${summary.precision.toFixed(3)} (${summary.real} of ${judged} adjudicated)`;
+  return `findings: ${summary.real} real / ${summary.falsePositive} false-positive / ${summary.duplicate} duplicate / ${summary.unadjudicated} unadjudicated — precision ${precision}`;
+}
+
+function formatFindingSources(row) {
+  if (row.kind !== 'ledger') return row.label;
+  return [row.label, ...row.files].join('; ');
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// Verdict files are keyed by free-form ids; never let an id such as "constructor" resolve
+// through the prototype chain.
+function ownValue(record, id) {
+  return Object.hasOwn(record, String(id)) ? record[String(id)] : undefined;
+}
 
 // Search proposes; the verdict file disposes. `detected` is deliberately absent from the
 // output: publishing a machine guess next to a human verdict invites the guess to be copied.
@@ -194,18 +522,30 @@ function adjudicate(entry, docs, verdict) {
 // One report genuinely can cover two seeded defects, so this is surfaced for confirmation
 // rather than rejected. It is reported against the VERDICT, not against the search hit:
 // a shared search hit means nothing, a shared verdict is a claim that needs checking.
-function reportContestedVerdicts(scored) {
+// A matchedBy that resolves to a finding is grouped by its finding key, so a ledger id and
+// the bug file behind it count as the same report.
+function reportContestedVerdicts(scored, index) {
   const claims = new Map();
   for (const row of scored) {
-    const source = row.verdictMatchedBy;
-    if (!source || row.credit === 'miss' || row.credit === 'unadjudicated') continue;
-    if (!claims.has(source)) claims.set(source, []);
-    claims.get(source).push(row.id);
+    if (row.credit === 'miss' || row.credit === 'unadjudicated') continue;
+    const sources = new Set(matchedByNames(row).map((name) => {
+      const matches = resolveReference(name, index);
+      return matches.length === 1 ? matches[0] : name;
+    }));
+    for (const source of sources) {
+      if (!claims.has(source)) claims.set(source, []);
+      claims.get(source).push(row.id);
+    }
   }
   const contested = [];
   for (const [source, ids] of claims) {
     if (ids.length > 1) {
-      contested.push({ source, ids });
+      contested.push({
+        kind: 'shared-verdict',
+        source,
+        ids,
+        message: `${source} carries the verdict for ${ids.join(', ')} — confirm each is genuinely covered by that one report.`,
+      });
       warn(`${source} is credited to ${ids.length} key entries (${ids.join(', ')})`);
     }
   }
@@ -237,16 +577,27 @@ function describeDocument(source, raw) {
 }
 
 function inheritedComponents(entry, fileDocuments) {
-  const origins = [entry.id, ...(Array.isArray(entry.origin) ? entry.origin : [entry.origin])]
-    .filter((value) => typeof value === 'string' && value.length > 0)
-    .map((value) => value.toLowerCase());
+  const origins = ledgerOrigins(entry);
   const inherited = new Set();
   for (const doc of fileDocuments) {
-    const stem = doc.source.replace(/\.md$/, '').toLowerCase();
-    if (!origins.some((origin) => stem === origin || stem.startsWith(`${origin}-`))) continue;
+    if (!matchesOrigin(doc.source, origins)) continue;
     for (const component of doc.components) inherited.add(component);
   }
   return inherited;
+}
+
+// A ledger row is known by its own id and by every origin id it was merged from.
+function ledgerOrigins(entry) {
+  return [entry?.id, ...(Array.isArray(entry?.origin) ? entry.origin : [entry?.origin])]
+    .filter((value) => typeof value === 'string' && value.length > 0)
+    .map((value) => value.toLowerCase());
+}
+
+// A bug file belongs to a ledger row when its stem is an origin id, alone or followed by a
+// slug: ATA-001.md and ATA-001-password-hash-leak.md both originate ATA-001.
+function matchesOrigin(fileName, origins) {
+  const stem = fileName.replace(/\.md$/, '').toLowerCase();
+  return origins.some((origin) => stem === origin || stem.startsWith(`${origin}-`));
 }
 
 function componentFit(components, doc) {
