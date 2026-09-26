@@ -666,7 +666,9 @@
       "lane": "triage",
       "modes": [
         "A",
-        "B"
+        "B",
+        "C",
+        "D"
       ],
       "toolProfiles": [],
       "doctrineProfiles": [
