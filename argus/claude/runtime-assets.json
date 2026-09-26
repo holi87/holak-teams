@@ -264,7 +264,7 @@
       "destination": "templates/common",
       "files": 21,
       "bytes": 57646,
-      "sha256": "c9f829a08440cc779672ea7b0a2ad3bc2d9b1d225c83a211dad2139281d161b0"
+      "sha256": "b387d854a50512f740f5b53cf6a52765b0fcdfcdf0edb07fae489b634d82cf69"
     },
     {
       "id": "typescript-template",

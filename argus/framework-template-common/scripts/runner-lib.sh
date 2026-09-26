@@ -227,12 +227,12 @@ argus_record_native() {
 argus_run_pass() {
   local selection="$1" pass="$2" native status_line="" status_ok='^ok [0-9]+$'
   rm -f "$ARGUS_ADAPTER_STATUS"
+  rm -rf "${ARGUS_PASS_ARTIFACTS:?}/$pass"
+  mkdir -p "$ARGUS_PASS_ARTIFACTS/$pass"
   export ARGUS_EVIDENCE_PASS="$pass"
   argus_call argus_native_run "$selection" "$ARGUS_LANES" "$pass" ${ARGUS_PASSTHROUGH[@]+"${ARGUS_PASSTHROUGH[@]}"}
   native="$ARGUS_CALL_STATUS"
   argus_record_native "$native"
-  rm -rf "${ARGUS_PASS_ARTIFACTS:?}/$pass"
-  mkdir -p "$ARGUS_PASS_ARTIFACTS/$pass"
   argus_call argus_native_collect "$pass"
   if [ "$ARGUS_CALL_STATUS" -ne 0 ]; then
     argus_emit "evidence-collect.$pass" infrastructure fail false n/a - evidence-collect-failed
