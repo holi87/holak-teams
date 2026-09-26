@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 38,
-      "bytes": 135867,
-      "sha256": "db0439454014c9fceb11b3a3b70b5406a114bd2401dbd9f07fdd275f928f8e9a"
+      "bytes": 136873,
+      "sha256": "332951fa576a7aa19d3b35fec277491104b61f924c33c369d19961ec8ebc25f5"
     },
     {
       "id": "capability-matrix",
@@ -209,8 +209,8 @@
       "source": "argus/model-policy.json",
       "destination": "capabilities/model-policy.json",
       "files": 1,
-      "bytes": 9018,
-      "sha256": "0630341a879e752c6b104a142918f5d9a760d83b5511e1dce1f983ddefb9534e"
+      "bytes": 9203,
+      "sha256": "941f6ac83eb2de4f1c8a1a6cd9994719d7b920f42f233d2282294c0c2bb2231c"
     },
     {
       "id": "runtime-adapters",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 9,
-      "bytes": 235687,
-      "sha256": "7236d0079edc440489dee1f470f8f40ad57c3b4f11ef3106a302a9eba72c9170"
+      "bytes": 237698,
+      "sha256": "32bf5a13140b9114ab15464fd0e1ccdb9806437751e64f78225a19df12d4d312"
     },
     {
       "id": "common-template",
