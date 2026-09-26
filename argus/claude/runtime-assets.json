@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 38,
-      "bytes": 138800,
-      "sha256": "1951b4f5c4521e7e358b0552448605c2f2847a5dcd24f6bfe3873ca29302a552"
+      "bytes": 138791,
+      "sha256": "1c24699d7bbef96141ca2bb38da17a8f4f7fc9c695cc957edc84779be50838b5"
     },
     {
       "id": "capability-matrix",
@@ -182,8 +182,8 @@
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
-      "bytes": 22792,
-      "sha256": "37b4a2c322f8add4ac78f6baf22e979e402b6bfabe217b557e4efd8c9bdb7c77"
+      "bytes": 23065,
+      "sha256": "5a1f949bd397f35e34c80019d3690d558382b2d28ede3f759cc8c41724d1421f"
     },
     {
       "id": "technique-catalogs-bundle",
