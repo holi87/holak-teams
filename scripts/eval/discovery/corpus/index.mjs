@@ -4,12 +4,16 @@ import { createServer } from 'node:http';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deriveId, deriveInt } from './derive.mjs';
+import { escapeHtml, page } from './html.mjs';
 import { ACCOUNTS, RequestError, methodNotAllowed, send, sendHtml } from './http.mjs';
 import orders from './modules/orders.mjs';
 import accounts from './modules/accounts.mjs';
 import workflow from './modules/workflow.mjs';
 import tenantAuthz from './modules/tenant-authz.mjs';
 import orderEvents from './modules/order-events.mjs';
+import storefrontUi from './modules/storefront-ui.mjs';
+import a11yForms from './modules/a11y-forms.mjs';
+import catalogPerf from './modules/catalog-perf.mjs';
 
 // Evaluator-only corpus: one loopback application composed of modules. Each module carries
 // seeded defects, correct-lookalike controls and deterministic probes. Seed IDs, criteria,
@@ -67,7 +71,7 @@ function register(list) {
   return Object.freeze([...list]);
 }
 
-export const modules = register([orders, accounts, workflow, tenantAuthz, orderEvents]);
+export const modules = register([orders, accounts, workflow, tenantAuthz, orderEvents, storefrontUi, a11yForms, catalogPerf]);
 export const seeds = Object.freeze(modules.flatMap(module => module.seeds.map(seed => Object.freeze({
   id: seed.id, module: module.id, surface: seed.surface, severity: seed.severity, criterion: seed.criterion }))));
 export const seedIds = Object.freeze(seeds.map(seed => seed.id));
@@ -80,13 +84,10 @@ function enabledSet(enabledSeeds) {
   return new Set(enabledSeeds);
 }
 
-const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const htmlPage = (title, body) => `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${escapeHtml(title)}</title>\n</head>\n<body>\n<main>\n${body}\n</main>\n</body>\n</html>\n`;
-
 function indexHtml(contract) {
   const links = modules.map(module => (module.entryPaths ?? [module.basePaths[0]])
     .map(path => `<li><a href="${escapeHtml(path)}">${escapeHtml(contract.modules[module.id].title)}: ${escapeHtml(path)}</a></li>`).join('\n')).join('\n');
-  return htmlPage('Evaluation suite', `<h1>Evaluation suite</h1>
+  return page({ title: 'Evaluation suite', body: `<h1>Evaluation suite</h1>
 <p>Test accounts: ${contract.accounts.map(escapeHtml).join(', ')}. Send the account name in the x-actor request header.</p>
 <h2>Areas</h2>
 <ul>
@@ -96,7 +97,7 @@ ${links}
 <ul>
 <li><a href="/docs">Published rules</a></li>
 <li><a href="/contract">Machine-readable contract (JSON)</a></li>
-</ul>`);
+</ul>` });
 }
 
 function docsHtml(contract) {
@@ -110,7 +111,7 @@ ${rules.map(rule => `<li>${escapeHtml(rule)}</li>`).join('\n')}
 </ul>${values ? `\n<dl>\n${values}\n</dl>` : ''}
 </section>`;
   }).join('\n');
-  return htmlPage('Published rules', `<h1>Published rules</h1>\n${sections}`);
+  return page({ title: 'Published rules', body: `<h1>Published rules</h1>\n${sections}` });
 }
 
 const matchesBase = (pathname, base) => pathname === base || pathname.startsWith(`${base}/`);
