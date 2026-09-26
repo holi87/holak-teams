@@ -147,6 +147,19 @@ ledger_inventory ledger-v1 defect-evidence "$WORK/v1-ledger.json"
 cmp -s "$INVENTORY" "$WORK/inventory.reference.tsv" || fail "bug-ledger@1 and @2 produced different inventories"
 cp "$FIXTURES/bug-ledger.json" solution/bug-ledger.json
 
+# A partial or failed collection never leaves an inventory that passes for the full one.
+printf 'import not_a_module_argus_smoke\n' >tests/contract/test_broken_collection.py
+pytest_run inventory-collection-error ARGUS_RUNNER_MODE=defect-evidence ARGUS_INVENTORY_ONLY=1 ARGUS_OUTCOME_FILE="$WORK/collection-error-events.tsv" -- --collect-only
+rm -f tests/contract/test_broken_collection.py
+[ "$PYTEST_EXIT" -ne 0 ] || fail "an inventory pass with a collection error succeeded"
+[ ! -e "$INVENTORY" ] || fail "a collection error left a partial inventory"
+expect_status "error 1" inventory-collection-error
+[ "$(cat reports/argus-adapter-errors/*.txt | cut -f2)" = collection-error ] || fail "the collection error was not listed"
+cp "$WORK/inventory.reference.tsv" "$INVENTORY"
+pytest_run inventory-usage-error ARGUS_RUNNER_MODE=defect-evidence ARGUS_INVENTORY_ONLY=1 ARGUS_OUTCOME_FILE="$WORK/usage-error-events.tsv" -- --collect-only tests/contract/test_missing_argus_smoke.py
+[ "$PYTEST_EXIT" -ne 0 ] || fail "an inventory pass over a missing path succeeded"
+[ ! -e "$INVENTORY" ] && [ ! -e "$EXPECTED_BUGS" ] || fail "a failed inventory pass left the previous inventory behind"
+
 # (3) defect-evidence live pass: every SD-5 primary outcome and SD-6 lifecycle event.
 pytest_run serial ARGUS_RUNNER_MODE=defect-evidence ARGUS_OUTCOME_FILE="$WORK/serial.tsv" -- -m contract_smoke "$FIXTURE"
 expect_exit serial 1

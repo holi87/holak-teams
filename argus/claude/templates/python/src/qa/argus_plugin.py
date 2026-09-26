@@ -197,10 +197,14 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     state = session.config.stash.get(STATE_KEY, None)
     if state is None or state.worker:
         return
-    # The controller starts every run from a clean slate so a stale status or error list
-    # can never describe this run. Workers start later (xdist's trylast sessionstart).
+    # The controller starts every run from a clean slate so a stale status, error list, or
+    # inventory can never describe this run. Workers start later (xdist's trylast sessionstart).
+    stale_files = ["argus-adapter-status.txt"]
+    if state.inventory_only:
+        stale_files += ["test-inventory.tsv", "expected-bugs.txt"]
     try:
-        (state.reports / "argus-adapter-status.txt").unlink(missing_ok=True)
+        for name in stale_files:
+            (state.reports / name).unlink(missing_ok=True)
         errors = state.reports / "argus-adapter-errors"
         if errors.is_dir():
             for stale in errors.glob("*.txt"):
@@ -317,8 +321,6 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
 
 def compose(state: AdapterState, item: pytest.Item, phases: dict[str, Phase]) -> None:
     """Turn the three phase reports of one test into its primary and optional cleanup event."""
-    if state.evidence_pass not in PASSES:
-        return  # counted once at session start; emitting live-pass semantics would lie
     meta = meta_for(item, state)
     setup, call, teardown = phases.get("setup"), phases.get("call"), phases.get("teardown")
     if any(phase.expected_failure for phase in phases.values()):
@@ -349,7 +351,9 @@ def compose(state: AdapterState, item: pytest.Item, phases: dict[str, Phase]) ->
 
 
 def emit_outcome(state: AdapterState, item: pytest.Item, meta: CaseMeta, outcome: tuple[str, str, str], suffix: str = "") -> None:
-    case_id = meta.case_id + PASSES.get(state.evidence_pass, "") + suffix
+    if state.evidence_pass not in PASSES:
+        return  # counted once at session start; emitting live-pass semantics would lie
+    case_id = meta.case_id + PASSES[state.evidence_pass] + suffix
     if outcome in (PRODUCT, PASSED):
         category, status, expected, lifecycle, bug, reason = product_event(state, meta, outcome == PASSED)
         state.emit(case_id, (category, status, reason), expected, lifecycle, bug)
