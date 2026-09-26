@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 14771,
-      "sha256": "a8da3b22b307d113e838f4351567b3e40c75bff7dc9d704da73c51d69b076c34"
+      "bytes": 15179,
+      "sha256": "68a8e41cc509618821ae77427bcb8b048f4585e89ea5250cbc79092629501175"
     },
     {
       "id": "runner-contract",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 9890,
-      "sha256": "420dd9c88660bfdcbf21165bd21164f3270f0d1bb7c1987e25ccca34da4841a3"
+      "bytes": 10023,
+      "sha256": "55fe2f8008599cd4cc740626c854c3f6308dc3afbe9b3ff03a054d9b85616f7c"
     },
     {
       "id": "qa-core-skill",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 38,
-      "bytes": 145331,
-      "sha256": "1eca255a2acd86a399868bb2b422451ebbe8a75b4e79093c5b096fae1281d924"
+      "bytes": 148378,
+      "sha256": "461013c6c2d36143a5e9c1d8a780a2fe98cd139e8a6262423666404440b986af"
     },
     {
       "id": "capability-matrix",
@@ -200,8 +200,8 @@
       "source": "argus/orchestration-plan.json",
       "destination": "capabilities/orchestration-plan.json",
       "files": 1,
-      "bytes": 14701,
-      "sha256": "9ed11618b2eadd8e39dc31d0593760e2f0d15f7455d6508e6e43ba130ab34476"
+      "bytes": 15368,
+      "sha256": "c77cab4f0a8e4ecf7c3809e2c0f6d42dc8926a7f551ad72670814e68a83a8f51"
     },
     {
       "id": "model-policy",
@@ -246,7 +246,7 @@
       "destination": "policies",
       "files": 4,
       "bytes": 11501,
-      "sha256": "368cac20edb3eed98d7491311c4ecbf6b9b6e1d63807e2c1509047b18c762964"
+      "sha256": "3883cb8ae759f3fab063885aa0f892f3bf8755c384d4b232c3d894d1fff4672b"
     },
     {
       "id": "runtime-library",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 9,
-      "bytes": 254532,
-      "sha256": "6f01443c618dd6e1862ab2adaeaf9529d24122c5f159b812f6e3617fd942ee49"
+      "bytes": 258375,
+      "sha256": "c4fba8e5b40dfd214cf7a66ad32733fee01950de4d45a1204a25d5917932c32e"
     },
     {
       "id": "common-template",

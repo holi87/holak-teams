@@ -109,11 +109,13 @@ for (const [kind, field, key] of [
   const retired = { ...document, $schema: `argus/${kind}@1`, schemaVersion: 1 };
   assert(validateCanonicalDocument(kind, retired).length > 0, `${kind}: runtime reader still accepts retired v1 input`);
 }
-const preflightV2Schema = schemas.get('preflight-report.schema.json');
-assert(preflightV2Schema?.properties?.schemaVersion?.const === 2, 'current preflight-report validator does not require schemaVersion 2');
-assert(preflightV2Schema.required.includes('$schema') && preflightV2Schema.required.includes('modelRuntime') && preflightV2Schema.required.includes('orchestration'), 'preflight-report v2 validator does not require its identity and new fields');
+const preflightV3Schema = schemas.get('preflight-report.schema.json');
+assert(preflightV3Schema?.properties?.schemaVersion?.const === 3, 'current preflight-report validator does not require schemaVersion 3');
+assert(['$schema', 'modelRuntime', 'orchestration', 'residualRisks'].every((field) => preflightV3Schema.required.includes(field))
+  && preflightV3Schema.properties.summary.required.includes('downgraded')
+  && preflightV3Schema.properties.agents.items.required.includes('stopsEngagement'), 'preflight-report v3 validator does not require its identity, residual risks, and essential-lane fields');
 const preflightPolicy = compatibility.contracts?.['preflight-report'];
-assert(preflightPolicy?.current === 2 && JSON.stringify(preflightPolicy.readCompatible) === '[2]' && !Object.hasOwn(preflightPolicy, 'migration'), 'preflight-report still declares a v1 reader');
+assert(preflightPolicy?.current === 3 && JSON.stringify(preflightPolicy.readCompatible) === '[3]' && !Object.hasOwn(preflightPolicy, 'migration'), 'preflight-report still declares a retired reader');
 const validateDateTime = compileJsonSchema({ type: 'string', format: 'date-time' });
 for (const value of ['2026-01-01T23:59:59Z', '1990-12-31T15:59:60-08:00']) assert(validateDateTime(value).length === 0, `valid RFC3339 date-time rejected: ${value}`);
 for (const value of ['2026-01-01T24:59:59+01:00', '2026-01-01T23:60:59+00:01', '2026-01-01T12:00:60Z']) assert(validateDateTime(value).length > 0, `invalid RFC3339 date-time accepted: ${value}`);

@@ -57,8 +57,8 @@ for (const [kind, contract] of Object.entries(COLLECTION_CONTRACTS)) {
   }
 }
 const preflightCompatibility = compatibility.contracts?.['preflight-report'];
-if (preflightCompatibility?.current !== 2 || !sameNumbers(preflightCompatibility.readCompatible, [2])) {
-  throw new Error('preflight-report compatibility policy must accept only v2');
+if (preflightCompatibility?.current !== 3 || !sameNumbers(preflightCompatibility.readCompatible, [3])) {
+  throw new Error('preflight-report compatibility policy must accept only v3');
 }
 
 export function schemaId(kind, version = contractPolicy(kind).current) {

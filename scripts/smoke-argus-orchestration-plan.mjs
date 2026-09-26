@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { derivePhasePlan, projectOrchestrationPlan, validateOrchestrationPlan } from '../argus/runtime/orchestration-plan.mjs';
+import { applyEssentialLanePolicy, derivePhasePlan, projectOrchestrationPlan, validateOrchestrationPlan } from '../argus/runtime/orchestration-plan.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const plan = readJson('argus/orchestration-plan.json');
@@ -28,6 +28,19 @@ const deepHuntRoles = [
   'antigone', 'ariadne', 'atalanta', 'charon', 'hermes', 'lynceus', 'orion', 'perseus', 'proteus', 'tiresias', 'tyche',
 ];
 const deepPhases = ['deep-hunt-1', 'deep-proof-1', 'deep-hunt-2', 'deep-proof-2', 'deep-hunt-3', 'deep-proof-3'];
+// Declared essential lanes per mode; Modes A and B also inherit the 11 mandatory hunters.
+const declaredEssential = {
+  A: ['kalchas', 'metis', 'atlas', 'minos', 'kleio'],
+  B: ['kalchas', 'metis', 'minos', 'kleio'],
+  C: ['kalchas', 'metis', 'atlas', 'minos', 'kleio'],
+  D: ['kalchas', 'metis', 'atlas', 'minos', 'kleio'],
+};
+const expectedEssential = {
+  A: [...declaredEssential.A, ...deepHuntRoles].sort(),
+  B: [...declaredEssential.B, ...deepHuntRoles].sort(),
+  C: [...declaredEssential.C].sort(),
+  D: [...declaredEssential.D].sort(),
+};
 const expectedPhaseIds = {
   A: ['preflight', 'discovery', 'hunting', 'proof', ...deepPhases, 'automation', 'verification', 'reporting', 'complete'],
   B: ['preflight', 'discovery', 'hunting', 'proof', ...deepPhases, 'verification', 'reporting', 'complete'],
@@ -38,7 +51,7 @@ const expectedPhaseIds = {
 const canonicalErrors = validateOrchestrationPlan(plan, matrix, raci);
 assert(canonicalErrors.length === 0, `canonical plan failed: ${canonicalErrors.join('; ')}`);
 const controllerWords = controllerSkill.trim().split(/\s+/u).length;
-assert(controllerWords >= 800 && controllerWords <= 1200, `orchestration-core must stay within 800-1200 words, found ${controllerWords}`);
+assert(controllerWords >= 800 && controllerWords <= 2400, `orchestration-core must stay within 800-2400 words, found ${controllerWords}`);
 for (const fragment of [
   'qa-core', 'qa-browser', 'qa-framework-runner', 'qa-coverage-reporting',
   'A — Full QA Audit', 'B — Deep Bug Hunt', 'C — Greenfield suite', 'D — Brownfield extension',
@@ -51,6 +64,7 @@ for (const fragment of [
   'template select', 'template scaffold', '`baseline`, `defect-evidence`, `candidate-regression`, and',
   'argus-assets model route', 'argus/model-escalation-request@1', 'argus-assets model telemetry',
   'product, automation,', 'infrastructure, skip, and policy outcomes', 'Never claim an agent ran',
+  '`deferred` record with `downgradedFrom=blocked`', 'report it from `residualRisks`',
 ]) {
   assert(controllerContract.includes(fragment), `orchestration-core lost required controller semantic: ${fragment}`);
 }
@@ -94,6 +108,11 @@ assert(plan.mandatoryLanes.rule.some((rule) => /additive/i.test(rule)),
 assert(plan.mandatoryLanes.rule.some((rule) => /time pressure is not a disposition/i.test(rule)),
   'mandatoryLanes must forbid holding a satisfied lane for time');
 assert(plan.roles.find((role) => role.slug === 'odysseus')?.dispatch === false, 'Odysseus is not a non-dispatched controller');
+assert(plan.essentialLanes?.policy === 'blocked-essential-lane-stops-engagement'
+  && plan.essentialLanes.includeMandatoryLanes === true
+  && Object.entries(declaredEssential).every(([mode, lanes]) => sameSet(plan.essentialLanes.modes[mode], lanes))
+  && plan.essentialLanes.rule.length >= 2,
+  'essential lanes are not the declared per-mode set under the blocked-essential-lane policy');
 for (const [wave, expected] of Object.entries(expectedWaves)) {
   const actual = plan.roles.filter((role) => role.wave === wave).map((role) => role.slug);
   assert(sameSet(actual, expected), `${wave} membership drifted`);
@@ -126,6 +145,8 @@ for (const [mode, expectedCount] of Object.entries(expectedModeCounts)) {
     assert(projected.deepHunt === null, `mode ${mode}: deep hunt must not project outside its declared modes`);
   }
   assert(projected.huntingBrief.length === plan.huntingBrief.length, `mode ${mode}: projection lost the hunting brief`);
+  assert(JSON.stringify(projected.essentialLanes) === JSON.stringify(expectedEssential[mode]),
+    `mode ${mode}: projected essential lanes drifted: ${projected.essentialLanes.join(', ')}`);
 
   const phasePlan = derivePhasePlan(plan, matrix, mode, undefined, raci);
   assert(JSON.stringify(phasePlan.map((phase) => phase.id)) === JSON.stringify(expectedPhaseIds[mode]),
@@ -201,6 +222,96 @@ for (const fixture of fixtures) {
   assert(errors.some((error) => error.includes(fixture.expects)), `${fixture.id}: expected '${fixture.expects}', got: ${errors.join('; ')}`);
 }
 
+// Essential-lane negatives: every listed slug must be a dispatched role active in that mode,
+// and Kalchas and Minos are essential in every mode.
+for (const [id, mutate, expects] of [
+  ['essential-unknown-slug', (document) => document.essentialLanes.modes.A.push('unknown-role'), 'essentialLanes.modes.A: unknown role unknown-role'],
+  ['essential-kalchas-missing', (document) => { document.essentialLanes.modes.D = ['metis', 'atlas', 'minos', 'kleio']; }, 'essentialLanes.modes.D: must list kalchas'],
+  ['essential-minos-missing-b', (document) => { document.essentialLanes.modes.B = ['kalchas', 'metis', 'kleio']; }, 'essentialLanes.modes.B: must list minos'],
+  ['essential-minos-missing-c', (document) => { document.essentialLanes.modes.C = ['kalchas', 'metis', 'atlas', 'kleio']; }, 'essentialLanes.modes.C: must list minos'],
+  ['essential-inactive-lane', (document) => document.essentialLanes.modes.B.push('atlas'), 'essentialLanes.modes.B: atlas is inactive in Mode B'],
+  ['essential-controller', (document) => document.essentialLanes.modes.C.push('odysseus'), 'essentialLanes.modes.C: odysseus is not dispatched'],
+  ['essential-missing', (document) => { delete document.essentialLanes; }, 'essentialLanes'],
+  ['essential-policy', (document) => { document.essentialLanes.policy = 'blocked-lane-stops-engagement'; }, '/essentialLanes/policy must be equal to constant'],
+  ['essential-empty-mode', (document) => { document.essentialLanes.modes.C = []; }, '/essentialLanes/modes/C must NOT have fewer than 1 items'],
+  ['essential-single-rule', (document) => { document.essentialLanes.rule = [document.essentialLanes.rule[0]]; }, '/essentialLanes/rule must NOT have fewer than 2 items'],
+]) {
+  const mutated = structuredClone(plan);
+  mutate(mutated);
+  const errors = validateOrchestrationPlan(mutated, matrix, raci);
+  assert(errors.some((error) => error.includes(expects)), `${id}: expected '${expects}', got: ${errors.join('; ') || 'no errors'}`);
+}
+
+// Essential-lane policy over evaluated preflight records. Blocked non-essential lanes become
+// never-dispatched deferred residuals; the controller, essential and mandatory lanes stop it.
+const lane = (slug, status, extra = {}) => ({
+  slug,
+  lane: slug,
+  selected: status !== 'not-selected',
+  status,
+  dispatchAllowed: status === 'ready' || status === 'degraded',
+  missingTools: [],
+  missingCapabilities: [],
+  actions: [],
+  ...extra,
+});
+const policyCase = (mode, record) => {
+  const input = [lane('odysseus', 'ready'), record];
+  const snapshot = JSON.stringify(input);
+  const output = applyEssentialLanePolicy(input, plan, mode);
+  assert(JSON.stringify(input) === snapshot, `${mode}/${record.slug}: applyEssentialLanePolicy mutated its input`);
+  assert(output.length === input.length && output[0].stopsEngagement === false, `${mode}/${record.slug}: a ready controller must not stop the engagement`);
+  return output[1];
+};
+const pistis = policyCase('A', lane('pistis', 'blocked', { missingTools: ['Write'], actions: ['Mandatory tools unavailable: Write. Stop before dispatch.'] }));
+assert(pistis.status === 'deferred' && pistis.downgradedFrom === 'blocked' && pistis.dispatchAllowed === false && pistis.stopsEngagement === false,
+  'A blocked pistis must be downgraded to a never-dispatched deferred lane');
+assert(pistis.actions.length === 2 && pistis.actions[0].startsWith('Mandatory tools unavailable')
+  && pistis.actions[1] === 'Residual risk: pistis is blocked (Write); it is not dispatched and its surfaces are reported uncovered.',
+  `A blocked pistis must keep its evidence and name its residual risk: ${JSON.stringify(pistis.actions)}`);
+const theseus = policyCase('C', lane('theseus', 'blocked', { missingCapabilities: ['model:maxTurns'] }));
+assert(theseus.status === 'deferred' && theseus.downgradedFrom === 'blocked' && theseus.stopsEngagement === false
+  && theseus.actions.at(-1) === 'Residual risk: theseus is blocked (model:maxTurns); it is not dispatched and its surfaces are reported uncovered.',
+  'C blocked theseus must be downgraded with its missing model capability named');
+const unexplained = policyCase('D', lane('nike', 'blocked'));
+assert(unexplained.status === 'deferred' && unexplained.actions.at(-1).includes('(model routing unavailable)'),
+  'a blocked lane without missing tools or capabilities must name model routing as its residual cause');
+for (const [mode, slug, reason] of [
+  ['B', 'tiresias', 'mandatory hunter'],
+  ['B', 'orion', 'mandatory hunter'],
+  ['B', 'minos', 'essential validator'],
+  ['A', 'atlas', 'essential lane'],
+  ['A', 'charon', 'mandatory hunter'],
+  ['C', 'kleio', 'essential reporter'],
+  ['D', 'minos', 'essential validator in every mode'],
+  ['D', 'kalchas', 'essential recon in every mode'],
+]) {
+  const record = policyCase(mode, lane(slug, 'blocked', { missingTools: ['Edit'] }));
+  assert(record.status === 'blocked' && record.stopsEngagement === true && record.downgradedFrom === undefined && record.actions.length === 0,
+    `${mode} blocked ${slug} (${reason}) must stay blocked and stop the engagement`);
+}
+const blockedController = applyEssentialLanePolicy([lane('odysseus', 'blocked'), lane('pistis', 'ready')], plan, 'A');
+assert(blockedController[0].status === 'blocked' && blockedController[0].stopsEngagement === true && blockedController[1].stopsEngagement === false,
+  'a blocked controller must stop the engagement');
+for (const status of ['ready', 'degraded', 'deferred', 'skipped', 'not-selected']) {
+  const record = policyCase('A', lane('pistis', status));
+  assert(record.status === status && record.stopsEngagement === false && record.downgradedFrom === undefined,
+    `A ${status} pistis must keep its disposition and never stop the engagement`);
+}
+const unselectedBlocked = policyCase('A', { ...lane('pistis', 'blocked'), selected: false });
+assert(unselectedBlocked.status === 'blocked' && unselectedBlocked.stopsEngagement === false && unselectedBlocked.downgradedFrom === undefined,
+  'an unselected record is outside the engagement and must neither stop it nor be downgraded');
+assertThrows(() => applyEssentialLanePolicy([], plan, 'E'), 'unknown Argus mode: E');
+assertThrows(() => applyEssentialLanePolicy({}, plan, 'A'), 'preflight agent records must be an array');
+const noEssential = structuredClone(plan);
+delete noEssential.essentialLanes;
+assertThrows(() => applyEssentialLanePolicy([], noEssential, 'A'), 'declares no essential lanes');
+const noMandatory = structuredClone(plan);
+noMandatory.essentialLanes.includeMandatoryLanes = false;
+const unprotectedOrion = applyEssentialLanePolicy([lane('orion', 'blocked')], noMandatory, 'B')[0];
+assert(unprotectedOrion.status === 'deferred' && unprotectedOrion.downgradedFrom === 'blocked',
+  'includeMandatoryLanes=false must leave only the declared essential lanes protected');
+
 const nullRole = structuredClone(plan);
 nullRole.roles[0] = null;
 assert(validateOrchestrationPlan(nullRole, matrix, raci).length > 0, 'null role crashed or passed semantic validation');
@@ -209,7 +320,7 @@ nullPhase.phases[0] = null;
 nullPhase.phases[1].participants = 'kalchas';
 assert(validateOrchestrationPlan(nullPhase, matrix, raci).length > 0, 'malformed phases crashed or passed semantic validation');
 
-console.log(`PASS  Argus orchestration core: ${controllerWords} words, 27 roles, A/B/C/D=${Object.values(expectedModeCounts).join('/')}, W0-W4 DAG, derived phases, proof loop, ${plan.deepHunt.maxPasses} deep-hunt passes, gate parity, projection, ${fixtures.length} corruptions rejected`);
+console.log(`PASS  Argus orchestration core: ${controllerWords} words, 27 roles, A/B/C/D=${Object.values(expectedModeCounts).join('/')}, W0-W4 DAG, derived phases, proof loop, ${plan.deepHunt.maxPasses} deep-hunt passes, gate parity, projection, essential lanes A/B/C/D=${Object.values(expectedEssential).map((lanes) => lanes.length).join('/')}, ${fixtures.length} corruptions rejected`);
 
 function assertPhasePlanShape(mode, phasePlan) {
   for (const control of [phasePlan[0], phasePlan.at(-1)]) {

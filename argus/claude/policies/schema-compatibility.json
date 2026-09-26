@@ -8,6 +8,6 @@
     "lane-plan": { "current": 2, "readCompatible": [2] },
     "evidence-reference": { "current": 2, "readCompatible": [2] },
     "automation-status": { "current": 2, "readCompatible": [2] },
-    "preflight-report": { "current": 2, "readCompatible": [2] }
+    "preflight-report": { "current": 3, "readCompatible": [3] }
   }
 }
