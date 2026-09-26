@@ -4,19 +4,35 @@ import { dirname, extname, join, posix, relative, resolve, sep } from 'node:path
 
 const RUNTIMES = ['typescript', 'java', 'python'];
 const IGNORED = new Set(['.git', '.venv', 'ai_agents_internal', 'node_modules', 'target', 'dist', 'build', 'coverage', 'reports']);
+const PRODUCT_LANES = ['api', 'ui', 'perf', 'security', 'db', 'resilience'];
+const RUNNER_ARTIFACTS = {
+  library: 'scripts/runner-lib.sh', inventory: 'reports/test-inventory.tsv', expectedBugs: 'reports/expected-bugs.txt',
+  counterfactualPlan: 'reports/counterfactual-plan.tsv', adapterStatus: 'reports/argus-adapter-status.txt',
+  passArtifacts: 'reports/evidence/passes', activation: 'ARGUS_RUNNER_MODE',
+};
+const LANE_PLAN = { file: 'solution/test-lanes.tsv', undecided: 'not-yet-planned' };
+const ENVIRONMENT = { file: 'solution/environment.tsv', resetOptIn: 'ARGUS_ENVIRONMENT_RESET=execute', resetAuthorizationAction: 'destructive', undecided: 'not-yet-planned' };
+const COUNTERFACTUAL = { directory: 'solution/counterfactual', fixtureSchema: 'argus/counterfactual-fixture@1', requiredTamper: 'observed-defect' };
 
 export function validateTemplateContract(contract) {
   const errors = [];
-  if (!object(contract) || contract.schemaVersion !== 1 || contract.contractId !== 'argus/template-contract@1') return ['template contract identity is invalid'];
+  if (!object(contract) || contract.schemaVersion !== 2 || contract.contractId !== 'argus/template-contract@2') return ['template contract identity is invalid'];
   const modes = ['baseline', 'defect-evidence', 'candidate-regression', 'full-suite'];
   if (!sameSet(contract.runner?.modes, modes) || contract.runner?.resultSchema !== 'argus/runner-result@1' || contract.runner?.result !== 'reports/argus-runner-result.json' || contract.runner?.events !== 'reports/outcomes.raw.tsv' || contract.runner?.evidenceRoot !== 'reports/evidence') errors.push('runner minimum contract is invalid');
   if (!sameSet(contract.runner?.categories, ['product', 'automation', 'infrastructure', 'skip', 'policy']) || !sameSet(contract.runner?.exitCodes, [0, 10, 11, 12, 13, 14, 15])) errors.push('runner categories or exit codes are invalid');
+  if (!exactFields(contract.runner, RUNNER_ARTIFACTS) || !sameSet(contract.runner?.evidencePasses, ['live', 'repeat', 'cf-correct', 'cf-tamper'])) errors.push('runner library, inventory, or evidence-pass contract is invalid');
+  if (!sameSet(contract.tags?.lanes, PRODUCT_LANES) || !sameSet(contract.tags?.harnessLanes, ['contract-smoke', 'setup'])) errors.push('lane tag contract is invalid');
   if (contract.tags?.bugLinked !== 'regression' || contract.tags?.bugProvenance !== '@bug:<canonical-or-origin>') errors.push('regression selection or bug provenance contract is invalid');
   if (contract.retryPolicy?.maximumAttempts !== 1 || contract.retryPolicy?.automaticRetries !== false) errors.push('automatic retries must be disabled');
   if (contract.quarantine?.ledger !== 'solution/quarantine.tsv' || !sameSet(contract.quarantine?.columns, ['case_id', 'owner', 'reason', 'expires_on', 'issue'])) errors.push('quarantine contract is invalid');
+  if (!Array.isArray(contract.quarantine?.forbiddenFor) || !contract.quarantine.forbiddenFor.includes('regression')) errors.push('quarantine must be forbidden for regression tests');
+  if (!exactFields(contract.lanePlan, LANE_PLAN) || !sameSet(contract.lanePlan?.columns, ['lane', 'state', 'owner', 'prerequisites', 'reason']) || !sameSet(contract.lanePlan?.states, ['enabled', 'disabled'])) errors.push('lane plan contract is invalid');
+  if (!exactFields(contract.environment, ENVIRONMENT) || !sameSet(contract.environment?.columns, ['kind', 'command', 'note']) || !sameSet(contract.environment?.kinds, ['reset', 'verify'])) errors.push('environment contract is invalid');
+  if (!exactFields(contract.counterfactual, COUNTERFACTUAL) || !sameSet(contract.counterfactual?.exemptions, ['front-end-logic', 'timing-or-load', 'data-layer', 'fault-injection', 'non-http-protocol'])) errors.push('counterfactual contract is invalid');
   for (const runtime of RUNTIMES) {
     const template = contract.templates?.[runtime];
     if (!object(template) || !string(template.framework) || !string(template.runner) || !list(template.packageManagers) || !list(template.extensionPoints)) errors.push(`${runtime} template contract is invalid`);
+    else if (!string(template.adapter) || !string(template.provenanceMarker) || !string(template.laneMarker)) errors.push(`${runtime} template adapter or marker contract is invalid`);
   }
   return [...new Set(errors)];
 }
@@ -264,6 +280,7 @@ function string(value) { return typeof value === 'string' && value.trim().length
 function list(value) { return Array.isArray(value) && value.length > 0 && value.every(string) && new Set(value).size === value.length; }
 function sorted(value) { return [...value].sort(); }
 function sameSet(actual, expected) { return Array.isArray(actual) && actual.length === expected.length && [...actual].sort().every((item, index) => item === [...expected].sort()[index]); }
+function exactFields(actual, expected) { return object(actual) && Object.entries(expected).every(([key, value]) => actual[key] === value); }
 function uniqueSignals(signals) { return [...new Map(signals.map((item) => [`${item.capability}\0${item.source}`, item])).values()].sort((a, b) => a.capability.localeCompare(b.capability) || a.source.localeCompare(b.source)); }
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
 function canonicalLayoutPath(value) {

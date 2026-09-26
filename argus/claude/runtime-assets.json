@@ -74,8 +74,8 @@
       "source": "argus/RUNNER-CONTRACT.md",
       "destination": "references/RUNNER-CONTRACT.md",
       "files": 1,
-      "bytes": 6706,
-      "sha256": "bd15551b3fbb3fe18b18f84efadc354590509ae086591da04b74792eda33a512"
+      "bytes": 16553,
+      "sha256": "3acf38328d8f022dbaccf4afd8c6ad30f0d5c72c9cb398544e949c6c57142ce8"
     },
     {
       "id": "template-contract",
@@ -83,8 +83,8 @@
       "source": "argus/TEMPLATE-CONTRACT.md",
       "destination": "references/TEMPLATE-CONTRACT.md",
       "files": 1,
-      "bytes": 3698,
-      "sha256": "3b0372021b416a07119a8b43a0fdcc83d917bc23b04dfb6caa78d451d87514d1"
+      "bytes": 8573,
+      "sha256": "29024a6546fe56f6f361d2964d96e626097a2d84603d5ff20c1cf5df81c19548"
     },
     {
       "id": "coverage-contract",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 37,
-      "bytes": 130371,
-      "sha256": "62dbf21c76575df561425cdb3c178c55f0e48fc2ac3c2dc7ca05e4e55b89f31d"
+      "bytes": 132298,
+      "sha256": "27adf77beb29573376ef555c3c4ad81997c0a3033010a7b3d52f5c286276e42e"
     },
     {
       "id": "capability-matrix",
@@ -227,8 +227,8 @@
       "source": "argus/template-contract.json",
       "destination": "capabilities/template-contract.json",
       "files": 1,
-      "bytes": 1969,
-      "sha256": "012fdc0d51db2c33efb7d443f1bc32a5fd802c9e03da111a88cc32cbe67c4a6b"
+      "bytes": 3706,
+      "sha256": "97a811b411e571ab5b7bf5d6d706149cdad63b90d0a13366da1fb2dc21257294"
     },
     {
       "id": "model-policy-benchmark",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 9,
-      "bytes": 231571,
-      "sha256": "5a761790154c07ea329376507ebc60108b5109a41ae778fcfa18a4fbb0e083a7"
+      "bytes": 234042,
+      "sha256": "8330621748f827d1f8b5515b9d3c26f65ab133bd2cdd46de02f8d89b2c1b3d2b"
     },
     {
       "id": "common-template",
@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 37,
-      "bytes": 133608,
-      "sha256": "b3d4b85716972e31caf511a77c2b000b4c7a7b6c55871a4907a28cdca1e557e3"
+      "bytes": 133692,
+      "sha256": "8a68047705bad53e68dd28f8598f6d936410bfd45b2b162a68448a345960b473"
     },
     {
       "id": "java-template",
@@ -281,8 +281,8 @@
       "source": "argus/framework-template-java",
       "destination": "templates/java",
       "files": 23,
-      "bytes": 71321,
-      "sha256": "7a926757d51ce2e4b5a28c00b1829725e038f0a0be22539efc55bc1564bcb838"
+      "bytes": 71412,
+      "sha256": "c51f8ddbc6315cb80191b599c182deda2df321f90adc776145173664f198d7b2"
     },
     {
       "id": "python-template",
@@ -290,8 +290,8 @@
       "source": "argus/framework-template-python",
       "destination": "templates/python",
       "files": 28,
-      "bytes": 53272,
-      "sha256": "bdbef6642e09fd6412c0c74c01528b4c13aeae7b0155ae415f7c9dcb37e60cc6"
+      "bytes": 53351,
+      "sha256": "51b70a596f3f7967336359fa168497d251e205b530615037bbf92bccc0ed7de9"
     }
   ],
   "buildOnly": [
