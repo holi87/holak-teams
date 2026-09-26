@@ -31,6 +31,9 @@ sys.path.insert(0, str(_ROOT / "src"))
 from qa.api_client import login, make_client  # noqa: E402
 from qa.config import ENV  # noqa: E402
 
+# Argus outcome adapter: inert unless scripts/runner-lib.sh exports ARGUS_RUNNER_MODE.
+pytest_plugins = ["qa.argus_plugin"]
+
 AUTH_DIR = Path(os.environ.get("ARGUS_AUTH_DIRECTORY", _ROOT / ".auth"))
 USER_STATE = AUTH_DIR / "user.json"
 

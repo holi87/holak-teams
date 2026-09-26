@@ -263,6 +263,12 @@ else
   fail "[argus] (l2) capability-based template contract"
 fi
 
+if "$ROOT/scripts/smoke-argus-runtime-python.sh"; then
+  pass "[argus] (l5) Python runtime adapter: collect-only inventory, ledger join, classified outcome events, and xdist parity"
+else
+  fail "[argus] (l5) Python runtime adapter contract"
+fi
+
 if "$ROOT/scripts/smoke-argus-coverage.sh"; then
   pass "[argus] (m) target-derived, risk-weighted coverage and defect-neutral quality metrics"
 else

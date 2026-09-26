@@ -39,7 +39,10 @@ markers = [
   "perf: performance-budget lane — gated on PERF_BUDGET_MS (self-skips if unset)",
   "security: access-control lane — gated on SECURITY_ENABLED=1 (self-skips if unset)",
   "db: direct-DB integrity lane — gated on DB_URL, read-only (self-skips if unset)",
+  "resilience: resilience lane",
   "regression: bug-linked RED tests (red = evidence the suite catches the defect)",
+  "bug(id): canonical BUG-NNNN or origin alias provenance",
+  "repetition(n): declared repetition of an intermittent defect's reproduction (1..200, absent means 1)",
   "quarantine: temporarily excluded test with a valid solution/quarantine.tsv entry",
   "contract_smoke: target-independent clean-room scaffold contract",
 ]
