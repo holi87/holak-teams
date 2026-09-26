@@ -8,15 +8,12 @@ teams as installable plugins:
 | **hephaestus** | Roman names | 22 | `marcus` | Software delivery — goal → designed team → delivered increment |
 | **argus** | Greek names | 27 | `argus-launch` | QA — black-box bug hunting + regression automation |
 
-Both teams are **hub-and-spoke**: you use the team's entry point (`marcus` or
-`argus-launch`); its main-thread controller decomposes the work, dispatches specialists,
-and reports back. Specialists never talk to each other directly.
+Both teams are **hub-and-spoke**: the entry point's main-thread controller decomposes the
+work, dispatches specialists, and reports back. Specialists never talk to each other.
 
 ---
 
-## Install
-
-### Recommended — via the marketplace
+## Install and start
 
 ```
 /plugin marketplace add holi87/holak-teams
@@ -24,316 +21,173 @@ and reports back. Specialists never talk to each other directly.
 /plugin install argus@holak-teams
 ```
 
-Then use Marcus in a session and Argus through its packaged launcher:
-
-```
-> marcus, build a REST API for task management with tests and CI
-> argus-launch claude --target /absolute/target --artifact-root /absolute/artifacts --mode A \
-    --engagement-id qa-001 --trust-store /secure/model-trust.json --runtime-key-id runtime-2026 \
-    --request-output /secure/qa-001.request.json --launch-authorization /secure/qa-001.authorization.json
-```
-
-`argus-launch` writes an exact short-lived request for the isolated runtime signer, then
-starts `/argus:run` with the native controller turn cap and OS sandbox,
-applies Odysseus's orchestration policy, dispatches the namespaced specialists, and
-collects their results. Direct `/argus:run` or `claude --agent argus:odysseus` sessions
-fail preflight. Update later with `/plugin marketplace update holak-teams`.
-
-### Automatic — when working inside this repo
-
-`.claude/settings.json` registers the marketplace and enables both plugins. Anyone who
-clones this repo and **trusts the folder** is prompted to add `holak-teams` and gets both
-plugins enabled automatically:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "holak-teams": { "source": { "source": "github", "repo": "holi87/holak-teams" }, "autoUpdate": true }
-  },
-  "enabledPlugins": { "hephaestus@holak-teams": true, "argus@holak-teams": true }
-}
-```
-
-### Manual / Codex install
-
-The plugins package their **Claude Code** components under `<team>/claude/`: flat agent
-definitions for both teams; Argus also ships `/argus:run`, runtime references, schemas,
-driver tooling, and framework templates. The repo also carries **Codex** variants
-(`<team>/codex/`, paired `*.toml` + `*.md`). For symlink/copy installs and the Codex
-setup, see **INSTALL.md**.
+- Update with `/plugin marketplace update holak-teams`.
+- Inside this repo, `.claude/settings.json` registers the marketplace (`autoUpdate: true`)
+  and enables both plugins once the folder is trusted.
+- **Hephaestus** — ask Marcus in a Claude Code session, for example
+  `marcus, build a REST API for task management with tests and CI`.
+- **Argus** — run the packaged `bin/argus-launch` from a terminal, not from inside a session:
+  - `argus-launch doctor` checks the host first.
+  - `argus-launch claude --target … --artifact-root … --mode <A|B|C|D> --engagement-id …`
+    writes a short-lived request for the isolated runtime-attestation signer, then starts
+    `/argus:run` with `--max-turns 96`, the frontier controller model, and the OS sandbox.
+  - `--unattested` is an explicit opt-in for hosts without Ed25519 keys. It skips only the
+    cryptographic attestation; every report names the engagement UNATTESTED.
+  - A direct `/argus:run` or `claude --agent argus:odysseus` session fails preflight.
+  - Full command sequence: **INSTALL.md** → "Start Argus". Every flag: `argus-launch --help`.
+- Manual `--plugin-dir` installs and the Codex setup: **INSTALL.md**.
 
 ---
 
 ## Repository layout
 
-Each plugin's root is the team's **`claude/`** directory — so Claude things and Codex
-things are visibly separated, and the Codex variants are *not* shipped with the installed
-plugin.
+- Plugin roots are `hephaestus/claude/` and `argus/claude/`. Only these ship to users.
+  The `codex/` variants and Argus's maintainer sources stay outside them.
+- The marketplace catalog is `.claude-plugin/marketplace.json`.
+- `AGENTS.md` is the canonical doc and `CLAUDE.md` is a symlink to it. Edit `AGENTS.md`;
+  the Edit and Write tools refuse to write through the symlink.
+- For the tree itself, use `ls`/`tree`.
+- `argus/claude/` holds generated, hash-checked copies of the Argus runtime subset, so an
+  installed plugin never reads outside its own directory.
 
-```
-holak-teams/                         # this repo == the marketplace
-├── .claude-plugin/
-│   └── marketplace.json             # marketplace catalog (source: ./hephaestus/claude, ./argus/claude)
-├── .claude/
-│   └── settings.json                # auto-register marketplace + enable both plugins
-├── AGENTS.md                        # this file (canonical doc)
-├── CLAUDE.md -> AGENTS.md           # symlink (Claude Code project memory)
-├── README.md / INSTALL.md
-├── agents-roster.html               # visual roster (both teams)
-├── hephaestus/                      # ── delivery team ──
-│   ├── claude/                      # == PLUGIN ROOT (Claude only)
-│   │   ├── .claude-plugin/plugin.json
-│   │   └── agents/                  # 22 flat agent defs (loaded by Claude Code)
-│   ├── codex/                       # Codex variants (*.toml + *.md) — separate, not in the plugin
-│   ├── team-graph.html + .png       # visual team graph (embedded in README)
-│   └── README.md                    # roster + how-to-start
-└── argus/                           # ── QA team ──
-    ├── claude/                      # == PLUGIN ROOT (Claude only)
-    │   ├── .claude-plugin/plugin.json
-    │   ├── agents/                  # 27 flat specialist defs (loaded by Claude Code)
-    │   ├── skills/run/SKILL.md      # /argus:run main-thread orchestrator
-    │   ├── skills/orchestration-core/ # complete main-thread/controller contract
-    │   ├── skills/qa-*/             # capability-selected QA profiles
-    │   ├── skills/competition-profile/ # explicit opt-in; never preloaded
-    │   ├── bin/argus-assets         # list/verify/copy packaged runtime assets
-    │   ├── hooks/hooks.json         # packaged PreToolUse target-immutability guard
-    │   ├── capabilities/            # generated 27-role capability and fallback matrix
-    │   ├── policies/ + lib/         # authorization template, redactor rules, evaluator
-    │   ├── references/ + schemas/   # generated, installed runtime references/contracts
-    │   ├── templates/               # common layer + generated TS / Java / Python layers
-    │   └── runtime-*.json           # generated asset manifest + prompt inventory
-    ├── codex/                       # Codex variants (*.toml + *.md) — separate, not in the plugin
-    ├── framework-template/          # prepped Playwright + TS framework (shared reference)
-    ├── framework-template-java/     # RestAssured + JUnit5 + Playwright-Java (shared reference)
-    ├── framework-template-python/   # pytest + Playwright + httpx (shared reference)
-    ├── AUTHORIZATION-POLICY.md       # canonical authorization, audit, and redaction contract
-    ├── ENGAGEMENT-POLICY.md          # canonical ownership, barriers, leases, and cleanup
-    ├── CANONICAL-CONTRACTS.md        # schema registry, field owners, and transition ownership
-    ├── RUNNER-CONTRACT.md            # four runner modes, outcome categories, and exit codes
-    ├── MODEL-POLICY.md               # generated Claude/Codex tier, effort, turns, and fallback table
-    ├── model-policy*.json            # canonical policy + sanitized benchmark evidence
-    ├── policies/ + runtime/          # canonical manifests, patterns, and evaluator sources
-    ├── COLOR-SCHEME.md              # colors by role type (shared reference)
-    ├── shared-skills/               # canonical doctrine + optional profile sources
-    ├── prompt-*.json                # prompt budgets + engagement regression contract
-    ├── BROWSER-ISOLATION.md         # browser-lane isolation spec + hunt-driver verb map (shared reference)
-    ├── team-graph.html + .png       # visual team graph (embedded in README)
-    └── README.md                    # roster + how-to-start
-```
+### Agent files
 
-**Plugin component rule (Claude Code):** inside a plugin root (`<team>/claude/`), agent
-files must be **flat** inside `agents/` — no subdirectories. The agent slug is the file
-name without `.md` (`marcus`, `odysseus`, …). The `codex/` variants stay outside the
-plugin roots. Argus's maintainer-facing sources also stay under `argus/`; generated,
-hash-checked copies of the runtime subset are committed under `argus/claude/` so a
-marketplace cache never needs to traverse outside its installed plugin directory.
+- Keep agent files **flat** in `<plugin root>/agents/`. The slug is the file name without
+  `.md` and must equal the frontmatter `name`.
+- Claude Code itself now loads subfolders of `agents/` as `<plugin>:<subfolder>:<name>`.
+  This repo forbids them anyway (`scripts/validate-marketplace-contracts.mjs`) so slugs stay
+  `argus:<slug>` and `hephaestus:<slug>`.
+- Frontmatter allowed by the gate: `name`, `description`, `tools`, `model`, `color`,
+  `skills`, `effort`, `maxTurns`. Argus agents use all eight; Hephaestus agents use the
+  first five.
+- Claude Code also supports `disallowedTools`, `memory`, `background`, `omitClaudeMd`,
+  `isolation`, and `experimental.cacheTtl`. To use one, extend `supportedFrontmatter` in
+  the gate in the same commit.
+- Claude Code ignores `hooks`, `mcpServers`, `permissionMode`, and `initialPrompt` in
+  plugin agents. Put hooks in `<plugin root>/hooks/hooks.json`; only Argus has one.
+- Keep the team theme (Hephaestus = Roman, Argus = Greek) and a unique slug per team.
 
-### Argus runtime assets
+### Source vs generated files
 
-Canonical sources are declared in `argus/runtime-assets.source.json`. Run
-`scripts/sync-argus-runtime-assets.mjs --write` after changing a declared source, then
-`--check` before commit. The generated `argus/claude/runtime-assets.json` records file
-counts, bytes and SHA-256 values; `runtime-reference-inventory.json` inventories plugin
-paths, target-repo paths and host commands referenced by all 27 prompts.
+Never hand-edit a generated file. Edit its source, then regenerate:
 
-Installed users can run `argus-assets list`, `argus-assets verify`,
-`argus-assets preflight --target <url-or-path> --mode <A|B|C|D>`,
-`argus-assets model list|trust|request|route|telemetry`,
-`argus-assets template detect|select|scaffold`,
-`argus-assets technique scopes|select --role <atalanta|proteus|metis> [--inventory <surface-inventory.json>]`,
-the low-level
-`argus-assets copy-template <typescript|java|python> <empty-destination>`, or
-`argus-assets copy-browser-driver <target-repo>`. Generated assets are capped at 840 KB
-and the complete installed Argus plugin at 1.75 MB. Both caps are deliberate budgets: raise
-one only in a commit that names the growth. `COLOR-SCHEME.md` and team graphs are
-explicitly maintainer-only; their runtime values already live in agent frontmatter.
+| Source (edit this) | Regenerate | Generated (do not edit) |
+|---|---|---|
+| `argus/roles/<slug>.md`, `argus/roles/manifest.json` | `scripts/sync-argus-role-variants.mjs --write` | `argus/claude/agents/*`, `argus/codex/*` |
+| Assets declared in `argus/runtime-assets.source.json` (`argus/bin/`, `argus/runtime/`, `argus/schemas/`, `argus/shared-skills/`, `argus/policies/`, contracts, templates) | `scripts/sync-argus-runtime-assets.mjs --write` | matching paths under `argus/claude/` (`bin/argus-launch`, `lib/`, `skills/qa-*`, `references/`, …) |
+| `argus/raci.json` | `node scripts/sync-argus-raci.mjs --write` | `argus/RACI-CONTRACT.md`, roster block in `argus/README.md` |
+| `argus/model-policy.json` | `node scripts/sync-argus-model-policy.mjs --write` | `argus/MODEL-POLICY.md` |
+| `argus/technique-catalogs/*.json` | `node scripts/sync-argus-technique-bundle.mjs --write` | `argus/technique-catalogs.bundle.b64` |
+| `hephaestus/claude/agents/<slug>.md` | `scripts/sync-hephaestus-codex-variants.mjs --write` | `hephaestus/codex/*` |
 
-Every Claude specialist preloads the exact profiles selected by the capability matrix.
-`qa-core` is universal; browser, framework-runner, coverage-reporting, and orchestration
-policy are attached only where needed. Codex generation embeds the same selected bodies.
-The retired `qa-doctrine` monolith is absent. The optional `competition-profile` is
-packaged but disabled and never preloaded; it requires explicit user opt-in.
-`node scripts/check-argus-prompts.mjs` enforces effective Claude and Codex corpus budgets,
-profile/tool assignments, semantic duplicate detection, default-profile isolation, and a
-representative engagement regression contract.
+- Files edited in place under `argus/claude/`: `bin/argus-assets`, `bin/package.json`,
+  `skills/run/SKILL.md`, `hooks/hooks.json`, `.claude-plugin/plugin.json`.
+- Each sync script also accepts `--check`; the release gate runs every check.
+- After an Argus runtime change, run the runtime-assets sync with `--write`, then `--check`.
 
-Atalanta, Proteus, and Metis load their hash-bound technique catalogs lazily after the
-surface inventory. Explicit namespaced `techniqueScopes` select a reviewed subset; missing,
-unknown, or ambiguous scopes fail conservatively to the complete catalog.
+---
 
-Model selection is generated from `argus/model-policy.json`: 10 quality-critical roles
-use Claude `opus` / maximum effort and Codex `sol` / `xhigh`; 17 bounded execution roles
-use Claude `sonnet` / medium and Codex `terra` / medium. Every role declares a maximum
-turn count, escalation profile, and fallback. Standard roles may escalate only upward;
-frontier unavailability fails closed. No complete role may use Haiku/Luna. That mechanical
-tier is reserved for a bounded subrole with no quality judgment, deterministic schema,
-and a validator pass before merge. `model-policy.benchmark.json` records synthetic
-quality, latency, token, and provider-cost comparisons without prompts, completions, or
-target data. Run `scripts/sync-argus-model-policy.mjs --write|--check` and
-`scripts/smoke-argus-model-policy.sh` after policy changes.
-Before routing, the host trust store must contain distinct active Ed25519 anchors for
-runtime control and human operator approval. `model trust` pins their identities and the
-secure absolute host-store path. Every model request, route, allocation, retry, and
-telemetry operation reopens the live store; a revoked, replaced, or missing key blocks
-immediately. Neither private key nor a generic signing service may be available to the
-controller or workers. The isolated operator signer alone authorizes frontier continuation
-or abort.
-`argus-launch` is the only supported Claude entry point. An isolated runtime-attestation
-signer must authorize its exact short-lived request. The signed document binds the engagement,
-target, physically disjoint artifact root, workspace, launcher and Claude hashes, model,
-effort, mode, and native 96-turn cap. A one-shot random capability whose digest is signed
-binds that authorization to the launched process tree. Odysseus starts with the exact frontier controller
-baseline, no session persistence, an explicit environment allowlist, and an OS filesystem
-sandbox whose only writable root is the alias-free artifact boundary. Direct `/argus:run`
-preflight and copied signed files both block.
-The installed Codex CLI can enforce model and reasoning effort but has no native hard turn
-cap, so Codex dispatch fails closed; a signed assertion or approximate counter cannot
-replace missing runtime enforcement.
-The controller persists normal attempt-1 decisions for Odysseus and every currently
-dispatchable selected role before any allocation,
-allocates Odysseus first against its exact decision, and uses that controller token to
-authenticate each decision-bound worker allocation. Workers receive only their own lane
-token and decision coordinates, never the controller token; late normal dispatch is blocked
-and retries explicitly rebind the active dispatch/allocation with `engagement start-attempt`.
-The command consumes the current lane token, atomically rotates it, and returns the next
-attempt's token once; the controller replaces the old token before spawning the retry, and
-the stale token is immediately invalid. A model request requires the current lane token;
-routes after allocation require the controller token; telemetry requires the decision-owning
-token, is accepted exactly once per selected decision, and must be emitted before a retry
-rebind or cleanup changes that active binding. Deferred, skipped, and blocked roles are excluded from the sealed
-decision set and cannot allocate. A declared worker escalation resumes from its authenticated
-checkpoint; a pre-spawn `model-unavailable` retry instead uses the immutable availability
-binding and may have no checkpoint because no worker thread began.
-The generated policy is the single cross-runtime mapping view. Worker prompts contain
-only their local execution envelope and never name the opposite runtime's model.
+## Argus maintainer rules
 
-The preflight writes only dedicated control artifacts under `ai_agents_internal/` before
-any target probe, test, or specialist dispatch: preflight, authorization, engagement, and
-atomic state. It verifies orchestration tools, strict frontmatter vocabulary,
-MCP connections, host commands, packaged assets, browser runtime, target reachability,
-target-specific gates, and safe writable artifact paths. Each of the 27 roles receives a
-machine-readable `ready`, `degraded`, `deferred`, `skipped`, or `blocked` disposition.
-Only `ready` and `degraded` records are dispatchable; every degraded record carries a
-deterministic fallback action. CI exercises full, partial, and insufficient profiles.
+- **Budgets** (`argus/runtime-assets.source.json`): generated assets ≤ 880,000 bytes,
+  installed plugin ≤ 1,800,000 bytes. Raise a budget only in a commit that names the growth.
+  Prompt corpus budgets live in `argus/prompt-budgets.json`, enforced by
+  `node scripts/check-argus-prompts.mjs`.
+- **Profiles** — each specialist preloads exactly the profiles the capability matrix
+  selects. `qa-core` is universal. `competition-profile` is packaged but never preloaded;
+  it needs explicit user opt-in.
+- **Technique catalogs** — Atalanta, Ariadne, Proteus, and Metis load hash-bound catalogs
+  lazily after the surface inventory. Unknown or ambiguous `techniqueScopes` fall back to
+  the complete catalog.
+- **Models** (`argus/model-policy.json`) — 12 frontier roles use Claude `opus` / max effort
+  (Codex `sol` / `xhigh`); 15 standard roles use `sonnet` / medium (Codex `terra` /
+  medium). No complete role may use Haiku/Luna. Codex dispatch fails closed because the
+  Codex CLI has no native hard turn cap.
+- **Preflight** — writes control artifacts under `ai_agents_internal/` before any target
+  probe. Each role gets `not-selected`, `ready`, `degraded`, `deferred`, `skipped`, or
+  `blocked`; only `ready` and `degraded` roles are dispatchable.
+- **Authorization** — unknown, staging, and production targets are read-only by default.
+  All roles share one packaged redactor.
+- **Target immutability** — the packaged `PreToolUse` hook blocks writes to the target and
+  direct writes to canonical artifacts.
+- **Finding quality (4.9.1)** — a new confirmed bug needs structured verification.
+  `argus/runtime/finding-quality.mjs` reconciles confirmed bugs against their evidence at
+  the canonical merge boundary. The discovery harness is `scripts/eval/discovery/`
+  (maintainer-only; see its README). Background: RELEASE.md "Argus 4.9.1 finding-quality repair".
+- **COLOR-SCHEME.md and team graphs** are maintainer-only; runtime values live in frontmatter.
 
-Preflight also creates or loads one `ai_agents_internal/authorization.json`. The packaged
-policy and evaluator cover target/environment, accounts, data boundaries, mutation and
-prohibition lists, rate/concurrency/request/duration ceilings, time windows, explicit
-high-risk grants, rollback, escalation, audit, redaction, and untrusted-content rules.
-Unknown/staging/production targets are read-only by default. The 18 target-affecting roles
-carry explicit risk-action contracts; every role uses the same packaged redactor. Runtime
-commands are `argus-assets authorization init|check` and `argus-assets redact`. Decisions
-append redacted rule-ID events to `ai_agents_internal/authorization-audit.jsonl`; binary
-evidence fails closed until independently masked and reviewed.
+### Where each contract lives
 
-Preflight also creates or loads `ai_agents_internal/engagement.json`. The installed
-plugin's `PreToolUse` hook resolves physical paths and blocks target-source mutation,
-canonical direct writes, shell redirection, patching, and recognized subprocess writes.
-The engagement controller provides immutable per-agent fragments, deterministic
-single-owner merges, ordered phase barriers over the immutable dispatchable projection,
-unique browser/account/namespace/port/output leases, exclusive reset/fault windows,
-identity-deduplicated atomic IDs, monotonic resumable checkpoints,
-attempt-generation-bound heartbeats, and success/failure cleanup. Worker `success` cleanup
-requires every barrier arrival declared for that projected lane. Canonical machine contracts
-cover lane plans, bug ledgers, evidence, automation status, and final summaries; malformed or
-cross-engagement JSON fragments are rejected before merge. Merging a final summary renders
-a human-facing report with its source schema version and runner categories. Packaged
-TypeScript, Java, and Python runners share baseline/evidence/candidate/full modes,
-standardized exit codes, and explicit product/automation/infrastructure/skip/policy
-outcomes. Denials append redacted `GUARD-*` events without raw commands.
-
-New engagements default to WCAG 2.2 AA; an older accessibility target requires an
-explicit project-requirement source, reason, and approver in the manifest. Browser,
-device, and viewport coverage is derived from declared target support and risk rather
-than a fixed quota and is persisted in `browserPolicy.coverage`. Every browser lane gets
-a unique managed profile and browser-artifact directory unless an explicit, bounded
-shared-session authorization names every sharing lane. Cookies, auth, downloads, traces,
-videos, screenshots, and profiles remain inside the engagement boundary. Cleanup accepts
-`success`, `failure`, or `interrupted`; crash recovery clears stale sensitive state before
-issuing a new lease. Kleio's canonical `solution/ACCESSIBILITY-REPORT.md` identifies the
-standard, level, exception, tools, automated and manual checks, limitations, coverage
-matrix, and privacy-safe evidence status without claiming target conformance.
-
-Framework work is capability-based. `template detect` inventories language, framework,
-test runner, package manager, existing source/test roots, and CI; `template select`
-requires the user's explicit runtime and compatible layout choice; `template scaffold`
-is allowed only for `action=build` and relocates internal placeholders to the selected
-paths. Existing suites produce `action=adapt` and cannot be overwritten by a competing
-harness. `template-contract.json` defines shared runner modes, result/evidence/event
-formats, tags, one-attempt retry policy, expiring quarantine semantics, and per-runtime
-extension points. Clean-room CI scaffolds and runs all three templates.
-
-Agent responsibilities, UI/API/event/data boundaries, defect handoffs, canonical
-artifact owners, and state-transition owners are declared in `argus/raci.json` and
-rendered to `argus/RACI-CONTRACT.md`. `argus-assets raci route` is the runtime routing
-interface; `scripts/sync-argus-raci.mjs --check` keeps all 27 frontmatter descriptions,
-prompt RACI blocks, and the README roster aligned with that one source.
+| Topic | Canonical doc |
+|---|---|
+| Model tiers, escalation, trust store, launch attestation, tokens | `argus/MODEL-POLICY.md` |
+| Ownership, barriers, leases, checkpoints, cleanup, WCAG 2.2 AA default, `--unattested` | `argus/ENGAGEMENT-POLICY.md` |
+| Authorization, audit, redaction | `argus/AUTHORIZATION-POLICY.md` |
+| Browser lanes, managed profiles, device/viewport coverage | `argus/BROWSER-ISOLATION.md` |
+| Schema registry, field and transition owners | `argus/CANONICAL-CONTRACTS.md` |
+| Runner modes, outcome categories, exit codes | `argus/RUNNER-CONTRACT.md` |
+| Framework detect / select / scaffold | `argus/TEMPLATE-CONTRACT.md` |
+| Coverage observations and results | `argus/COVERAGE-CONTRACT.md` |
+| Agent responsibilities and handoffs (`argus-assets raci route`) | `argus/RACI-CONTRACT.md` |
+| Claude vs Codex generated-config parity | `AGENT-RUNTIME-PARITY.md` |
+| Roster, `argus-assets` commands, lanes | `argus/README.md` |
 
 ---
 
 ## Rosters
 
-Full rosters, roles, models and lane structure live in each plugin's README:
-
-- **Hephaestus** — `hephaestus/README.md` (22 agents: ba / dev / management / QA, leader `marcus`).
-- **Argus** — `argus/README.md` (27 agents: core + surface×mode hunter/automation/path-analyst lanes, plus resilience, consumer-driven contract, and test-suite-sanitation roles, leader `odysseus`).
-
-Codex runtime mapping for both teams: Claude `opus` → `sol` + `xhigh`,
-`sonnet` → `terra` + `medium`, `haiku` → `luna` + `medium`.
+- **Hephaestus** — `hephaestus/README.md` (22 agents: BA / dev / management / QA, leader `marcus`).
+- **Argus** — `argus/README.md` (27 agents: core + surface×mode hunter/automation/path-analyst
+  lanes, plus resilience, consumer-driven contract, and test-suite-sanitation roles, leader
+  `odysseus`).
+- Codex mapping for both teams: Claude `opus` → `sol` + `xhigh`, `sonnet` → `terra` +
+  `medium`, `haiku` → `luna` + `medium` (Hephaestus only).
 
 ---
 
-## Versioning & releasing
+## Versioning and releasing
 
-Versions are **semver**. Each plugin's version is declared in **two** places that must
-stay equal:
+Versions are **semver**:
 
-1. `<team>/claude/.claude-plugin/plugin.json` → `"version"` (source of truth for the installed plugin)
-2. `.claude-plugin/marketplace.json` → the plugin's entry `"version"` (what `/plugin marketplace update` reads to detect a new release)
+- **patch** — wording or prompt tweaks, no behavioural change.
+- **minor** — new agent or capability, backward-compatible.
+- **major** — removed or renamed agent, or a breaking entry-point change.
 
-**To bump a plugin** (e.g. after editing its agents):
+Release declarations:
 
-1. For Argus, edit `argus/roles/<slug>.md` and canonical metadata/contracts, then run
-   `scripts/sync-argus-role-variants.mjs --write`. For Hephaestus, edit the flat Claude
-   source and run `scripts/sync-hephaestus-codex-variants.mjs --write`.
-2. For Argus runtime sources, regenerate and check `argus/claude/` with
-   `scripts/sync-argus-runtime-assets.mjs --write` and `--check`.
-3. Raise `"version"` in **both** files above — same number — following semver:
-   - **patch** (`1.0.0 → 1.0.1`): wording / prompt tweaks, no behavioural change.
-   - **minor** (`1.0.0 → 1.1.0`): new agent, new capability, backward-compatible.
-   - **major** (`1.0.0 → 2.0.0`): removed/renamed agent or breaking change to entry-point contract.
-4. If you bump a plugin, also bump the marketplace's own top-level `"version"` in `marketplace.json`.
-5. Commit and push. Installed users pick it up via `/plugin marketplace update holak-teams`
-   (or automatically when `autoUpdate` is on).
+- `<plugin root>/.claude-plugin/plugin.json` `version` decides the installed version. Users
+  stay on the cached copy until this string changes.
+- The plugin's entry `version` in `.claude-plugin/marketplace.json` must be equal;
+  `claude plugin validate` warns on a mismatch.
+- The top-level marketplace `version` equals the **highest** plugin version. A
+  Hephaestus-only bump leaves it unchanged.
 
-Use `node scripts/release-plugin.mjs --plugin <team> --bump <patch|minor|major> --write`
-to update all release declarations atomically. Before commit, run the complete local gate
-documented in `RELEASE.md`: `scripts/validate-release.sh`.
+Release steps:
+
+1. Regenerate every changed source (table above).
+2. Bump all declarations atomically:
+   `node scripts/release-plugin.mjs --plugin <hephaestus|argus> --bump <patch|minor|major> --write`.
+3. Run the full gate: `make validate` (runs `scripts/validate-release.sh`, same as CI).
+4. Run `git diff --check` and review generated changes.
+5. Commit on a dedicated branch, push, open a pull request, and wait for every required check.
+
+Details and past release boundaries: **RELEASE.md**. To score an Argus run against a
+private answer key: `make eval RUN=<engagement-root> ARGUS_ANSWER_KEY=<path outside repo>`.
 
 ---
 
 ## Adding or changing an agent
 
-- Argus role content lives in `argus/roles/<slug>.md`; role metadata lives in
-  `argus/roles/manifest.json`. Do not edit generated `argus/claude/agents/*` or
-  `argus/codex/*` files directly. Run `scripts/sync-argus-role-variants.mjs --write` and
-  commit the canonical and generated files together.
-- Hephaestus keeps one flat canonical `*.md` file in `hephaestus/claude/agents/`. Do not
-  edit `hephaestus/codex/*` directly; regenerate the same-slug TOML/Markdown pair with
-  `scripts/sync-hephaestus-codex-variants.mjs --write`.
-- Frontmatter: `name`, `description`, `tools`, `model`, `color`, and optional preloaded
-  `skills`. **Not supported in plugin
-  agent frontmatter:** `hooks`, `mcpServers`, `permissionMode` (Claude Code strips/ignores
-  them). Plugin-wide hooks belong in `<team>/claude/hooks/hooks.json`.
-- Keep the team theme (Hephaestus = Roman, Argus = Greek) and a **unique slug** within a team.
-- Update the plugin's `README.md` roster and bump the version (see above).
+1. Edit the source file (see "Source vs generated files") and regenerate.
+2. Update the plugin's `README.md` roster. For Argus, the roster comes from
+   `argus/raci.json`.
+3. Bump the version (see above) and run the gate.
 
 ## Artifact language
 
 Every artifact the agents write to disk — docs, reports, plans, bug reports, checklists,
 code, comments, test names, commit messages — is **100% English**, regardless of the
 conversation language. Argus receives the rule from its universal `qa-core` profile;
-Hephaestus keeps it inline. This repository's documentation follows the
-same rule.
+Hephaestus keeps it inline. This repository's documentation follows the same rule.
 
 <!-- Author: Grzegorz Holak -->
