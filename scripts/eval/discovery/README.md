@@ -86,7 +86,7 @@ The adapter writes `argus-eval/adapter-result@2` (`schemas/adapter-result.schema
 The evaluator decides each run's status:
 
 - `awaiting-adjudication`: a valid `completed` result, within budget, not contaminated.
-- `timed-out`: the evaluator killed the adapter's process group at `secondsByMode[mode]`. The run is still extracted and scored, but flagged.
+- `timed-out`: the evaluator killed the adapter's process group at `secondsByMode[mode]`. The run's artifacts are still extracted and it stays scorable, but flagged.
 - `invalid-run`: `result.json` is missing or invalid and the run did not time out, `launchAssurance` is neither `attested` nor `unattested`, the status is not `completed`, or the adapter could not start.
 - `contaminated`: see "Sealing and contamination".
 
@@ -120,7 +120,7 @@ Use `real`, `false-positive`, or `duplicate`. Legitimate unseeded findings use `
 node scripts/eval/discovery/adjudicate.mjs /secure/new-comparison-output/sealed/private-runs.json /secure/verdicts.json
 ```
 
-The result includes per-run recall, critical recall, precision, independent reproduction, first-confirmation time, measured tokens/cost, and cost per real finding, plus per-revision repeated-run means. Missing verdicts, invalid or contaminated runs, and runs without measured usage block the comparative score; timed-out runs are scored. Do not interpret a zero-finding corrected run as perfect precision (precision is undefined there); inspect reported counts and false positives too. Archive raw per-run results alongside means so instability stays visible.
+The result includes per-run recall, critical recall, precision, independent reproduction, first-confirmation time, measured tokens/cost, and cost per real finding, plus per-revision repeated-run means. Missing verdicts, invalid or contaminated runs, and runs without measured usage block the comparative score. Timed-out runs are extracted and flagged, but they can be scored only when the adapter recorded usage before the kill, which a killed launcher normally does not, so set budgets generously. Do not interpret a zero-finding corrected run as perfect precision (precision is undefined there); inspect reported counts and false positives too. Archive raw per-run results alongside means so instability stays visible.
 
 ## Approving a prompt corpus with benchmark evidence
 
