@@ -1538,7 +1538,37 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
       join(destination, 'scripts', 'driver-config.schema.json'),
     ] } : deny('copy-browser-driver destination is missing');
   }
+  if (Object.hasOwn(PACKAGED_QUERY_OPTIONS, primary)) {
+    return classifyPackagedQuery(primary, operation, tokens.slice(index + 3), allow, deny);
+  }
   return deny('unknown packaged command operation');
+}
+
+// Packaged queries print to stdout only. Each operation lists exactly the options its CLI
+// parser accepts, so an unexpected option (for example a smuggled --output) fails closed here
+// instead of depending on the CLI to reject it. `coverage calculate --output <path>` is the one
+// write-capable form; its destination goes through the ordinary write-root and owner checks.
+const PACKAGED_QUERY_OPTIONS = Object.freeze({
+  technique: Object.freeze({ scopes: ['--role'], select: ['--role', '--inventory'] }),
+  raci: Object.freeze({ list: [], route: ['--surface', '--activity', '--artifact', '--transition'] }),
+  coverage: Object.freeze({ validate: ['--inventory', '--observations'], calculate: ['--inventory', '--observations', '--output'] }),
+});
+
+function classifyPackagedQuery(primary, operation, args, allow, deny) {
+  const operations = PACKAGED_QUERY_OPTIONS[primary];
+  if (!Object.hasOwn(operations, operation ?? '')) return deny(`unknown ${primary} operation`);
+  const accepted = operations[operation];
+  for (let cursor = 0; cursor < args.length; cursor += 2) {
+    const value = args[cursor + 1];
+    if (!accepted.includes(args[cursor]) || !value || value.startsWith('--')) {
+      return deny(`${primary} ${operation} accepts only its declared options, each with a value`);
+    }
+  }
+  if (primary === 'coverage' && operation === 'calculate') {
+    const output = optionValue(args, '--output') ?? '-';
+    return output === '-' ? allow('coverage calculation writes only to stdout') : { paths: [output] };
+  }
+  return allow(`packaged ${primary} ${operation} query is read-only`);
 }
 
 function referencesPackagedCommand(command) {

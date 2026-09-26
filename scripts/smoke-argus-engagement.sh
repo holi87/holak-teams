@@ -293,6 +293,91 @@ guard_shell "argus-assets orchestration plan --mode A --artifact-root $TARGET --
 guard_shell 'argus-assets orchestration plan --mode A --output reports/orchestration-plan.json' GUARD-SHELL-AMBIGUOUS
 guard_shell 'argus-assets model benchmark' allow
 guard_shell "argus-assets model payload --document $TARGET/ai_agents_internal/operator-decisions/unsigned.json" allow
+# Read-only packaged queries stay usable inside an engagement; coverage --output keeps write-root checks.
+COVERAGE_INPUTS='--inventory solution/surface-inventory.json --observations solution/coverage-observations.json'
+guard_shell 'argus-assets technique scopes --role atalanta' allow
+guard_shell 'argus-assets technique select --role proteus --inventory solution/surface-inventory.json' allow
+guard_shell 'argus-assets technique select --role metis --inventory -' allow
+guard_shell 'argus-assets raci list' allow
+guard_shell 'argus-assets raci route --surface ui-functional --activity discover' allow
+guard_shell 'argus-assets raci route --artifact solution/bug-ledger.json' allow
+guard_shell 'argus-assets raci route --transition coverage-result:inputs-ready:calculated' allow
+guard_shell "argus-assets coverage validate $COVERAGE_INPUTS" allow
+guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS" allow
+guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS --output -" allow
+guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS --output reports/coverage-result.json" allow
+guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS --output solution/coverage-result.json" GUARD-CANONICAL-SINGLE-WRITER
+guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS --output app/coverage-result.json" GUARD-TARGET-IMMUTABLE
+guard_shell 'argus-assets technique select --role metis --inventory - --output app/selection.json' GUARD-SHELL-AMBIGUOUS
+guard_shell "argus-assets coverage validate $COVERAGE_INPUTS --output app/coverage-result.json" GUARD-SHELL-AMBIGUOUS
+guard_shell 'argus-assets raci route --artifact' GUARD-SHELL-AMBIGUOUS
+guard_shell 'argus-assets technique catalog --role atalanta' 'GUARD-SHELL-AMBIGUOUS: unknown technique operation'
+guard_shell 'argus-assets raci assign --artifact solution/bug-ledger.json' 'GUARD-SHELL-AMBIGUOUS: unknown raci operation'
+guard_shell 'argus-assets coverage' 'GUARD-SHELL-AMBIGUOUS: unknown coverage operation'
+guard_shell 'argus-assets frobnicate --output reports/frobnicated.json' 'GUARD-SHELL-AMBIGUOUS: unknown packaged command operation'
+guard_shell 'argus-assets launch verify --request reports/request.json' 'GUARD-SHELL-AMBIGUOUS: unknown packaged command operation'
+guard_shell 'argus-assets guard' 'GUARD-SHELL-AMBIGUOUS: unknown packaged command operation'
+# Executed from inside the engagement, the allowed queries leave the artifact tree untouched.
+COVERAGE_FIXTURES="$ROOT/scripts/fixtures/argus-coverage"
+touch "$WORK/query-marker"
+(
+  cd "$TARGET"
+  "$CLI" technique scopes --role atalanta >/dev/null
+  "$CLI" technique select --role atalanta --inventory "$COVERAGE_FIXTURES/surface-inventory.json" >/dev/null
+  "$CLI" raci list >/dev/null
+  "$CLI" raci route --artifact solution/coverage-result.json >/dev/null
+  "$CLI" coverage validate --inventory "$COVERAGE_FIXTURES/surface-inventory.json" --observations "$COVERAGE_FIXTURES/coverage-observations.json" >/dev/null
+  "$CLI" coverage calculate --inventory "$COVERAGE_FIXTURES/surface-inventory.json" --observations "$COVERAGE_FIXTURES/coverage-observations.json" >/dev/null
+)
+[ -z "$(find "$TARGET" -newer "$WORK/query-marker" -print -quit)" ] || fail 'a read-only packaged query modified the engagement tree'
+(cd "$TARGET" && "$CLI" coverage calculate --inventory "$COVERAGE_FIXTURES/surface-inventory.json" \
+  --observations "$COVERAGE_FIXTURES/coverage-observations.json" --output reports/coverage-result.json >/dev/null)
+jq -e '.overall' "$TARGET/reports/coverage-result.json" >/dev/null || fail 'coverage calculate did not write an allowed report output'
+if (cd "$TARGET" && "$CLI" coverage calculate --inventory "$COVERAGE_FIXTURES/surface-inventory.json" \
+  --observations "$COVERAGE_FIXTURES/coverage-observations.json" --output solution/coverage-result.json >/dev/null 2>&1); then
+  fail 'coverage calculate wrote a canonical artifact outside its owner merge'
+fi
+test ! -e "$TARGET/solution/coverage-result.json" || fail 'denied coverage calculation created a canonical artifact'
+# Every packaged command family and operation that a prompt references must be classified;
+# only the final default deny and the per-family "unknown <family> operation" denials mean unclassified.
+node --input-type=module - "$ROOT" "$MANIFEST" "$TARGET" <<'NODE'
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const [root, manifestPath, cwd] = process.argv.slice(2);
+const { evaluateWriteGuard } = await import(pathToFileURL(join(root, 'argus/claude/lib/engagement.mjs')).href);
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+const walk = (dir, keep) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+  entry.isDirectory() ? walk(join(dir, entry.name), keep) : keep(entry.name) ? [join(dir, entry.name)] : []);
+const sources = [
+  ...walk(join(root, 'argus/roles'), (name) => name.endsWith('.md')),
+  ...walk(join(root, 'argus/shared-skills'), (name) => name === 'SKILL.md'),
+  join(root, 'argus/claude/skills/run/SKILL.md'),
+  ...walk(join(root, 'argus/claude/agents'), (name) => name.endsWith('.md')),
+];
+const references = new Map();
+for (const source of sources) {
+  const text = readFileSync(source, 'utf8');
+  const fenced = /^```[^\n]*\n([\s\S]*?)^```/gm;
+  const spans = [...text.matchAll(fenced), ...text.replace(fenced, '').matchAll(/`([^`]+)`/g)].map((match) => match[1]);
+  for (const span of spans) {
+    for (const match of span.matchAll(/(?:^|[\s(])argus-assets\s+([a-z][a-z-]*)(?:\s+([a-z][a-z-]*))?/g)) {
+      const command = ['argus-assets', match[1], match[2]].filter(Boolean).join(' ');
+      if (!references.has(command)) references.set(command, relative(root, source));
+    }
+  }
+}
+if (references.size < 10) throw new Error(`prompt corpus scan found only ${references.size} packaged command references`);
+const unclassified = [];
+for (const [command, source] of references) {
+  const decision = evaluateWriteGuard({ manifest, manifestPath, payload: { tool_name: 'Bash', tool_input: { command } }, cwd });
+  const familyOnly = command.split(' ').length === 2;
+  if (familyOnly ? decision.reason === 'unknown packaged command operation' : decision.reason.startsWith('unknown ')) {
+    unclassified.push(`${source}: ${command} -> ${decision.ruleId}: ${decision.reason}`);
+  }
+}
+if (unclassified.length) throw new Error(`prompt-referenced packaged commands are unclassified by the write guard:\n${unclassified.join('\n')}`);
+NODE
 guard_shell "argus-assets model trust --manifest $MANIFEST --runtime-key-id runtime --operator-key-id operator" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets model trust --manifest $MANIFEST --manifest $WORK/alternate-engagement.json --runtime-key-id runtime --operator-key-id operator" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets model trust --manifest $WORK/alternate-engagement.json --runtime-key-id runtime --operator-key-id operator" GUARD-SHELL-AMBIGUOUS
