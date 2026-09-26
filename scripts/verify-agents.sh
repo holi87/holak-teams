@@ -257,6 +257,12 @@ else
   fail "[argus] (l) runner outcome contract"
 fi
 
+if "$ROOT/scripts/smoke-argus-runner-gates.sh"; then
+  pass "[argus] (l1) runner library, lane plan, environment baseline, inventory quarantine, and engagement opt-in gates"
+else
+  fail "[argus] (l1) portable runner-library gates"
+fi
+
 if "$ROOT/scripts/smoke-argus-templates.sh"; then
   pass "[argus] (l2) capability detection, explicit selection, path adapters, shared semantics, and clean-room templates"
 else

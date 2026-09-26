@@ -1,0 +1,2 @@
+contract.template	contract-smoke	false	false	-	-	-	tests/contract/template.spec.ts:4
+api.health	api	false	false	-	-	-	tests/api/health.spec.ts:3
