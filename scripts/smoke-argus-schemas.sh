@@ -24,7 +24,7 @@ if "$CLI" schema validate --kind preflight-report --input "$WORK/unsupported-pre
   fail 'preflight report reader accepted an unsupported schemaVersion'
 fi
 
-for kind in bug-ledger lane-plan evidence-reference automation-status surface-inventory coverage-observations coverage-result final-summary model-escalation-request runner-result; do
+for kind in bug-ledger lane-plan evidence-reference automation-status surface-inventory coverage-observations coverage-result final-summary model-escalation-request runner-result capability-evidence; do
   "$CLI" schema validate --kind "$kind" --input "$FIXTURES/valid/$kind.json" >/dev/null
   invalid_count=0
   for invalid in "$FIXTURES/invalid/$kind.json" "$FIXTURES/invalid/$kind-"*.json "$FIXTURES/semantic-invalid/$kind-"*.json; do
@@ -35,6 +35,28 @@ for kind in bug-ledger lane-plan evidence-reference automation-status surface-in
     fi
   done
   [ "$invalid_count" -gt 0 ] || fail "$kind has no invalid fixture"
+done
+
+# Recon capability evidence gates exactly the capability-matrix target capabilities.
+schema_capabilities="$(jq -c '."$defs".gate.properties.capability.enum | sort' "$ROOT/argus/schemas/capability-evidence.schema.json")"
+matrix_capabilities="$(jq -c '.capabilities | to_entries | map(select(.value.kind == "target") | .key) | sort' "$ROOT/argus/capabilities/capability-matrix.json")"
+[ "$schema_capabilities" = "$matrix_capabilities" ] || fail "capability-evidence capabilities $schema_capabilities drifted from capability-matrix target capabilities $matrix_capabilities"
+CAPABILITY_EVIDENCE="$FIXTURES/valid/capability-evidence.json"
+jq '(.gates[] | select(.capability == "existing-suite")) |= {capability, verdict: "proven", summary: "A vitest suite exists.", evidenceIds: ["EVD-0006"], proof: {kind: "suite-root", path: "/srv/target/tests", runner: "vitest", testFile: "/srv/target/tests/orders.test.ts"}}
+  | (.gates[] | select(.capability == "non-rest-surface")) |= {capability, verdict: "proven", summary: "GraphQL and WebSocket surfaces answered.", evidenceIds: ["EVD-0007"], proof: {kind: "protocol-surface", protocols: ["graphql", "websocket"], surfaceIds: ["SRF-GQL-ORDERS", "SRF-WS-CART"]}}' \
+  "$CAPABILITY_EVIDENCE" >"$WORK/capability-evidence-all-proven.json"
+"$CLI" schema validate --kind capability-evidence --input "$WORK/capability-evidence-all-proven.json" >/dev/null || fail 'capability-evidence rejected a fully proven document'
+for rule in \
+  'escaped-source-file|(.gates[] | select(.capability == "source-access") | .proof.fileRead) = "/srv/target/src/../secrets.txt"' \
+  'suite-file-outside-root|(.gates[] | select(.capability == "existing-suite")) |= {capability, verdict: "proven", summary: "s", evidenceIds: ["EVD-0006"], proof: {kind: "suite-root", path: "/srv/target/tests", runner: "vitest", testFile: "/srv/target/tests-other/a.test.ts"}}' \
+  'repeated-service-origin|(.gates[] | select(.capability == "multi-service") | .proof.services[1].origin) = "HTTP://127.0.0.1:3000"' \
+  'credential-in-service-origin|(.gates[] | select(.capability == "multi-service") | .proof.services[1].origin) = "postgres://qa:secret@db:5432"' \
+  'proven-without-proof|(.gates[] | select(.capability == "db-access")) |= del(.proof)' \
+  'proven-without-evidence|(.gates[] | select(.capability == "db-access") | .evidenceIds) = []'; do
+  jq "${rule#*|}" "$CAPABILITY_EVIDENCE" >"$WORK/capability-evidence-${rule%%|*}.json"
+  if "$CLI" schema validate --kind capability-evidence --input "$WORK/capability-evidence-${rule%%|*}.json" >/dev/null 2>&1; then
+    fail "capability-evidence accepted ${rule%%|*}"
+  fi
 done
 
 for kind in lane-plan evidence-reference automation-status; do
@@ -67,6 +89,13 @@ for invalid in "$FIXTURES/invalid/bug-ledger.json" "$FIXTURES/invalid/bug-ledger
     fail "invalid canonical fragment $(basename "$invalid") unexpectedly passed"
   fi
 done
+
+# Capability evidence is written directly by Kalchas; it is never a mergeable canonical fragment.
+jq '.engagementId = "schema-fixture"' "$CAPABILITY_EVIDENCE" >"$WORK/capability-evidence-engagement.json"
+if "$CLI" engagement fragment --manifest "$MANIFEST" --lane kalchas --token "$KALCHAS" --canonical solution/discovery/capability-evidence.json --id capability-evidence --input "$WORK/capability-evidence-engagement.json" >"$WORK/capability-fragment.out" 2>&1; then
+  fail 'capability evidence was accepted as a canonical fragment'
+fi
+grep -Fq 'unknown canonical artifact: solution/discovery/capability-evidence.json' "$WORK/capability-fragment.out" || fail 'capability evidence fragment was not rejected as a non-canonical artifact'
 
 jq '.engagementId = "schema-fixture" | .lanes = [.lanes[1]]' "$FIXTURES/valid/lane-plan.json" >"$WORK/lane-talos.json"
 jq '.engagementId = "schema-fixture" | .lanes = [.lanes[0]]' "$FIXTURES/valid/lane-plan.json" >"$WORK/lane-kalchas.json"

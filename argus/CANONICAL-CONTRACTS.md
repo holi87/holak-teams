@@ -82,6 +82,35 @@ returns the next token once; telemetry for the completed decision must precede t
 transition. Codex routes are currently blocked because the CLI lacks a native hard turn cap;
 signed metadata cannot override that capability result.
 
+## Recon capability evidence
+
+`argus/capability-evidence@1` at `solution/discovery/capability-evidence.json` records
+Kalchas's verdict on each recon-provable target gate. Kalchas is its single writer by RACI
+and writes it directly under the allowed `solution/discovery` artifact root. Like
+`solution/discovery/contract-drift.json`, it is non-canonical: never an `engagement fragment`
+input and never merged. Its consumer is `argus-assets engagement resolve-gates`, the
+conditional-lane gate resolver, which validates the file and its `engagementId` and treats
+every verdict as recon evidence to re-check, not as authority.
+
+The document holds exactly one gate for each capability-matrix capability of kind `target`.
+Each gate has a verdict (`proven`, `absent`, or `unverified`), a summary, and `EVD-NNNN`
+evidence IDs. `proven` requires at least one evidence ID and a proof whose `kind` matches
+the capability:
+
+| Capability | Proof kind | Proof fields |
+|---|---|---|
+| `db-access` | `db-select` | `client`, `host`, `port`, `database`, and the `observed` result of a read-only `SELECT 1` |
+| `source-access` | `source-root` | absolute `path`, `language`, and an absolute `fileRead` inside `path` |
+| `existing-suite` | `suite-root` | absolute `path`, `runner`, and an absolute `testFile` inside `path` |
+| `non-rest-surface` | `protocol-surface` | `protocols` (`graphql`, `grpc`, `websocket`, `sse`, `messaging`, `webhook`) and surface-inventory `surfaceIds` |
+| `multi-service` | `service-map` | two or more `services`, each `{name, origin}`, with distinct names and origins |
+
+The file carries no secrets. Every proof shape is closed, the `db-select` proof has no field
+that can hold a password, and database hosts and service origins reject `user:password@`
+credentials. Keep credentials, tokens, and connection strings out of `summary` and
+`observed` as well. Validate before writing with
+`argus-assets schema validate --kind capability-evidence --input <file>`.
+
 ## Field ownership and state transitions
 
 | Record | Owner-controlled fields | Allowed state transitions | Evidence of transition |
