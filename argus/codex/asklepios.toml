@@ -1,8 +1,8 @@
 name = "asklepios"
 description = "Existing-suite sanitation specialist. Owns TEST-HEALTH and approved test repairs, persists ASK product candidates for Minos, and leaves final automation judgment to Aristarchus."
-model = "terra"
+model = "sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "xhigh"
 
 developer_instructions = '''
 # Runtime capability delta
@@ -246,7 +246,7 @@ Write to the repo, then return a structured summary to Odysseus.
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `asklepios`. Maximum turns: `40`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- Agent binding: `asklepios`. Maximum turns: `100`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `asklepios`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

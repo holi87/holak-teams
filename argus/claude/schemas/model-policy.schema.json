@@ -8,7 +8,31 @@
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
     "policyId": { "const": "argus/model-policy@1" },
-    "baseline": { "type": "object" },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "frontierRoles", "standardRoles", "mechanicalFullRoles", "benchmark", "standardAllowlist"],
+      "properties": {
+        "decision": { "type": "string", "pattern": "^adopt-[0-9]+-frontier-[0-9]+-standard$" },
+        "frontierRoles": { "type": "integer", "minimum": 0, "maximum": 27 },
+        "standardRoles": { "type": "integer", "minimum": 0, "maximum": 27 },
+        "mechanicalFullRoles": { "const": 0 },
+        "benchmark": { "const": "model-policy.benchmark.json" },
+        "standardAllowlist": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["slug", "justification"],
+            "properties": {
+              "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              "justification": { "type": "string", "minLength": 20 }
+            }
+          }
+        }
+      }
+    },
     "tiers": { "type": "object", "required": ["frontier", "standard", "mechanical"] },
     "fallbackPolicies": { "type": "object", "required": ["frontier-fail-closed", "upward-only"] },
     "escalationProfiles": { "type": "object" },
@@ -40,7 +64,7 @@
         "properties": {
           "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
           "tier": { "enum": ["frontier", "standard"] },
-          "maxTurns": { "type": "integer", "minimum": 1, "maximum": 200 },
+          "maxTurns": { "type": "integer", "minimum": 1, "maximum": 500 },
           "escalationProfile": { "type": "string" },
           "fallbackPolicy": { "enum": ["frontier-fail-closed", "upward-only"] },
           "mechanicalDowngrade": { "const": false }

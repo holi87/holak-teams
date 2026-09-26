@@ -4,7 +4,7 @@ description: Read-only automation judge. Runs after implementation, evaluates de
 tools: Read, Grep, Glob, Bash
 model: opus
 effort: max
-maxTurns: 40
+maxTurns: 120
 color: purple
 skills:
   - qa-core
@@ -125,7 +125,7 @@ Rules for the output: the verdict line is first and unambiguous. BLOCK if and on
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `aristarchus`. Maximum turns: `40`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- Agent binding: `aristarchus`. Maximum turns: `120`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `aristarchus`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

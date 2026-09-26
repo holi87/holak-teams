@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateModelPolicy } from '../argus/runtime/model-policy.mjs';
+import { FRONTIER_FLOOR_PROFILES, validateModelPolicy } from '../argus/runtime/model-policy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const mode = process.argv[2] ?? '--check';
@@ -14,15 +14,20 @@ const slugs = raci.agents.map((agent) => agent.slug).sort();
 const errors = validateModelPolicy(policy, slugs);
 if (errors.length) fail(errors.join('; '));
 
-const expectedFrontier = ['ariadne', 'aristarchus', 'atalanta', 'atlas', 'kalchas', 'metis', 'minos', 'odysseus', 'orion', 'perseus', 'tiresias', 'tyche'];
-assert(equal(policy.roles.filter((role) => role.tier === 'frontier').map((role) => role.slug).sort(), expectedFrontier), 'frontier roster differs from the adopted 12-role baseline');
+// Hunter floor: every discovery lane in the RACI roster reasons on the frontier tier.
+const tierBySlug = new Map(policy.roles.map((role) => [role.slug, role.tier]));
+const hunters = raci.agents.filter((agent) => typeof agent.lane === 'string' && agent.lane.endsWith('-hunt'));
+assert(hunters.length > 0, 'raci.json declares no -hunt lanes for the hunter frontier floor');
+const standardHunters = hunters.filter((agent) => tierBySlug.get(agent.slug) !== 'frontier').map((agent) => `${agent.slug} (${agent.lane})`);
+assert(standardHunters.length === 0, `hunter lanes require the frontier tier: ${standardHunters.join(', ')}`);
+
+const counts = Object.fromEntries(['frontier', 'standard'].map((tier) => [tier, policy.roles.filter((role) => role.tier === tier).length]));
 
 syncGenerated('argus/MODEL-POLICY.md', renderPolicy(policy));
 syncFile('README.md', updateRootReadme);
 syncFile('agents-roster.html', updateRosterHtml);
 
-const counts = Object.fromEntries(['frontier', 'standard'].map((tier) => [tier, policy.roles.filter((role) => role.tier === tier).length]));
-console.log(`PASS  Argus model policy: ${policy.roles.length} roles, ${counts.frontier} frontier, ${counts.standard} standard, 0 mechanical full roles`);
+console.log(`PASS  Argus model policy: ${policy.roles.length} roles, ${counts.frontier} frontier, ${counts.standard} standard, 0 mechanical full roles; ${hunters.length} hunter lanes on the frontier floor`);
 
 function updateRootReadme(content) {
   for (const role of policy.roles) {
@@ -31,17 +36,9 @@ function updateRootReadme(content) {
     assert(pattern.test(content), `${role.slug}: root README model row missing`);
     content = content.replace(pattern, `$1${tier.claude.model}$3${tier.codex.model}$5${tier.codex.reasoningEffort}$7`);
   }
-  content = content.replace(
-    /The above is the \*\*main team \(22\)\*\*\. \*\*Argus QA \(27\)\*\* is a separate, permanent QA team with mixed model tiers from the frontmatter \([^\n]+\)\./,
-    'The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 12 frontier / 15 standard policy from `argus/model-policy.json`.',
-  );
-  content = content.replace('The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 10 frontier / 17 standard policy from `argus/model-policy.json`.',
-    'The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 12 frontier / 15 standard policy from `argus/model-policy.json`.');
-  content = content.replace('**Tiers:** 10 opus · 17 sonnet · 0 haiku full roles.', '**Tiers:** 12 opus · 15 sonnet · 0 haiku full roles.');
-  content = content.replace(
-    /Current Argus QA (?:frontmatter models|policy):[^\n]+/,
-    'Current Argus QA policy: **12 opus / 15 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.',
-  );
+  content = replaceCount(content, 'README.md', /(generated )\d+( frontier \/ )\d+( standard policy from `argus\/model-policy\.json`)/, `$1${counts.frontier}$2${counts.standard}$3`);
+  content = replaceCount(content, 'README.md', /(\*\*Tiers:\*\* )\d+( opus \u00b7 )\d+( sonnet \u00b7 0 haiku full roles\.)/, `$1${counts.frontier}$2${counts.standard}$3`);
+  content = replaceCount(content, 'README.md', /(Current Argus QA policy: \*\*)\d+( opus \/ )\d+( sonnet \/ 0 haiku full roles\*\*)/, `$1${counts.frontier}$2${counts.standard}$3`);
   return content;
 }
 
@@ -53,14 +50,23 @@ function updateRosterHtml(content) {
     assert(pattern.test(content), `${role.slug}: visual roster model row missing`);
     content = content.replace(pattern, `$1${model}$3${model}$5`);
   }
-  return content.replace('Argus QA: 10 opus / 17 sonnet / 0 haiku full roles', 'Argus QA: 12 opus / 15 sonnet / 0 haiku full roles');
+  return replaceCount(content, 'agents-roster.html', /(Argus QA: )\d+( opus \/ )\d+( sonnet \/ 0 haiku full roles)/, `$1${counts.frontier}$2${counts.standard}$3`);
+}
+
+// Every derived-count target must exist exactly where the generator expects it; a
+// missing anchor fails instead of silently leaving a stale count behind.
+function replaceCount(content, path, pattern, replacement) {
+  assert(pattern.test(content), `${path}: derived model-tier count anchor missing (${pattern.source})`);
+  return content.replace(pattern, replacement);
 }
 
 function renderPolicy(data) {
   const lines = [
     '# Argus Runtime Model Policy', '',
     `Policy ID: \`${data.policyId}\`. The machine-readable source is [\`model-policy.json\`](model-policy.json).`, '',
-    'The adopted baseline assigns 12 high-consequence roles to frontier reasoning and 15 bounded execution roles to standard reasoning. No complete role uses the mechanical tier.', '',
+    `The adopted baseline (\`${data.baseline.decision}\`) assigns ${counts.frontier} roles to frontier reasoning and ${counts.standard} roles to standard reasoning. Both counts are derived from the role tiers below, and validation rejects a baseline whose counts or decision string differ from them. No complete role uses the mechanical tier.`, '',
+    `- Frontier floor: every role whose escalation profile is ${FRONTIER_FLOOR_PROFILES.slice(0, -1).map((profile) => `\`${profile}\``).join(', ')}, or \`${FRONTIER_FLOOR_PROFILES.at(-1)}\`, and every RACI lane ending in \`-hunt\`, always uses the frontier tier.`,
+    '- A standard role is valid only with a matching `baseline.standardAllowlist` entry that names it and states a justification of at least 20 characters; an allowlist entry for a role that is not standard is rejected.', '',
     '| Agent | Tier | Claude | Effort | Codex | Effort | Max turns | Escalation | Fallback |',
     '|---|---|---|---|---|---|---:|---|---|',
   ];
@@ -84,7 +90,8 @@ function renderPolicy(data) {
     '- `argus-assets model route` validates signatures, bindings, and the trusted adapter snapshot, then permits at most one selected decision per engagement/agent/runtime/dispatch/attempt. An exact authenticated replay returns that immutable decision; a refreshed or otherwise different signed document for the same attempt conflicts and fails closed. `model telemetry` requires the matching current lane token, atomically accepts exactly one event per selected decision, and must be written before retry rebind or cleanup changes the active binding. It contains only sanitized lane-reported operational metrics and is not authoritative billing, benchmark, or outcome evidence.', '',
     '## Benchmark', '',
     'The committed `model-policy.benchmark.json` compares representative synthesis, judgment, and schema-bound work on quality markers, latency, input/output tokens, and provider-reported cost without storing prompts, completions, targets, accounts, or evidence.',
-    'It measures three work classes, not individual roles: its `decision` field records which baseline was in force when the runs were recorded, and it is never the evidence for a particular role-to-tier assignment. That evidence lives in the answer-key review recorded in `AI-OPERATOR-BOOKLET-MAPPING.md`. Re-record with `node scripts/benchmark-argus-model-policy.mjs --record` when the baseline moves; the recorded timestamp shows when a stamp was last earned.', '');
+    'The benchmark is historical: it was recorded under an earlier baseline, and its `decision`, `policyId`, and per-scenario tiers keep the values that were in force when the runs were recorded. It measures three work classes, not individual roles, and it is never the evidence for a particular role-to-tier assignment. That evidence lives in the answer-key review recorded in `AI-OPERATOR-BOOKLET-MAPPING.md`.',
+    '`node scripts/benchmark-argus-model-policy.mjs --check` validates the recorded evidence and prints non-fatal NOTE lines when the current policy identity, baseline decision, or a scenario role tier has drifted from the recorded values. Re-record with `--record` when fresh comparative evidence is wanted; the recorded timestamp shows when a stamp was last earned.', '');
   return lines.join('\n');
 }
 
@@ -103,6 +110,5 @@ function syncGenerated(path, expected) {
 }
 
 function readJson(path) { return JSON.parse(readFileSync(join(ROOT, path), 'utf8')); }
-function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function assert(value, message) { if (!value) fail(message); }
 function fail(message) { console.error(`FAIL  ${message}`); process.exit(1); }

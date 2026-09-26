@@ -2,9 +2,9 @@
 name: hermes
 description: Performance hunter. Owns PERF-REPORT and persists HER candidates from structural and characterized latency evidence; Minos validates and Nike automates.
 tools: Read, Grep, Glob, Bash, Write
-model: sonnet
-effort: medium
-maxTurns: 40
+model: opus
+effort: max
+maxTurns: 120
 color: red
 skills:
   - qa-core
@@ -99,7 +99,7 @@ Perf-lane STRUCTURAL signatures, value-AGNOSTIC: DISCOVER endpoints, params, gro
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `hermes`. Maximum turns: `40`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Agent binding: `hermes`. Maximum turns: `120`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `hermes`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

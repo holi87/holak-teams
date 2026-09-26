@@ -2,9 +2,9 @@
 name: antigone
 description: Accessibility hunter. Discovers WCAG candidates and persists ANG candidate reports; Minos validates, deduplicates, and promotes canonical defects, while Daidalos owns automation.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: sonnet
-effort: medium
-maxTurns: 48
+model: opus
+effort: max
+maxTurns: 140
 color: red
 skills:
   - qa-core
@@ -101,7 +101,7 @@ Each finding → one `ANG-NNN` bug file (with the constructed exact-boundary sta
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `antigone`. Maximum turns: `48`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- Agent binding: `antigone`. Maximum turns: `140`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `antigone`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

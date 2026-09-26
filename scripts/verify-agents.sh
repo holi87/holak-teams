@@ -282,7 +282,7 @@ else
 fi
 
 if "$ROOT/scripts/smoke-argus-model-policy.sh" && node "$ROOT/scripts/benchmark-argus-model-policy.mjs" --check; then
-  pass "[argus] (p) 12/15 model tiers, effort/turns, escalation/fallback, sanitized telemetry, and benchmark"
+  pass "[argus] (p) policy-derived model tiers, effort/turns, escalation/fallback, sanitized telemetry, and benchmark"
 else
   fail "[argus] (p) runtime model policy contract"
 fi

@@ -2,9 +2,9 @@
 name: talos
 description: API automation engineer. Owns tests/api/, implements Theseus and Pistis baselines, and automates Minos-confirmed ATA and PRO defects using Atlas's shared harness.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: sonnet
-effort: medium
-maxTurns: 56
+model: opus
+effort: max
+maxTurns: 140
 color: green
 skills:
   - qa-core
@@ -114,7 +114,7 @@ Every confirmed API finding becomes a RED at the naming assertion with native `r
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `talos`. Maximum turns: `56`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Agent binding: `talos`. Maximum turns: `140`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `talos`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

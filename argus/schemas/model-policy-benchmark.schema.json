@@ -6,8 +6,8 @@
   "required": ["schemaVersion", "policyId", "decision", "recordedAt", "claudeCodeVersion", "syntheticOnly", "scenarios"],
   "properties": {
     "schemaVersion": { "const": 1 },
-    "policyId": { "const": "argus/model-policy@1" },
-    "decision": { "const": "adopt-12-frontier-15-standard" },
+    "policyId": { "type": "string", "pattern": "^argus/model-policy@[0-9]+$" },
+    "decision": { "type": "string", "pattern": "^adopt-[0-9]+-frontier-[0-9]+-standard$" },
     "recordedAt": { "type": "string", "format": "date-time" },
     "claudeCodeVersion": { "type": "string" },
     "syntheticOnly": { "const": true },

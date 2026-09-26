@@ -1,8 +1,8 @@
 name = "talos"
 description = "API automation engineer. Owns tests/api/, implements Theseus and Pistis baselines, and automates Minos-confirmed ATA and PRO defects using Atlas's shared harness."
-model = "terra"
+model = "sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "xhigh"
 
 developer_instructions = '''
 # Runtime capability delta
@@ -214,7 +214,7 @@ Every confirmed API finding becomes a RED at the naming assertion with native `r
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `talos`. Maximum turns: `56`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Agent binding: `talos`. Maximum turns: `140`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `talos`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

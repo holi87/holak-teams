@@ -4,7 +4,7 @@ description: Automation architect. Owns the shared harness, fourteen oracle help
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: opus
 effort: max
-maxTurns: 64
+maxTurns: 100
 color: purple
 skills:
   - qa-core
@@ -129,7 +129,7 @@ Use the packaged contract at `argus-assets path coverage-contract`. Universal ca
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `atlas`. Maximum turns: `64`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Agent binding: `atlas`. Maximum turns: `100`. Declared signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `atlas`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

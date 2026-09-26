@@ -4,7 +4,7 @@ description: Journey hunter. Owns cross-feature business invariants and STATE_MO
 tools: Read, Grep, Glob, Bash, Write, WebFetch
 model: opus
 effort: max
-maxTurns: 88
+maxTurns: 160
 color: red
 skills:
   - qa-core
@@ -110,7 +110,7 @@ After Kalchas has produced a schema-valid `argus/surface-inventory@1`, run `argu
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `ariadne`. Maximum turns: `88`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
+- Agent binding: `ariadne`. Maximum turns: `160`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `ariadne`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

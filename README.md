@@ -140,7 +140,7 @@ Example pools (Marcus extends freely, keep the team's theme):
 - **Sonnet + escalation to Opus** (12): Varro, Fabricius, Maximus, Lucius, Tiberius, Fabius, Boethius, Mercury, Cato, Appius, Janus, Cicero — daily work; flag hard/risky decisions for review by Marcus.
 - **Haiku** (3): Numa, Regulus, Tacitus — fast, narrow, cheap tasks.
 
-The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 12 frontier / 15 standard policy from `argus/model-policy.json`.
+The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 27 frontier / 0 standard policy from `argus/model-policy.json`.
 
 **Codex runtime mapping for both teams:** Claude `opus` source roles run on `sol` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles run on `terra` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles run on `luna` with `model_reasoning_effort = "medium"`.
 
@@ -193,31 +193,31 @@ Every agent runs on an **Anthropic** model under Claude Code and on a **mapped O
 | Kalchas | `kalchas` | System Analyst (recon) | opus | sol · xhigh |
 | Metis | `metis` | Test Strategist | opus | sol · xhigh |
 | Minos | `minos` | Bug Triage / QA Lead | opus | sol · xhigh |
-| Kleio | `kleio` | QA Reporter | sonnet | terra · medium |
-| Theseus | `theseus` | API test-path analyst | sonnet | terra · medium |
-| Penelope | `penelope` | UI test-path analyst | sonnet | terra · medium |
-| Pistis | `pistis` | Consumer-driven contract analyst (Pact) | sonnet | terra · medium |
+| Kleio | `kleio` | QA Reporter | opus | sol · xhigh |
+| Theseus | `theseus` | API test-path analyst | opus | sol · xhigh |
+| Penelope | `penelope` | UI test-path analyst | opus | sol · xhigh |
+| Pistis | `pistis` | Consumer-driven contract analyst (Pact) | opus | sol · xhigh |
 | Atalanta | `atalanta` | API / data-integrity hunter | opus | sol · xhigh |
-| Proteus | `proteus` | Multi-protocol API hunter (GraphQL/gRPC/WS/async) | sonnet | terra · medium |
+| Proteus | `proteus` | Multi-protocol API hunter (GraphQL/gRPC/WS/async) | opus | sol · xhigh |
 | Orion | `orion` | UI functional hunter | opus | sol · xhigh |
-| Lynceus | `lynceus` | UI presentation / i18n hunter | sonnet | terra · medium |
+| Lynceus | `lynceus` | UI presentation / i18n hunter | opus | sol · xhigh |
 | Ariadne | `ariadne` | Deep-journey / business-rule hunter | opus | sol · xhigh |
-| Hermes | `hermes` | Performance hunter (structural oracles) | sonnet | terra · medium |
+| Hermes | `hermes` | Performance hunter (structural oracles) | opus | sol · xhigh |
 | Tyche | `tyche` | Resilience / chaos hunter (fault injection) | opus | sol · xhigh |
 | Perseus | `perseus` | Security hunter (STRIDE/OWASP) | opus | sol · xhigh |
-| Antigone | `antigone` | Accessibility hunter (WCAG 2.2 AA) | sonnet | terra · medium |
-| Charon | `charon` | Database hunter *(gated: DB access)* | sonnet | terra · medium |
+| Antigone | `antigone` | Accessibility hunter (WCAG 2.2 AA) | opus | sol · xhigh |
+| Charon | `charon` | Database hunter *(gated: DB access)* | opus | sol · xhigh |
 | Tiresias | `tiresias` | White-box source analyst *(gated: source)* | opus | sol · xhigh |
 | Atlas | `atlas` | Automation Architect (harness, run-tests.sh) | opus | sol · xhigh |
 | Aristarchus | `aristarchus` | Automation code reviewer (runs LAST) | opus | sol · xhigh |
-| Asklepios | `asklepios` | Test-suite sanitation / deflaking (brownfield) | sonnet | terra · medium |
-| Talos | `talos` | API regression automation | sonnet | terra · medium |
-| Daidalos | `daidalos` | UI E2E + a11y automation | sonnet | terra · medium |
-| Aegis | `aegis` | Security regression automation | sonnet | terra · medium |
-| Nike | `nike` | Perf regression automation | sonnet | terra · medium |
-| Mnemosyne | `mnemosyne` | DB invariants automation *(gated)* | sonnet | terra · medium |
+| Asklepios | `asklepios` | Test-suite sanitation / deflaking (brownfield) | opus | sol · xhigh |
+| Talos | `talos` | API regression automation | opus | sol · xhigh |
+| Daidalos | `daidalos` | UI E2E + a11y automation | opus | sol · xhigh |
+| Aegis | `aegis` | Security regression automation | opus | sol · xhigh |
+| Nike | `nike` | Perf regression automation | opus | sol · xhigh |
+| Mnemosyne | `mnemosyne` | DB invariants automation *(gated)* | opus | sol · xhigh |
 
-**Tiers:** 12 opus · 15 sonnet · 0 haiku full roles.
+**Tiers:** 27 opus · 0 sonnet · 0 haiku full roles.
 
 ## Preflight and escalation to Codex
 
@@ -278,7 +278,7 @@ A second, **separate**, **permanent** QA team (**27 agents**) you point at any t
 
 **Cross-cutting / deep journey (5):** **Ariadne** — deep lifecycle & business-rule journey hunter · **Atlas** — Automation Architect, owner of the SINGLE aggregating `run-tests.sh` + the shared oracle helpers · **Aristarchus** — Code Reviewer of the automation, runs **LAST** (determinism, oracle-honesty, blocklist) · **Tiresias** — White-box Source Analyst *(gated: source access)*, code→surface leads to the lanes · **Asklepios** — Test-Suite Sanitation / deflaking, heals a sick existing suite (brownfield Mode D), fixes flakiness at the source.
 
-Current Argus QA policy: **12 opus / 15 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.
+Current Argus QA policy: **27 opus / 0 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.
 
 **Separation:** a separate lead (Odysseus = the Argus QA hub), baked-in QA doctrine (modes/deliverables/paths/rules), a separate `argus/` directory. **Collaboration:** the crew resolves within its own lanes (it has dedicated UI/API/Perf/DB/Sec/a11y) — the main team is pulled in only for a real gap and only via Odysseus→Marcus (e.g. Cassius=deep security, Maximus/Fabricius=wiring in the framework, Seneca=strategy sanity). **The hard rule baked into everyone:** NEVER modify the application under test.
 

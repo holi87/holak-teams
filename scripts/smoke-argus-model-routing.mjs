@@ -21,6 +21,7 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const policy = readJson('argus/model-policy.json');
 const adapters = readJson('argus/runtime-adapters.json');
 const benchmark = readJson('argus/model-policy.benchmark.json');
+const validatePolicySchema = compileJsonSchema(readJson('argus/schemas/model-policy.schema.json'));
 const validateAdapters = compileJsonSchema(readJson('argus/schemas/runtime-adapters.schema.json'));
 const validateBenchmark = compileJsonSchema(readJson('argus/schemas/model-policy-benchmark.schema.json'));
 const validateDecision = compileJsonSchema(readJson('argus/schemas/model-decision.schema.json'));
@@ -55,10 +56,12 @@ const modelTrust = {
 };
 
 assert(validateModelPolicy(policy, policy.roles.map(({ slug }) => slug)).length === 0, 'model policy is invalid');
+assert(validatePolicySchema(policy).length === 0, 'model policy violates its schema');
 assert(validateAdapters(adapters).length === 0, 'runtime adapter snapshot is invalid');
 assert(validateBenchmark(benchmark).length === 0, 'model benchmark is invalid');
-assert(policy.roles.filter(({ tier }) => tier === 'frontier').length === 12, 'frontier roster count drifted');
-assert(policy.roles.filter(({ tier }) => tier === 'standard').length === 15, 'standard roster count drifted');
+const derivedCounts = tierCounts(policy);
+assert(policy.baseline.frontierRoles === derivedCounts.frontier && policy.baseline.standardRoles === derivedCounts.standard, 'baseline counts differ from the role tiers');
+assert(policy.baseline.decision === `adopt-${derivedCounts.frontier}-frontier-${derivedCounts.standard}-standard`, 'baseline decision differs from the derived role tiers');
 assert(policy.tiers.frontier.codex.model === 'sol' && policy.tiers.standard.codex.model === 'terra', 'Codex tier mapping drifted');
 assert(policy.tiers.frontier.claude.model === 'opus' && policy.tiers.standard.claude.model === 'sonnet', 'Claude tier mapping drifted');
 
@@ -76,8 +79,27 @@ assert(same(codex.missingCapabilities, ['maxTurns']), 'Codex route reported the 
 const ignoredRetiredClaim = resolveModelDecision(policy, adapters, { ...context, slug: 'aegis', runtime: 'codex', signal: 'normal', runtimeAttestation: {} });
 assert(ignoredRetiredClaim.status === 'blocked' && !Object.hasOwn(ignoredRetiredClaim, 'runtimeAttestation'), 'retired runtime attestation changed routing');
 
-const claudeEscalation = decide(adapters, { slug: 'aegis', runtime: 'claude', signal: 'safety' });
+// The standard tier survives only as an allowlisted, upward-only path. A synthetic
+// fixture keeps that path exercised while the committed policy runs all-frontier.
+const standardAegis = withStandardRole(policy, 'aegis', 'Synthetic routing fixture for the upward-only standard path.');
+const standardAegisErrors = [...validateModelPolicy(standardAegis, slugsOf(standardAegis)), ...validatePolicySchema(standardAegis).map((error) => JSON.stringify(error))];
+assert(standardAegisErrors.length === 0, `allowlisted standard fixture is invalid: ${standardAegisErrors.join('; ')}`);
+const claudeEscalation = decide(adapters, { slug: 'aegis', runtime: 'claude', signal: 'safety' }, standardAegis);
 assert(claudeEscalation.status === 'blocked' && same(claudeEscalation.missingCapabilities, ['effort']), 'Claude escalation hid its missing effort override');
+const frontierAegis = decide(adapters, { slug: 'aegis', runtime: 'claude', signal: 'safety' });
+assert(frontierAegis.status === 'blocked' && frontierAegis.reasonCode === 'OPERATOR_ESCALATION_REQUIRED', 'committed frontier aegis escalation bypassed the operator');
+
+const unlisted = withStandardRole(policy, 'aegis', null);
+assertPolicyRejected(unlisted, 'standardAllowlist', 'standard role without an allowlist entry was accepted');
+const standardMinos = withStandardRole(policy, 'minos', 'Synthetic fixture that must never lower a judgment role.');
+assertPolicyRejected(standardMinos, 'require the frontier tier', 'judgment role on the standard tier was accepted');
+const offByOne = structuredClone(policy);
+offByOne.baseline.frontierRoles -= 1;
+offByOne.baseline.standardRoles += 1;
+assertPolicyRejected(offByOne, 'baseline counts must equal the role tiers', 'baseline counts off by one were accepted');
+const wrongDecision = structuredClone(policy);
+wrongDecision.baseline.decision = `adopt-${derivedCounts.frontier - 1}-frontier-${derivedCounts.standard + 1}-standard`;
+assertPolicyRejected(wrongDecision, 'baseline decision must be', 'a decision string that differs from the role tiers was accepted');
 const full = structuredClone(adapters);
 for (const runtime of ['claude', 'codex']) for (const mode of ['baseline', 'escalation']) for (const field of ['model', 'effort', 'maxTurns']) full[runtime].routingCapabilities[mode][field] = true;
 const frontierPending = decide(full, { slug: 'ariadne', runtime: 'claude', signal: 'safety' });
@@ -121,10 +143,10 @@ for (const forbidden of ['prompt', 'completion', 'target', 'url', 'path', 'accou
   assert(!Object.hasOwn(telemetry, forbidden), `telemetry leaked ${forbidden}`);
 }
 
-console.log('PASS  Argus model routing: native Claude enforcement, fail-closed Codex, authenticated frontier decisions, immutable telemetry');
+console.log('PASS  Argus model routing: derived tier counts, allowlisted standard path, native Claude enforcement, fail-closed Codex, authenticated frontier decisions, immutable telemetry');
 
-function decide(snapshot, overrides) {
-  const decision = resolveModelDecision(policy, snapshot, { ...context, ...overrides });
+function decide(snapshot, overrides, activePolicy = policy) {
+  const decision = resolveModelDecision(activePolicy, snapshot, { ...context, ...overrides });
   const errors = validateDecision(decision);
   assert(errors.length === 0, `decision schema rejected ${overrides.runtime}/${overrides.signal}: ${JSON.stringify(errors)}`);
   return decision;
@@ -149,6 +171,36 @@ function operatorDecisionBinding(blocked, action) {
     authentication: { ...document.authentication, canonicalPayloadBase64: Buffer.from(payload).toString('base64') },
   };
 }
+
+// Moves one role to the standard tier with upward-only fallback and rewrites the
+// baseline to the derived counts. A null justification omits the allowlist entry.
+function withStandardRole(source, slug, justification) {
+  const fixture = structuredClone(source);
+  const role = fixture.roles.find((item) => item.slug === slug);
+  assert(role, `${slug}: fixture role missing`);
+  role.tier = 'standard';
+  role.fallbackPolicy = 'upward-only';
+  const counts = tierCounts(fixture);
+  fixture.baseline.frontierRoles = counts.frontier;
+  fixture.baseline.standardRoles = counts.standard;
+  fixture.baseline.decision = `adopt-${counts.frontier}-frontier-${counts.standard}-standard`;
+  fixture.baseline.standardAllowlist = justification === null ? [] : [{ slug, justification }];
+  return fixture;
+}
+
+function assertPolicyRejected(candidate, expected, message) {
+  const errors = validateModelPolicy(candidate, slugsOf(candidate));
+  assert(errors.some((error) => error.includes(expected)), `${message}: ${errors.join('; ') || 'no validation error'}`);
+}
+
+function tierCounts(source) {
+  return {
+    frontier: source.roles.filter(({ tier }) => tier === 'frontier').length,
+    standard: source.roles.filter(({ tier }) => tier === 'standard').length,
+  };
+}
+
+function slugsOf(source) { return source.roles.map(({ slug }) => slug); }
 
 function assertThrows(operation, message) {
   try { operation(); } catch { return; }

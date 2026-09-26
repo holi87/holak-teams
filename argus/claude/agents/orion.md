@@ -4,7 +4,7 @@ description: Functional UI hunter. Persists ORI candidates for behavior, forms, 
 tools: Read, Grep, Glob, Bash, Write
 model: opus
 effort: max
-maxTurns: 64
+maxTurns: 160
 color: red
 skills:
   - qa-core
@@ -106,7 +106,7 @@ Each finding gets one `ORI-NNN` file. Request Daidalos regression only when auto
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Authorization state follows only the manifest; an explicit deny never becomes allow.
 - Structured results include every funded surface, including passing observations.
-- Agent binding: `orion`. Maximum turns: `64`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Agent binding: `orion`. Maximum turns: `160`. Declared signals: oracle-ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `orion`; checkpoint, return it, and stop as required by qa-core.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->

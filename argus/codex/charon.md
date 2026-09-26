@@ -3,12 +3,12 @@ schema: argus/codex-provenance@1
 slug: charon
 display_name: Charon
 runtime_config: argus/codex/charon.toml
-runtime_config_sha256: 85eb1230f0ef3274bc9b0d8ea26e1db41fdbad5ea8533b7ba7386000c35b8e82
-developer_instructions_sha256: a8b3a5ae278b8e82c3606cb1a320eb4cf7d5c4faa58f88bf1c9a783505cfee3b
+runtime_config_sha256: 6a2c74b132b9f5ec3b22152243edd26abd1b2464512112d90f665d16afd803d5
+developer_instructions_sha256: 701638d0baddc230d7eba36e3f66777c29270cf7df39d21965e1b409bf9396e8
 canonical_source: argus/roles/charon.md
 canonical_source_sha256: 027601686ca2d7e09226c83560277d2ce263eb5d75ebf1e968670d743f2d5385
-model: terra
-model_reasoning_effort: medium
+model: sol
+model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 doctrine_profiles: ["qa-core"]
 technique_catalogs: []

@@ -188,10 +188,12 @@ No single role finds, validates, and automates its own defect.
 
 The booklet run assumes the frontier roles reason on the strongest available model. Status:
 
-- The 12 frontier roles (`ariadne`, `aristarchus`, `atalanta`, `atlas`, `kalchas`, `metis`,
-  `minos`, `odysseus`, `orion`, `perseus`, `tiresias`, `tyche`) declare `model: opus`; the 15 execution roles
-  declare `model: sonnet`. Both are generated from `argus/model-policy.json` (frontier tier
-  `claude.model = opus`).
+- All 27 roles use the frontier tier and declare `model: opus` with `effort: max` (Codex
+  `sol` / `xhigh`), generated from `argus/model-policy.json` (frontier tier
+  `claude.model = opus`). The standard tier remains available only to a role with a
+  justified `baseline.standardAllowlist` entry; orchestration, judgment, and analysis roles
+  and every hunter lane stay on the frontier tier regardless. Worker turn caps are 80-200,
+  and hunter caps are 120-160.
 - `opus` is an **alias**. Claude Code 2.1.250 resolves it to the latest opus family member,
   `claude-opus-5` (CLI alias table `opus → claude-opus-5`; verified on live agent runs via
   `--output-format json` `modelUsage.canonicalModel`). No repo change is needed for the
