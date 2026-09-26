@@ -38,6 +38,12 @@ const EXPECTED_MECHANICAL_DOWNGRADE = {
 // never run below the frontier tier, whatever the baseline allowlist says.
 export const FRONTIER_FLOOR_PROFILES = ['orchestration', 'judgment', 'analysis'];
 const MIN_STANDARD_JUSTIFICATION = 20;
+// The controller drives the whole engagement under one native turn cap. The cap must
+// fund every wave, and a closeout reserve of it stays free for canonical merges and
+// Kleio; the reserve may never consume more than a quarter of the cap.
+const CONTROLLER_AGENT = 'odysseus';
+const MIN_CONTROLLER_MAX_TURNS = 300;
+const MIN_CLOSEOUT_RESERVE_TURNS = 10;
 
 export function validateModelPolicy(policy, expectedSlugs = []) {
   const errors = [];
@@ -88,6 +94,35 @@ export function validateModelPolicy(policy, expectedSlugs = []) {
     if (policy?.fallbackPolicies?.[role.fallbackPolicy]?.allowWeakerModel !== false) errors.push(`${role.slug}: weaker fallback must be forbidden`);
     if (role.tier === 'frontier' && role.fallbackPolicy !== 'frontier-fail-closed') errors.push(`${role.slug}: frontier judgment must fail closed`);
     if (role.tier === 'standard' && role.fallbackPolicy !== 'upward-only') errors.push(`${role.slug}: standard fallback must be upward-only`);
+  }
+  errors.push(...controllerBudgetErrors(policy?.controllerBudget, roles));
+  return errors;
+}
+
+// Returns the controller's native turn cap and closeout reserve. Callers validate the
+// policy first; an unresolvable controller role still fails closed here.
+export function controllerTurnBudget(policy) {
+  const budget = policy?.controllerBudget;
+  const role = Array.isArray(policy?.roles) ? policy.roles.find((item) => item?.slug === budget?.agent) : undefined;
+  if (!role || !Number.isInteger(role.maxTurns) || !Number.isInteger(budget.closeoutReserveTurns)) {
+    throw new Error('model policy controllerBudget does not resolve to a policy role with an integer turn cap and reserve');
+  }
+  return { agent: role.slug, maxTurns: role.maxTurns, closeoutReserveTurns: budget.closeoutReserveTurns };
+}
+
+function controllerBudgetErrors(budget, roles) {
+  if (!budget || typeof budget !== 'object' || Array.isArray(budget)) return ['controllerBudget is required'];
+  const errors = [];
+  if (budget.agent !== CONTROLLER_AGENT) errors.push(`controllerBudget.agent must be ${CONTROLLER_AGENT}`);
+  const role = roles.find((item) => item?.slug === budget.agent);
+  if (!role) return [...errors, 'controllerBudget.agent must name a policy role'];
+  if (!Number.isInteger(role.maxTurns) || role.maxTurns < MIN_CONTROLLER_MAX_TURNS) {
+    errors.push(`${role.slug}: controller maxTurns must be at least ${MIN_CONTROLLER_MAX_TURNS}`);
+  }
+  const reserveCeiling = Number.isInteger(role.maxTurns) ? Math.floor(role.maxTurns / 4) : MIN_CLOSEOUT_RESERVE_TURNS;
+  const reserve = budget.closeoutReserveTurns;
+  if (!Number.isInteger(reserve) || reserve < MIN_CLOSEOUT_RESERVE_TURNS || reserve > reserveCeiling) {
+    errors.push(`controllerBudget.closeoutReserveTurns must be an integer from ${MIN_CLOSEOUT_RESERVE_TURNS} to floor(maxTurns/4)=${reserveCeiling}`);
   }
   return errors;
 }

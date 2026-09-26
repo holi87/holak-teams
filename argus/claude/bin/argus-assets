@@ -72,6 +72,7 @@ import {
   adapterSnapshotSha256,
   buildModelRoutingPreview,
   buildModelTelemetryEvent,
+  controllerTurnBudget,
   modelAuthenticatedDocumentSha256,
   modelConfigSha256,
   modelAuthenticationPayload,
@@ -559,7 +560,7 @@ function launchCommand(args) {
       runtime: 'claude',
       model: 'opus',
       effort: 'max',
-      maxTurns: 96,
+      maxTurns: controllerMaxTurns(),
       mode,
       targetKind: target.kind,
       target: target.targetIdentity,
@@ -604,6 +605,9 @@ function launchCommand(args) {
     const request = readSecureJson(requestPath, 'native launch request');
     const authorization = readSecureJson(authorizationPath, 'native launch authorization');
     assertSchemaDocument(validateNativeLaunchAuthorizationSchema, authorization, 'native launch authorization');
+    if (authorization.maxTurns !== controllerMaxTurns()) {
+      fail('signed native launch authorization turn cap differs from the packaged model-policy controller cap');
+    }
     const unsignedAuthorization = structuredClone(authorization);
     unsignedAuthorization.authentication.signatureBase64 = '';
     if (modelAuthenticationPayload(request) !== modelAuthenticationPayload(unsignedAuthorization)) {
@@ -1629,6 +1633,15 @@ function assertTrustedModelRoutingAssets() {
   }
   assertSchemaDocument(validateModelPolicySchema, modelPolicy, 'model policy');
   assertSchemaDocument(validateRuntimeAdapters, runtimeAdapters, 'runtime adapter snapshot');
+}
+
+// The native controller turn cap signed into launch documents is the packaged model
+// policy's controllerBudget role maxTurns, read only after the policy asset matches
+// the packaged manifest.
+function controllerMaxTurns() {
+  assertPackagedAsset(requireAsset('model-policy'), 'trusted model-policy');
+  assertSchemaDocument(validateModelPolicySchema, modelPolicy, 'model policy');
+  return controllerTurnBudget(modelPolicy).maxTurns;
 }
 
 function persistModelDecision(policy, candidate, context) {
@@ -2738,6 +2751,9 @@ function inspectNativeLaunchForPreflight({ options, modelRuntime, mode, targetKi
     if (receiptErrors.length) throw new Error(`receipt schema: ${formatSchemaErrors(receiptErrors)}`);
     const trustErrors = validateModelTrustStoreSchema(trustStore);
     if (trustErrors.length) throw new Error(`trust-store schema: ${formatSchemaErrors(trustErrors)}`);
+    if (authorization.maxTurns !== controllerMaxTurns()) {
+      throw new Error('native launch authorization turn cap differs from the packaged model-policy controller cap');
+    }
     const artifactStats = lstatSync(artifactRootPath);
     const artifactUid = typeof process.getuid === 'function' ? process.getuid() : artifactStats.uid;
     if (!artifactStats.isDirectory() || artifactStats.isSymbolicLink() || realpathSync(artifactRootPath) !== artifactRootPath ||
@@ -2874,7 +2890,7 @@ function inspectNativeLaunchForPreflight({ options, modelRuntime, mode, targetKi
     if (unexpectedArgus.length) throw new Error(`unapproved inherited Argus environment: ${unexpectedArgus.sort().join(',')}`);
     return {
       ready: true,
-      evidence: `authenticated launch ${authorization.launchId}; signer=${authorization.issuedBy}; claude=${authorization.claudeVersion}; model=opus effort=max maxTurns=96; sandbox=${authorization.sandboxPolicy}; environment=${authorization.environmentPolicy}`,
+      evidence: `authenticated launch ${authorization.launchId}; signer=${authorization.issuedBy}; claude=${authorization.claudeVersion}; model=opus effort=max maxTurns=${authorization.maxTurns}; sandbox=${authorization.sandboxPolicy}; environment=${authorization.environmentPolicy}`,
     };
   } catch (error) {
     return { ready: false, evidence: `authenticated native launch unavailable: ${error.message}` };

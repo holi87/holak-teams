@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FRONTIER_FLOOR_PROFILES, validateModelPolicy } from '../argus/runtime/model-policy.mjs';
+import { FRONTIER_FLOOR_PROFILES, controllerTurnBudget, validateModelPolicy } from '../argus/runtime/model-policy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const mode = process.argv[2] ?? '--check';
@@ -61,6 +61,7 @@ function replaceCount(content, path, pattern, replacement) {
 }
 
 function renderPolicy(data) {
+  const controller = controllerTurnBudget(data);
   const lines = [
     '# Argus Runtime Model Policy', '',
     `Policy ID: \`${data.policyId}\`. The machine-readable source is [\`model-policy.json\`](model-policy.json).`, '',
@@ -79,7 +80,8 @@ function renderPolicy(data) {
     '- Frontier roles never fall back to a weaker model. Their declared escalation signals and model unavailability block the dispatch pending an explicit operator decision.',
     '- Before routing, the host trust store must contain distinct active Ed25519 anchors for runtime control and human operator approval. `model trust` pins their identities and the secure absolute host-store path. Every request, route, allocation, retry, and telemetry operation reopens that live store and rejects a revoked, replaced, or missing key immediately. Private keys and generic signing services remain outside the controller and worker boundary.',
     '- The controller persists a normal attempt-1 selected decision for Odysseus and every projection-selected worker whose current preflight record is `ready` or `degraded` with `dispatchAllowed=true` before any allocation. That exact dispatchable set is sealed into engagement state and becomes the immutable participant filter for phase barriers; deferred, skipped, and blocked roles cannot allocate or create false quorum. It allocates Odysseus first against its exact decision and retains that lane token as the controller token, then authenticates each exact decision-bound worker allocation with that token. Workers receive only their own lane token and public decision/resource coordinates. A missing or blocked selection in the sealed set stops, and a new normal attempt-1 dispatch after the first allocation is forbidden.',
-    '- `argus-launch` is the only supported Claude entry point. An isolated runtime-attestation signer authorizes the exact short-lived engagement, arguments, executable hashes, and native `--max-turns 96` envelope. A one-shot random inherited capability whose digest is signed prevents public-string or file-only replay. Odysseus starts in print mode with exact `opus` / maximum effort, no session persistence, an explicit environment allowlist, and an OS sandbox whose only writable root is the alias-free artifact boundary. Preflight blocks direct or replayed `/argus:run` sessions.',
+    `- \`argus-launch\` is the only supported Claude entry point. An isolated runtime-attestation signer authorizes the exact short-lived engagement, arguments, executable hashes, and native \`--max-turns ${controller.maxTurns}\` envelope. A one-shot random inherited capability whose digest is signed prevents public-string or file-only replay. Odysseus starts in print mode with exact \`opus\` / maximum effort, no session persistence, an explicit environment allowlist, and an OS sandbox whose only writable root is the alias-free artifact boundary. Preflight blocks direct or replayed \`/argus:run\` sessions.`,
+    `- Controller turn budget: \`controllerBudget\` names \`${controller.agent}\`, whose policy \`maxTurns\` (${controller.maxTurns}) is the native controller cap. The launcher constant, the \`maxTurns\` const in both native-launch schemas, and the cap \`argus-assets\` signs into launch requests must equal it; the launcher and \`launch verify\` reject a signed authorization with any other cap. The final ${controller.closeoutReserveTurns} turns (\`closeoutReserveTurns\`) are reserved for canonical merges and Kleio. Validation requires a controller cap of at least 300 turns and a reserve from 10 to a quarter of the cap.`,
     '- The installed Codex CLI can enforce model and reasoning effort but exposes no native hard turn cap. Codex routing therefore remains `CAPABILITY_DRIFT` and cannot be unlocked by a signed claim or approximate wrapper counter. Generated Codex agents remain configuration-parity artifacts for a future runtime that can enforce the complete envelope.',
     '- Haiku/Luna is reserved for a future bounded subrole with no quality judgment, a deterministic output schema, and a validator that passes before merge.',
     '- Worker prompts contain only their local turn cap, declared signals, agent binding, and the shared `argus/model-escalation-request@1` stop contract from `qa-core`. They never select a model, invoke routing, or write telemetry.',

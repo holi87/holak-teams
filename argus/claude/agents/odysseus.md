@@ -4,7 +4,7 @@ description: Main-thread orchestration policy. Selects mode, routes work from th
 tools: Read, Grep, Glob, Bash, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, Agent
 model: opus
 effort: max
-maxTurns: 96
+maxTurns: 400
 color: cyan
 skills:
   - qa-core
@@ -68,7 +68,7 @@ starts a new generation. Only validated RESULT envelopes and canonical artifacts
 ## Model-control ownership
 
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
-- Turn cap: `96`. Signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Turn cap: `400`. Signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
 - Validate envelopes with `argus-assets schema validate --kind model-escalation-request --input <request-file|->`; reject any mismatch.
 - Persist through `argus-assets model request ... --token <lane-token>`; route centrally with `argus-assets model route --manifest <manifest> --request <request-id> --controller-token <controller-token> --attempt <next-attempt>`. Running-worker escalation requires its checkpoint; pre-spawn `model-unavailable` uses the availability binding and may have none.
 - A blocked decision stops. `operatorEscalation=true` requires an external signed `argus/model-operator-decision@1`.

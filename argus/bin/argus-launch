@@ -17,6 +17,11 @@ if [ ! -x "$RUNTIME_ROOT/bin/argus-assets" ] && [ -x "$PLUGIN_ROOT/claude/bin/ar
   RUNTIME_ROOT="$PLUGIN_ROOT/claude"
 fi
 ASSETS="$RUNTIME_ROOT/bin/argus-assets"
+# Native controller turn cap. It must equal the Odysseus maxTurns in model-policy.json
+# (the controllerBudget agent), the maxTurns const in native-launch-authorization and
+# native-launch-receipt schemas, and the cap argus-assets signs into launch requests;
+# scripts/smoke-argus-launcher.sh fails on any drift between these sites.
+readonly CONTROLLER_MAX_TURNS=400
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 2; }
 
@@ -415,10 +420,10 @@ if $unattested; then
   # attestation is skipped. argus-assets preflight reports this as a named,
   # non-mandatory residual risk (see --unattested-launch / native-host-execution check).
   prompt="/argus:run target=$target artifact-root=$artifact_root mode=$mode unattestedLaunch=true engagementId=$engagement_id"
-  command=("$claude_executable" -p --no-session-persistence --max-turns 96 --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+  command=("$claude_executable" -p --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
   if $dry_run; then
-    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=96 agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@2 environment=argus-launch-unattested@1 attestation=UNATTESTED\n' \
-      "$mode" "$target_kind" "$target" "$workspace" "$artifact_root"
+    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@2 environment=argus-launch-unattested@1 attestation=UNATTESTED\n' \
+      "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root"
     exit 0
   fi
   child_env=(
@@ -466,6 +471,9 @@ launch_authorization="$(physical_file "$launch_authorization" 'launch authorizat
 verify_artifact_tree "$artifact_root"
 "$ASSETS" launch verify --request "$request_output" --authorization "$launch_authorization" \
   --receipt "$receipt" --trust-store "$trust_store"
+signed_max_turns="$(jq -er '.maxTurns' "$launch_authorization")" || fail 'signed launch authorization has no turn cap'
+[ "$signed_max_turns" = "$CONTROLLER_MAX_TURNS" ] || \
+  fail 'signed launch authorization turn cap differs from the launcher controller cap'
 
 launch_payload="$(jq -cn \
   --arg target "$target" --arg artifactRoot "$artifact_root" --arg mode "$mode" \
@@ -473,15 +481,15 @@ launch_payload="$(jq -cn \
   --arg launchReceipt "$receipt" --arg trustStore "$trust_store" \
   '{target:$target,"artifact-root":$artifactRoot,mode:$mode,"engagement-id":$engagementId,"launch-authorization":$launchAuthorization,"launch-receipt":$launchReceipt,"trust-store":$trustStore}')"
 prompt="/argus:run authenticatedLaunch=$launch_payload"
-command=("$claude_executable" -p --no-session-persistence --max-turns 96 --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+command=("$claude_executable" -p --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
 
 if $dry_run; then
   rm -f "$capability_file"
   capability_file=''
   rmdir "$sandbox_probe_dir"
   sandbox_probe_dir=''
-  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=96 agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@2 environment=argus-launch-allowlist@1\n' \
-    "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$(jq -r .launchId "$receipt")"
+  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@2 environment=argus-launch-allowlist@1\n' \
+    "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$(jq -r .launchId "$receipt")"
   exit 0
 fi
 

@@ -159,6 +159,10 @@
       "evidence"
     ]
   },
+  "controllerBudget": {
+    "agent": "odysseus",
+    "closeoutReserveTurns": 30
+  },
   "roles": [
     {
       "slug": "aegis",
@@ -299,7 +303,7 @@
     {
       "slug": "odysseus",
       "tier": "frontier",
-      "maxTurns": 96,
+      "maxTurns": 400,
       "escalationProfile": "orchestration",
       "fallbackPolicy": "frontier-fail-closed",
       "mechanicalDowngrade": false

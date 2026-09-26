@@ -34,7 +34,7 @@
     "runtime": { "const": "claude" },
     "model": { "const": "opus" },
     "effort": { "const": "max" },
-    "maxTurns": { "const": 96 },
+    "maxTurns": { "const": 400 },
     "launcherExecutable": { "type": "string", "pattern": "^/" },
     "launcherSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "claudeExecutable": { "type": "string", "pattern": "^/" },

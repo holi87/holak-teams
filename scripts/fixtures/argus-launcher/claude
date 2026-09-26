@@ -40,7 +40,7 @@ if [ -n "$turn_cap_probe" ]; then
   exit 42
 fi
 [ -n "$plugin_root" ] || { printf 'fixture: --plugin-dir is missing\n' >&2; exit 80; }
-[ "$max_turns" = 96 ] || { printf 'fixture: native max-turns is not exactly 96\n' >&2; exit 84; }
+[ "$max_turns" = 400 ] || { printf 'fixture: native max-turns is not exactly 400\n' >&2; exit 84; }
 
 case "$prompt" in
   '/argus:run authenticatedLaunch='*) launch_payload="${prompt#'/argus:run authenticatedLaunch='}" ;;
