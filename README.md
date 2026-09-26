@@ -41,7 +41,7 @@ USER → Marcus (Team Leader) → picks agents → names them → dispatch → m
 ## Repo structure
 
 ```
-my_agents/                       # this git repo == the marketplace (holak-teams)
+holak-teams/                     # this git repo == the marketplace
 ├── .claude-plugin/
 │   └── marketplace.json         # catalog — source: ./hephaestus/claude, ./argus/claude
 ├── .claude/settings.json        # auto-register marketplace + enable both plugins

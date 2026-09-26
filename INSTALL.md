@@ -38,7 +38,8 @@ preflight because it lacks the signed launch authorization, verified receipt, an
 one-shot OS capability.
 
 ```bash
-PLUGIN_ROOT="$HOME/.claude/plugins/cache/holak-teams/argus/4.0.0"
+# Newest installed Argus version in the plugin cache
+PLUGIN_ROOT="$(ls -d "$HOME"/.claude/plugins/cache/holak-teams/argus/* | sort -V | tail -n 1)"
 TARGET="$(cd /path/to/target && pwd -P)"
 ARTIFACT_ROOT="$(cd /path/to/artifacts && pwd -P)"
 OPERATOR_ROOT="$(cd /secure/operator && pwd -P)"
@@ -93,12 +94,18 @@ Modes are:
 
 The preflight creates its control files below `ai_agents_internal/` before probing the target. Review authorization and engagement manifests before allowing target-affecting actions.
 
+Hosts that cannot provision Ed25519 keys can opt in to an unattested launch. Replace the four
+signer flags (`--trust-store`, `--runtime-key-id`, `--request-output`,
+`--launch-authorization`) with `--unattested`. It skips only the cryptographic launch
+attestation; the OS sandbox still runs, and every report names the engagement UNATTESTED.
+See `argus/ENGAGEMENT-POLICY.md` for the residual risk.
+
 ## Manual Claude plugin install
 
 Marketplace installation is recommended. For a local development checkout, Claude Code can load either plugin root directly:
 
 ```bash
-claude --plugin-dir "$HOME/Desktop/GenAI/my_agents/hephaestus/claude"
+claude --plugin-dir /path/to/holak-teams/hephaestus/claude
 ```
 
 Argus must still be started through `argus/claude/bin/argus-launch`; loading its plugin directory directly does not satisfy the execution contract.
@@ -160,7 +167,8 @@ Install the generated TOML files globally by symlink:
 
 ```bash
 mkdir -p ~/.codex/agents
-for dir in "$HOME/Desktop/GenAI/my_agents/hephaestus/codex" "$HOME/Desktop/GenAI/my_agents/argus/codex"; do
+REPO=/path/to/holak-teams
+for dir in "$REPO/hephaestus/codex" "$REPO/argus/codex"; do
   for file in "$dir"/*.toml; do
     ln -sfn "$file" ~/.codex/agents/"$(basename "$file")"
   done
@@ -192,8 +200,8 @@ Use a project-local Codex home when global names would collide:
 ```bash
 export CODEX_HOME="$PWD/.codex-home"
 mkdir -p "$CODEX_HOME/agents"
-cp /path/to/my_agents/hephaestus/codex/*.toml "$CODEX_HOME/agents/"
-cp /path/to/my_agents/argus/codex/*.toml "$CODEX_HOME/agents/"
+cp /path/to/holak-teams/hephaestus/codex/*.toml "$CODEX_HOME/agents/"
+cp /path/to/holak-teams/argus/codex/*.toml "$CODEX_HOME/agents/"
 ```
 
 ## Uninstall

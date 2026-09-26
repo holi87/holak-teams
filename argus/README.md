@@ -4,7 +4,7 @@ Greek code names. Black-box hunting + regression automation in a single pass.
 
 [![Argus team graph](team-graph.png)](team-graph.html)
 
-*One main-thread entry point (`/argus:run`), Odysseus orchestration policy, hub-and-spoke parallel surface × mode lanes — full-screen / print version: [`team-graph.html`](team-graph.html) (open locally in a browser).*
+*One supported entry point (`argus-launch`, which starts the `/argus:run` main thread), Odysseus orchestration policy, hub-and-spoke parallel surface × mode lanes — full-screen / print version: [`team-graph.html`](team-graph.html) (open locally in a browser).*
 
 ## How to start
 
@@ -23,7 +23,9 @@ argus-launch claude --target /absolute/target --artifact-root /absolute/artifact
 The launcher emits one immutable request and waits for the isolated runtime-attestation
 signer described in `INSTALL.md`. The signer reviews and signs the exact request; no private
 key or generic signing service enters the launcher or agent boundary. URL-only targets are
-supported, with the artifact root as the default workspace.
+supported, with the artifact root as the default workspace. Hosts without Ed25519 keys can
+replace the four signer flags with the explicit `--unattested` opt-in; every report then
+names the engagement UNATTESTED (see `INSTALL.md`).
 
 The main thread loads Odysseus's orchestration policy and does the rest:
 
@@ -70,9 +72,9 @@ Maintainers edit the canonical sources under `argus/` and run
 byte-for-byte by `--check`; the generated prompt inventory covers all 27 agents.
 `node scripts/check-argus-prompts.mjs` enforces corpus, per-agent, description, and exact
 duplication budgets; verifies every capability-selected profile and the default-off optional profile;
-and checks a representative Mode A output/quality contract. The budget is 840 KB for
-generated runtime assets and 1.75 MB for the complete installed
-plugin. `COLOR-SCHEME.md` and team graphs are intentionally maintainer-only.
+and checks a representative Mode A output/quality contract. The budget is 880,000 bytes for
+generated runtime assets and 1,800,000 bytes for the complete installed
+plugin (`runtime-assets.source.json`). `COLOR-SCHEME.md` and team graphs are intentionally maintainer-only.
 
 Model escalation files and event-driven progress use bounded commands rather than broad
 write access: `argus-assets model request` requires the active lane token and persists a
