@@ -3,8 +3,8 @@ schema: argus/codex-provenance@1
 slug: orion
 display_name: Orion
 runtime_config: argus/codex/orion.toml
-runtime_config_sha256: aeb6adeb060d5cc21745fae58f8c2f0c9c9c56422ac0f60d670df5236c9859c3
-developer_instructions_sha256: 16afb368b31b51229b1af3480136dee476eaa0df377b5e58f9f24afb2eaa69f4
+runtime_config_sha256: dcb4e737bec16c8ad976e94c8ff2f96795534c333adc21322579c35ae17ddfd0
+developer_instructions_sha256: 5ab57679e924702038fa19838ff896efe8bba1eada556bf88fc81f541a40c42f
 canonical_source: argus/roles/orion.md
 canonical_source_sha256: 48230156712ced88c359b45be7a348ba047cc15af50136c87aad26aa608fc40b
 model: sol

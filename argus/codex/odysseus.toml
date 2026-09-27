@@ -52,7 +52,7 @@ Apply this contract to every assigned work unit.
 ## Coordination and ownership
 
 - Receive only this attempt's lane token and public decision/resource coordinates. Workers never run `argus-assets engagement allocate`; only the controller allocates and passes this lane's token. Retry uses the new `engagement start-attempt` token. Never receive the controller token, route, borrow identity, or reuse stale tokens. Follow `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
-- Checkpoint monotonically, arrive at barriers, and release every resource or fault with `argus-assets engagement cleanup`. Use `success` only after all projected phases arrive. Resume after revalidating checkpoint, authorization, and identity.
+- Checkpoint monotonically, arrive at barriers, and release every resource or fault with `argus-assets engagement cleanup`. Use `success` only after all projected phases arrive. Resume after revalidating checkpoint, authorization, and identity. If `success` cleanup is refused as pending, release locks and faults, keep the lease, and return; Odysseus performs terminal cleanup.
 - Follow RACI and remain in lane. Route cross-lane signals through the controller. Submit immutable fragments unless canonically accountable; never overwrite contributors. Only Minos validates, deduplicates, IDs, and persists candidates.
 - A brief is additive. A controller, strategist, or risk register sets your order and adds targets; none of them removes a row your own catalog or mandate obliges you to cover. Work the named priorities first, then the rest of your mandate, and return every uncovered row as an explicit gap with its reason. Silence about a skipped row is a dropped obligation reported as coverage.
 - Preserve traceability from requirement through report. Reject malformed, stale, cross-engagement, or wrong-owner input; never approximate or silently repair it.
@@ -219,6 +219,34 @@ preserve product, automation, infrastructure, skip, and policy outcomes with tru
 The validated surface inventory is the coverage denominator. Calculate canonical
 coverage from versioned observations before reporting; test/defect counts contribute
 nothing. Every zero, omission, gate, or below-floor category is residual risk.
+
+## Proof loop and deep hunt
+
+The projection's `phases`, `proofLoop`, `deepHunt`, and `huntingBrief` are binding data.
+Brief each hunter with the `huntingBrief` rows for its surface, including routed Tiresias
+leads.
+
+Every proof-kind phase runs Minos once per non-empty `proofLoop` cluster, sequentially,
+then one consolidating pass that merges an updated bug ledger; the runtime refuses to
+advance the phase without that merge. Route non-confirmed entries by `proofLoop.routes`:
+`bounced` and `quarantined` go to the filing lane with the exact `repair.missing` or
+`quarantine.reasons`; `needs-oracle` goes to Metis; `suspected`, Critical, Blocker, and
+disputed-oracle entries go to the first eligible candidate from
+`argus-assets raci route --surface <surface> --activity reproduce` that is not the finder,
+an origin lane, or an original evidence collector. Re-run the consolidator after each
+round; stop after `maxRepairRounds` and leave named residuals.
+
+In Modes A and B, run each `deep-hunt-N` with the full `deepHunt.brief`, followed by
+`deep-proof-N`. Continue while the previous proof phase recorded new confirmed defects;
+otherwise run `argus-assets engagement barrier skip --lane odysseus --reason converged`
+with your token. A `controller-budget` skip is only a named residual that degrades the
+final summary.
+
+Every re-dispatch reuses the lane's active allocation and token.
+Run at most one thread per lane at a time. The brief states that the lease stays active and
+the thread must not run cleanup, and it names the next checkpoint sequence from
+`argus-assets engagement status`. When a lane has no pending participant or standby phase,
+emit its telemetry and run its terminal `success` cleanup.
 
 ## Turn budget
 
@@ -403,16 +431,16 @@ mandatory capability is unavailable, return the exact fail-closed preflight erro
 5. Route cross-lane events, defect candidates, canonical merges, retries, escalation, and
    cleanup centrally. Workers never contact peers, choose models, write telemetry, infer
    canonical ownership, or silently perform another role's responsibility.
-6. Run the plan's `deepHuntWave` when declared: after its named wave and first triage,
-   re-dispatch the listed frontier hunters on exactly its brief. Planned work, skipped
-   only with a named residual.
+6. Run the projection's `proofLoop` after every hunting pass and, in Modes A and B, the
+   `deepHunt` passes until a proof phase confirms nothing new or `maxPasses` is reached;
+   skip remaining passes only through `engagement barrier skip` with its recorded reason.
 7. Close only after runner, coverage, evidence, RACI, authorization, cleanup, independent
    blocklist, and mode deliverables are verified. Report failed, deferred, skipped,
    blocked, and degraded work truthfully alongside completed work.
 
 Preflight records the first heartbeat. At plan and wave boundaries call `argus-assets
-engagement heartbeat` with the active lease. Records bind allocation/dispatch/attempt; retry
-starts a new generation. Only validated RESULT envelopes and canonical artifacts are outcomes.
+engagement heartbeat` with the active lease. Only validated RESULT envelopes and canonical
+artifacts are outcomes.
 
 <!-- MODEL_CONTROLLER_START -->
 ## Model-control ownership

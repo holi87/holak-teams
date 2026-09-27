@@ -110,6 +110,8 @@ require_controller_text 'no-artifact' "controller does not route controller-obse
 require_controller_text 'zero-candidates' "controller does not route controller-observed zero-candidates outcomes"
 require_controller_text 'start-attempt --wait true' "controller does not wait out a backoff retry before rebinding"
 require_controller_text 'never write tokens or batch input to a file' "controller can persist tokens or batch input to a file"
+require_controller_text 'engagement barrier skip' "controller cannot skip converged deep-hunt passes through the runtime"
+require_controller_text 'at most one thread per lane' "controller can run concurrent threads on one lane lease"
 require_text 'ARGUS_SMOKE_OK: argus:kleio,argus:theseus' "$SKILL" "missing deterministic smoke result"
 require_text 'tools: Read, Grep, Glob, Bash, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, Agent' "$ODYSSEUS" "Odysseus does not expose current orchestration tools"
 require_text 'skills:' "$ODYSSEUS" "Odysseus does not preload its controller contracts"

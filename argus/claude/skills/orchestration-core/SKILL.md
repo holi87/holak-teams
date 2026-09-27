@@ -130,6 +130,34 @@ The validated surface inventory is the coverage denominator. Calculate canonical
 coverage from versioned observations before reporting; test/defect counts contribute
 nothing. Every zero, omission, gate, or below-floor category is residual risk.
 
+## Proof loop and deep hunt
+
+The projection's `phases`, `proofLoop`, `deepHunt`, and `huntingBrief` are binding data.
+Brief each hunter with the `huntingBrief` rows for its surface, including routed Tiresias
+leads.
+
+Every proof-kind phase runs Minos once per non-empty `proofLoop` cluster, sequentially,
+then one consolidating pass that merges an updated bug ledger; the runtime refuses to
+advance the phase without that merge. Route non-confirmed entries by `proofLoop.routes`:
+`bounced` and `quarantined` go to the filing lane with the exact `repair.missing` or
+`quarantine.reasons`; `needs-oracle` goes to Metis; `suspected`, Critical, Blocker, and
+disputed-oracle entries go to the first eligible candidate from
+`argus-assets raci route --surface <surface> --activity reproduce` that is not the finder,
+an origin lane, or an original evidence collector. Re-run the consolidator after each
+round; stop after `maxRepairRounds` and leave named residuals.
+
+In Modes A and B, run each `deep-hunt-N` with the full `deepHunt.brief`, followed by
+`deep-proof-N`. Continue while the previous proof phase recorded new confirmed defects;
+otherwise run `argus-assets engagement barrier skip --lane odysseus --reason converged`
+with your token. A `controller-budget` skip is only a named residual that degrades the
+final summary.
+
+Every re-dispatch reuses the lane's active allocation and token.
+Run at most one thread per lane at a time. The brief states that the lease stays active and
+the thread must not run cleanup, and it names the next checkpoint sequence from
+`argus-assets engagement status`. When a lane has no pending participant or standby phase,
+emit its telemetry and run its terminal `success` cleanup.
+
 ## Turn budget
 
 The controller cap is the policy Odysseus `maxTurns`, enforced natively at launch;
