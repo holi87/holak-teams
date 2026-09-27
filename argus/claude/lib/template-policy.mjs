@@ -198,7 +198,6 @@ function materializeTypeScript(root, testRoot, harnessRoot, selection) {
   const packageJson = JSON.parse(read(packagePath));
   if (packageJson.scripts?.perf) packageJson.scripts.perf = packageJson.scripts.perf.replace('src/', `${selection.harnessRoot}/`);
   writeFileSync(packagePath, stable(packageJson));
-  replaceIn(join(root, 'scripts', 'bug-coverage.mjs'), "join(ROOT, 'tests')", `join(ROOT, ${JSON.stringify(selection.testRoot)})`);
   replaceIn(join(root, 'scripts', 'app-source-guard.mjs'), "  'tests/',", `  ${JSON.stringify(`${selection.testRoot}/`)},`);
   replaceIn(join(root, 'scripts', 'app-source-guard.mjs'), "  'src/',", `  ${JSON.stringify(`${selection.harnessRoot}/`)},`);
   replaceIn(join(root, 'scripts', 'argus-playwright-reporter.mjs'), "join(ROOT, 'src')", `join(ROOT, ${JSON.stringify(selection.harnessRoot)})`);

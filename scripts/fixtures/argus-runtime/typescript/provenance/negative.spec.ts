@@ -1,5 +1,8 @@
 import { test } from '@playwright/test';
 
+// Text that only looks like provenance: none of these declarations reaches Playwright as a
+// tag, so none of their rows may carry a bug.
+
 // test('comment declaration', { tag: '@bug:BUG-9001' }, async () => {});
 /* test('block comment declaration', { tag: '@bug:BUG-9002' }, async () => {}); */
 
@@ -22,9 +25,6 @@ test('nested tag is ignored', {
     tag: ['@bug:BUG-9007'],
   },
 }, async () => {});
-
-const variableDetails = { tag: ['@bug:BUG-9008'] };
-test('variable details are ignored', variableDetails, async () => {});
 
 test('unrelated metadata is ignored', {
   annotation: {

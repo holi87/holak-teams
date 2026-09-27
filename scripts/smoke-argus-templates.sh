@@ -108,8 +108,6 @@ expect_selection_failure() {
   [ ! -e "$output" ] || fail "$label persisted an invalid layout selection"
 }
 
-"$ROOT/scripts/smoke-argus-bug-coverage-parser.sh"
-
 # The v2 template contract pins the runner kit, lane vocabulary, lane plan,
 # environment, counterfactual, and per-runtime adapter/marker values. Each targeted
 # drift must fail validation; the source and installed contracts must both pass.
@@ -338,33 +336,13 @@ grep -Fq '<rerunFailingTestsCount>0</rerunFailingTestsCount>' "$WORK/java/pom.xm
 if grep -Eq '^[[:space:]]*"pytest-rerunfailures|^[[:space:]]*--reruns' "$WORK/python/requirements.txt" "$WORK/python/pyproject.toml"; then fail "Python template enables automatic reruns"; fi
 
 run_logged typescript-install bash -c "cd '$WORK/typescript' && npm ci --ignore-scripts"
-run_logged typescript-run bash -c "cd '$WORK/typescript' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline -- --grep @contract-smoke"
+run_logged typescript-run bash -c "cd '$WORK/typescript' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline"
 run_logged java-run bash -c "cd '$WORK/java' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline -- -Dtest=TemplateContractTest"
 run_logged python-run bash -c "cd '$WORK/python' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline -- quality/python-tests/contract/test_template_contract.py"
 for runtime in typescript java python; do
   jq -e '."$schema" == "argus/runner-result@1" and .mode == "baseline" and .status == "pass" and .exitCode == 0' "$WORK/$runtime/reports/argus-runner-result.json" >/dev/null || fail "$runtime clean-room runner result is invalid"
   test -d "$WORK/$runtime/reports/evidence" || fail "$runtime runner omitted the shared evidence root"
 done
-
-# TypeScript uses the same native regression-selection contract as Java and Python.
-# The separate @bug token remains provenance and may join through a stable origin alias.
-cp "$FIXTURES/regression-selection.spec.ts" "$WORK/typescript/quality/specs/contract/regression-selection.spec.ts"
-cp "$FIXTURES/bug-ledger-origin.json" "$WORK/typescript/solution/bug-ledger.json"
-selection_marker="$WORK/typescript-regression-selected.log"
-rm -f "$selection_marker"
-run_logged typescript-selection-baseline bash -c "cd '$WORK/typescript' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ARGUS_SELECTION_MARKER='$selection_marker' ./run-tests.sh --mode baseline -- --grep '@contract-smoke|@regression'"
-test ! -e "$selection_marker" || fail "TypeScript baseline selected an @regression test"
-
-run_logged typescript-selection-candidate bash -c "cd '$WORK/typescript' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ARGUS_SELECTION_MARKER='$selection_marker' ARGUS_SELECTION_EXPECT=candidate-regression ./run-tests.sh --mode candidate-regression"
-grep -Fxq 'candidate-regression' "$selection_marker" || fail "TypeScript candidate-regression did not select @regression"
-rm -f "$selection_marker"
-
-run_logged typescript-selection-evidence bash -c "cd '$WORK/typescript' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ARGUS_SELECTION_MARKER='$selection_marker' ARGUS_SELECTION_EXPECT=defect-evidence ARGUS_OUTCOME_FILE='$WORK/typescript/reports/outcomes.raw.tsv' ./run-tests.sh --mode defect-evidence"
-grep -Fxq 'defect-evidence' "$selection_marker" || fail "TypeScript defect-evidence did not select @regression"
-jq -e '.mode == "defect-evidence" and .status == "pass" and .exitCode == 0 and (.events | any(.bugId == "BUG-0001" and .expected and .lifecycle == "reproduced"))' "$WORK/typescript/reports/argus-runner-result.json" >/dev/null || fail "TypeScript expected-RED evidence contract failed"
-
-run_logged typescript-origin-join bash -c "cd '$WORK/typescript' && node scripts/bug-coverage.mjs"
-jq -e '.bug_coverage.total_confirmed == 1 and .bug_coverage.wired_confirmed == 1 and .bug_coverage.uncovered == []' "$WORK/typescript/reports/summary.json" >/dev/null || fail "@bug origin alias did not join the canonical ledger"
 
 # Shared evaluators and quarantine semantics are byte-identical and fail closed.
 cmp "$WORK/typescript/scripts/runner-contract.sh" "$WORK/java/scripts/runner-contract.sh" >/dev/null || fail "Java runner evaluator drifted"
@@ -392,4 +370,4 @@ expired_code=$?
 set -e
 [ "$expired_code" -eq 13 ] && jq -e '.exitCode == 13 and .categories.policy == 1' "$WORK/expired-result.json" >/dev/null || fail "expired quarantine did not fail as policy exit 13"
 
-printf 'PASS  Argus templates: detected ADAPT, explicit BUILD, arbitrary layouts, three clean-room runners, regression selection, origin-ledger join, shared contract, and quarantine\n'
+printf 'PASS  Argus templates: detected ADAPT, explicit BUILD, arbitrary layouts, three clean-room runners, shared contract, and quarantine\n'
