@@ -119,6 +119,17 @@ const SEMANTIC_MARKERS = Object.freeze({
   'PER-T19': ['anti-forgery token', 'persisted query or mutation'],
   'PER-T20': ['validated against an allowlist', '//host redirect'],
   'PER-T21': ['per-object authorization', 'idor on a download endpoint'],
+  // Antigone's markers pin the success criteria WCAG 2.2 added at levels A and AA, plus
+  // Reflow and Text Spacing, which no prompt covered before. Each marker holds the cited
+  // criterion and its normative condition, so a row cannot drift into a vaguer check.
+  'ANG-T16': ['2.4.11 Focus Not Obscured (Minimum)', 'not entirely hidden'],
+  'ANG-T17': ['2.5.7 Dragging Movements', 'single pointer without dragging'],
+  'ANG-T18': ['2.5.8 Target Size (Minimum)', '24 by 24 CSS pixels'],
+  'ANG-T19': ['3.2.6 Consistent Help', 'same order relative to other page content'],
+  'ANG-T20': ['3.3.7 Redundant Entry', 'auto-populated or available for the user to select'],
+  'ANG-T21': ['3.3.8 Accessible Authentication (Minimum)', 'cognitive function test'],
+  'ANG-T22': ['1.4.10 Reflow', 'without scrolling in two dimensions'],
+  'ANG-T23': ['1.4.12 Text Spacing', '0.12 times the font size'],
 });
 
 const TOP_LEVEL = Object.freeze([

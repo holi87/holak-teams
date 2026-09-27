@@ -174,6 +174,32 @@
       "value": true,
       "rejects": ["schema", "runtime"],
       "runtimeIncludes": "/runtimeRead is not allowed"
+    },
+    {
+      "name": "antigone-entry-count",
+      "catalog": "antigone",
+      "operation": "remove",
+      "pointer": "/entries/22",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 23 entries"
+    },
+    {
+      "name": "antigone-unknown-route",
+      "catalog": "antigone",
+      "operation": "replace",
+      "pointer": "/entries/0/routes/0",
+      "value": "wcag",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "unknown route wcag"
+    },
+    {
+      "name": "antigone-wcag22-marker-drift",
+      "catalog": "antigone",
+      "operation": "replace",
+      "pointer": "/entries/15/oracles/0",
+      "value": "The focused component stays mostly visible when sticky content is shown",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "2.4.11 Focus Not Obscured (Minimum)"
     }
   ]
 }
