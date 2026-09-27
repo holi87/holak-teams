@@ -3,8 +3,8 @@ schema: argus/codex-provenance@1
 slug: aegis
 display_name: Aegis
 runtime_config: argus/codex/aegis.toml
-runtime_config_sha256: 59ab5d17d8163968f595a818fec1df0d8efad72c78f307e196fd554bd767cbef
-developer_instructions_sha256: bc66bd07068dfaf32cf39a561c21e0f3c3f8335a0f0f239978dab47445e48593
+runtime_config_sha256: a6f7978ba7a2cf9ad82a838c5ba1ab7c856d8ea89493ff0c27d64d7df4374066
+developer_instructions_sha256: c0b273e0ec439c0b2bb9eb9ef58ce114340312acc1677af86d298d46c1f6141e
 canonical_source: argus/roles/aegis.md
 canonical_source_sha256: e6bc2e5ba85ce47fe90bacf3a154583b30c6aa572d6f7a13794dbf7c3ac3914a
 model: sol

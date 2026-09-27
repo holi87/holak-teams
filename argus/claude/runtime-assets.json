@@ -2,7 +2,7 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 2510000,
+    "generatedAssetsBytes": 2520000,
     "installedPluginBytes": 3520000
   },
   "templateCompositions": {
@@ -38,8 +38,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 17887,
-      "sha256": "e7e9e4c9e34fd56c8c2822ca413ecd6f8ba6d2e47af73312b46eb4d7f244a381"
+      "bytes": 18116,
+      "sha256": "c8b7c48efb1f5446db6519028e63fd6dff02ad2433e4c692daa6ee7f7b5ff6df"
     },
     {
       "id": "authorization-policy",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 15808,
-      "sha256": "fbc881ffd3793d49fe086c2399bcec96d24200c0db833bc9206893828846ec85"
+      "bytes": 15968,
+      "sha256": "7bc8ebd2eae876991cb0ade207ffa5569f09b9ee08b0b1ff03ca16a85db31b69"
     },
     {
       "id": "qa-core-skill",
@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 11928,
-      "sha256": "df896131101ea18ea714aa5c35e786ec01d13f190031771fb2e3e4145433864b"
+      "bytes": 12179,
+      "sha256": "8f437c56b6f1c42779f0f5315f8046078df55efd0483b77c3f4e66dc7f1bc61e"
     },
     {
       "id": "qa-browser-skill",
@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 63,
-      "bytes": 461441,
-      "sha256": "84da24340b0eb3e7311808549a080ae78b8077e702c91f9e68c25c19ca32fa5d"
+      "bytes": 462095,
+      "sha256": "44b5a9ce6041c50f15170c4bd45720dc1359233448a28e49c8d99bbfbc80e8dc"
     },
     {
       "id": "java-template",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 62457,
-    "sha256": "170d68a17a8d78f223d9f8dd964594abd2cb6423f8341a31a7a9a3c2a8d32062"
+    "bytes": 62656,
+    "sha256": "2fc1068d5ae479db62fb8db10d4198883a5fa9f173e1f2f27ce1ca9df3c7447e"
   }
 }
