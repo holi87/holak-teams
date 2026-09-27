@@ -12,6 +12,7 @@ command -v claude >/dev/null 2>&1 || { printf 'FAIL  Claude Code CLI is required
 
 npm ci --ignore-scripts >/dev/null
 node scripts/smoke-argus-quality.mjs
+node scripts/smoke-argus-hunt-driver-live.mjs
 node scripts/eval/run-smokes.mjs
 scripts/smoke-marketplace-contracts.sh
 scripts/smoke-prompt-regression.sh
