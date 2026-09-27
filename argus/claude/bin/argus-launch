@@ -57,12 +57,12 @@ Usage:
     --launch-authorization <absolute-path> [--workspace <absolute-path>] \
     [--wait-seconds <30..300>] [--feature <capability-id>]... [--provision-browser] \
     [--authorization <absolute-path>] [--environment <local|test|staging|production>] \
-    [--usage-json <absolute-path>] [--dry-run]
+    [--template-selection <absolute-path>] [--usage-json <absolute-path>] [--dry-run]
   argus-launch claude --target <url-or-absolute-path> --artifact-root <absolute-path> \
     --mode <A|B|C|D> --engagement-id <id> --unattested [--workspace <absolute-path>] \
     [--feature <capability-id>]... [--provision-browser] \
     [--authorization <absolute-path>] [--environment <local|test|staging|production>] \
-    [--usage-json <absolute-path>] [--dry-run]
+    [--template-selection <absolute-path>] [--usage-json <absolute-path>] [--dry-run]
 
 The launcher writes an unsigned, process-bound request to --request-output, then waits for
 the isolated runtime-attestation signer to create --launch-authorization. The signer must
@@ -120,6 +120,18 @@ production-signal targets stay read-only without a production override. An attes
 records the choice as unsigned operatorAuthorization data in its launch payload, an unattested
 launch in its prompt, and --dry-run (which verifies but installs nothing) reports
 authorizationSource=<operator|environment|preflight> targetEnvironment=<environment|none>.
+
+--template-selection <absolute-path> supplies the operator's explicit framework choice: the
+output of `argus-assets template select` run on the host against the --target path or the
+artifact root. It must be a physical regular file (no symbolic link) outside the target and
+artifact roots, satisfy the packaged template-selection schema and contract, name the target
+or artifact root as its targetRoot, and still match that tree's detected capabilities. Before
+the sandbox starts, the launcher copies it to
+<artifact-root>/ai_agents_internal/template-selection.json (mode 0600), where no agent can
+write, and refuses when a different record is already there or the engagement has already
+started. That record alone grants the selected test root to every lane and the selected harness
+root to its manifest owners, each only when it passes the write policy. It is not part of the
+signed launch request; --dry-run verifies it and installs nothing.
 
 --usage-json <absolute-path> writes Claude's final JSON result (usage, total_cost_usd,
 num_turns, subtype such as error_max_turns) to a new file outside the artifact root; it
@@ -276,6 +288,18 @@ operator_authorization_step() {
     sed -n 's/^AUTHORIZATION  [a-z]* source=[a-z]* environment=[a-z]* sha256=\([0-9a-f]\{64\}\) manifest=.*$/\1/p')"
   [ -n "$authorization_manifest_environment" ] && [ -n "$authorization_sha256" ] || \
     fail "argus-assets authorization $operation reported no manifest binding"
+}
+
+# Binds the operator's --template-selection record (their own host-side `template select`
+# output) to this target and artifact root through argus-assets. `verify` is read-only and runs
+# before the artifact root is created; `install` places the exact record at
+# ai_agents_internal/template-selection.json just before the sandbox starts, where no agent can
+# write it.
+template_selection_step() {
+  local operation="$1" root="$2"
+  [ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
+  "$ASSETS" template "$operation" --selection "$template_selection" --artifact-root "$root" --target "$target" >&2 || \
+    fail "operator template selection $operation was refused"
 }
 
 # Validates the one-shot --usage-json report path against an artifact root: the physical
@@ -689,6 +713,7 @@ provision_browser=false
 launch_features_json='[]'
 operator_authorization=''
 operator_environment=''
+template_selection=''
 usage_json=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -707,6 +732,7 @@ while [ "$#" -gt 0 ]; do
     --provision-browser) provision_browser=true; shift ;;
     --authorization) [ "$#" -ge 2 ] || fail '--authorization requires a path'; operator_authorization="$2"; shift 2 ;;
     --environment) [ "$#" -ge 2 ] || fail '--environment requires a value'; operator_environment="$2"; shift 2 ;;
+    --template-selection) [ "$#" -ge 2 ] || fail '--template-selection requires a path'; template_selection="$2"; shift 2 ;;
     --usage-json) [ "$#" -ge 2 ] || fail '--usage-json requires a path'; usage_json="$2"; shift 2 ;;
     --dry-run) dry_run=true; shift ;;
     *) fail "unknown option: $1" ;;
@@ -780,6 +806,11 @@ if [ -n "$operator_authorization" ]; then
   assert_disjoint "$artifact_candidate" "$operator_authorization" 'artifact root and authorization manifest'
   if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$operator_authorization" 'target and authorization manifest'; fi
 fi
+if [ -n "$template_selection" ]; then
+  template_selection="$(physical_file "$template_selection" 'template selection')"
+  assert_disjoint "$artifact_candidate" "$template_selection" 'artifact root and template selection'
+  if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$template_selection" 'target and template selection'; fi
+fi
 # --usage-json only switches Claude's stdout to its JSON result document and names where the
 # unsandboxed launcher stores it; the turn cap, model, effort, and signed bindings are unchanged.
 output_format_arguments=()
@@ -791,6 +822,7 @@ if [ -n "$usage_json" ]; then
 fi
 # Refuse an unbound or conflicting manifest before the artifact root exists.
 if [ "$authorization_source" != preflight ]; then operator_authorization_step verify "$artifact_candidate"; fi
+if [ -n "$template_selection" ]; then template_selection_step verify "$artifact_candidate"; fi
 artifact_existed=false
 [ -e "$artifact_root" ] && artifact_existed=true
 mkdir -p "$artifact_root"
@@ -844,6 +876,7 @@ mkdir -p "$artifact_root/ai_agents_internal/tmp" "$artifact_root/ai_agents_inter
 chmod 700 "$artifact_root/ai_agents_internal" "$artifact_root/ai_agents_internal/tmp" "$artifact_root/ai_agents_internal/claude-config"
 # Preflight loads the installed manifest from its default path; a dry run installs nothing.
 if [ "$authorization_source" != preflight ] && ! $dry_run; then operator_authorization_step install "$artifact_root"; fi
+if [ -n "$template_selection" ] && ! $dry_run; then template_selection_step install "$artifact_root"; fi
 
 if $unattested; then
   # No trust store, no signed launch-authorization handshake: the operator explicitly

@@ -2666,6 +2666,8 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
       const destination = optionValue(tokens, '--destination');
       return destination ? { paths: [destination] } : deny('template scaffold destination is missing');
     }
+    // The installed selection grants write roots, so only the operator binds it, at launch.
+    if (['verify', 'install'].includes(operation)) return deny('template selection verify/install is host/operator-only and cannot run inside an active engagement');
     return deny('unknown template operation');
   }
   if (primary === 'preflight') {

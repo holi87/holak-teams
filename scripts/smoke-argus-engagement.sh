@@ -836,6 +836,72 @@ jq --arg root "$TARGET" '.targetRoot = $root | .harnessRoot = "app"' "$WORK/sele
 guard_as argus:atlas Write app/source.ts GUARD-TARGET-IMMUTABLE
 guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE
 rm "$TARGET/ai_agents_internal/template-selection.json"
+
+# The record reaches the control plane only through the host-side `template verify|install`
+# that argus-launch --template-selection runs before the sandbox: bound to the launch target
+# or artifact root and to that tree's current capabilities, never replacing another record,
+# and never into a started engagement. Inside an engagement the guard denies both verbs.
+INSTALL_CASE="$WORK/install-selection"
+mkdir -p "$INSTALL_CASE/target/src" "$INSTALL_CASE/operator" "$INSTALL_CASE/other"
+chmod 700 "$INSTALL_CASE/operator"
+INSTALL_CASE="$(cd "$INSTALL_CASE" && pwd -P)"
+INSTALL_TARGET="$INSTALL_CASE/target"
+INSTALL_ROOT="$INSTALL_CASE/artifacts"
+OPERATOR_SELECTION="$INSTALL_CASE/operator/template-selection.json"
+printf 'export const app = 1;\n' >"$INSTALL_TARGET/src/app.ts"
+"$CLI" template select --target "$INSTALL_TARGET" --runtime typescript --package-manager npm \
+  --test-root quality/specs --harness-root quality/support --output "$OPERATOR_SELECTION" >/dev/null
+# Usage: selection_step <verify|install> [<selection>] [<artifact-root>]
+selection_step() {
+  "$CLI" template "$1" --selection "${2:-$OPERATOR_SELECTION}" --artifact-root "${3:-$INSTALL_ROOT}" \
+    --target "$INSTALL_TARGET" >"$WORK/selection-step.out" 2>&1
+}
+expect_selection_refusal() {
+  local message="$1"
+  shift
+  if selection_step "$@"; then fail "template ${1} accepted a record it must refuse: $message"; fi
+  grep -Fq -- "$message" "$WORK/selection-step.out" || fail "template ${1} refusal did not report: $message: $(<"$WORK/selection-step.out")"
+}
+selection_step verify || fail "template verify refused a valid record before the artifact root exists: $(<"$WORK/selection-step.out")"
+grep -Fq 'TEMPLATE  verified runtime=typescript action=build testRoot=quality/specs harnessRoot=quality/support' "$WORK/selection-step.out" \
+  || fail "template verify did not report the record: $(<"$WORK/selection-step.out")"
+test ! -e "$INSTALL_ROOT" || fail 'template verify created the artifact root'
+expect_selection_refusal 'template install artifact root is unavailable' install
+mkdir -m 700 "$INSTALL_ROOT"
+selection_step install || fail "template install refused a valid record: $(<"$WORK/selection-step.out")"
+cmp -s "$OPERATOR_SELECTION" "$INSTALL_ROOT/ai_agents_internal/template-selection.json" || fail 'template install did not copy the exact record'
+[ -n "$(find "$INSTALL_ROOT/ai_agents_internal/template-selection.json" -maxdepth 0 -type f -perm 600 -print)" ] || fail 'installed template selection is not mode 0600'
+selection_step install || fail "reinstalling the same record was refused: $(<"$WORK/selection-step.out")"
+grep -Fq 'TEMPLATE  unchanged' "$WORK/selection-step.out" || fail "reinstalling the same record was not idempotent: $(<"$WORK/selection-step.out")"
+jq '.harnessRoot = "quality/shared"' "$OPERATOR_SELECTION" >"$INSTALL_CASE/operator/changed.json"
+chmod 600 "$INSTALL_CASE/operator/changed.json"
+expect_selection_refusal 'a different template selection already exists' install "$INSTALL_CASE/operator/changed.json"
+jq --arg root "$INSTALL_CASE/other" '.targetRoot = $root' "$OPERATOR_SELECTION" >"$INSTALL_CASE/operator/foreign.json"
+chmod 600 "$INSTALL_CASE/operator/foreign.json"
+expect_selection_refusal 'targetRoot must name the launch target or the artifact root' verify "$INSTALL_CASE/operator/foreign.json"
+jq '.choiceSource = "inferred"' "$OPERATOR_SELECTION" >"$INSTALL_CASE/operator/inferred.json"
+chmod 600 "$INSTALL_CASE/operator/inferred.json"
+expect_selection_refusal 'does not satisfy its schema' verify "$INSTALL_CASE/operator/inferred.json"
+cp -p "$OPERATOR_SELECTION" "$INSTALL_ROOT/selection-copy.json"
+expect_selection_refusal 'must stay outside the target and artifact roots' verify "$INSTALL_ROOT/selection-copy.json"
+ln -s "$OPERATOR_SELECTION" "$INSTALL_CASE/operator/linked.json"
+expect_selection_refusal 'must be a physical single-link regular file' verify "$INSTALL_CASE/operator/linked.json"
+printf '{"devDependencies":{"jest":"29.0.0"}}\n' >"$INSTALL_TARGET/package.json"
+expect_selection_refusal 'operator template selection is stale' verify
+rm "$INSTALL_TARGET/package.json"
+# The installed record grants its roots once the engagement starts, and nothing can add one later.
+"$CLI" engagement init --target "$INSTALL_TARGET" --artifact-root "$INSTALL_ROOT" --mode A --engagement-id install-selection >/dev/null
+guard_as argus:atlas Write quality/support/config.ts allow "$INSTALL_ROOT"
+guard_as argus:hermes Write quality/support/config.ts "GUARD-OWNED-ARTIFACT: lane-owned quality/support is written only by $HARNESS_OWNERS, not hermes" "$INSTALL_ROOT"
+guard_as argus:talos Write quality/specs/api/orders.spec.ts allow "$INSTALL_ROOT"
+for operation in verify install; do
+  guard_as main Bash "argus-assets template $operation --selection $OPERATOR_SELECTION --artifact-root $INSTALL_ROOT --target $INSTALL_TARGET" \
+    'GUARD-SHELL-AMBIGUOUS: template selection verify/install is host/operator-only' "$INSTALL_ROOT"
+done
+mkdir -m 700 "$INSTALL_CASE/started"
+"$CLI" engagement init --target "$INSTALL_TARGET" --artifact-root "$INSTALL_CASE/started" --mode A --engagement-id install-started >/dev/null
+expect_selection_refusal 'the engagement in this artifact root has already started' install "$OPERATOR_SELECTION" "$INSTALL_CASE/started"
+test ! -e "$INSTALL_CASE/started/ai_agents_internal/template-selection.json" || fail 'template install added a record to a started engagement'
 # Executed from inside the engagement, the allowed queries leave the artifact tree untouched.
 COVERAGE_FIXTURES="$ROOT/scripts/fixtures/argus-coverage"
 COVERAGE_EVIDENCE=(--evidence "$COVERAGE_FIXTURES/evidence-reference.json" --ledger "$COVERAGE_FIXTURES/bug-ledger.json" --root "$COVERAGE_FIXTURES")

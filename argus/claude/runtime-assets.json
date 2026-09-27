@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 51537,
-      "sha256": "09fc5065a4ca025bf431812d06aa184de205fa4d52c0821f27de6cabadebe982"
+      "bytes": 53949,
+      "sha256": "f3458dad977abcb86e752c0226cc4faab0404ce34dba582e9820ac8229b1457a"
     },
     {
       "id": "browser-isolation",
@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 56291,
-      "sha256": "16db47854a4f241dc980c2d54ac4fdedfeeaf6e1c7b76cdb55cc09624cdf6886"
+      "bytes": 56491,
+      "sha256": "01787d07167ba4ccad915870942b587a1c2951817b6d391492397c9f9d02caa9"
     },
     {
       "id": "canonical-contracts",
@@ -83,8 +83,8 @@
       "source": "argus/TEMPLATE-CONTRACT.md",
       "destination": "references/TEMPLATE-CONTRACT.md",
       "files": 1,
-      "bytes": 12640,
-      "sha256": "e369ec6373546e5786ee23170e853b00b92dae938e617447bd5c275b7e9d5d7a"
+      "bytes": 13433,
+      "sha256": "f0ad5cbefe4392fe35473002ec80acaf241ed0f2e6f8a81ed2a59417c23531a7"
     },
     {
       "id": "coverage-contract",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 16152,
-      "sha256": "80ae72ff96eeba8da58b7ac267c2273b4aa354844ff0b77fde33688afe55d581"
+      "bytes": 16377,
+      "sha256": "09db812052b14676d8fea58139c7a0a27d1613acabd7b9dbe17c2a749eca0528"
     },
     {
       "id": "qa-core-skill",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 427186,
-      "sha256": "df9d18f0da306ba40e6f96a6381ad5e9191f42108115f74e0dffa7fca41dc847"
+      "bytes": 427445,
+      "sha256": "949dce394061b056ea50f39f08f150acf6f112063446dde19d8f71b70e66df63"
     },
     {
       "id": "common-template",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 62295,
-    "sha256": "8168cdfded6ce86b8ccfca6118f06c9b714b317956ed3f771efa135752eb2960"
+    "bytes": 62450,
+    "sha256": "865e85f415c4c1a3a7f7018395e0f7b5e34c129a61ffe5962e5f18c4f38d352d"
   }
 }

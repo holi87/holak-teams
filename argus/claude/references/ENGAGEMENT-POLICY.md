@@ -87,7 +87,9 @@ driver's `--agent` to the caller, so no lane records an audited decision as anot
 A packaged command checks its own outputs without a lane identity,
 so it never writes an owned path: write to `reports/` and copy the result in place.
 `writePolicy.selectedTemplateRoots` adds the roots of the operator's explicit
-`ai_agents_internal/template-selection.json`, which no lane can write: its `testRoot` joins
+`ai_agents_internal/template-selection.json`, which no lane can write and which only
+`argus-launch --template-selection` installs, through the host-side `argus-assets template
+verify|install`, before the sandbox starts (the guard denies both verbs inside an engagement): its `testRoot` joins
 the generated test roots and its `harnessRoot` is owned by `harnessRootOwners` (Atlas, the
 lane automation engineers, and Asklepios, who extend the shared layer). The record
 must be schema-valid and name the artifact or target root. Each root must lie below the

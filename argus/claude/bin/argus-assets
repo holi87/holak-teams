@@ -125,6 +125,7 @@ const NATIVE_LAUNCH_RECEIPT_SCHEMA_PATH = join(ROOT, 'schemas', 'native-launch-r
 const MODEL_TRUST_STORE_SCHEMA_PATH = join(ROOT, 'schemas', 'model-trust-store.schema.json');
 const MODEL_TELEMETRY_SCHEMA_PATH = join(ROOT, 'schemas', 'model-telemetry-event.schema.json');
 const LANE_OUTCOMES_SCHEMA_PATH = join(ROOT, 'schemas', 'lane-outcomes.schema.json');
+const TEMPLATE_SELECTION_SCHEMA_PATH = join(ROOT, 'schemas', 'template-selection.schema.json');
 const PREFLIGHT_REPORT_SCHEMA_PATH = join(ROOT, 'schemas', 'preflight-report.schema.json');
 const BROWSER_RUNTIME_SCHEMA_PATH = join(ROOT, 'schemas', 'browser-runtime.schema.json');
 const ORCHESTRATION_PLAN_PATH = join(ROOT, 'capabilities', 'orchestration-plan.json');
@@ -283,6 +284,7 @@ Usage:
   argus-assets browser provision --artifact-root <absolute-path> [--version <x.y.z>] [--package <absolute .tgz>] [--skip-browser-install] [--json]
   argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--artifact-root <path>] [--output <json|->]
   argus-assets template <detect|select|scaffold> [options]
+  argus-assets template verify|install --selection <absolute-path> --artifact-root <absolute-path> --target <url-or-path>
   argus-assets technique scopes|select --role <${techniqueCatalogRoles().join('|')}> [--inventory <surface-inventory.json>]
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
@@ -578,7 +580,84 @@ function templateCommand(args) {
     console.log(`SCAFFOLDED  ${selection.runtime}/${selection.packageManager} testRoot=${selection.testRoot} harnessRoot=${selection.harnessRoot} -> ${resolve(options.destination)}`);
     return 0;
   }
-  fail('usage: argus-assets template <detect|select|scaffold> [options]');
+  if (operation === 'verify' || operation === 'install') return operatorTemplateSelection(rest, operation);
+  fail('usage: argus-assets template <detect|select|scaffold|verify|install> [options]');
+}
+
+// Host-side operator verbs that argus-launch runs before the OS sandbox starts. They bind the
+// operator's own `template select` output (--selection) to the launch: its targetRoot must name
+// the launch target or the artifact root, and its capability digest must still match that
+// tree. `verify` never writes; `install` places the exact bytes at
+// <artifact-root>/ai_agents_internal/template-selection.json with mode 0600, the control-plane
+// record that alone grants the selected test and harness write roots, and never replaces a
+// different record. The PreToolUse guard denies both inside an engagement, and the guard
+// still grants a selected root only when it passes every write-policy check.
+function operatorTemplateSelection(args, operation) {
+  const command = `template ${operation}`;
+  const options = parseNamedOptions(args, new Set(['--selection', '--artifact-root', '--target']));
+  requireOptions(options, ['selection', 'artifactRoot', 'target'], command);
+  const target = identifyTarget(options.target);
+  const artifactRoot = options.artifactRoot;
+  if (!artifactRoot.startsWith('/') || resolve(artifactRoot) !== artifactRoot) fail(`${command} --artifact-root must be an absolute normalized path`);
+  // verify runs before the launcher creates the artifact root; install requires it.
+  const artifactRootExists = lstatPresent(artifactRoot);
+  if (artifactRootExists || operation === 'install') existingPhysicalDirectory(artifactRoot, `${command} artifact root`);
+  if (target.targetPath && (isWithin(target.targetPath, artifactRoot) || isWithin(artifactRoot, target.targetPath))) {
+    fail(`${command} target and artifact root must be physically disjoint`);
+  }
+  const selectionPath = existingPhysicalFile(options.selection, 'operator template selection');
+  if (isWithin(artifactRoot, selectionPath) || (target.targetPath && isWithin(target.targetPath, selectionPath))) {
+    fail('operator template selection must stay outside the target and artifact roots');
+  }
+  requireSecureOperatorInput(selectionPath, 'operator template selection');
+  const raw = readSecureSingleLink(selectionPath, 'operator template selection');
+  let selection;
+  try { selection = JSON.parse(raw.toString('utf8')); }
+  catch (error) { fail(`operator template selection is not valid JSON: ${error.message}`); }
+  const schemaErrors = compileJsonSchema(readJson(TEMPLATE_SELECTION_SCHEMA_PATH))(selection);
+  if (schemaErrors.length > 0) fail(`operator template selection does not satisfy its schema: ${formatSchemaErrors(schemaErrors)}`);
+  const errors = validateTemplateSelection(selection, templateContract);
+  if (errors.length > 0) fail(`operator template selection is invalid: ${errors.join('; ')}`);
+  const namedRoots = [target.targetPath, artifactRootExists ? artifactRoot : null].filter(Boolean);
+  if (!namedRoots.some((root) => physicalPathsEquivalent(root, selection.targetRoot))) {
+    fail('operator template selection targetRoot must name the launch target or the artifact root');
+  }
+  const capabilities = detectTemplateCapabilities(selection.targetRoot);
+  if (createHash('sha256').update(stableTemplateJson(capabilities)).digest('hex') !== selection.capabilitiesSha256) {
+    fail('operator template selection is stale: the target capabilities changed after template select; select again');
+  }
+  const destination = join(artifactRoot, 'ai_agents_internal', 'template-selection.json');
+  if (artifactRootExists && !safePhysicalPath(artifactRoot, destination)) {
+    fail('template selection destination escapes the artifact root or crosses a symbolic link');
+  }
+  const report = (status) => console.log(`TEMPLATE  ${status} runtime=${selection.runtime} action=${selection.action} testRoot=${selection.testRoot} harnessRoot=${selection.harnessRoot} sha256=${createHash('sha256').update(raw).digest('hex')} selection=${destination}`);
+  // A relaunch with the same record is idempotent; any other existing record is never replaced.
+  if (artifactRootExists && lstatPresent(destination)) {
+    const current = readSecureSingleLink(destination, 'existing template selection');
+    if (!current.equals(raw)) fail(`a different template selection already exists at ${destination}; remove it or launch into an empty artifact root`);
+    report(operation === 'verify' ? 'verified' : 'unchanged');
+    return 0;
+  }
+  if (operation === 'verify') {
+    report('verified');
+    return 0;
+  }
+  // Once preflight has created the engagement, its write roots are fixed: a new record would
+  // widen them mid-run, so it is installed only into an artifact root that has not started.
+  if (lstatPresent(join(artifactRoot, 'ai_agents_internal', 'engagement.json'))) {
+    fail('the engagement in this artifact root has already started; install a template selection only before its first preflight');
+  }
+  mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+  if (!safePhysicalPath(artifactRoot, destination)) fail('template selection destination escapes the artifact root or crosses a symbolic link');
+  try {
+    writeFileSync(destination, raw, { mode: 0o600, flag: 'wx' });
+  } catch (error) {
+    if (error.code === 'EEXIST') fail(`a template selection appeared at ${destination} during installation; refusing to replace it`);
+    fail(`cannot install the template selection: ${error.message}`);
+  }
+  chmodSync(destination, 0o600);
+  report('installed');
+  return 0;
 }
 
 function writeTemplateOutput(document, output) {
