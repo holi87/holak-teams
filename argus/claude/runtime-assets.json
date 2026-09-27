@@ -74,8 +74,8 @@
       "source": "argus/RUNNER-CONTRACT.md",
       "destination": "references/RUNNER-CONTRACT.md",
       "files": 1,
-      "bytes": 27992,
-      "sha256": "f1a23bec9e8c39fd2713ceb59acdef5c50aefc6f521fe580a0ac92e69657b7c7"
+      "bytes": 29319,
+      "sha256": "7975fe39a34f54b0bcb4454e64f656d7a353b421d422e5b73a866d37fb6499aa"
     },
     {
       "id": "template-contract",
@@ -83,8 +83,8 @@
       "source": "argus/TEMPLATE-CONTRACT.md",
       "destination": "references/TEMPLATE-CONTRACT.md",
       "files": 1,
-      "bytes": 11952,
-      "sha256": "d60a3126c721a45cd73a36bc3b15278e34759610cdd2fb72f42451c5ca8ce0a4"
+      "bytes": 12640,
+      "sha256": "e369ec6373546e5786ee23170e853b00b92dae938e617447bd5c275b7e9d5d7a"
     },
     {
       "id": "coverage-contract",
@@ -263,17 +263,17 @@
       "source": "argus/framework-template-common",
       "destination": "templates/common",
       "files": 25,
-      "bytes": 98758,
-      "sha256": "43816c27767a9d8574383997b2de0deda6914e2ef4a03bd347a46231cab76b0c"
+      "bytes": 101215,
+      "sha256": "4ef22c25143b73e80c6a17f1916ba6332ab72f429b2fb198a4a27e3cf6a2943d"
     },
     {
       "id": "typescript-template",
       "kind": "template",
       "source": "argus/framework-template",
       "destination": "templates/typescript",
-      "files": 61,
-      "bytes": 444437,
-      "sha256": "118008cb40e9ddc3dbe0cface4397f68023c82e500dfd00ef4cfe42e69af1a33"
+      "files": 63,
+      "bytes": 452477,
+      "sha256": "fad0aff1d0171acb85dc2e1ecd416e038bb06d231c17ca3a41c5eddd78a43f56"
     },
     {
       "id": "java-template",
