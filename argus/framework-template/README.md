@@ -55,7 +55,8 @@ or 10-15 per `RUNNER-CONTRACT.md`, never Playwright's own.
 - **Resilience.** `faultInjector` (`src/argus/fault-injector.ts`) records the restore before
   injecting, always restores, and verifies the restore; a failed restore stops the run as an
   infrastructure failure. A server-side fault additionally needs
-  `ARGUS_FAULT_INJECTION=authorized`.
+  `ARGUS_FAULT_INJECTION=authorized`; inside an Argus engagement it runs only through
+  `./run-tests.sh`, which grants it after the chaos authorization and the exclusive fault window.
 
 **Before the engagement:** walk `ai_agents_internal/PRE-EVENT-CHECKLIST.md` top to bottom (free ports, docker, browsers pre-downloaded, agents + skill installed).
 

@@ -34,7 +34,7 @@ trap 'stop_target; rm -rf "$WORK"' EXIT
 # same holds for the runner library's inputs in the end-to-end section.
 unset ARGUS_RUNNER_MODE ARGUS_INVENTORY_ONLY ARGUS_EVIDENCE_PASS ARGUS_OUTCOME_FILE ARGUS_CONTRACT_SMOKE \
   ARGUS_COUNTERFACTUAL_API_URL ARGUS_API_ROUTE_PATTERN ARGUS_SMOKE_EXTRA_REQUEST OPENAPI_PATH \
-  ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET ARGUS_FAULT_INJECTION ARGUS_READINESS_URLS \
+  ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET ARGUS_FAULT_INJECTION ARGUS_FAULT_INJECTION_GRANT ARGUS_READINESS_URLS \
   ARGUS_TEST_ROOT ARGUS_AUTH_DIRECTORY ARGUS_BROWSER_ARTIFACTS ARGUS_RESET_TIMEOUT_SECONDS ARGUS_VERIFY_TIMEOUT_SECONDS \
   UI_URL PERF_BUDGET_MS SECURITY_ENABLED DB_URL WORKERS
 
@@ -737,6 +737,37 @@ expect_events "$WORK/runner-kit.tsv" runner-kit \
 expect_status "ok 4" runner-kit
 grep -Fq 'ArgusCleanupError: cleanup failed for 1 resource(s)' "$WORK/runner-kit.log" || fail "the cleanup failure does not report its count"
 if grep -Fq 'argus-never-print-me' "$WORK/runner-kit.log"; then fail "the cleanup failure printed a response body"; fi
+
+# Inside an engagement the opt-in alone never injects a server fault: the injector also needs
+# the grant runner-lib.sh issues after the chaos authorization, whether ARGUS_ENGAGEMENT_MANIFEST
+# names the engagement or its manifest sits above the harness.
+cat >tests/contract/test_server_fault_fixture.py <<'PY'
+import pytest
+
+from qa.argus.fault_injector import Fault, run
+
+pytestmark = pytest.mark.contract_smoke
+
+
+def test_a_server_fault():
+    run(Fault(name="probe-fault", scope="server", inject=lambda: None, restore=lambda: None, verify_restored=lambda: None), lambda: None)
+PY
+SF_ID='tests.contract.test_server_fault_fixture.py::test_a_server_fault'
+server_fault() {  # server_fault <label> [VAR=value ...]: one baseline run of the probe with the opt-in
+  local label="$1"
+  shift
+  pytest_run "$label" ARGUS_RUNNER_MODE=baseline ARGUS_OUTCOME_FILE="$WORK/$label.tsv" ARGUS_FAULT_INJECTION=authorized "$@" -- tests/contract/test_server_fault_fixture.py
+}
+server_fault server-fault-outside
+expect_events "$WORK/server-fault-outside.tsv" server-fault-outside "$(tab "$SF_ID" product pass false n/a - passed)"
+server_fault server-fault-named "ARGUS_ENGAGEMENT_MANIFEST=$WORK/engagement/ai_agents_internal/engagement.json"
+expect_events "$WORK/server-fault-named.tsv" server-fault-named "$(tab "$SF_ID" infrastructure fail false n/a - prerequisite-missing)"
+server_fault server-fault-granted "ARGUS_ENGAGEMENT_MANIFEST=$WORK/engagement/ai_agents_internal/engagement.json" ARGUS_FAULT_INJECTION_GRANT=tyche
+expect_events "$WORK/server-fault-granted.tsv" server-fault-granted "$(tab "$SF_ID" product pass false n/a - passed)"
+: >ai_agents_internal/engagement.json
+server_fault server-fault-detected
+rm -f ai_agents_internal/engagement.json tests/contract/test_server_fault_fixture.py
+expect_events "$WORK/server-fault-detected.tsv" server-fault-detected "$(tab "$SF_ID" infrastructure fail false n/a - prerequisite-missing)"
 
 # (11) End-to-end runner against a local faulty target. A scaffold from `template select` +
 # `template scaffold` (non-default layout) runs ./run-tests.sh end to end: runner-lib.sh, the

@@ -73,7 +73,8 @@ lane plan selects and the run leaves out is reported as not executed (exit 15), 
 - **Resilience.** `fault_injector` (`qa.argus.fault_injector`) records the restore before
   injecting, always restores, and verifies the restore; a failed restore stops trusting the
   environment as an infrastructure failure. A server-side fault additionally needs
-  `ARGUS_FAULT_INJECTION=authorized`.
+  `ARGUS_FAULT_INJECTION=authorized`; inside an Argus engagement it runs only through
+  `./run-tests.sh`, which grants it after the chaos authorization and the exclusive fault window.
 
 `requirements.txt` pins version **floors** (lower bounds: `pytest>=8.2`, `playwright>=1.49,<2`, …), not exact versions — so two venvs built at different times can resolve different patch/minor releases. This is **not** byte-reproducible like the TS sibling's `npm ci` against a committed lockfile. For a reproducible install, freeze a lock once and install from it: `.venv/bin/python -m pip freeze > requirements.lock` (then `pip install -r requirements.lock`), or use `uv pip compile` / `uv.lock`. (Test-execution determinism — no retries, no rerun plugin — is separate and always holds.)
 

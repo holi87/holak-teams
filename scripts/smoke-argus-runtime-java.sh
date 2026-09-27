@@ -29,7 +29,7 @@ trap 'stop_target; rm -rf "$WORK"' EXIT
 # same holds for the runner library's inputs in the end-to-end section.
 unset ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY ARGUS_OUTCOME_FILE ARGUS_CONTRACT_SMOKE \
   ARGUS_API_ROUTE_PATTERN OPENAPI_PATH ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET \
-  ARGUS_FAULT_INJECTION ARGUS_READINESS_URLS ARGUS_TEST_ROOT ARGUS_AUTH_DIRECTORY ARGUS_RESET_TIMEOUT_SECONDS \
+  ARGUS_FAULT_INJECTION ARGUS_FAULT_INJECTION_GRANT ARGUS_READINESS_URLS ARGUS_TEST_ROOT ARGUS_AUTH_DIRECTORY ARGUS_RESET_TIMEOUT_SECONDS \
   ARGUS_VERIFY_TIMEOUT_SECONDS UI_URL PERF_BUDGET_MS SECURITY_ENABLED DB_URL
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
@@ -312,6 +312,46 @@ awk -F'\t' 'NF != 7 || index($1, "qa.contract.OraclesBehaviorSelfTest.") != 1 ||
   || { cat "$B" >&2; fail "a behaviour oracle self-test event is not a product pass"; }
 [ "$(cat "$ORACLES/reports/argus-adapter-status.txt" 2>/dev/null)" = "ok $behavior_oracle_cases" ] || fail "behaviour oracle self-test adapter status is not 'ok $behavior_oracle_cases'"
 if grep -Eq '127[.]0[.]0[.]1|overbooked|still serves' "$B"; then fail "a behaviour oracle self-test event carried test details"; fi
+
+# Inside an engagement the opt-in alone never injects a server fault: FaultInjector also needs
+# the grant runner-lib.sh issues after the chaos authorization, whether ARGUS_ENGAGEMENT_MANIFEST
+# names the engagement or its manifest sits above the Maven basedir.
+cat >"$ORACLES/src/test/java/qa/contract/ServerFaultProbeTest.java" <<'JAVA'
+package qa.contract;
+
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import qa.support.argus.FaultInjector;
+import qa.support.argus.FaultInjector.Fault;
+import qa.support.argus.FaultInjector.Scope;
+
+@Tag("contract-smoke")
+class ServerFaultProbeTest {
+    @Test
+    void a_server_fault() throws Exception {
+        FaultInjector.run(new Fault("probe-fault", Scope.SERVER, () -> { }, () -> { }, () -> { }), () -> null);
+    }
+}
+JAVA
+SF_ID=qa.contract.ServerFaultProbeTest.a_server_fault
+server_fault() {  # server_fault <label> [VAR=value ...]: one baseline run of the probe with the opt-in
+  local label="$1"
+  shift
+  rm -f "$ORACLES/reports/argus-adapter-status.txt" "$WORK/$label.tsv"
+  in_dir "$ORACLES" env ARGUS_RUNNER_MODE=baseline ARGUS_OUTCOME_FILE="$WORK/$label.tsv" ARGUS_FAULT_INJECTION=authorized "$@" \
+    "${MVN[@]}" -q test -Dtest=ServerFaultProbeTest >"$WORK/$label.log" 2>&1 || true
+  [ -f "$WORK/$label.tsv" ] || { tail -40 "$WORK/$label.log" >&2; fail "$label emitted no event"; }
+}
+server_fault server-fault-outside
+expect_event "$WORK/server-fault-outside.tsv" "$SF_ID" product pass false n/a - passed
+server_fault server-fault-named "ARGUS_ENGAGEMENT_MANIFEST=$WORK/engagement/ai_agents_internal/engagement.json"
+expect_event "$WORK/server-fault-named.tsv" "$SF_ID" infrastructure fail false n/a - prerequisite-missing
+server_fault server-fault-granted "ARGUS_ENGAGEMENT_MANIFEST=$WORK/engagement/ai_agents_internal/engagement.json" ARGUS_FAULT_INJECTION_GRANT=tyche
+expect_event "$WORK/server-fault-granted.tsv" "$SF_ID" product pass false n/a - passed
+: >"$ORACLES/ai_agents_internal/engagement.json"
+server_fault server-fault-detected
+rm -f "$ORACLES/ai_agents_internal/engagement.json" "$ORACLES/src/test/java/qa/contract/ServerFaultProbeTest.java"
+expect_event "$WORK/server-fault-detected.tsv" "$SF_ID" infrastructure fail false n/a - prerequisite-missing
 
 # The ADAPT-ME examples (compiled in section 1) teach exact oracles: one documented status,
 # never a class or a presence-only body check, a strict schema by operationId, a read-back

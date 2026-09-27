@@ -16,7 +16,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 # The runner reads these; a hermetic smoke never inherits them from its caller.
-unset ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET ARGUS_FAULT_INJECTION \
+unset ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET ARGUS_FAULT_INJECTION ARGUS_FAULT_INJECTION_GRANT \
   ARGUS_CONTRACT_SMOKE ARGUS_OUTCOME_FILE ARGUS_READINESS_URLS ARGUS_TEST_ROOT ARGUS_TODAY \
   ARGUS_RESET_TIMEOUT_SECONDS ARGUS_VERIFY_TIMEOUT_SECONDS ARGUS_AUTHORIZATION_MANIFEST \
   ARGUS_AUTHORIZATION_TARGET ARGUS_AUTHORIZATION_SOURCE_TRUST ARGUS_AUTHORIZATION_ACCOUNT \
@@ -443,7 +443,7 @@ evidence_expect exempt-mismatch exempt.tsv counterfactual-incomplete "$LIVE" "$R
 # Green baseline: hook order, lane selection, absolute outcome file, per-pass evidence.
 case_run green-baseline green 0 baseline
 called green-baseline "run baseline live api,ui"
-called green-baseline "env mode=baseline pass=live outcome=$WORK/green-baseline/reports/outcomes.raw.tsv fault="
+called green-baseline "env mode=baseline pass=live outcome=$WORK/green-baseline/reports/outcomes.raw.tsv fault= grant="
 called green-baseline "inventory only=1"
 called green-baseline "collect live"
 called green-baseline "post baseline"
@@ -649,8 +649,8 @@ lacks_reason selected-not-executed '^bug-uncovered$'
 # fixture, each with its own artifacts, then the evidence gate.
 case_run defect-evidence defect-evidence 0 defect-evidence
 called defect-evidence "run regression live api,ui"
-called defect-evidence "env mode=defect-evidence pass=live outcome=$WORK/defect-evidence/reports/outcomes.raw.tsv fault="
-called defect-evidence "env mode=defect-evidence pass=cf-tamper-2 outcome=$WORK/defect-evidence/reports/outcomes.raw.tsv fault="
+called defect-evidence "env mode=defect-evidence pass=live outcome=$WORK/defect-evidence/reports/outcomes.raw.tsv fault= grant="
+called defect-evidence "env mode=defect-evidence pass=cf-tamper-2 outcome=$WORK/defect-evidence/reports/outcomes.raw.tsv fault= grant="
 [ "$(call_order defect-evidence)" = "prepare|verify|inventory only=1|run regression live api,ui|collect live|run regression repeat api,ui|collect repeat|run regression cf-correct api,ui|collect cf-correct|run regression cf-tamper-1 api,ui|collect cf-tamper-1|run regression cf-tamper-2 api,ui|collect cf-tamper-2|post defect-evidence|" ] ||
   fail "defect-evidence ran its passes out of order: $(call_order defect-evidence)"
 for pass in live repeat cf-correct cf-tamper-1 cf-tamper-2; do
@@ -767,7 +767,7 @@ prepare "$label" green
 engagement_env "$label" fault
 run_case "$label" 0 baseline "${ENGAGEMENT_ENV[@]}" ARGUS_ENGAGEMENT_LANE=tyche ARGUS_FAULT_INJECTION=authorized \
   ARGUS_AUTHORIZATION_RATE=5 ARGUS_AUTHORIZATION_CONCURRENCY=1 ARGUS_AUTHORIZATION_TOTAL_REQUESTS=50 ARGUS_AUTHORIZATION_DURATION=30
-called "$label" "env mode=baseline pass=live outcome=$WORK/$label/reports/outcomes.raw.tsv fault=authorized"
+called "$label" "env mode=baseline pass=live outcome=$WORK/$label/reports/outcomes.raw.tsv fault=authorized grant=tyche"
 [ "$(cli_log "$label" | sed -n 2p)" = "authorization check --manifest $WORK/engagement/ai_agents_internal/authorization.json --lane tyche --action chaos --target file://$READY --source-trust manifest --resource fault-injection --rate 5 --concurrency 1 --total-requests 50 --duration 30" ] ||
   fail "$label did not request the chaos authorization decision: $(cli_log "$label")"
 
@@ -784,5 +784,51 @@ prepare "$label" reset-ok
 run_case "$label" 0 full-suite "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" ARGUS_ENVIRONMENT_RESET=execute
 has_event "$label" environment infrastructure pass false n/a - environment-reset-executed
 [ -z "$(cli_log "$label")" ] || fail "$label consulted the engagement CLI outside an engagement"
+
+# The engagement is detected without the caller's help: with its manifest in the harness root
+# (as in a real artifact root) and ARGUS_ENGAGEMENT_MANIFEST unset, an opt-in still needs the
+# lane, the window, and the decision, and the manifest reaches the CLI and the native hooks.
+detected_engagement() { : >"$WORK/$1/ai_agents_internal/engagement.json"; }
+label=detected-fault-no-lane
+prepare "$label" green
+detected_engagement "$label"
+run_case "$label" 13 baseline "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" ARGUS_FAULT_INJECTION=authorized
+has_event "$label" fault-injection policy denied false n/a - fault-injection-unauthorized
+not_called "$label" '.'
+[ -z "$(cli_log "$label")" ] || fail "$label called the CLI without a lane"
+
+label=detected-fault-allowed
+prepare "$label" green
+detected_engagement "$label"
+run_case "$label" 0 baseline "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-fault.json" \
+  ARGUS_ENGAGEMENT_LANE=tyche ARGUS_FAULT_INJECTION=authorized
+called "$label" "env mode=baseline pass=live outcome=$WORK/$label/reports/outcomes.raw.tsv fault=authorized grant=tyche"
+[ "$(cli_log "$label" | sed -n 1p)" = "engagement status --manifest $WORK/$label/ai_agents_internal/engagement.json" ] ||
+  fail "$label did not read the detected engagement: $(cli_log "$label")"
+[ "$(cli_log "$label" | sed -n 2p | cut -d' ' -f1-8)" = "authorization check --manifest $WORK/$label/ai_agents_internal/authorization.json --lane tyche --action chaos" ] ||
+  fail "$label did not request the chaos decision from the detected engagement: $(cli_log "$label")"
+
+label=detected-reset-no-window
+prepare "$label" reset-ok
+detected_engagement "$label"
+run_case "$label" 13 full-suite "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-none.json" \
+  ARGUS_ENGAGEMENT_LANE=odysseus ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment policy denied false n/a - environment-reset-unauthorized
+not_called "$label" '^reset$'
+
+# A harness inside one engagement never answers to another engagement's manifest.
+label=foreign-manifest
+prepare "$label" green
+detected_engagement "$label"
+engagement_env "$label" fault
+run_case "$label" 13 baseline "${ENGAGEMENT_ENV[@]}" ARGUS_ENGAGEMENT_LANE=tyche ARGUS_FAULT_INJECTION=authorized
+has_event "$label" fault-injection policy denied false n/a - fault-injection-unauthorized
+[ -z "$(cli_log "$label")" ] || fail "$label consulted a foreign engagement: $(cli_log "$label")"
+
+# Only this run's own authorization issues the injectors' grant; an inherited one is dropped.
+label=inherited-grant
+prepare "$label" green
+run_case "$label" 0 baseline ARGUS_FAULT_INJECTION=authorized ARGUS_FAULT_INJECTION_GRANT=forged
+called "$label" "env mode=baseline pass=live outcome=$WORK/$label/reports/outcomes.raw.tsv fault=authorized grant="
 
 printf 'PASS  Argus runner gates: lane plan, environment baseline, inventory quarantine, inventory gate, adapter status, defect-evidence passes and evidence gate, contract smoke, and engagement opt-in authorization\n'

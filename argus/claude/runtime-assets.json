@@ -74,8 +74,8 @@
       "source": "argus/RUNNER-CONTRACT.md",
       "destination": "references/RUNNER-CONTRACT.md",
       "files": 1,
-      "bytes": 27992,
-      "sha256": "f1a23bec9e8c39fd2713ceb59acdef5c50aefc6f521fe580a0ac92e69657b7c7"
+      "bytes": 28916,
+      "sha256": "78e07ba52c3647904a17beb08571371490d5e2d18d73c8aec81f6d2b033bfbfc"
     },
     {
       "id": "template-contract",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 414683,
-      "sha256": "80e085c30f8d1f04f34df1ef5d8716a2ca88b08c0ac14d8ef59ec6c52c029e99"
+      "bytes": 417893,
+      "sha256": "d236285e3a38a9a1ad94718bbf493a4eeebe506359dc295407be39529b6aa34a"
     },
     {
       "id": "common-template",
@@ -263,8 +263,8 @@
       "source": "argus/framework-template-common",
       "destination": "templates/common",
       "files": 25,
-      "bytes": 98963,
-      "sha256": "ca229debc2cb9e955afc766da659233f4a70f8d7ea09c9a71dc48358ece09449"
+      "bytes": 100955,
+      "sha256": "cfd0cf04b9c5bac86546e5e73d9c8ce79cfbd9f524cdd9b163a553e134790d22"
     },
     {
       "id": "typescript-template",
@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 61,
-      "bytes": 444909,
-      "sha256": "0bed307381d61e9954ac9808c032d38a1fe65290d1f5525bc82f8ec100942db6"
+      "bytes": 447779,
+      "sha256": "8067e04453238dbc0c30a6e810ddfee4d6136658acd91506a40b36e1367ed7e8"
     },
     {
       "id": "java-template",
@@ -281,8 +281,8 @@
       "source": "argus/framework-template-java",
       "destination": "templates/java",
       "files": 57,
-      "bytes": 457940,
-      "sha256": "2435ca8906a60676c0fec100fbb79a5a3778ce72a3083d3ae6184e13c99b15e2"
+      "bytes": 459705,
+      "sha256": "ff85ab4faad9d66acdecb2500de9f079ad6de025f01ea74b0c233b07ae402cb0"
     },
     {
       "id": "python-template",
@@ -290,8 +290,8 @@
       "source": "argus/framework-template-python",
       "destination": "templates/python",
       "files": 55,
-      "bytes": 404034,
-      "sha256": "797be38b54a2d6b9f3a4ee7023c2a43a5b6c3986ef1c42497e42f8b37f3ac57b"
+      "bytes": 406454,
+      "sha256": "daa7546f2ae0f7924706bb82b3288b7a453836ead2a0629d61f4bab297325916"
     }
   ],
   "buildOnly": [

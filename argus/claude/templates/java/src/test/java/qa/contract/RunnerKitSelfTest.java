@@ -110,9 +110,12 @@ class RunnerKitSelfTest {
     @Test
     void a_server_fault_needs_argus_fault_injection_authorized_before_anything_is_injected() throws Exception {
         List<String> calls = new CopyOnWriteArrayList<>();
-        // The runner never sets the grant for a contract smoke; an engagement sets it only with
-        // the chaos grant and the exclusive fault window.
-        if ("authorized".equals(System.getenv("ARGUS_FAULT_INJECTION"))) {
+        // The runner never sets the opt-in for a contract smoke; inside an engagement the fault
+        // also needs the grant runner-lib.sh issues only with the chaos grant and the exclusive
+        // fault window.
+        String grant = System.getenv("ARGUS_FAULT_INJECTION_GRANT");
+        boolean granted = !FaultInjector.insideEngagement() || (grant != null && grant.matches("[a-z][a-z0-9-]*"));
+        if ("authorized".equals(System.getenv("ARGUS_FAULT_INJECTION")) && granted) {
             FaultInjector.run(recordedFault(calls, Scope.SERVER), () -> calls.add("body"));
             assertEquals(List.of("inject", "body", "restore", "verify"), calls);
         } else {

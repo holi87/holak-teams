@@ -141,10 +141,42 @@ argus_readiness() {
   done
 }
 
-# Inside an Argus engagement (ARGUS_ENGAGEMENT_MANIFEST set) an environment reset or a
-# server-side fault injection needs both the exclusive engagement window and an explicit
-# authorization decision; the opt-in variable alone is never enough. Every missing input
-# refuses. Outside an engagement the opt-in of the operator who owns the target stands.
+# Inside an Argus engagement an environment reset or a server-side fault injection needs both
+# the exclusive engagement window and an explicit authorization decision; the opt-in variable
+# alone is never enough. Every missing input refuses. Outside an engagement the opt-in of the
+# operator who owns the target stands.
+argus_physical_file() {
+  local directory
+  directory="$(cd "$(dirname "$1")" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/%s\n' "$directory" "$(basename "$1")"
+}
+
+# Prints the engagement manifest this run belongs to. The engagement is detected without the
+# caller's help, as argus-assets detects it: an ai_agents_internal/engagement.json in the
+# harness root or an ancestor. ARGUS_ENGAGEMENT_MANIFEST names one explicitly, and must then be
+# the one that holds the harness. Returns 1 outside any engagement and 2 for a conflict.
+argus_engagement_manifest() {
+  local cursor="$ARGUS_ROOT" found="" named
+  while [ -n "$cursor" ]; do
+    if [ -e "$cursor/ai_agents_internal/engagement.json" ]; then found="$cursor/ai_agents_internal/engagement.json"; break; fi
+    [ "$cursor" != / ] || break
+    cursor="$(dirname "$cursor")"
+  done
+  if [ -z "${ARGUS_ENGAGEMENT_MANIFEST:-}" ]; then
+    [ -n "$found" ] || return 1
+    printf '%s\n' "$found"
+    return 0
+  fi
+  if [ -n "$found" ]; then
+    named="$(argus_physical_file "$ARGUS_ENGAGEMENT_MANIFEST")" || named=""
+    if [ "$named" != "$(argus_physical_file "$found")" ]; then
+      echo "ARGUS AUTHORIZATION: ARGUS_ENGAGEMENT_MANIFEST is not the engagement that holds this harness" >&2
+      return 2
+    fi
+  fi
+  printf '%s\n' "$ARGUS_ENGAGEMENT_MANIFEST"
+}
+
 argus_engagement_authorized() {
   local resource="$1" action="$2" label="$3" cli lane target authorization holder state
   local args=()
@@ -205,21 +237,32 @@ argus_engagement_authorized() {
   return 0
 }
 
+# A fault opt-in the engagement authorizes also exports ARGUS_FAULT_INJECTION_GRANT (the
+# authorized lane): inside an engagement the packaged fault injectors accept a server fault
+# only with it, so a native run started with the opt-in but without this library never
+# injects. argus_main clears any inherited grant first.
 argus_engagement_optin() {
-  [ -n "${ARGUS_ENGAGEMENT_MANIFEST:-}" ] || return 0
+  local manifest status=0
   case "$1" in
-    reset)
-      [ "${ARGUS_ENVIRONMENT_RESET:-}" = execute ] || return 0
-      argus_call argus_engagement_authorized reset destructive environment-reset
-      [ "$ARGUS_CALL_STATUS" -ne 0 ] || return 0
-      argus_emit environment policy denied false n/a - environment-reset-unauthorized
-      ;;
-    fault)
-      [ "${ARGUS_FAULT_INJECTION:-}" = authorized ] || return 0
-      argus_call argus_engagement_authorized fault chaos fault-injection
-      [ "$ARGUS_CALL_STATUS" -ne 0 ] || return 0
-      argus_emit fault-injection policy denied false n/a - fault-injection-unauthorized
-      ;;
+    reset) [ "${ARGUS_ENVIRONMENT_RESET:-}" = execute ] || return 0 ;;
+    fault) [ "${ARGUS_FAULT_INJECTION:-}" = authorized ] || return 0 ;;
+  esac
+  manifest="$(argus_engagement_manifest)" || status=$?
+  [ "$status" -ne 1 ] || return 0
+  if [ "$status" -eq 0 ]; then
+    export ARGUS_ENGAGEMENT_MANIFEST="$manifest"
+    case "$1" in
+      reset) argus_call argus_engagement_authorized reset destructive environment-reset ;;
+      fault) argus_call argus_engagement_authorized fault chaos fault-injection ;;
+    esac
+    if [ "$ARGUS_CALL_STATUS" -eq 0 ]; then
+      if [ "$1" = fault ]; then export ARGUS_FAULT_INJECTION_GRANT="$ARGUS_ENGAGEMENT_LANE"; fi
+      return 0
+    fi
+  fi
+  case "$1" in
+    reset) argus_emit environment policy denied false n/a - environment-reset-unauthorized ;;
+    fault) argus_emit fault-injection policy denied false n/a - fault-injection-unauthorized ;;
   esac
   argus_finish 1
 }
@@ -438,6 +481,8 @@ argus_main() {
   ARGUS_PASSTHROUGH=("$@")
 
   export ARGUS_RUNNER_MODE="$ARGUS_MODE"
+  # Only this run's own fault authorization may hand the injectors a grant.
+  unset ARGUS_FAULT_INJECTION_GRANT
   ARGUS_EVENTS="${ARGUS_OUTCOME_FILE:-$ARGUS_ROOT/reports/outcomes.raw.tsv}"
   case "$ARGUS_EVENTS" in /*) ;; *) ARGUS_EVENTS="$ARGUS_ROOT/$ARGUS_EVENTS" ;; esac
   export ARGUS_OUTCOME_FILE="$ARGUS_EVENTS"

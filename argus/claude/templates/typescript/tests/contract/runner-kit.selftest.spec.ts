@@ -11,6 +11,17 @@ import { cleanupCreatedResources, CreatedResource } from '../../src/fixtures/fix
 
 const SECRET = 'argus-never-print-me';
 
+// Saves the named environment variables and returns a function that restores them.
+function saveEnv(...names: string[]): () => void {
+  const saved = names.map((name) => [name, process.env[name]] as const);
+  return () => {
+    for (const [name, value] of saved) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  };
+}
+
 async function rejection(promise: Promise<unknown>): Promise<Error> {
   return promise.then(
     () => {
@@ -75,7 +86,7 @@ test.describe('runner kit', { tag: '@contract-smoke' }, () => {
   });
 
   test('a server fault needs ARGUS_FAULT_INJECTION=authorized before anything is injected', async () => {
-    const previous = process.env.ARGUS_FAULT_INJECTION;
+    const restore = saveEnv('ARGUS_FAULT_INJECTION', 'ARGUS_FAULT_INJECTION_GRANT');
     try {
       for (const value of [undefined, '', 'yes']) {
         if (value === undefined) delete process.env.ARGUS_FAULT_INJECTION;
@@ -86,12 +97,36 @@ test.describe('runner kit', { tag: '@contract-smoke' }, () => {
         expect(calls).toEqual([]);
       }
       process.env.ARGUS_FAULT_INJECTION = 'authorized';
+      // The runner's grant as well, so the case holds inside and outside an engagement alike.
+      process.env.ARGUS_FAULT_INJECTION_GRANT = 'tyche';
       const calls: string[] = [];
       await run(recordedFault(calls, [], 'server'), async () => undefined);
       expect(calls).toEqual(['inject', 'restore', 'verify']);
     } finally {
-      if (previous === undefined) delete process.env.ARGUS_FAULT_INJECTION;
-      else process.env.ARGUS_FAULT_INJECTION = previous;
+      restore();
+    }
+  });
+
+  test('inside an engagement a server fault also needs the runner grant', async () => {
+    const restore = saveEnv('ARGUS_FAULT_INJECTION', 'ARGUS_FAULT_INJECTION_GRANT', 'ARGUS_ENGAGEMENT_MANIFEST');
+    try {
+      process.env.ARGUS_FAULT_INJECTION = 'authorized';
+      process.env.ARGUS_ENGAGEMENT_MANIFEST = '/argus-selftest/ai_agents_internal/engagement.json';
+      for (const grant of [undefined, '', 'Not-A-Lane']) {
+        if (grant === undefined) delete process.env.ARGUS_FAULT_INJECTION_GRANT;
+        else process.env.ARGUS_FAULT_INJECTION_GRANT = grant;
+        const calls: string[] = [];
+        const error = await rejection(run(recordedFault(calls, [], 'server'), async () => undefined));
+        expect(error).toBeInstanceOf(ArgusPrerequisiteError);
+        expect(error.message).toContain('runner-lib');
+        expect(calls).toEqual([]);
+      }
+      process.env.ARGUS_FAULT_INJECTION_GRANT = 'tyche';
+      const calls: string[] = [];
+      await run(recordedFault(calls, [], 'server'), async () => undefined);
+      expect(calls).toEqual(['inject', 'restore', 'verify']);
+    } finally {
+      restore();
     }
   });
 

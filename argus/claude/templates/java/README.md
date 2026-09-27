@@ -76,7 +76,8 @@ but every test the lane plan selects and the run leaves out is reported as not e
 - **Resilience.** `qa.support.argus.FaultInjector` records the restore before injecting,
   always restores, and verifies the restore; a failed restore stops the run as an
   infrastructure failure. A server-side fault additionally needs
-  `ARGUS_FAULT_INJECTION=authorized`.
+  `ARGUS_FAULT_INJECTION=authorized`; inside an Argus engagement it runs only through
+  `./run-tests.sh`, which grants it after the chaos authorization and the exclusive fault window.
 
 Reports: `target/surefire-reports/*.xml` (per class, CI-native) + `reports/summary.json`
 (tooling) + `reports/summary.html` (humans). The aggregated summary is written in-process by

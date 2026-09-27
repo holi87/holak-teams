@@ -384,9 +384,12 @@ manifest and belong to `argus-assets automation-review check`. Other modes and c
 smokes skip the gate: only a `full-suite` result carries `deliveryGate: true`, and
 `defect-evidence` and `candidate-regression` runs are the repair loop a `BLOCK` asks for.
 
-**Engagement opt-ins.** Inside an Argus engagement (`ARGUS_ENGAGEMENT_MANIFEST` set),
+**Engagement opt-ins.** Inside an Argus engagement,
 `ARGUS_ENVIRONMENT_RESET=execute` and `ARGUS_FAULT_INJECTION=authorized` are requests, not
-permissions. When the reset opt-in is set, before the environment gate (action
+permissions. The library detects the engagement without the caller's help, as
+`argus-assets` does: an `ai_agents_internal/engagement.json` in the harness root or an
+ancestor. `ARGUS_ENGAGEMENT_MANIFEST` may name it and must then be that same file, or the
+opt-in is refused. When the reset opt-in is set, before the environment gate (action
 `destructive`, exclusive window `reset`), and when the fault opt-in is set, before any
 native hook (action `chaos`, exclusive window `fault`), the library reads
 `argus-assets engagement status` and requires the window to be held, then requires an
@@ -398,5 +401,13 @@ engagement manifest), `--source-trust` from `ARGUS_AUTHORIZATION_SOURCE_TRUST` (
 (default `environment:reset` for a reset), `_RATE`, `_CONCURRENCY`, `_TOTAL_REQUESTS`, and
 `_DURATION`. A missing CLI, lane, target, window, or decision refuses the run with
 `environment policy denied environment-reset-unauthorized` or `fault-injection policy
-denied fault-injection-unauthorized` (exit 13) before anything destructive starts. Outside
-an engagement the opt-in of the operator who owns the target stands.
+denied fault-injection-unauthorized` (exit 13) before anything destructive starts. An
+allowed fault opt-in exports `ARGUS_FAULT_INJECTION_GRANT` (the authorized lane) to the
+native hooks, after the library has cleared any inherited value. Inside an engagement the
+packaged fault injectors refuse a server fault without that grant as `prerequisite-missing`,
+so a native run started with the opt-in but without the library never injects. The packaged
+`PreToolUse` guard (`GUARD-ENGAGEMENT-OPT-IN`) admits a Bash command that names either opt-in
+only as one standalone invocation of the engagement's `run-tests.sh` that sets
+`ARGUS_ENGAGEMENT_LANE` to the calling lane and names no other engagement's manifests, and it
+refuses every command that names `ARGUS_FAULT_INJECTION_GRANT`. Outside an engagement the
+opt-in of the operator who owns the target stands.

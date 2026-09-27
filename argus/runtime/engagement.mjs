@@ -1459,6 +1459,8 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
   let paths = [];
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/i.test(tool)) paths = collectDirectPaths(toolInput);
   else if (tool === 'Bash') {
+    const optIn = classifyEngagementOptIn(command, manifest, manifestPath, payload, cwd, commandSha256);
+    if (optIn) return optIn;
     const packaged = classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256);
     if (packaged?.decision) return packaged.decision;
     if (packaged?.paths) paths = packaged.paths;
@@ -2490,6 +2492,51 @@ function metacharacterHint(command) {
   const found = PACKAGED_COMMAND_METACHARACTER.exec(command)?.[0];
   if (!found) return '';
   return `; it contains ${METACHARACTER_NAMES[found]}${/(?:^|\s)--json\s/.test(command) ? ', which an inline --json value must write as a JSON \\u escape' : ''}`;
+}
+
+// Engagement opt-ins (RUNNER-CONTRACT.md). ARGUS_FAULT_INJECTION and ARGUS_ENVIRONMENT_RESET
+// reach the target only through the engagement's own run-tests.sh, whose runner library asks
+// for the exclusive window and the authorization decision of the calling lane, and only that
+// library issues ARGUS_FAULT_INJECTION_GRANT to the fault injectors. A command that names an
+// opt-in must therefore be one standalone run-tests.sh invocation that assigns
+// ARGUS_ENGAGEMENT_LANE the caller's own lane and names no other engagement's manifests.
+const ENGAGEMENT_OPT_IN = /ARGUS_(?:FAULT_INJECTION|ENVIRONMENT_RESET)/;
+const ENVIRONMENT_ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
+
+function classifyEngagementOptIn(command, manifest, manifestPath, payload, cwd, commandSha256) {
+  const shellResolved = command.replace(/\\([\s\S])/g, '$1').replace(/["']/g, '');
+  if (!ENGAGEMENT_OPT_IN.test(shellResolved)) return null;
+  const deny = (reason) => guardDecision('deny', 'GUARD-ENGAGEMENT-OPT-IN', reason, [], commandSha256);
+  if (/ARGUS_FAULT_INJECTION_GRANT/.test(shellResolved)) {
+    return deny('ARGUS_FAULT_INJECTION_GRANT is issued only by scripts/runner-lib.sh after the chaos authorization');
+  }
+  if (PACKAGED_COMMAND_METACHARACTER.test(command) || command.includes('$')) {
+    return deny(`an engagement opt-in must be one standalone run-tests.sh invocation without expansions${metacharacterHint(command)}`);
+  }
+  const tokens = shellTokens(command.trim());
+  const assigned = new Map();
+  let index = tokens[0] === 'env' ? 1 : 0;
+  for (let match; index < tokens.length && (match = ENVIRONMENT_ASSIGNMENT.exec(tokens[index])); index += 1) {
+    if (assigned.has(match[1])) return deny(`an engagement opt-in command assigns ${match[1]} twice`);
+    assigned.set(match[1], match[2].replace(/^(["'])([\s\S]*)\1$/, '$2'));
+  }
+  if (tokens[index] === 'bash') index += 1;
+  const runner = tokens[index];
+  const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
+  const samePhysical = (path, expected) => {
+    try { return resolvePhysical(path, cwd) === resolvePhysical(expected, cwd); } catch { return false; }
+  };
+  if (!runner || basename(runner) !== 'run-tests.sh' || !samePhysical(runner, join(manifest.artifactRoot, 'run-tests.sh'))) {
+    return deny("an engagement opt-in reaches the target only through the engagement's run-tests.sh");
+  }
+  const lane = guardLaneIdentity(payload);
+  if (!lane || assigned.get('ARGUS_ENGAGEMENT_LANE') !== lane) {
+    return deny('an engagement opt-in must set ARGUS_ENGAGEMENT_LANE to the calling lane');
+  }
+  for (const [name, expected] of [['ARGUS_ENGAGEMENT_MANIFEST', activeManifest], ['ARGUS_AUTHORIZATION_MANIFEST', join(dirname(activeManifest), 'authorization.json')]]) {
+    if (assigned.has(name) && !samePhysical(assigned.get(name), expected)) return deny(`${name} must name the active engagement's file`);
+  }
+  return guardDecision('allow', 'GUARD-ALLOW', "the engagement's runner decides the opt-in for the calling lane", [], commandSha256);
 }
 
 function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256) {

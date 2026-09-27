@@ -7,6 +7,8 @@ import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,9 +26,10 @@ import java.util.regex.Pattern;
  *   <li>A {@link Scope#SERVER} fault changes the shared target, so it needs the caller's
  *       explicit {@code ARGUS_FAULT_INJECTION=authorized}; anything else throws
  *       {@link ArgusPrerequisiteError} before anything is injected. Inside an engagement
- *       {@code scripts/runner-lib.sh} accepts that value only with the chaos grant and the
- *       exclusive fault window. A {@link Scope#CLIENT} fault stays inside the test process
- *       ({@code page.route}, a stub) and needs no grant.</li>
+ *       ({@link #insideEngagement()}) that value is only a request: the fault also needs
+ *       {@code ARGUS_FAULT_INJECTION_GRANT}, which {@code scripts/runner-lib.sh} sets only after
+ *       the chaos grant and the exclusive fault window. A {@link Scope#CLIENT} fault stays
+ *       inside the test process ({@code page.route}, a stub) and needs no grant.</li>
  *   <li>The restore is recorded before {@code inject} runs, so a partial injection is undone
  *       too.</li>
  *   <li>{@code restore} runs in every case, then {@code verifyRestored} proves the target is
@@ -77,6 +80,7 @@ public final class FaultInjector implements ParameterResolver, AfterEachCallback
     }
 
     private static final Pattern FAULT_NAME = Pattern.compile("^[a-z0-9][a-z0-9-]{0,63}$");
+    private static final Pattern LANE = Pattern.compile("^[a-z][a-z0-9-]*$");
     private static final Namespace NAMESPACE = Namespace.create(FaultInjector.class);
     private static final String INJECTOR = "injector";
     private static final AtomicInteger ACTIVE = new AtomicInteger();
@@ -231,5 +235,24 @@ public final class FaultInjector implements ParameterResolver, AfterEachCallback
         if (!"authorized".equals(ArgusPrerequisiteError.requireEnv("ARGUS_FAULT_INJECTION"))) {
             throw new ArgusPrerequisiteError("server-side fault " + name + " requires ARGUS_FAULT_INJECTION=authorized");
         }
+        String grant = System.getenv("ARGUS_FAULT_INJECTION_GRANT");
+        if (insideEngagement() && (grant == null || !LANE.matcher(grant).matches())) {
+            throw new ArgusPrerequisiteError("server-side fault " + name + " inside an Argus engagement requires the grant"
+                    + " scripts/runner-lib.sh issues after the chaos authorization; run it through run-tests.sh");
+        }
+    }
+
+    /**
+     * Whether this run belongs to an Argus engagement: {@code ARGUS_ENGAGEMENT_MANIFEST} is set, or
+     * an {@code ai_agents_internal/engagement.json} sits in the working directory (the Maven
+     * basedir) or an ancestor, as {@code argus-assets} finds one.
+     */
+    public static boolean insideEngagement() {
+        String manifest = System.getenv("ARGUS_ENGAGEMENT_MANIFEST");
+        if (manifest != null && !manifest.isEmpty()) return true;
+        for (Path cursor = ArgusEvents.root(); cursor != null; cursor = cursor.getParent()) {
+            if (Files.exists(cursor.resolve("ai_agents_internal").resolve("engagement.json"))) return true;
+        }
+        return false;
     }
 }
