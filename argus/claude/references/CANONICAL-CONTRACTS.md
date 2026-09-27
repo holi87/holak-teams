@@ -22,7 +22,7 @@ match with the engagement manifest.
 | `argus/surface-inventory@1` | `solution/surface-inventory.json` | Kalchas | Discovered UI/API/event/data denominator, risk basis, accessibility, and discovery evidence. |
 | `argus/coverage-observations@2` | `solution/coverage-observations.json` | Kleio | Deterministically ordered per-lane observations keyed by `<lane>:<surfaceId>`: cited execution (runner-result evidence with a `caseId`, or a direct capture that names the surface), assertion and control, outcome, and case evidence plus ledger defect references; no `executed`, `meaningful`, or `defects` flag exists, so execution and assertion quality are derived, never declared. |
 | `argus/coverage-result@2` | `solution/coverage-result.json` | Kleio | Traceable discovery, evidence-derived per-surface flags (`executed`, `asserted`, `evidenced`, `automated`), risk-weighted execution, assertion, evidence, and automated-execution ratios, unexecuted critical surfaces, the automation-status runner-case mapping state (`verified`, `unverified`, `not-applicable`), scope, and ledger-derived defect outcomes that never score. See `COVERAGE-CONTRACT.md`. |
-| `argus/final-summary@1` | `solution/final-summary.json` | Kleio | Engagement outcome, counts, source contracts, final narrative. |
+| `argus/final-summary@2` | `solution/final-summary.json` | Kleio | Engagement outcome with sorted `statusReasons`, per-status bug counts with a confirmed + suspected headline, regression wiring, the likely-but-unproven findings, the automation-review verdict, the runner outcome, required surface-derived coverage, source contracts, and Kleio's narrative; the merge derives every fact. |
 | `argus/automation-review@1` | `solution/automation-review.json` | Aristarchus | Append-only APPROVE/BLOCK review rounds (`REV-NN`), each bound to the digest of the test corpus it judged, with blockers, warnings, resolved blockers, uncovered confirmed bugs, and evidence commands. |
 
 Every solution document has an exact `$schema` ID, its matching `schemaVersion`, and the
@@ -51,6 +51,7 @@ Argus 5 accepts only the current forms of these four collections: lane-plan,
 automation-status, and coverage-observations `@2`, evidence-reference `@3`. The retired
 single-record `@1` schemas, `argus/evidence-reference@2`, and their migrations are absent.
 `argus/coverage-result@1` is retired with them; coverage-result is read only at `@2`.
+`argus/final-summary@1` is retired as well; the final summary is read only at `@2`.
 Other solution contracts keep their current version. Active older engagements must finish
 with their original runtime before upgrading.
 
@@ -156,7 +157,7 @@ credentials. Keep credentials, tokens, and connection strings out of `summary` a
 | Coverage observations | `observations[]`: `observationId`, `lane`, `surfaceId`, `executions`, `assertions`, `evidenceIds`, `defectRefs`, `cases` | One immutable record per lane and surface, merged by `observationId` | Inventory link; every execution, assertion, control, outcome, and case citation resolves to a registered `EVD-NNNN`, every runner-result execution to an executed runner case (mapped to the surface by the merged automation status), and every defect reference to a ledger ID or origin. |
 | Coverage result | `discovery`, `overall`, `lanes`, `surfaces`, `criticalUnexecuted`, `runnerCaseMapping`, `scopedOutcomes`, `defectOutcomes` | Deterministically recalculated from canonical inputs, including the merged automation status | Exact input schema IDs (inventory, observations, and the evidence registry and bug ledger when present) and stable surface/evidence links; `runnerCaseMapping` is `verified` only when a merged automation status mapped every credited runner case; defect score contribution is always zero. |
 | Model escalation request | `engagementId`, `dispatchId`, `attempt`, `agent`, `signal`, `checkpointRef`, `resumable` | Worker stops; controller validates, routes, records prior-attempt telemetry, and rebinds the active allocation with `engagement start-attempt`; it replaces the consumed token with the returned token before opening the next thread | `argus/model-escalation-request@1`, current engagement state, the prior selected decision, and the referenced monotonic checkpoint. The signal is worker-declared only; `no-artifact` and `zero-candidates` are invalid here. Pre-spawn `model-unavailable` instead uses an availability binding, and a controller-observed outcome uses an outcome binding. |
-| Final summary | `status`, `counts`, `runner`, `sourceSchemas`, `summary`, `generatedAt` | Terminal `completed`, `degraded`, or `blocked` | All linked source schemas, runner categories, and final barrier/merge evidence. |
+| Final summary | Kleio: `status`, `summary`, `generatedAt`. Merge-derived and overwritten: `statusReasons`, `counts`, `unproven`, `automationReview`, `runner`, `coverage`, `sourceSchemas` | Terminal `completed`, `degraded`, or `blocked`, never better than the derived status ceiling | `headline` = confirmed + suspected; `unproven` lists exactly the suspected and needs-oracle rows; `completed` carries no status reason; every fact re-derived from the merge-verified canonical inputs and `reports/argus-runner-result.json`. |
 | Automation review | `reviews[]`: `reviewId`, `round`, `supersedes`, `verdict`, `reviewedAt`, `corpus`, `reviewedCommit`, `blockers`, `warnings`, `resolved`, `uncoveredConfirmedBugs`, `evidenceCommands` | `pending → approved/blocked`, `blocked → approved`, and `approved → blocked` when a stale corpus is re-reviewed; a published round never changes | Contiguous `REV-NN` rounds, each superseding its predecessor; `corpus.sha256` equals `argus-assets automation-review digest` at merge time; each round's `resolved` accounts for every blocker of the round before it. |
 
 Only the controller changes coordination state: worker allocation, token generation,
@@ -334,3 +335,52 @@ corpus) or `NOT-APPLICABLE` (Aristarchus is not dispatchable and nothing is merg
 for an invalid manifest, state, review record, or corpus. `--emit-gate` writes
 `verdict=<status>`, `reviewId=<id|->`, and `corpusSha256=<reviewed digest|->` lines through the
 active-engagement write guard; it never writes a lease token.
+
+## Final summary in 5.0
+
+`argus/final-summary@2` at `solution/final-summary.json` is Kleio's canonical record, but Kleio
+owns only its narrative (`summary`, `generatedAt`) and the status she proposes. She builds her
+fragment from `argus-assets engagement report-facts --manifest <engagement.json> [--output
+<json|->]`, which is read-only, takes no lease token, and prints the derived fields plus their
+`statusCeiling`. The merge derives the same facts again, overwrites `counts`, `unproven`,
+`automationReview`, `runner`, `coverage`, `sourceSchemas`, and `statusReasons`, and sets the
+status to the worse of Kleio's status and the ceiling (`completed` < `degraded` < `blocked`); it
+never raises a status. Because Kleio may supersede her fragment, re-running the merge after a
+late ledger, coverage, runner, or corpus change re-derives every fact.
+
+Each input counts only once merged and only while its file matches its merge digest:
+
+- `counts.bugs` from `solution/bug-ledger.json` (required while Minos is dispatchable;
+  otherwise every bug count is 0): `confirmed`, `suspected`, `needsOracle`, `duplicate`,
+  `rejected`, and `headline` = confirmed + suspected;
+- `unproven`: every `suspected` and `needs-oracle` row, sorted by ID, with its
+  `missingProof.elements` as `missing` and its `missingProof.detail`, so no likely finding is
+  dropped from the report;
+- `counts.regression`: `wired` counts the confirmed bugs covered by an `implemented`,
+  `passed`, or `failed` automation-status test; `uncovered` lists the rest; `counts.automated`
+  counts those tests and `counts.evidence` the canonical evidence references (0 when unmerged);
+- `automationReview` from `argus-assets automation-review check` semantics;
+- `runner`: mode, status, exit code, categories, and `deliveryGate` copied from a valid
+  `reports/argus-runner-result.json`, which a non-null runner requires; `runner: null` is valid
+  only in Mode B with no automated test;
+- `coverage` (required) from the merged `argus/coverage-result@2`: discovery completeness, the
+  overall ratios including `automatedExecution`, the scoped-outcome count,
+  `criticalUnexecuted`, and `caseDepth` when recorded;
+- `sourceSchemas` in the order ledger, evidence, automation status, runner result, coverage
+  result, automation review, for the inputs present.
+
+| Status reason | Ceiling | Condition |
+|---|---|---|
+| `automation-review-blocked`, `automation-review-stale`, `automation-review-absent` | `blocked` | The review is BLOCK, an APPROVE of a changed corpus, or missing while Aristarchus is dispatchable. |
+| `confirmed-bug-without-regression` | `blocked` | A runner ran and a confirmed bug has no wired regression. |
+| `critical-surface-unexecuted` | `degraded` | `coverage.criticalUnexecuted` is non-empty. |
+| `case-depth-gaps` | `degraded` | Case depth is missing, not fully planned, or has gaps or unplanned surfaces. |
+| `runner-not-delivery-gate` | `degraded` | A runner result exists but is not a delivery gate. |
+| `runner-exit-11` … `runner-exit-15` | `degraded` | The runner exited with an automation-defect, infrastructure, policy-denial, invalid-input, or unapproved-skip code (`RUNNER-CONTRACT.md`). |
+| `deep-hunt-skipped:<reason>` | `degraded` | A deep-hunt pass was skipped for a reason other than `converged`, for example `controller-budget`. |
+
+`solution/FINAL-SUMMARY.md` prints the status with one `Status reason:` line per reason, the
+defect headline and per-status counts, a "Likely, unproven" section (`None.` when empty), the
+review verdict (`APPROVE`, `BLOCK`, `STALE`, `ABSENT`, or `NOT-APPLICABLE`) with its round,
+the runner outcome, and the coverage section with automated re-execution (`n/a` when automation
+is unfunded) and one line per unexecuted critical surface.
