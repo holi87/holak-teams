@@ -341,8 +341,10 @@ export function startWorkerAttempt(manifest, lane, { token, controllerToken, exe
   return mutateState(manifest, (state) => {
     requireDispatchableState(state, lane);
     const allocation = state.allocations[lane];
-    requireLeaseState(manifest, state, lane, token);
-    requireLiveLeaseFile(manifest, state, lane, token);
+    // A worker retry may be started on controller authority alone; the controller then
+    // receives the rotated lane token without ever holding the consumed one.
+    const authority = requireLaneOrControllerAuthority(manifest, state, lane, { token, controllerToken });
+    if (authority === 'lane') requireLiveLeaseFile(manifest, state, lane, token);
     requireControllerAllocation(manifest, state, lane, controllerToken ?? (lane === 'odysseus' ? token : null));
     if (!hasExecutionBinding(allocation)) throw new Error(`${lane} retry requires an authenticated active attempt`);
     if (binding.runtime !== allocation.runtime || binding.dispatchId !== allocation.dispatchId || binding.attempt !== allocation.attempt + 1) {
@@ -358,7 +360,7 @@ export function startWorkerAttempt(manifest, lane, { token, controllerToken, exe
     if (dispatchBinding) Object.assign(allocation, dispatchBindingWithHistory(allocation, dispatchBinding));
     allocation.leaseTokenSha256 = sha256(nextToken);
     return {
-      result: { ...publicAllocation(allocation), token: nextToken, attemptStarted: true, previousAttempt: binding.attempt - 1 },
+      result: { ...publicAllocation(allocation), token: nextToken, attemptStarted: true, previousAttempt: binding.attempt - 1, authority },
       changed: true,
     };
   });
@@ -720,9 +722,9 @@ function validateHeartbeatTransition(previous, candidate, phases) {
   if (!allowed[previous.status].includes(candidate.status)) throw new Error(`heartbeat status regressed from ${previous.status} to ${candidate.status}`);
 }
 
-export function arriveBarrier(manifest, lane, token, phase) {
+export function arriveBarrier(manifest, lane, token, phase, { controllerToken } = {}) {
   return mutateState(manifest, (state) => {
-    requireLeaseState(manifest, state, lane, token);
+    const authority = requireLaneOrControllerAuthority(manifest, state, lane, { token, controllerToken });
     if (Object.hasOwn(state.skippedPhases, phase)) throw new Error(`phase ${phase} was skipped (${state.skippedPhases[phase].reason})`);
     if (state.currentPhase !== phase) throw new Error(`current phase is ${state.currentPhase}, not ${phase}`);
     const participants = barrierParticipants(manifest, state, phase);
@@ -730,7 +732,7 @@ export function arriveBarrier(manifest, lane, token, phase) {
     const arrivals = new Set(state.barriers[phase] ?? []);
     arrivals.add(lane);
     state.barriers[phase] = [...arrivals].sort();
-    return { result: barrierStatus(manifest, state, phase), changed: true };
+    return { result: { ...barrierStatus(manifest, state, phase), authority }, changed: true };
   });
 }
 
@@ -847,15 +849,15 @@ export function getBarrierStatus(manifest, phase) {
   return barrierStatus(manifest, readState(manifest), phase ?? readState(manifest).currentPhase);
 }
 
-export function cleanupWorker(manifest, lane, token, outcome) {
+export function cleanupWorker(manifest, lane, token, outcome, { controllerToken } = {}) {
   if (!['success', 'failure', 'interrupted'].includes(outcome)) throw new Error('cleanup outcome must be success, failure, or interrupted');
   return mutateState(manifest, (state) => {
     const allocation = state.allocations[lane];
     if (!allocation) throw new Error(`no allocation exists for ${lane}`);
-    if (!nonEmpty(token) || allocation.leaseTokenSha256 !== sha256(token)) throw new Error(`invalid lease for ${lane}`);
+    const authority = cleanupAuthority(manifest, state, lane, allocation, { token, controllerToken });
     if (allocation.status === 'released') {
       if (allocation.outcome !== outcome) throw new Error(`${lane} was already cleaned with outcome ${allocation.outcome}`);
-      return { result: { lane, outcome, released: true, idempotent: true }, changed: false };
+      return { result: { lane, outcome, released: true, idempotent: true, authority }, changed: false };
     }
     if (lane === 'odysseus') {
       const activePeers = Object.values(state.allocations).filter((candidate) => candidate.lane !== lane && candidate.status === 'active');
@@ -919,8 +921,26 @@ export function cleanupWorker(manifest, lane, token, outcome) {
     allocation.status = 'released';
     allocation.releasedAt = new Date().toISOString();
     allocation.outcome = outcome;
-    return { result: { lane, outcome, released: true }, changed: true };
+    return { result: { lane, outcome, released: true, authority }, changed: true };
   });
+}
+
+// Cleanup accepts the lane's own token on an active or an already released allocation,
+// exactly as before, and a missing lease file does not block it. A worker may instead be
+// cleaned on controller authority: while active through the full authority check (live lease
+// marker included), and once released only as an idempotent replay, where no lease file is
+// left to check and the active controller allocation alone is required.
+function cleanupAuthority(manifest, state, lane, allocation, { token, controllerToken }) {
+  if (nonEmpty(token)) {
+    if (allocation.leaseTokenSha256 !== sha256(token)) throw new Error(`invalid lease for ${lane}`);
+    return 'lane';
+  }
+  if (allocation.status === 'released' && lane !== 'odysseus' && nonEmpty(controllerToken)) {
+    requireControllerAuthority(manifest, state, lane, controllerToken);
+    return 'controller';
+  }
+  if (allocation.status === 'released') throw new Error(`invalid lease for ${lane}`);
+  return requireLaneOrControllerAuthority(manifest, state, lane, { controllerToken });
 }
 
 function prepareCheckpointArchive(manifest, state, lane, allocation) {
@@ -1413,11 +1433,49 @@ function requireLiveLeaseFile(manifest, state, lane, token) {
   if (!allocation || allocation.status !== 'active' || !nonEmpty(token) || allocation.leaseTokenSha256 !== sha256(token)) {
     throw new Error(`invalid or inactive lease for ${lane}`);
   }
+  requireLiveLeaseMarker(manifest, state, lane);
+}
+
+// The lane's allocation is active and its managed `.lease` file still carries the exact
+// allocation marker. No token is involved: this proves the lease is live, not who holds it.
+function requireLiveLeaseMarker(manifest, state, lane) {
+  const allocation = state.allocations[lane];
+  if (!allocation || allocation.status !== 'active') throw new Error(`no active allocation exists for ${lane}`);
   const leasePath = engagementPath(manifest, join(manifest.writePolicy.workerRoot, lane, '.lease'));
   if (!existsSync(leasePath)) throw new Error(`active lease file is missing for ${lane}`);
   const content = readManagedFile(leasePath, `${lane} lease`).toString('utf8').trim();
   if (content === leaseMarker(allocation)) return;
   throw new Error(`active lease marker does not match the allocation for ${lane}`);
+}
+
+// A worker-lane operation is authorized either by the lane's own active lease token or by
+// the active Odysseus controller token. A supplied lane token is always judged on its own
+// and never falls back to controller authority. Controller authority exists only for worker
+// lanes (Odysseus's lane token is the controller token) and only while the worker's
+// allocation is active with a live lease marker, so it can neither act on a lane that was
+// never allocated nor revive a released one. The controller already receives every lane
+// token at allocation and workers never receive the controller token, so this grants the
+// controller nothing it could not already do and grants a worker nothing at all.
+function requireLaneOrControllerAuthority(manifest, state, lane, { token, controllerToken } = {}) {
+  if (nonEmpty(token)) {
+    requireLeaseState(manifest, state, lane, token);
+    return 'lane';
+  }
+  if (lane !== 'odysseus' && nonEmpty(controllerToken)) {
+    requireSelected(manifest, lane);
+    requireControllerAuthority(manifest, state, lane, controllerToken);
+    requireLiveLeaseMarker(manifest, state, lane);
+    return 'controller';
+  }
+  throw new Error(`lease token is required for ${lane}`);
+}
+
+function requireControllerAuthority(manifest, state, lane, controllerToken) {
+  const controller = state.allocations.odysseus;
+  if (!controller || controller.status !== 'active' || controller.leaseTokenSha256 !== sha256(controllerToken)) {
+    throw new Error(`${lane} controller authority requires the active Odysseus controller token`);
+  }
+  requireControllerAllocation(manifest, state, lane, controllerToken);
 }
 
 function requireSelected(manifest, lane) {
@@ -1835,6 +1893,8 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
       if (requestedManifest && resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
         return deny('engagement operation targets a manifest other than the active engagement');
       }
+      const batchInput = inlineBatchInputDenial(tokens, optionNames);
+      if (batchInput) return deny(batchInput);
       return allow('packaged engagement controller owns the bounded mutation');
     }
     return deny('unknown engagement controller operation');
@@ -1858,7 +1918,11 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     if (!requestedManifest || resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
       return deny('model operation must bind to the active engagement manifest');
     }
-    if (operation === 'telemetry' && !optionValue(tokens, '--decision')) return deny('model telemetry requires an immutable decision file');
+    if (operation === 'telemetry' && optionNames.filter((name) => name === '--decision' || name === '--json').length !== 1) {
+      return deny('model telemetry requires exactly one of an immutable --decision file or an inline --json batch');
+    }
+    const batchInput = inlineBatchInputDenial(tokens, optionNames);
+    if (batchInput) return deny(batchInput);
     return allow('packaged model controller owns the bounded trust, request, decision, or telemetry mutation');
   }
   if (primary === 'orchestration') {
@@ -1956,6 +2020,19 @@ function referencesPackagedCommand(command) {
 function optionValue(tokens, name) {
   const index = tokens.indexOf(name);
   return index >= 0 ? tokens[index + 1] : undefined;
+}
+
+// Controller batch input is inline only: exactly one single-line JSON object as the `--json`
+// argv value. A batch file would have to live in the artifact root, which every worker can
+// read, so `--json -`, `--json @file`, or a path is refused here, and so is stdin fed by a
+// redirection or here-string (a heredoc or pipe never reaches this point: newlines and `|`
+// are already refused for every packaged command).
+function inlineBatchInputDenial(tokens, optionNames) {
+  if (!optionNames.includes('--json')) return null;
+  const value = optionValue(tokens, '--json');
+  if (typeof value !== 'string' || !/^\{[^\n\r]*\}$/.test(value)) return 'batch --json input must be one inline single-line JSON object';
+  if (tokens.some((token) => token.startsWith('<'))) return 'batch input is inline only; redirected, heredoc, and here-string stdin are refused';
+  return null;
 }
 
 function collectShellWritePaths(command) {

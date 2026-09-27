@@ -953,13 +953,13 @@ function modelCommand(args) {
     return 0;
   }
   if (operation === 'request') {
-    const options = parseNamedOptions(rest, new Set(['--manifest', '--agent', '--runtime', '--signal', '--dispatch-id', '--attempt', '--checkpoint-ref', '--token']));
+    const options = parseNamedOptions(rest, new Set(['--manifest', '--agent', '--runtime', '--signal', '--dispatch-id', '--attempt', '--checkpoint-ref', '--token', '--controller-token']));
     requireOptions(options, ['manifest', 'agent', 'runtime', 'signal', 'dispatchId', 'attempt', 'checkpointRef'], 'model request');
     assertTrustedModelRoutingAssets();
     const engagementContext = loadModelEngagement(options.manifest, options.agent);
     requirePinnedModelTrust(engagementContext);
     requireCurrentModelPreflight(engagementContext, options.agent, options.runtime);
-    requireActiveLaneCapability(engagementContext, options.agent, laneCapabilityToken(options));
+    requireRequestAuthority(engagementContext, options.agent, options);
     const request = persistModelEscalationRequest(engagementContext, options, positiveInteger(options.attempt, '--attempt'));
     console.log(`MODEL_REQUEST  persisted path=${request.path} sha256=${request.sha256}`);
     return 0;
@@ -974,6 +974,7 @@ function modelCommand(args) {
     return decision.status === 'blocked' ? 2 : 0;
   }
   if (operation === 'telemetry') {
+    if (rest.includes('--json')) return modelTelemetryBatch(rest);
     const options = parseNamedOptions(rest, new Set([
       '--manifest', '--decision', '--token', '--input-tokens', '--output-tokens', '--duration-ms',
       '--reported-cost-usd', '--success',
@@ -982,27 +983,7 @@ function modelCommand(args) {
     assertTrustedModelRoutingAssets();
     const engagementContext = loadModelEngagement(options.manifest);
     requirePinnedModelTrust(engagementContext);
-    const decisionPath = resolveExistingPhysicalInput(options.decision, engagementContext.artifactRoot);
-    const decisionDirectory = resolve(engagementContext.artifactRoot, policy.routing.decisionDirectory);
-    if (!isWithin(engagementContext.artifactRoot, decisionPath) || dirname(decisionPath) !== decisionDirectory) {
-      fail('model telemetry decision must be an exact file under ai_agents_internal/model-decisions');
-    }
-    assertPhysicalWithin(engagementContext.artifactRoot, decisionPath, 'model telemetry decision');
-    if (existsSync(decisionPath) && (lstatSync(decisionPath).isSymbolicLink() || lstatSync(decisionPath).nlink !== 1)) fail('model telemetry decision cannot be a symbolic link or hard-link alias');
-    if (!existsSync(decisionPath) || !statSync(decisionPath).isFile()) fail(`model telemetry decision is missing: ${decisionPath}`);
-    const decision = readSecureJson(decisionPath, 'model telemetry decision');
-    assertSchemaDocument(validateModelDecisionSchema, decision, 'model telemetry decision');
-    const bindingErrors = validateModelDecisionBinding(policy, runtimeAdapters, decision, {
-      engagementId: engagementContext.engagement.engagementId,
-      engagementManifestSha256: engagementContext.sha256,
-      decisionPath,
-      artifactRoot: engagementContext.artifactRoot,
-      modelTrust: engagementContext.engagement.modelTrust,
-      launchAssurance: engagementContext.engagement.launchAssurance,
-    });
-    if (bindingErrors.length) fail(`model telemetry decision binding invalid: ${bindingErrors.join('; ')}`);
-    if (!engagementContext.engagement.selectedAgents.includes(decision.agent)) fail(`model telemetry decision agent ${decision.agent} is not selected for the engagement`);
-    if (decision.status === 'blocked') fail('model telemetry cannot record a blocked model decision');
+    const decision = loadTelemetryDecision(engagementContext, resolveExistingPhysicalInput(options.decision, engagementContext.artifactRoot));
     requireActiveLaneCapability(engagementContext, decision.agent, laneCapabilityToken(options), executionBindingForDecision(decision));
     const event = buildModelTelemetryEvent(policy, decision, {
       inputTokens: nonNegativeNumber(options.inputTokens, '--input-tokens'),
@@ -1012,23 +993,7 @@ function modelCommand(args) {
       success: parseBooleanOption(options.success, '--success'),
     });
     assertSchemaDocument(validateModelTelemetrySchema, event, 'model telemetry event');
-    const relativeOutput = policy.telemetry.defaultPath;
-    if (relativeOutput.startsWith('/') || relativeOutput.split('/').includes('..') || !relativeOutput.startsWith('ai_agents_internal/')) {
-      fail('model telemetry output must stay under ai_agents_internal/');
-    }
-    const output = resolve(engagementContext.artifactRoot, relativeOutput);
-    if (!isWithin(engagementContext.artifactRoot, output)) fail('model telemetry output escapes the engagement artifact root');
-    mkdirSync(dirname(output), { recursive: true });
-    assertPhysicalWithin(engagementContext.artifactRoot, output, 'model telemetry output');
-    if (existsSync(output) && (lstatSync(output).isSymbolicLink() || lstatSync(output).nlink !== 1 || !statSync(output).isFile())) fail('model telemetry output must be a non-aliased real file');
-    try {
-      atomicPrivateAppend(output, `${JSON.stringify(event)}\n`, (current) => {
-        const prior = current.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
-        if (prior.some((record) => record.decisionId === decision.decisionId)) throw new Error('model telemetry already contains an event for this immutable decision');
-      });
-    } catch (error) {
-      fail(`model telemetry append failed: ${error.message}`);
-    }
+    const output = appendModelTelemetryEvents(engagementContext, [event]);
     console.log(`MODEL_TELEMETRY  recorded output=${output} event=${event.eventId}`);
     return 0;
   }
@@ -1144,6 +1109,161 @@ function batchRouteAgents(context, value, runtime) {
     requireCurrentModelPreflight(context, agent, runtime);
   }
   return listed.includes('odysseus') ? ['odysseus', ...listed.filter((agent) => agent !== 'odysseus')] : listed;
+}
+
+// Loads one selected immutable decision for telemetry: an exact, non-aliased MDR file under
+// the decision directory whose schema, binding, and agent match the validated engagement.
+function loadTelemetryDecision(context, decisionPath) {
+  const decisionDirectory = resolve(context.artifactRoot, modelPolicy.routing.decisionDirectory);
+  if (!isWithin(context.artifactRoot, decisionPath) || dirname(decisionPath) !== decisionDirectory) {
+    fail('model telemetry decision must be an exact file under ai_agents_internal/model-decisions');
+  }
+  assertPhysicalWithin(context.artifactRoot, decisionPath, 'model telemetry decision');
+  if (existsSync(decisionPath) && (lstatSync(decisionPath).isSymbolicLink() || lstatSync(decisionPath).nlink !== 1)) fail('model telemetry decision cannot be a symbolic link or hard-link alias');
+  if (!existsSync(decisionPath) || !statSync(decisionPath).isFile()) fail(`model telemetry decision is missing: ${decisionPath}`);
+  const decision = readSecureJson(decisionPath, 'model telemetry decision');
+  assertSchemaDocument(validateModelDecisionSchema, decision, 'model telemetry decision');
+  const bindingErrors = validateModelDecisionBinding(modelPolicy, runtimeAdapters, decision, {
+    engagementId: context.engagement.engagementId,
+    engagementManifestSha256: context.sha256,
+    decisionPath,
+    artifactRoot: context.artifactRoot,
+    modelTrust: context.engagement.modelTrust,
+    launchAssurance: context.engagement.launchAssurance,
+  });
+  if (bindingErrors.length) fail(`model telemetry decision binding invalid: ${bindingErrors.join('; ')}`);
+  if (!context.engagement.selectedAgents.includes(decision.agent)) fail(`model telemetry decision agent ${decision.agent} is not selected for the engagement`);
+  if (decision.status === 'blocked') fail('model telemetry cannot record a blocked model decision');
+  return decision;
+}
+
+// Appends every event in one locked atomic write. The write is refused as a whole when any
+// event's decision already has telemetry, so each immutable decision keeps exactly one event.
+function appendModelTelemetryEvents(context, events) {
+  const relativeOutput = modelPolicy.telemetry.defaultPath;
+  if (relativeOutput.startsWith('/') || relativeOutput.split('/').includes('..') || !relativeOutput.startsWith('ai_agents_internal/')) {
+    fail('model telemetry output must stay under ai_agents_internal/');
+  }
+  const output = resolve(context.artifactRoot, relativeOutput);
+  if (!isWithin(context.artifactRoot, output)) fail('model telemetry output escapes the engagement artifact root');
+  mkdirSync(dirname(output), { recursive: true });
+  assertPhysicalWithin(context.artifactRoot, output, 'model telemetry output');
+  if (existsSync(output) && (lstatSync(output).isSymbolicLink() || lstatSync(output).nlink !== 1 || !statSync(output).isFile())) fail('model telemetry output must be a non-aliased real file');
+  const decisionIds = new Set(events.map((event) => event.decisionId));
+  try {
+    atomicPrivateAppend(output, events.map((event) => `${JSON.stringify(event)}\n`).join(''), (current) => {
+      const prior = current.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+      const recorded = [...new Set(prior.filter((record) => decisionIds.has(record.decisionId)).map((record) => record.decisionId))].sort();
+      if (recorded.length === 0) return;
+      if (events.length === 1) throw new Error('model telemetry already contains an event for this immutable decision');
+      throw new Error(`model telemetry already contains events for ${recorded.join(', ')}`);
+    });
+  } catch (error) {
+    fail(`model telemetry append failed: ${error.message}`);
+  }
+  return output;
+}
+
+// Batch input is inline only: one single-line JSON object passed as the `--json` argv value.
+// A batch file would have to live in the artifact root, the only tree the sandboxed
+// controller can write and one every worker can read, and the PreToolUse write guard denies
+// heredoc, pipe, and redirected input to packaged commands. Newlines are therefore refused,
+// the object has exactly its one root key, entries are bounded, their keys are closed, and
+// no entry may carry a token: the argv controller token authenticates the whole batch.
+function parseBatchJson(value, { label, root, min = 1, max, validateEntry }) {
+  if (typeof value !== 'string' || /[\r\n]/.test(value)) fail(`${label} --json must be one inline single-line JSON object`);
+  let document;
+  try { document = JSON.parse(value); }
+  catch (error) { fail(`${label} --json is not valid JSON: ${error.message}`); }
+  if (!plainObject(document) || Object.keys(document).length !== 1 || !Object.hasOwn(document, root)) {
+    fail(`${label} --json must be exactly {"${root}":[...]}`);
+  }
+  const entries = document[root];
+  if (!Array.isArray(entries) || entries.length < min || entries.length > max) fail(`${label} --json ${root} must list ${min} to ${max} entries`);
+  return entries.map((entry, index) => {
+    if (plainObject(entry)) {
+      const credential = Object.keys(entry).find((key) => /token$/i.test(key));
+      if (credential) fail(`${label} ${root}[${index}] may not carry a ${credential} key; --controller-token authenticates the whole batch`);
+    }
+    return validateEntry(entry, `${label} ${root}[${index}]`);
+  });
+}
+
+function closedBatchEntry(entry, label, required, optional = []) {
+  if (!plainObject(entry)) fail(`${label} must be an object`);
+  const unknown = Object.keys(entry).filter((key) => !required.includes(key) && !optional.includes(key));
+  if (unknown.length) fail(`${label} has unknown keys: ${unknown.join(', ')}`);
+  const missing = required.filter((key) => !Object.hasOwn(entry, key));
+  if (missing.length) fail(`${label} is missing ${missing.join(', ')}`);
+  return entry;
+}
+
+function batchLane(value, label) {
+  if (typeof value !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(value)) fail(`${label} must be an agent slug`);
+  return value;
+}
+
+function uniqueBatchValues(values, label) {
+  const duplicate = values.find((value, index) => values.indexOf(value) !== index);
+  if (duplicate !== undefined) fail(`${label} contains duplicate ${duplicate}`);
+  return values;
+}
+
+function batchNonNegativeNumber(value, label) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) fail(`${label} must be a non-negative JSON number`);
+  return value;
+}
+
+// Batch telemetry: the controller records up to 64 events for immutable decisions in one call.
+// The controller token is authenticated before any entry is read; every decision must be the
+// active, live binding of its lane, and all events are appended in one atomic write that is
+// refused whole if any decision already has telemetry.
+function modelTelemetryBatch(args) {
+  const options = parseNamedOptions(args, new Set([
+    '--manifest', '--json', '--controller-token', '--decision', '--token', '--input-tokens', '--output-tokens',
+    '--duration-ms', '--reported-cost-usd', '--success',
+  ]));
+  if (options.decision !== undefined) fail('model telemetry accepts exactly one of --decision or --json');
+  for (const forbidden of ['token', 'inputTokens', 'outputTokens', 'durationMs', 'reportedCostUsd', 'success']) {
+    if (options[forbidden] !== undefined) fail(`batch model telemetry does not accept --${camelToKebab(forbidden)}; per-event values belong in --json`);
+  }
+  requireOptions(options, ['manifest', 'json'], 'batch model telemetry');
+  if (!nonEmptyString(options.controllerToken)) fail('batch model telemetry requires --controller-token');
+  const entries = parseBatchJson(options.json, {
+    label: 'batch model telemetry',
+    root: 'events',
+    max: 64,
+    validateEntry: (entry, label) => {
+      closedBatchEntry(entry, label, ['decisionId', 'inputTokens', 'outputTokens', 'durationMs', 'success'], ['reportedCostUsd']);
+      if (typeof entry.decisionId !== 'string' || !/^MDR-[a-f0-9]{24}$/.test(entry.decisionId)) fail(`${label}.decisionId must be an MDR decision ID`);
+      if (typeof entry.success !== 'boolean') fail(`${label}.success must be a JSON boolean`);
+      return {
+        decisionId: entry.decisionId,
+        inputTokens: batchNonNegativeNumber(entry.inputTokens, `${label}.inputTokens`),
+        outputTokens: batchNonNegativeNumber(entry.outputTokens, `${label}.outputTokens`),
+        durationMs: batchNonNegativeNumber(entry.durationMs, `${label}.durationMs`),
+        reportedCostUsd: entry.reportedCostUsd === undefined ? undefined : batchNonNegativeNumber(entry.reportedCostUsd, `${label}.reportedCostUsd`),
+        success: entry.success,
+      };
+    },
+  });
+  uniqueBatchValues(entries.map((entry) => entry.decisionId), 'batch model telemetry decisionIds');
+  assertTrustedModelRoutingAssets();
+  const context = loadModelEngagement(options.manifest);
+  requirePinnedModelTrust(context);
+  requireControllerCapability(context, options.controllerToken, 'batch model telemetry');
+  const state = getEngagementStatus(context.engagement);
+  const decisionDirectory = resolve(context.artifactRoot, modelPolicy.routing.decisionDirectory);
+  const events = entries.map(({ decisionId, ...metrics }) => {
+    const decision = loadTelemetryDecision(context, join(decisionDirectory, `${decisionId}.json`));
+    requireLiveLaneAllocation(context, decision.agent, executionBindingForDecision(decision), state);
+    const event = buildModelTelemetryEvent(modelPolicy, decision, metrics);
+    assertSchemaDocument(validateModelTelemetrySchema, event, `batch model telemetry event for ${decisionId}`);
+    return event;
+  });
+  const output = appendModelTelemetryEvents(context, events);
+  console.log(`MODEL_TELEMETRY_BATCH  recorded output=${output} count=${events.length} events=${events.map((event) => event.eventId).join(',')}`);
+  return 0;
 }
 
 function orchestrationCommand(args) {
@@ -1492,6 +1612,19 @@ function requireActiveLaneCapability(context, lane, token, expectedBinding) {
       createHash('sha256').update(token).digest('hex') !== allocation.leaseTokenSha256) {
     fail(`model operation requires the exact active ${lane} lane capability`);
   }
+  return requireLiveLaneMarker(context, lane, allocation, expectedBinding);
+}
+
+// Token-less sibling of requireActiveLaneCapability for controller-authorized operations on a
+// worker lane: the allocation is active, bound to the expected decision when one is given, and
+// its live non-aliased lease marker names that exact allocation.
+function requireLiveLaneAllocation(context, lane, expectedBinding, state = getEngagementStatus(context.engagement)) {
+  const allocation = state.allocations?.[lane];
+  if (!allocation || allocation.status !== 'active') fail(`model operation requires an active ${lane} allocation`);
+  return requireLiveLaneMarker(context, lane, allocation, expectedBinding);
+}
+
+function requireLiveLaneMarker(context, lane, allocation, expectedBinding) {
   if (expectedBinding && Object.entries(expectedBinding).some(([field, value]) => allocation[field] !== value)) {
     fail(`model operation decision differs from the active ${lane} allocation`);
   }
@@ -1504,6 +1637,28 @@ function requireActiveLaneCapability(context, lane, token, expectedBinding) {
     fail(`model operation ${lane} lease marker differs from the active allocation`);
   }
   return allocation;
+}
+
+// The controller token stands in for a worker's lane token only when it is passed on argv
+// (new verbs never read it from the environment) and matches the active Odysseus lease with
+// its live marker. A worker never holds it, so a worker token here is refused.
+function requireControllerCapability(context, token, label) {
+  requireEngagementControllerToken(context.engagement, token, label);
+  return requireActiveLaneCapability(context, 'odysseus', token);
+}
+
+// `model request` authenticates the requesting lane with its own token, or a worker lane with
+// the controller token in its place. Both at once are refused so authority is never ambiguous.
+function requireRequestAuthority(context, lane, options) {
+  if (options.controllerToken === undefined) {
+    requireActiveLaneCapability(context, lane, laneCapabilityToken(options));
+    return 'lane';
+  }
+  if (options.token !== undefined) fail('model request accepts --token or --controller-token, not both');
+  if (lane === 'odysseus') fail('model request for odysseus requires its own --token; --controller-token stands in only for a worker lane');
+  requireControllerCapability(context, options.controllerToken, 'model request');
+  requireLiveLaneAllocation(context, lane);
+  return 'controller';
 }
 
 function persistModelEscalationRequest(context, options, attempt) {
@@ -2328,7 +2483,13 @@ function engagementAllocateBatch(args) {
 
 function engagementStartAttempt(args) {
   const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--decision', '--dispatch-authorization', '--token', '--controller-token', '--wait']));
-  requireOptions(options, ['manifest', 'lane', 'decision', 'token'], 'engagement start-attempt');
+  requireOptions(options, ['manifest', 'lane', 'decision'], 'engagement start-attempt');
+  // A worker retry may run on controller authority alone; Odysseus always presents its own token.
+  if (!options.token && (options.lane === 'odysseus' || !options.controllerToken)) {
+    fail(options.lane === 'odysseus'
+      ? 'engagement start-attempt for odysseus requires --token'
+      : 'engagement start-attempt requires --token or, for a worker lane, --controller-token');
+  }
   const wait = parseBooleanOption(options.wait, '--wait') ?? false;
   assertTrustedModelRoutingAssets();
   const context = loadModelEngagement(options.manifest, options.lane);
@@ -2748,6 +2909,7 @@ function engagementHeartbeat(args) {
 
 function engagementBarrier(args) {
   const [operation, ...rest] = args;
+  if (operation === 'arrive' && rest.includes('--json')) return engagementBarrierArriveBatch(rest);
   const options = parseNamedOptions(rest, new Set(['--manifest', '--lane', '--token', '--phase', '--reason']));
   const { manifest: engagement } = loadEngagement(options);
   if (operation === 'status') {
@@ -2773,11 +2935,105 @@ function engagementBarrier(args) {
 }
 
 function engagementCleanup(args) {
+  if (args.includes('--json')) return engagementCleanupBatch(args);
   const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--outcome']));
   requireOptions(options, ['manifest', 'lane', 'outcome'], 'engagement cleanup');
   const { manifest: engagement } = loadEngagement(options);
   console.log(JSON.stringify(cleanupWorker(engagement, options.lane, leaseToken(options), options.outcome)));
   return 0;
+}
+
+// Controller batch verbs authenticate the argv controller token against the active Odysseus
+// allocation before any entry is attempted, so a worker token is refused outright instead of
+// producing one failure per entry. The runtime re-checks it, with the live lease marker, for
+// every entry under the state lock.
+function requireEngagementControllerToken(engagement, token, label) {
+  if (!nonEmptyString(token)) fail(`${label} requires --controller-token`);
+  const controller = getEngagementStatus(engagement).allocations?.odysseus;
+  if (controller?.status !== 'active' || createHash('sha256').update(token).digest('hex') !== controller.leaseTokenSha256) {
+    fail(`${label} requires the active Odysseus controller token`);
+  }
+}
+
+// Batch arrival: the controller records up to 32 lanes' arrival at the current phase in one
+// call. A worker lane arrives on controller authority with its live lease; Odysseus, whose
+// lane token is the controller token, arrives on its own lease. Every lane is attempted
+// independently, so one refusal never hides another lane's arrival.
+function engagementBarrierArriveBatch(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--phase', '--json', '--controller-token', '--lane', '--token', '--reason']));
+  for (const forbidden of ['lane', 'token', 'reason']) {
+    if (options[forbidden] !== undefined) fail(`batch engagement barrier arrive does not accept --${forbidden}; --json lists the lanes`);
+  }
+  requireOptions(options, ['manifest', 'phase', 'json'], 'batch engagement barrier arrive');
+  if (!nonEmptyString(options.controllerToken)) fail('batch engagement barrier arrive requires --controller-token');
+  const lanes = uniqueBatchValues(parseBatchJson(options.json, {
+    label: 'batch engagement barrier arrive',
+    root: 'lanes',
+    max: 32,
+    validateEntry: batchLane,
+  }), 'batch engagement barrier arrive lanes');
+  const { manifest: engagement } = loadEngagement(options);
+  if (!engagement.phasePlan.some((phase) => phase.id === options.phase)) fail(`batch engagement barrier arrive: unknown phase ${options.phase}`);
+  requireEngagementControllerToken(engagement, options.controllerToken, 'batch engagement barrier arrive');
+  const results = [];
+  const failed = [];
+  for (const lane of lanes) {
+    try {
+      const arrival = lane === 'odysseus'
+        ? arriveBarrier(engagement, lane, options.controllerToken, options.phase)
+        : arriveBarrier(engagement, lane, undefined, options.phase, { controllerToken: options.controllerToken });
+      results.push({ lane, authority: arrival.authority, arrived: true });
+    } catch (error) {
+      failed.push({ lane, error: error.message });
+    }
+  }
+  console.log(JSON.stringify({
+    schema: 'argus/engagement-barrier-batch@1',
+    phase: options.phase,
+    results,
+    failed,
+    barrier: getBarrierStatus(engagement, options.phase),
+  }));
+  return failed.length > 0 ? 1 : 0;
+}
+
+// Batch cleanup: the controller releases up to 32 worker lanes on controller authority in one
+// call. Odysseus is refused because its terminal cleanup needs every worker released first; it
+// stays a single-lane call on its own token. Every lane is attempted independently, and an
+// already released lane replays idempotently with its recorded outcome.
+function engagementCleanupBatch(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--json', '--controller-token', '--lane', '--token', '--outcome']));
+  for (const forbidden of ['lane', 'token', 'outcome']) {
+    if (options[forbidden] !== undefined) fail(`batch engagement cleanup does not accept --${forbidden}; each --json entry names its lane and outcome`);
+  }
+  requireOptions(options, ['manifest', 'json'], 'batch engagement cleanup');
+  if (!nonEmptyString(options.controllerToken)) fail('batch engagement cleanup requires --controller-token');
+  const cleanups = parseBatchJson(options.json, {
+    label: 'batch engagement cleanup',
+    root: 'cleanups',
+    max: 32,
+    validateEntry: (entry, label) => {
+      closedBatchEntry(entry, label, ['lane', 'outcome']);
+      const lane = batchLane(entry.lane, `${label}.lane`);
+      if (lane === 'odysseus') fail('batch engagement cleanup cannot clean odysseus; clean the controller alone with --lane odysseus --token after every worker is released');
+      if (!['success', 'failure', 'interrupted'].includes(entry.outcome)) fail(`${label}.outcome must be success, failure, or interrupted`);
+      return { lane, outcome: entry.outcome };
+    },
+  });
+  uniqueBatchValues(cleanups.map((cleanup) => cleanup.lane), 'batch engagement cleanup lanes');
+  const { manifest: engagement } = loadEngagement(options);
+  requireEngagementControllerToken(engagement, options.controllerToken, 'batch engagement cleanup');
+  const results = [];
+  const failed = [];
+  for (const { lane, outcome } of cleanups) {
+    try {
+      results.push(cleanupWorker(engagement, lane, undefined, outcome, { controllerToken: options.controllerToken }));
+    } catch (error) {
+      failed.push({ lane, outcome, error: error.message });
+    }
+  }
+  console.log(JSON.stringify({ schema: 'argus/engagement-cleanup-batch@1', results, failed }));
+  return failed.length > 0 ? 1 : 0;
 }
 
 // Conditional lanes wait on target or browser gates that recon may prove. The controller

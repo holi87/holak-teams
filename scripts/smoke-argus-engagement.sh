@@ -418,6 +418,27 @@ guard_shell "argus-assets model trust --manifest $MANIFEST --runtime-key-id runt
 guard_shell "argus-assets model trust --manifest $MANIFEST --manifest $WORK/alternate-engagement.json --runtime-key-id runtime --operator-key-id operator" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets model trust --manifest $WORK/alternate-engagement.json --runtime-key-id runtime --operator-key-id operator" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets model request --manifest $MANIFEST --agent aegis --runtime claude --signal safety --dispatch-id dispatch-aegis-001 --attempt 2 --checkpoint-ref ai_agents_internal/checkpoints/aegis/00000001.json" allow
+# Model telemetry takes exactly one of an immutable decision file or an inline single-line
+# --json batch; a batch never arrives through a file, stdin, heredoc, here-string, or pipe.
+TELEMETRY_BATCH='{"events":[{"decisionId":"MDR-000000000000000000000000","inputTokens":1200,"outputTokens":300,"durationMs":4500,"success":true}]}'
+TELEMETRY_DECISION="$TARGET/ai_agents_internal/model-decisions/MDR-000000000000000000000000.json"
+guard_shell "argus-assets model telemetry --manifest $MANIFEST --json '$TELEMETRY_BATCH' --controller-token $CONTROLLER_TOKEN" allow
+guard_shell "argus-assets model telemetry --manifest $MANIFEST --decision $TELEMETRY_DECISION --token $CONTROLLER_TOKEN --input-tokens 1 --output-tokens 1 --duration-ms 1 --success true" allow
+guard_shell "argus-assets model telemetry --manifest $MANIFEST --decision $TELEMETRY_DECISION --json '$TELEMETRY_BATCH' --controller-token $CONTROLLER_TOKEN" \
+  'GUARD-SHELL-AMBIGUOUS: model telemetry requires exactly one of an immutable --decision file or an inline --json batch'
+guard_shell "argus-assets model telemetry --manifest $MANIFEST --controller-token $CONTROLLER_TOKEN" \
+  'GUARD-SHELL-AMBIGUOUS: model telemetry requires exactly one of an immutable --decision file or an inline --json batch'
+guard_shell "argus-assets model telemetry --manifest $WORK/alternate-engagement.json --json '$TELEMETRY_BATCH' --controller-token $CONTROLLER_TOKEN" GUARD-SHELL-AMBIGUOUS
+guard_shell "argus-assets model telemetry --manifest $MANIFEST --json reports/telemetry-batch.json --controller-token $CONTROLLER_TOKEN" \
+  'GUARD-SHELL-AMBIGUOUS: batch --json input must be one inline single-line JSON object'
+guard_shell $'argus-assets model telemetry --manifest '"$MANIFEST"$' --json - --controller-token '"$CONTROLLER_TOKEN"$' <<\'BATCH\'\n'"$TELEMETRY_BATCH"$'\nBATCH' \
+  'GUARD-SHELL-AMBIGUOUS: packaged command must be one exact standalone invocation'
+guard_shell $'argus-assets model telemetry --manifest '"$MANIFEST"$' --json "$(cat <<\'BATCH\'\n'"$TELEMETRY_BATCH"$'\nBATCH\n)" --controller-token '"$CONTROLLER_TOKEN" \
+  'GUARD-SHELL-AMBIGUOUS: packaged command must be one exact standalone invocation'
+guard_shell "printf '%s' '$TELEMETRY_BATCH' | argus-assets model telemetry --manifest $MANIFEST --json - --controller-token $CONTROLLER_TOKEN" \
+  'GUARD-SHELL-AMBIGUOUS: packaged command must be one exact standalone invocation'
+guard_shell "argus-assets model telemetry --manifest $MANIFEST --json '$TELEMETRY_BATCH' --controller-token $CONTROLLER_TOKEN <<< '$TELEMETRY_BATCH'" \
+  'GUARD-SHELL-AMBIGUOUS: batch input is inline only'
 guard_shell "argus-assets model route --manifest $MANIFEST --manifest $WORK/alternate-engagement.json --agent aegis --runtime claude --signal normal --dispatch-id duplicate-manifest --attempt 1" GUARD-SHELL-AMBIGUOUS
 if "$CLI" model route --manifest "$MANIFEST" --manifest "$MANIFEST" --agent aegis --runtime claude --signal normal --dispatch-id duplicate-manifest --attempt 1 >/dev/null 2>&1; then
   fail 'model route accepted duplicate --manifest options'

@@ -277,9 +277,11 @@ token, rotates it inside the same state transition, and returns the next token o
 controller must replace the stale token before a new thread starts; the previous attempt
 token is immediately invalid.
 
-`model request` authenticates the requesting lane with its exact active lane token. Once
+`model request` authenticates the requesting lane with its exact active lane token, or a
+worker lane with the controller token in its place (controller authority, below). Once
 any allocation exists, `model route` authenticates the controller with the active Odysseus
-token. `model telemetry` again requires the decision-owning lane token and atomically
+token. `model telemetry` again requires the decision-owning lane token, or the controller
+token for its batch form, and atomically
 accepts exactly one sanitized event for each selected immutable decision. Values are
 lane-reported operational observability, not authoritative billing, benchmark, or outcome
 evidence. Emit it before `start-attempt` or cleanup changes the lane's active decision/token
@@ -291,7 +293,7 @@ The controller form is `engagement allocate --manifest <manifest> --lane odysseu
 `--controller-token <odysseus-token>`; resume additionally supplies `--token
 <current-lane-token>`. A retry uses `engagement start-attempt --manifest <manifest> --lane
 <worker> --decision <next-decision> --token <current-lane-token> --controller-token
-<odysseus-token>`. The
+<odysseus-token>`; a worker retry may omit `--token` and run on controller authority. The
 controller captures the returned `token`, replaces its stored lane capability, and only then
 spawns the retry.
 
@@ -316,6 +318,64 @@ error. The `argus/engagement-allocation-batch@1` line carries each new allocatio
 token, on stdout only, plus the failed or unattempted lanes, and exits 1 when any failed.
 Neither form persists a token, and the write guard applies to both exactly as to their
 single-lane forms.
+
+Controller authority lets the active Odysseus token stand in for a worker's lane token.
+`engagement start-attempt`, `engagement barrier arrive`, `engagement cleanup`, and `model
+request` accept `--controller-token <odysseus-token>` without `--token` for any worker lane,
+and the three batch forms below take only the controller token. The runtime requires the
+Odysseus allocation to be active with its live lease marker and the worker's allocation to be
+active with its live lease marker, so controller authority never acts on a lane that was
+never allocated or has been released. The one exception is an idempotent cleanup replay of
+an already released worker: no lease file is left, so only the active controller is
+required. Controller authority never applies to Odysseus, whose lane token is the controller
+token. A supplied lane token is always judged on its own and never falls back to controller
+authority. Every other rule (participants, phase order, pending phases before `success`
+cleanup, retry lineage, backoff) is unchanged, and the start-attempt, arrival, and cleanup
+results report `authority: lane` or `authority: controller`.
+
+This grants no new capability. The controller already receives every lane token on stdout
+when it allocates the lane, so it could already perform each of these operations; controller
+authority only lets it stop retaining those tokens. Workers never receive the controller
+token and no token is ever persisted, so a worker gains nothing: its own token still
+authenticates only its own lane, and a worker token passed as `--controller-token` is
+refused. A controller-authorized `start-attempt` returns the rotated lane token to the
+controller, which passes it to the retry thread. Crash recovery is not covered: re-allocating
+a lane whose lease file vanished still requires that lane's current token.
+
+Three batch forms use controller authority:
+
+- `model telemetry --manifest <manifest> --json '{"events":[{"decisionId":"MDR-…",
+  "inputTokens":<n>,"outputTokens":<n>,"durationMs":<n>,"success":<bool>}]}'
+  --controller-token <odysseus-token>` records 1 to 64 events; `reportedCostUsd` is optional.
+  Keys are closed, no entry may carry a token, and decision IDs are unique. The controller is
+  authenticated before any entry is read, and each decision must be the active binding of its
+  lane with a live lease marker. All events are appended in one atomic write that is refused
+  whole when any decision already has telemetry, and the command prints
+  `MODEL_TELEMETRY_BATCH`. `--decision` and `--json` are mutually exclusive.
+- `engagement barrier arrive --manifest <manifest> --phase <phase> --json
+  '{"lanes":["<slug>"]}' --controller-token <odysseus-token>` records up to 32 arrivals.
+  Workers arrive on controller authority and Odysseus on its own lease. One
+  `argus/engagement-barrier-batch@1` line reports per-lane `results`, `failed`, and the
+  resulting `barrier` status.
+- `engagement cleanup --manifest <manifest> --json
+  '{"cleanups":[{"lane":"<slug>","outcome":"success|failure|interrupted"}]}'
+  --controller-token <odysseus-token>` releases up to 32 worker lanes. `odysseus` is refused:
+  the controller still cleans itself last with its own token. One
+  `argus/engagement-cleanup-batch@1` line reports `results` and `failed`.
+
+Each batch validates its whole input before anything runs. Arrival and cleanup then attempt
+every entry independently and exit 1 when any failed, so one refusal never hides another
+lane's result; a released lane replays idempotently.
+
+Batch input is inline only: exactly one single-line JSON object as the `--json` argv value,
+in single quotes. A batch file would have to live in the artifact root, the only tree the
+sandboxed controller can write and one every worker can read, so a path, `-`, or `@file` is
+refused. The write guard already denies any packaged command containing a newline, pipe,
+`;`, `&`, `>`, a backtick, or `$(`, which rules out heredoc and piped input, and it also
+denies here-string or redirected stdin for a batch command. Tokens therefore travel only on
+the controller's own argv, where same-UID processes inside the sandbox can see them exactly
+as they can see `--token` and `--controller-token` today; the new forms never read a token
+from the environment.
 
 Each allocation returns a lease token once plus deterministic unique resources: managed
 browser profile, browser-artifact directory, auth directory, temporary directory, output
