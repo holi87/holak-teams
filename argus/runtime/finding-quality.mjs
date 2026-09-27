@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { coverageEvidenceReferences } from './coverage.mjs';
 import { loadRedactionPatterns, validateEvidenceContent } from './evidence.mjs';
 
 // Rows whose proof blocks carry confirmed-grade verification.
@@ -182,23 +183,18 @@ function proofErrors(bug) {
   return errors;
 }
 
-export function reconcileCaseEvidence(inventory, observations, evidence, readArtifact, options = {}) {
-  const errors = [];
+// Every evidence ID the coverage inputs cite (execution, assertion and control, outcome,
+// case evidence, control and execution, and inventory discovery) must resolve in the registry
+// and pass the digest, capture-time, and content checks; options match reconcileFindings.
+export function reconcileCoverageEvidence(inventory, observations, evidence, readArtifact, options = {}) {
   if (inventory.engagementId !== observations.engagementId || inventory.engagementId !== evidence.engagementId) return ['coverage evidence engagement mismatch'];
   const refs = new Map(evidence.references.map(item => [item.id, item]));
-  let patterns = options.patterns;
-  for (const observation of observations.observations) {
-    for (const item of observation.cases ?? []) {
-      for (const id of [...item.evidenceIds, ...item.controlEvidenceIds]) {
-        const ref = refs.get(id);
-        if (!ref) { errors.push(`${item.obligationId}: unresolved evidence ${id}`); continue; }
-        let bytes;
-        try { bytes = readArtifact(ref.source); }
-        catch { errors.push(`${item.obligationId}: missing or unsafe evidence ${id}`); continue; }
-        if (createHash('sha256').update(bytes).digest('hex') !== ref.sha256) errors.push(`${item.obligationId}: stale evidence ${id}`);
-        else errors.push(...validateEvidenceContent(ref, bytes, { patterns: patterns ??= loadRedactionPatterns() }).map(error => `${item.obligationId}: ${error}`));
-      }
-    }
+  const checkEvidence = evidenceChecker(readArtifact, options);
+  const errors = [];
+  for (const { label, id } of coverageEvidenceReferences(inventory, observations)) {
+    const ref = refs.get(id);
+    if (!ref) { errors.push(`${label}: unresolved evidence ${id}`); continue; }
+    errors.push(...checkEvidence(ref).map(error => `${label}: ${error}`));
   }
-  return errors;
+  return [...new Set(errors)];
 }

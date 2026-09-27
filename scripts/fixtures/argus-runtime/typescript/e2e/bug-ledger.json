@@ -14,7 +14,31 @@
       "status": "confirmed",
       "wired": true,
       "testId": "REG-0001",
-      "evidenceIds": []
+      "evidenceIds": ["EVD-0901"],
+      "verification": {
+        "build": "faulty-target-buggy",
+        "disputedOracle": false,
+        "oracle": {
+          "kind": "requirement",
+          "sourceRef": "Synthetic widget API: a read returns the specified widget",
+          "evidenceId": "EVD-0901",
+          "applicability": "Local synthetic faulty target",
+          "exceptions": []
+        },
+        "reproduction": {
+          "initialState": "Faulty target started in buggy mode",
+          "steps": ["Read the specified widget."],
+          "attempts": 2,
+          "occurrences": 2,
+          "evidenceIds": ["EVD-0901"]
+        },
+        "independent": {
+          "status": "not-required",
+          "executor": null,
+          "evidenceIds": [],
+          "reason": "Deterministic synthetic target; no independent executor was run."
+        }
+      }
     }
   ]
 }

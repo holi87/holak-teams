@@ -1,1 +1,1 @@
-{"$schema":"argus/coverage-observations@1","schemaVersion":1,"engagementId":"fixture-engagement","observations":[{"surfaceId":"bad","executed":"yes","assertions":[],"evidenceIds":[],"defects":[]}]}
+{"$schema":"argus/coverage-observations@2","schemaVersion":2,"engagementId":"fixture-engagement","observations":[{"observationId":"SRF-API-HEALTH","lane":"atalanta","surfaceId":"SRF-API-HEALTH","executed":true,"assertions":[{"id":"AST-1","oracleId":"ORC-1","meaningful":true}],"evidenceIds":[],"defectRefs":["not-a-ref"]}]}

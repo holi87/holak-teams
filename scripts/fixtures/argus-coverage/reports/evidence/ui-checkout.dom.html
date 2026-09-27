@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<body>
+<form id="checkout" action="/api/orders" method="post">
+  <label for="sku">SKU</label>
+  <input id="sku" name="sku" type="text" value="SKU-1">
+  <label for="quantity">Quantity</label>
+  <input id="quantity" name="quantity" type="number" value="2">
+  <output id="total" for="quantity">Total: 24.00 EUR</output>
+  <button type="submit">Place order</button>
+</form>
+<p role="status">Order ORD-1001 placed. Total charged: 24.00 EUR.</p>
+</body>
+</html>

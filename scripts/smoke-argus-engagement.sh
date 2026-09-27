@@ -331,6 +331,7 @@ guard_shell 'argus-assets model benchmark' allow
 guard_shell "argus-assets model payload --document $TARGET/ai_agents_internal/operator-decisions/unsigned.json" allow
 # Read-only packaged queries stay usable inside an engagement; coverage --output keeps write-root checks.
 COVERAGE_INPUTS='--inventory solution/surface-inventory.json --observations solution/coverage-observations.json'
+COVERAGE_SOURCES='--evidence solution/evidence-reference.json --ledger solution/bug-ledger.json --root .'
 guard_shell 'argus-assets technique scopes --role atalanta' allow
 guard_shell 'argus-assets technique select --role proteus --inventory solution/surface-inventory.json' allow
 guard_shell 'argus-assets technique select --role metis --inventory -' allow
@@ -344,6 +345,10 @@ guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS --output -" allow
 guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS --output reports/coverage-result.json" allow
 guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS --output solution/coverage-result.json" GUARD-CANONICAL-SINGLE-WRITER
 guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS --output app/coverage-result.json" GUARD-TARGET-IMMUTABLE
+guard_shell "argus-assets coverage validate $COVERAGE_INPUTS $COVERAGE_SOURCES" allow
+guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS $COVERAGE_SOURCES --output reports/coverage-result.json" allow
+guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS $COVERAGE_SOURCES --output solution/coverage-result.json" GUARD-CANONICAL-SINGLE-WRITER
+guard_shell "argus-assets coverage validate $COVERAGE_INPUTS --root" GUARD-SHELL-AMBIGUOUS
 guard_shell 'argus-assets technique select --role metis --inventory - --output app/selection.json' GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets coverage validate $COVERAGE_INPUTS --output app/coverage-result.json" GUARD-SHELL-AMBIGUOUS
 guard_shell 'argus-assets raci route --artifact' GUARD-SHELL-AMBIGUOUS
@@ -355,6 +360,7 @@ guard_shell 'argus-assets launch verify --request reports/request.json' 'GUARD-S
 guard_shell 'argus-assets guard' 'GUARD-SHELL-AMBIGUOUS: unknown packaged command operation'
 # Executed from inside the engagement, the allowed queries leave the artifact tree untouched.
 COVERAGE_FIXTURES="$ROOT/scripts/fixtures/argus-coverage"
+COVERAGE_EVIDENCE=(--evidence "$COVERAGE_FIXTURES/evidence-reference.json" --ledger "$COVERAGE_FIXTURES/bug-ledger.json" --root "$COVERAGE_FIXTURES")
 touch "$WORK/query-marker"
 (
   cd "$TARGET"
@@ -362,15 +368,15 @@ touch "$WORK/query-marker"
   "$CLI" technique select --role atalanta --inventory "$COVERAGE_FIXTURES/surface-inventory.json" >/dev/null
   "$CLI" raci list >/dev/null
   "$CLI" raci route --artifact solution/coverage-result.json >/dev/null
-  "$CLI" coverage validate --inventory "$COVERAGE_FIXTURES/surface-inventory.json" --observations "$COVERAGE_FIXTURES/coverage-observations.json" >/dev/null
-  "$CLI" coverage calculate --inventory "$COVERAGE_FIXTURES/surface-inventory.json" --observations "$COVERAGE_FIXTURES/coverage-observations.json" >/dev/null
+  "$CLI" coverage validate --inventory "$COVERAGE_FIXTURES/surface-inventory.json" --observations "$COVERAGE_FIXTURES/coverage-observations.json" "${COVERAGE_EVIDENCE[@]}" >/dev/null
+  "$CLI" coverage calculate --inventory "$COVERAGE_FIXTURES/surface-inventory.json" --observations "$COVERAGE_FIXTURES/coverage-observations.json" "${COVERAGE_EVIDENCE[@]}" >/dev/null
 )
 [ -z "$(find "$TARGET" -newer "$WORK/query-marker" -print -quit)" ] || fail 'a read-only packaged query modified the engagement tree'
 (cd "$TARGET" && "$CLI" coverage calculate --inventory "$COVERAGE_FIXTURES/surface-inventory.json" \
-  --observations "$COVERAGE_FIXTURES/coverage-observations.json" --output reports/coverage-result.json >/dev/null)
+  --observations "$COVERAGE_FIXTURES/coverage-observations.json" "${COVERAGE_EVIDENCE[@]}" --output reports/coverage-result.json >/dev/null)
 jq -e '.overall' "$TARGET/reports/coverage-result.json" >/dev/null || fail 'coverage calculate did not write an allowed report output'
 if (cd "$TARGET" && "$CLI" coverage calculate --inventory "$COVERAGE_FIXTURES/surface-inventory.json" \
-  --observations "$COVERAGE_FIXTURES/coverage-observations.json" --output solution/coverage-result.json >/dev/null 2>&1); then
+  --observations "$COVERAGE_FIXTURES/coverage-observations.json" "${COVERAGE_EVIDENCE[@]}" --output solution/coverage-result.json >/dev/null 2>&1); then
   fail 'coverage calculate wrote a canonical artifact outside its owner merge'
 fi
 test ! -e "$TARGET/solution/coverage-result.json" || fail 'denied coverage calculation created a canonical artifact'

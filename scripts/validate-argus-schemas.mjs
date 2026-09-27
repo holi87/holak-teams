@@ -94,6 +94,7 @@ for (const [kind, field, key] of [
   ['lane-plan', 'lanes', 'lane'],
   ['evidence-reference', 'references', 'id'],
   ['automation-status', 'tests', 'testId'],
+  ['coverage-observations', 'observations', 'observationId'],
 ]) {
   const document = readJson(join(fixtures, 'valid', `${kind}.json`));
   const fragments = [...document[field]].reverse().map((record) => ({ ...document, [field]: [record] }));

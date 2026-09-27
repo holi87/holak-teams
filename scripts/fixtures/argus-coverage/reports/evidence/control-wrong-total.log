@@ -1,0 +1,3 @@
+control: POST /api/orders with quantity 2 and a client-supplied total of 1.00
+control: the server answered 201 with total 24.00 and ignored the client total
+control: the total assertion rejected the wrong expected value 1.00 and accepted 24.00

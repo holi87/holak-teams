@@ -1,1 +1,1 @@
-{"$schema":"argus/coverage-result@1","schemaVersion":1,"engagementId":"fixture-engagement","sourceSchemas":["argus/surface-inventory@1"],"discovery":{},"overall":{},"lanes":{},"scopedOutcomes":[],"defectOutcomes":{"scoreContribution":1},"generatedAt":"invalid"}
+{"$schema":"argus/coverage-result@2","schemaVersion":2,"engagementId":"fixture-engagement","sourceSchemas":["argus/surface-inventory@1","argus/coverage-observations@1"],"discovery":{},"overall":{},"lanes":{},"scopedOutcomes":[],"defectOutcomes":{"uniqueConfirmed":0,"scoreContribution":1},"generatedAt":"invalid"}

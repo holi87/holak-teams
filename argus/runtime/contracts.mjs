@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateCoverageObservations, validateSurfaceInventory } from './coverage.mjs';
+import { validateCoverageObservations, validateCoverageResult, validateSurfaceInventory } from './coverage.mjs';
 import { validateEvidenceReferences, validateRunnerResultSemantics } from './evidence.mjs';
 import { compileJsonSchema } from './json-schema.mjs';
 
@@ -26,6 +26,7 @@ const COLLECTION_CONTRACTS = Object.freeze({
   'lane-plan': { field: 'lanes', key: 'lane', label: 'lane' },
   'evidence-reference': { field: 'references', key: 'id', label: 'evidence reference' },
   'automation-status': { field: 'tests', key: 'testId', label: 'automation test' },
+  'coverage-observations': { field: 'observations', key: 'observationId', label: 'coverage observation' },
 });
 
 // Recon capability gates and the only proof kind that can prove each one. The keys must
@@ -59,6 +60,8 @@ const EXPECTED_CONTRACT_VERSIONS = Object.freeze({
   'automation-status': 2,
   'preflight-report': 3,
   'bug-ledger': 2,
+  'coverage-observations': 2,
+  'coverage-result': 2,
 });
 for (const [kind, version] of Object.entries(EXPECTED_CONTRACT_VERSIONS)) {
   const policy = compatibility.contracts?.[kind];
@@ -240,9 +243,10 @@ function semanticErrors(kind, document) {
   if (kind === 'bug-ledger') return [...duplicateIds(document.bugs, 'bug'), ...validateFindingQuality(document.bugs)];
   if (kind === 'lane-plan') return validateLanePlan(document);
   if (kind === 'evidence-reference') return [...validateOrderedCollection(document, COLLECTION_CONTRACTS[kind]), ...validateEvidenceReferences(document)];
+  if (kind === 'coverage-observations') return [...validateOrderedCollection(document, COLLECTION_CONTRACTS[kind]), ...validateCoverageObservations(document)];
   if (COLLECTION_CONTRACTS[kind]) return validateOrderedCollection(document, COLLECTION_CONTRACTS[kind]);
   if (kind === 'surface-inventory') return validateSurfaceInventory(document);
-  if (kind === 'coverage-observations') return validateCoverageObservations(document);
+  if (kind === 'coverage-result') return validateCoverageResult(document);
   if (kind === 'runner-result') return validateRunnerResultSemantics(document);
   if (kind === 'capability-evidence') return validateCapabilityEvidence(document);
   return [];
