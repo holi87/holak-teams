@@ -558,19 +558,24 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
   });
 }
 
-// Aristarchus's review record binds each round to the test corpus it judged. The corpus is the
-// selected template's test and harness roots (or, without a valid selection, the generated test
-// directories) plus the runner entry point and scripts/, minus dependency, build, and report
-// output and the packaged hunt driver. Each line is `<path>\0<sha256>\n`, and the digest covers
-// the sorted lines, so it changes whenever a corpus file is added, removed, or edited.
-const REVIEW_CORPUS_EXCLUDED_SEGMENTS = new Set([
-  'node_modules', '.git', 'target', 'build', 'dist', '.venv', 'venv', '__pycache__', '.pytest_cache',
-  'reports', 'test-results', 'playwright-report',
-]);
+// Aristarchus's review record binds each round to the test corpus it judged: every file that
+// decides what the runner executes and how. The corpus is the selected template's test and
+// harness roots (or, without a valid selection, the generated test directories), the runner
+// entry point and scripts/, the target-owned runner declarations, Maven test resources, and the
+// runner and dependency configuration files at the artifact root, minus dependency and cache
+// directories and the packaged hunt driver. Build and report output lives at the artifact root,
+// outside every corpus root, so a spec below tests/**/reports/ or tests/**/build/ stays in the
+// corpus. Each line is `<path>\0<sha256>\n`, and the digest covers the sorted lines, so it
+// changes whenever a corpus file is added, removed, or edited.
+const REVIEW_CORPUS_EXCLUDED_SEGMENTS = new Set(['node_modules', '.git', '.venv', 'venv', '__pycache__', '.pytest_cache']);
 const REVIEW_CORPUS_EXCLUDED_FILES = new Set([
   'scripts/hunt-driver.mjs', 'scripts/driver.config.json', 'scripts/driver.config.example.json', 'scripts/driver-config.schema.json',
 ]);
-const REVIEW_CORPUS_FIXED_ROOTS = ['run-tests.sh', 'scripts'];
+const REVIEW_CORPUS_FIXED_ROOTS = [
+  'run-tests.sh', 'scripts', 'solution/test-lanes.tsv', 'solution/environment.tsv', 'solution/quarantine.tsv',
+  'solution/counterfactual', 'src/test/resources',
+];
+const REVIEW_CORPUS_ROOT_CONFIG = /^(?:playwright\.config\.[cm]?[jt]s|package(?:-lock)?\.json|tsconfig(?:\.[A-Za-z0-9_-]+)?\.json|pyproject\.toml|conftest\.py|pytest\.ini|setup\.cfg|tox\.ini|requirements[A-Za-z0-9_.-]*\.txt|pom\.xml)$/;
 const TEMPLATE_SELECTION_RECORD = 'ai_agents_internal/template-selection.json';
 const TEMPLATE_SELECTION_SCHEMA = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas', 'template-selection.schema.json');
 let templateSelectionValidator = null;
@@ -582,7 +587,9 @@ export function reviewCorpusDigest(manifest) {
     ? [selection.testRoot, selection.harnessRoot]
     : manifest.writePolicy.generatedTestRoots.map((path) => path.replace(/\/+$/, ''))
       .filter((path) => canonicalCorpusRoot(path) && reviewCorpusEntry(root, path)?.isDirectory());
-  const roots = [...new Set([...candidates, ...REVIEW_CORPUS_FIXED_ROOTS])].filter((path) => reviewCorpusEntry(root, path)).sort();
+  const configs = readdirSync(root).filter((name) => REVIEW_CORPUS_ROOT_CONFIG.test(name));
+  const present = [...new Set([...candidates, ...REVIEW_CORPUS_FIXED_ROOTS, ...configs])].filter((path) => reviewCorpusEntry(root, path));
+  const roots = present.filter((path) => !present.some((other) => path.startsWith(`${other}/`))).sort();
   const files = new Map();
   for (const path of roots) collectReviewCorpus(root, path, files);
   const lines = [...files].map(([path, digest]) => `${path}\0${digest}\n`).sort();

@@ -324,11 +324,17 @@ merges it as the canonical owner. Every round in `reviews` carries:
 
 The corpus roots are `testRoot` and `harnessRoot` from a valid
 `ai_agents_internal/template-selection.json`, otherwise the existing directories among
-`writePolicy.generatedTestRoots`, plus `run-tests.sh` and `scripts/`, resolved against the
-artifact root. Path segments `node_modules`, `.git`, `target`, `build`, `dist`, `.venv`,
-`venv`, `__pycache__`, `.pytest_cache`, `reports`, `test-results`, and `playwright-report`
-and the packaged hunt-driver files under `scripts/` are excluded; a symbolic link fails
-closed. `sha256` covers the sorted lines `<relative path>\0<file sha256>\n`, so any added,
+`writePolicy.generatedTestRoots`, plus `run-tests.sh`, `scripts/`, the target-owned runner
+declarations (`solution/test-lanes.tsv`, `solution/environment.tsv`, `solution/quarantine.tsv`,
+`solution/counterfactual/`), Maven `src/test/resources/`, and the runner and dependency
+configuration files at the artifact root (`playwright.config.*`, `package.json`,
+`package-lock.json`, `tsconfig*.json`, `pyproject.toml`, `conftest.py`, `pytest.ini`,
+`setup.cfg`, `tox.ini`, `requirements*.txt`, `pom.xml`), all resolved against the artifact
+root. Path segments `node_modules`, `.git`, `.venv`, `venv`, `__pycache__`, and
+`.pytest_cache` and the packaged hunt-driver files under `scripts/` are excluded. Build and
+report output (`reports/`, `test-results/`, `target/`) lives at the artifact root outside every
+corpus root, so a test below an output-named directory such as `tests/api/reports/` stays in
+the corpus. A symbolic link fails closed. `sha256` covers the sorted lines `<relative path>\0<file sha256>\n`, so any added,
 removed, or edited corpus file changes it.
 
 A newer fragment must repeat every earlier round unchanged, and the merge publishes only a

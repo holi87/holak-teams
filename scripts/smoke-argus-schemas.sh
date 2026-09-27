@@ -331,15 +331,39 @@ if (digest.sha256 !== hash(lines.join('')) || digest.fileCount !== 2 || JSON.str
   throw new Error(`automation-review digest does not hash the sorted path/sha256 lines: ${JSON.stringify(digest)}`);
 }
 NODE
-# Dependency, report, and packaged-driver files never enter the corpus; a symbolic link fails closed.
-mkdir -p "$TARGET/tests/node_modules/dep" "$TARGET/tests/test-results" "$TARGET/scripts"
+# Dependency directories, root-level run output, and packaged-driver files never enter the
+# corpus; a symbolic link fails closed.
+mkdir -p "$TARGET/tests/node_modules/dep" "$TARGET/test-results" "$TARGET/scripts"
 printf 'module.exports = 1;\n' >"$TARGET/tests/node_modules/dep/index.js"
-printf 'run output\n' >"$TARGET/tests/test-results/out.txt"
+printf 'run output\n' >"$TARGET/test-results/out.txt"
 printf '// packaged driver\n' >"$TARGET/scripts/hunt-driver.mjs"
 printf '{}\n' >"$TARGET/scripts/driver.config.json"
 review_digest >"$WORK/review-digest-2.json"
 jq -e --slurpfile first "$WORK/review-digest-1.json" '.sha256 == $first[0].sha256 and .fileCount == 2 and .roots == ["run-tests.sh", "scripts", "tests"]' \
   "$WORK/review-digest-2.json" >/dev/null || fail "excluded corpus paths changed the review digest: $(<"$WORK/review-digest-2.json")"
+# Everything that decides what runs is corpus: specs below output-named test directories, root
+# runner and dependency configuration, the target-owned runner declarations, and Maven test
+# resources. Adding and then editing each one changes the digest.
+for corpus_path in tests/api/reports/revenue.spec.ts tests/ui/build/pipeline.spec.ts playwright.config.ts package.json tsconfig.json \
+  pyproject.toml conftest.py requirements.txt pom.xml solution/test-lanes.tsv solution/quarantine.tsv solution/counterfactual/BUG-0001.json \
+  src/test/resources/junit-platform.properties; do
+  review_digest >"$WORK/review-digest-before.json"
+  mkdir -p "$(dirname "$TARGET/$corpus_path")"
+  printf 'retries: 0\n' >"$TARGET/$corpus_path"
+  review_digest >"$WORK/review-digest-added.json"
+  printf 'retries: 3\n' >"$TARGET/$corpus_path"
+  review_digest >"$WORK/review-digest-edited.json"
+  jq -e --slurpfile before "$WORK/review-digest-before.json" --slurpfile added "$WORK/review-digest-added.json" \
+    '.sha256 != $added[0].sha256 and $added[0].sha256 != $before[0].sha256 and .fileCount == $before[0].fileCount + 1' \
+    "$WORK/review-digest-edited.json" >/dev/null || fail "the review corpus does not cover $corpus_path: $(<"$WORK/review-digest-edited.json")"
+done
+jq -e '.roots == ["conftest.py", "package.json", "playwright.config.ts", "pom.xml", "pyproject.toml", "requirements.txt", "run-tests.sh", "scripts",
+  "solution/counterfactual", "solution/quarantine.tsv", "solution/test-lanes.tsv", "src/test/resources", "tests", "tsconfig.json"]' "$WORK/review-digest-edited.json" >/dev/null || \
+  fail "the review corpus roots are wrong: $(<"$WORK/review-digest-edited.json")"
+rm -rf "$TARGET/tests/api" "$TARGET/tests/ui" "$TARGET/playwright.config.ts" "$TARGET/package.json" "$TARGET/tsconfig.json" "$TARGET/pyproject.toml" \
+  "$TARGET/conftest.py" "$TARGET/requirements.txt" "$TARGET/pom.xml" "$TARGET/solution/test-lanes.tsv" "$TARGET/solution/quarantine.tsv" \
+  "$TARGET/solution/counterfactual" "$TARGET/src"
+review_digest | jq -e --slurpfile first "$WORK/review-digest-1.json" '.sha256 == $first[0].sha256' >/dev/null || fail 'removing the added corpus files did not restore the review digest'
 ln -s ../reports "$TARGET/tests/linked-reports"
 if review_digest >"$WORK/review-digest-link.out" 2>&1; then fail 'automation-review digest followed a symbolic link inside the corpus'; fi
 grep -Fq 'automation review corpus cannot contain a symbolic link: tests/linked-reports' "$WORK/review-digest-link.out" || fail "corpus symlink failed for another reason: $(<"$WORK/review-digest-link.out")"

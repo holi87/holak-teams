@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 38145,
-      "sha256": "9896a337a6f93cf055170d5ca2e6e170257f5627e977cf516ec9f5ea4be645e1"
+      "bytes": 38714,
+      "sha256": "1074201944110b8400f9020d527899e02af20d0f07de8be8f115d1f52f859a37"
     },
     {
       "id": "runner-contract",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 410085,
-      "sha256": "6a71ecd111bb45ac5ece77aaaa483bbe9e8fc868c6c0573621d2d6b16b9b9177"
+      "bytes": 410929,
+      "sha256": "04b091475e9edacf844e4d1c3903a3f3e230f6d41f0848864c9309cab41a78f1"
     },
     {
       "id": "common-template",
