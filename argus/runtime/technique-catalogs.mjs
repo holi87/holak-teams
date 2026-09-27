@@ -130,6 +130,20 @@ const SEMANTIC_MARKERS = Object.freeze({
   'ANG-T21': ['3.3.8 Accessible Authentication (Minimum)', 'cognitive function test'],
   'ANG-T22': ['1.4.10 Reflow', 'without scrolling in two dimensions'],
   'ANG-T23': ['1.4.12 Text Spacing', '0.12 times the font size'],
+  // Orion markers pin the functional-UI escape classes and the lane-split clauses that keep
+  // them honest: contract-bound effect counts, field-bound messages, the one server-bypass
+  // replay, and the routes to Lynceus and Perseus. Removing a phrase fails the validator.
+  'ORI-T01': ['cited client-validation requirement', 'hypothesis, not proof'],
+  'ORI-T02': ['never perform the primary or destructive action', 'shared handler'],
+  'ORI-T03': ['every mutating CTA', 'cited action contract'],
+  'ORI-T04': ['exactly its labelled action', 'no sibling'],
+  'ORI-T05': ['field that actually failed', 'no partial mutation'],
+  'ORI-T06': ['exact-boundary state', 'persisted state stays unchanged'],
+  'ORI-T07': ['rolls back visibly', 'phantom success'],
+  'ORI-T08': ['cancels or sequences', 'superseded response'],
+  'ORI-T09': ['documented length unit', 'mid-glyph truncation'],
+  'ORI-T10': ['exact same value', 'register-trims-but-login-does-not'],
+  'ORI-T11': ['silent no-op', 'routed to Perseus'],
 });
 
 const TOP_LEVEL = Object.freeze([
