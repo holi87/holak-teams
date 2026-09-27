@@ -4,8 +4,8 @@
 # the SD-3 inventory, SD-4 expected bugs and SD-10 counterfactual plan from a collect-only
 # pass, turn every SD-5/SD-6 outcome into exactly the expected events (identically under
 # pytest-xdist), fail closed on emission problems, and stay inert without ARGUS_RUNNER_MODE.
-# The qa.oracles contract and data oracle self-tests must report a product pass for every
-# case against loopback stubs, and the cf-correct/cf-tamper passes must judge a regression
+# The qa.oracles contract, data, and behaviour oracle self-tests must report a product pass for
+# every case against loopback stubs, and the cf-correct/cf-tamper passes must judge a regression
 # against the in-process counterfactual stub. The created_resources and fault_injector fixtures must report their
 # failures through the adapter. Finally ./run-tests.sh runs end to end (runner-lib.sh, lane
 # plan, environment baseline, evidence passes) in a scaffold against
@@ -128,6 +128,9 @@ expect_row "$LONG_ID" "$(tab contract-smoke false false - - -)"
 [ "${#LONG_ID}" -eq 200 ] || fail "long case id is not 200 characters"
 expect_row 'tests.api.test_example_api.py::test_health_endpoint_responds' "$(tab api false false - - -)"
 expect_row 'tests.ui.test_example_ui.py::test_login_rejects_bad_credentials-chromium' "$(tab ui false false - - -)"
+expect_row 'tests.ui.test_example_ui.py::test_primary_action_fits_a_375px_phone_viewport-chromium' "$(tab ui false false - - -)"
+expect_row 'tests.api.test_example_api.py::test_every_invalid_order_partition_is_rejected_with_the_documented_status' "$(tab api false false - - -)"
+expect_row 'tests.perf.test_budget_smoke.py::test_collection_read_grows_sub_linearly_with_the_collection_size' "$(tab perf false false - - -)"
 awk -F'\t' -v id="${CASE}test_plain_pass" '$1 == id { exit !($8 ~ /^tests\/contract\/test_classification_fixture\.py:[0-9]+$/) }' "$INVENTORY" || fail "inventory source is not posix-path:line"
 [ "$(cat "$EXPECTED_BUGS")" = "$(printf 'BUG-0001\nBUG-0003')" ] || fail "expected-bugs must list exactly the confirmed ids (needs-oracle and suspected excluded)"
 [ "$(cat "$PLAN")" = "$(printf 'BUG-0001\tmissing\t-\t-\nBUG-0003\tmissing\t-\t-')" ] || fail "the counterfactual plan must list every confirmed bug as missing"
@@ -347,6 +350,29 @@ awk -F'\t' -v prefix="$DATA_ORACLE_CASE" \
 [ -z "$(cut -f1 "$WORK/oracles-data.tsv" | sort | uniq -d)" ] || fail "data oracle self-test case ids are not unique"
 if grep -Eq '127[.]0[.]0[.]1|Qa7' "$WORK/oracles-data.tsv"; then fail "a data oracle self-test event carried test details"; fi
 expect_status "ok $data_oracle_cases" oracles-data
+
+# (8c) Behaviour oracle self-tests: soft-delete sweep, double submit, concurrent race, layout
+# bounds, and growth scaling. Each passes on a correct 127.0.0.1 stub or pure input and fails on
+# a faulty one (a list that still serves a deleted id, two orders from one double submit, an
+# overbooked last seat, an occluded element, an N+1 fan-out, an over-fetching read). No browser
+# starts: visual_bounds runs against a recording stand-in for a Locator. A healthy run is
+# `product pass` for every case.
+BEHAVIOR_ORACLE_TEST=tests/contract/test_oracles_behavior_selftest.py
+BEHAVIOR_ORACLE_CASE='tests.contract.test_oracles_behavior_selftest.py::'
+pytest_run oracles-behavior-list -- --collect-only -m contract_smoke "$BEHAVIOR_ORACLE_TEST"
+expect_exit oracles-behavior-list 0
+behavior_oracle_cases="$(grep -c '::' "$WORK/oracles-behavior-list.log" || true)"
+[ "$behavior_oracle_cases" -gt 0 ] || fail "the behaviour oracle self-tests were not collected"
+pytest_run oracles-behavior ARGUS_RUNNER_MODE=baseline ARGUS_OUTCOME_FILE="$WORK/oracles-behavior.tsv" -- -m contract_smoke "$BEHAVIOR_ORACLE_TEST"
+expect_exit oracles-behavior 0
+[ -f "$WORK/oracles-behavior.tsv" ] || fail "the behaviour oracle self-tests emitted no events"
+[ "$(wc -l <"$WORK/oracles-behavior.tsv" | tr -d ' ')" = "$behavior_oracle_cases" ] || fail "expected one event per behaviour oracle self-test ($behavior_oracle_cases)"
+awk -F'\t' -v prefix="$BEHAVIOR_ORACLE_CASE" \
+  'NF != 7 || index($1, prefix) != 1 || $2 != "product" || $3 != "pass" || $4 != "false" || $5 != "n/a" || $6 != "-" || $7 != "passed" { print "not a behaviour oracle product pass: " $0; bad = 1 } END { exit bad }' \
+  "$WORK/oracles-behavior.tsv" >&2 || fail "a behaviour oracle self-test event is not a product pass"
+[ -z "$(cut -f1 "$WORK/oracles-behavior.tsv" | sort | uniq -d)" ] || fail "behaviour oracle self-test case ids are not unique"
+if grep -Eq '127[.]0[.]0[.]1|argus-correct-password|ECONNREFUSED' "$WORK/oracles-behavior.tsv"; then fail "a behaviour oracle self-test event carried test details"; fi
+expect_status "ok $behavior_oracle_cases" oracles-behavior
 
 # (9) Counterfactual evidence (SD-6, SD-10). Each cf pass serves solution/counterfactual/BUG-0001.json
 # from the session's 127.0.0.1 stub. API_URL names a closed port, so a request that escaped
@@ -778,4 +804,4 @@ cp "$WORK/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
 expect_event "$E2E_EV" environment infrastructure fail false n/a - environment-not-at-baseline
 stop_target
 
-printf 'PASS  Argus Python runtime adapter: collect-only inventory, ledger join, SD-5/SD-6 events, xdist parity, repetition, fail-closed status, inert default, contract and data oracle self-tests, SD-10 counterfactual plan, cf-correct/cf-tamper passes against the in-process stub, strict cleanup and fault-restore fixtures, and an end-to-end runner against a faulty target\n'
+printf 'PASS  Argus Python runtime adapter: collect-only inventory, ledger join, SD-5/SD-6 events, xdist parity, repetition, fail-closed status, inert default, contract, data, and behaviour oracle self-tests, SD-10 counterfactual plan, cf-correct/cf-tamper passes against the in-process stub, strict cleanup and fault-restore fixtures, and an end-to-end runner against a faulty target\n'
