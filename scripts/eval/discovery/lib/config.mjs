@@ -1,7 +1,7 @@
 // Loads and normalizes an argus-eval/comparison-config@2 document. The JSON Schema carries the
 // structural rules; the checks the runtime validator cannot express (distinct variant names,
-// an absolute adapter executable, seeds matching repeats, the smoke-only testMode, and a
-// physical workRoot) are enforced here.
+// an absolute adapter executable, seeds matching repeats, the smoke-only testMode, a physical
+// workRoot, and regression replay only with Mode A) are enforced here.
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, resolve } from 'node:path';
@@ -15,6 +15,10 @@ export const DEFAULT_SECONDS = Object.freeze({ A: 28800, B: 14400 });
 export const MIN_SECONDS = 1800;
 // Always passed to the adapter with unchanged values, so they may not be listed again.
 export const BASE_ENV = Object.freeze(['PATH', 'HOME', 'TMPDIR']);
+// Mode A regression replay: repeats of the all-on and all-off cases, the per-seed matrix, and
+// the wall-clock budget of one generated-suite run (the adapter group is killed 60 s later).
+export const REPLAY_DEFAULTS = Object.freeze({ repeats: 2, perSeedMatrix: true, secondsPerRunner: 1800 });
+export const MIN_REPLAY_SECONDS = 60;
 
 // Returns the path when it is an existing, non-aliased directory whose realpath equals itself.
 export function physicalDirectory(path, label) {
@@ -58,7 +62,8 @@ export function normalizeConfig(raw, { baseDir, env = process.env } = {}) {
   for (const mode of MODES) {
     if (secondsByMode[mode] < minimum) throw new Error(`secondsByMode.${mode} must be at least ${minimum}`);
   }
-  if (raw.replay?.enabled) throw new Error('replay.enabled requires Mode A regression replay, which this evaluator revision does not implement');
+  const modes = [...(raw.modes ?? ['B'])];
+  const replay = normalizeReplay(raw.replay, { modes, testMode });
   const workRoot = physicalDirectory(raw.workRoot ?? realpathSync(tmpdir()), 'workRoot');
   let corpusModule = null;
   if (raw.corpusModule !== undefined) {
@@ -68,7 +73,7 @@ export function normalizeConfig(raw, { baseDir, env = process.env } = {}) {
   return {
     schema: CONFIG_SCHEMA,
     variants: raw.variants.map(({ name, revision, command }) => ({ name, revision, command: [...command] })),
-    modes: [...(raw.modes ?? ['B'])],
+    modes,
     builds: [...(raw.builds ?? BUILDS)],
     repeats: raw.repeats,
     seeds: raw.seeds ? [...raw.seeds] : null,
@@ -76,8 +81,21 @@ export function normalizeConfig(raw, { baseDir, env = process.env } = {}) {
     tokens: raw.tokens ?? null,
     workRoot,
     adapterEnv: [...(raw.adapterEnv ?? [])],
-    replay: { enabled: false },
+    replay,
     corpusModule,
     testMode,
   };
+}
+
+// Replay is on by default whenever Mode A runs. A disabled replay normalizes to exactly
+// {enabled: false}: it has no settings, because nothing is replayed.
+function normalizeReplay(raw = {}, { modes, testMode }) {
+  const enabled = raw.enabled ?? modes.includes('A');
+  if (!enabled) return { enabled: false };
+  if (!modes.includes('A')) throw new Error('replay.enabled requires mode A in modes: regression replay runs the Mode A regression suite');
+  const replay = { enabled: true, ...REPLAY_DEFAULTS };
+  for (const name of Object.keys(REPLAY_DEFAULTS)) if (raw[name] !== undefined) replay[name] = raw[name];
+  const minimum = testMode ? 1 : MIN_REPLAY_SECONDS;
+  if (replay.secondsPerRunner < minimum) throw new Error(`replay.secondsPerRunner must be at least ${minimum}`);
+  return replay;
 }

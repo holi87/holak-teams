@@ -6,13 +6,19 @@
 // (argus-eval/hunt-request@2) and reports launch status and measured usage
 // (argus-eval/adapter-result@2). The evaluator extracts findings itself from the run's artifact
 // root, seals its private state while a hunt runs, and scans the artifacts for contamination.
+// A faulty Mode A run that left a regression framework is then replayed (lib/replay.mjs): the
+// same adapter receives public replay requests (argus-eval/replay-request@1) as
+// `replay <request>` and runs the frozen suite in its sandbox against fresh applications on the
+// hunt's port, again with the private state sealed.
 //
 // Layout (every directory 0700 and physical):
 //   <output>/sealed/private-runs.json  private truth and results (chmod 000 during every hunt)
 //   <output>/sealed/canary.txt         contamination canary
 //   <output>/sealed/runs/<runId>/      completed runs, moved out of active/
 //   <output>/active/<runId>/           request.json, result.json, usage.json, launcher.log and
-//                                      artifacts/ (the hunter's only writable root)
+//                                      artifacts/ (the hunter's only writable root); a replayed
+//                                      run adds replay-requests/<case>-<k>.json and
+//                                      replay/<case>-<k>/ plus replay/<case>-<k>.result.json
 import { chmodSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -22,6 +28,8 @@ import * as builtInCorpus from './corpus/index.mjs';
 import { loadConfig } from './lib/config.mjs';
 import { corpusFileNames, scanArtifacts } from './lib/contamination.mjs';
 import { extractFindings } from './lib/extract.mjs';
+import { caseName, evaluateReplayCase, infrastructureReplayCase, planReplayCases, readReplayResult, REPLAY_KILL_GRACE_SECONDS,
+  replayStatus, startApplicationOnPort, verifySeedProbes } from './lib/replay.mjs';
 import { assertEval, formatSchemaErrors, validateEval } from './lib/schemas.mjs';
 
 const MAX_RESULT_BYTES = 1024 * 1024;
@@ -122,10 +130,11 @@ function adapterEnvironment() {
   return { names, env: Object.fromEntries(names.map(name => [name, process.env[name]])) };
 }
 
-// Spawns the adapter as its own process group, sealed for the whole lifetime of that group.
-// The group is killed at the mode budget (timedOut) and, after a normal exit, again so that no
-// straggler sees the private directory reopen.
-function runAdapter(variant, requestPath, cwd, seconds, env) {
+// Spawns the adapter with `args` appended to its command, as its own process group, sealed for
+// the whole lifetime of that group. The group is killed after `seconds` (timedOut: the mode
+// budget of a hunt, or the runner budget plus a grace period of a replay) and, after a normal
+// exit, again so that no straggler sees the private directory reopen.
+function runAdapter(variant, args, cwd, seconds, env) {
   return new Promise(done => {
     let child = null;
     let timer = null;
@@ -142,7 +151,7 @@ function runAdapter(variant, requestPath, cwd, seconds, env) {
     };
     seal();
     try {
-      child = spawn(variant.command[0], [...variant.command.slice(1), requestPath], {
+      child = spawn(variant.command[0], [...variant.command.slice(1), ...args], {
         cwd, detached: true, stdio: ['ignore', 'ignore', 'inherit'], env });
     } catch (error) {
       finish({ exitCode: null, signal: null, spawnError: error.message });
@@ -197,6 +206,60 @@ function classify({ outcome, adapter, contamination }) {
   return { status: 'awaiting-adjudication', reason: null };
 }
 
+// One replay case: a fresh application with the case's enabled seeds on the hunt port, one
+// sealed `replay <request>` adapter call, then the seed probe re-verification on that instance.
+async function replayCase(run, plan, { runDir, requestsDir, replayDir, frameworkRoot, variant, env, bugIds }) {
+  const name = caseName(plan);
+  const seconds = config.replay.secondsPerRunner;
+  let app;
+  try {
+    app = await startApplicationOnPort(source.startApplication, { seed: run.seed, enabledSeeds: plan.enabledSeeds, port: run.port });
+  } catch (error) {
+    return infrastructureReplayCase(plan, `the application could not listen on port ${run.port} again: ${error.code ?? error.message}`);
+  }
+  try {
+    if (app.port !== run.port) return infrastructureReplayCase(plan, `the application bound port ${app.port} instead of the hunt port ${run.port}`);
+    const request = assertEval('replay-request', {
+      schema: 'argus-eval/replay-request@1', runId: run.runId, case: plan.case, runnerMode: plan.runnerMode, frameworkRoot,
+      replayRoot: join(replayDir, name), target: app.url, seconds, resultPath: join(replayDir, `${name}.result.json`),
+    }, 'replay request');
+    const requestPath = join(requestsDir, `${name}.json`);
+    writeFileSync(requestPath, `${JSON.stringify(request, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+    const outcome = await runAdapter(variant, ['replay', requestPath], runDir, seconds + REPLAY_KILL_GRACE_SECONDS, env);
+    const probeCheck = outcome.spawnError || typeof source.probe !== 'function' ? null
+      : await verifySeedProbes(source.probe, app, run.truth.map(item => item.id), plan.enabledSeeds);
+    return evaluateReplayCase({ plan, outcome, replayResult: readReplayResult(request.resultPath), probeCheck, bugIds, allowTestStub: config.testMode, seconds });
+  } finally {
+    await app.close();
+  }
+}
+
+// Replays the regression framework of a faulty Mode A run. It runs before the run directory
+// moves to sealed/, because the requests and replay roots live under active/<runId>/.
+async function replayRun(run, { runDir, artifactRoot, variant, env }) {
+  const frameworkRoot = join(artifactRoot, run.extraction.framework.root);
+  let physical = false;
+  try {
+    physical = lstatSync(frameworkRoot).isDirectory() && realpathSync(frameworkRoot) === frameworkRoot;
+  } catch {
+    physical = false;
+  }
+  if (!physical) return { status: 'unavailable', reason: 'the framework root is not a physical directory inside the artifact root', cases: [] };
+  const context = {
+    runDir, frameworkRoot, variant, env,
+    requestsDir: makeDirectory(join(runDir, 'replay-requests')),
+    replayDir: makeDirectory(join(runDir, 'replay')),
+    bugIds: [...run.extraction.findings, ...run.extraction.suspected].map(finding => finding.id),
+  };
+  const cases = [];
+  for (const plan of planReplayCases(run.truth, config.replay)) cases.push(await replayCase(run, plan, context));
+  const incomplete = cases.filter(entry => entry.status !== 'completed');
+  const reason = incomplete.length
+    ? `${incomplete.length} of ${cases.length} replay cases did not complete (${[...new Set(incomplete.map(entry => entry.status))].join(', ')})`
+    : null;
+  return { status: replayStatus(cases), reason, cases };
+}
+
 async function executeRun({ repeat, seed, mode, build, variant }) {
   const runId = `r${repeat}-${mode}-${build}-${variant.name}`;
   const enabledSeeds = build === 'faulty' ? [...source.seedIds] : [];
@@ -216,7 +279,7 @@ async function executeRun({ repeat, seed, mode, build, variant }) {
       logPath: join(runDir, 'launcher.log'), budget: { seconds, tokens: config.tokens },
     }, 'hunt request');
     writeFileSync(requestPath, `${JSON.stringify(request, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
-    outcome = await runAdapter(variant, requestPath, runDir, seconds, env);
+    outcome = await runAdapter(variant, [requestPath], runDir, seconds, env);
   } finally {
     await app.close();
   }
@@ -225,16 +288,21 @@ async function executeRun({ repeat, seed, mode, build, variant }) {
   const contamination = scanArtifacts(artifactRoot, scanOptions);
   const { status, reason } = classify({ outcome, adapter, contamination });
   const totalTokens = adapter.result?.usage.totalTokens;
-  const sealedRunDir = join(sealedRuns, runId);
-  renameSync(runDir, sealedRunDir);
-  return {
+  const run = {
     runId, variant: variant.name, revision: variant.revision, repeat, seed, mode, build, enabledSeeds, truth,
     url: app.url, port: app.port, contract: app.contract, status, reason,
     launchAssurance: adapter.result?.launchAssurance ?? 'unreported',
     startedAt: new Date(outcome.startedAtMs).toISOString(), elapsedMs: outcome.elapsedMs, timedOut: outcome.timedOut,
     overBudget: config.tokens !== null && Number.isFinite(totalTokens) && totalTokens > config.tokens,
-    artifactRoot: join(sealedRunDir, 'artifacts'), adapter, extraction, contamination, replay: null,
+    artifactRoot, adapter, extraction, contamination, replay: null,
   };
+  const replayed = config.replay.enabled && mode === 'A' && build === 'faulty' && SCORABLE.has(status) && extraction.framework.root !== null;
+  const replay = replayed ? await replayRun(run, { runDir, artifactRoot, variant, env }) : null;
+  const sealedRunDir = join(sealedRuns, runId);
+  renameSync(runDir, sealedRunDir);
+  run.artifactRoot = join(sealedRunDir, 'artifacts');
+  if (replay) run.replay = { status: replay.status, frameworkRoot: join(run.artifactRoot, extraction.framework.root), reason: replay.reason, cases: replay.cases };
+  return run;
 }
 
 // Rewritten atomically after every run while sealed/ is open.
@@ -280,5 +348,8 @@ const assurances = new Set(privateRuns.runs
   .map(run => run.launchAssurance));
 const summary = { runs: privateRuns.runs.length, status: 'UNSCORED', statuses, privateResults: privateRunsPath };
 if (assurances.size > 1) summary.assuranceMismatch = true;
+const replays = {};
+for (const run of privateRuns.runs) if (run.replay) replays[run.replay.status] = (replays[run.replay.status] ?? 0) + 1;
+if (Object.keys(replays).length) summary.replays = replays;
 console.log(JSON.stringify(summary));
 if (statuses['invalid-run'] || statuses.contaminated || summary.assuranceMismatch) process.exitCode = 1;
