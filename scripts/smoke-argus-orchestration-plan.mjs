@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyEssentialLanePolicy, derivePhasePlan, projectOrchestrationPlan, validateOrchestrationPlan } from '../argus/runtime/orchestration-plan.mjs';
@@ -80,6 +80,20 @@ assert(!controllerContract.includes('Rerun after provisioning'), 'orchestration-
 assert(plan.roles.length === 27, `expected 27 roles, found ${plan.roles.length}`);
 assert(plan.$schema === 'argus/orchestration-plan@2' && plan.schemaVersion === 2 && plan.deepHuntWave === undefined,
   'orchestration plan must be argus/orchestration-plan@2 without the retired deepHuntWave');
+// Every prompt that names the plan contract must name the version the schema accepts, so a
+// contract bump cannot leave a prompt citing a retired, schema-rejected version as authority.
+const planSchemaConst = readJson('argus/schemas/orchestration-plan.schema.json').properties.$schema.const;
+const promptSources = [
+  ...readdirSync(join(ROOT, 'argus/shared-skills')).map((skill) => `argus/shared-skills/${skill}/SKILL.md`),
+  ...readdirSync(join(ROOT, 'argus/roles')).filter((name) => name.endsWith('.md')).map((name) => `argus/roles/${name}`),
+];
+const planReferences = promptSources.flatMap((source) => [...readFileSync(join(ROOT, source), 'utf8')
+  .matchAll(/argus\/orchestration-plan@\d+/gu)].map(([reference]) => ({ source, reference })));
+assert(planSchemaConst === plan.$schema && planReferences.some(({ source }) => source.includes('orchestration-core')),
+  'orchestration-core must name the orchestration plan contract version');
+for (const { source, reference } of planReferences) {
+  assert(reference === planSchemaConst, `${source} names ${reference}, but the plan schema accepts only ${planSchemaConst}`);
+}
 assert(plan.deepHunt?.tier === 'frontier' && plan.deepHunt.maxPasses === 3
   && plan.deepHunt.continueWhen === 'new-confirmed-defects'
   && sameSet(plan.deepHunt.roles, deepHuntRoles) && sameSet(plan.deepHunt.modes, ['A', 'B']),
