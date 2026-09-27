@@ -597,6 +597,12 @@
       ]
     },
     {
+      "value": "solution/orion-ledger.json",
+      "consumers": [
+        "orion"
+      ]
+    },
+    {
       "value": "solution/paths/",
       "consumers": [
         "penelope",
@@ -2039,6 +2045,12 @@
           "kind": "agent",
           "mechanism": "technique-catalog-assignment",
           "reference": "metis"
+        },
+        {
+          "consumer": "orion",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "orion"
         },
         {
           "consumer": "perseus",

@@ -124,6 +124,17 @@
       "requiredAsset": "technique-catalogs-bundle",
       "selectionInput": "argus/surface-inventory@1",
       "fallback": "full-catalog"
+    },
+    "orion": {
+      "catalogId": "argus/technique-catalog/orion@1",
+      "catalogType": "hunter",
+      "idPrefix": "ORI",
+      "entryCount": 13,
+      "sha256": "140a7a5e0212a8042d3e6ccefce83e7c92f94502bb4c07bce0d3f85ca8eb0d52",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
     }
   },
   "orchestration": {
@@ -839,7 +850,9 @@
         "qa-core",
         "qa-browser"
       ],
-      "techniqueCatalogs": [],
+      "techniqueCatalogs": [
+        "orion"
+      ],
       "requiredTools": [
         "Read",
         "Grep",

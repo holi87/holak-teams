@@ -200,6 +200,23 @@
       "value": "The focused component stays mostly visible when sticky content is shown",
       "rejects": ["runtime"],
       "runtimeIncludes": "2.4.11 Focus Not Obscured (Minimum)"
+    },
+    {
+      "name": "orion-entry-count",
+      "catalog": "orion",
+      "operation": "remove",
+      "pointer": "/entries/12",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 13 entries"
+    },
+    {
+      "name": "orion-double-submit-unconditional-oracle",
+      "catalog": "orion",
+      "operation": "replace",
+      "pointer": "/entries/2/oracles/0",
+      "value": "Every mutating CTA creates exactly one effect however often it is activated",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: cited action contract"
     }
   ]
 }

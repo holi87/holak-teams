@@ -3,15 +3,15 @@ schema: argus/codex-provenance@1
 slug: orion
 display_name: Orion
 runtime_config: argus/codex/orion.toml
-runtime_config_sha256: e7a7564f6f66d557991d9bde182e5db605dde0df47e3002b2aacbc05d998866d
-developer_instructions_sha256: d4976c78dfb7ee6a088ffe733edb62fb529d75f2e141086a03d08b375e980b2a
+runtime_config_sha256: 63641d6a34a6248cdeb4c6cb7b54de83b7ff2cf88fada1d38982faff93429156
+developer_instructions_sha256: d9c5263c29083f9c1de1cd977fb62edc9ab366de22bd1b67247f92169b160c2d
 canonical_source: argus/roles/orion.md
-canonical_source_sha256: 435cfd0508bf50f34a9700e014c9b52a922f00b87ad8b863064bec9aa7e90657
+canonical_source_sha256: 2767a4390611b57e5b61bd717f5541c5ef9e3789d4571c526e7f4931a22ced08
 model: sol
 model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 doctrine_profiles: ["qa-core","qa-browser"]
-technique_catalogs: []
+technique_catalogs: ["orion"]
 generated_by: scripts/sync-argus-role-variants.mjs
 runtime_consumed: false
 ---
