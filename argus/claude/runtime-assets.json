@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 423477,
-      "sha256": "e658c13e848c966fdafb5b9c2684d3d58a3a8b01182d4f6e7ab81679e73a7ab6"
+      "bytes": 423696,
+      "sha256": "c387f06b0365018c2091c79d0409f306d3cb33ee4bdc3a6a4560b424c2a06f5d"
     },
     {
       "id": "common-template",

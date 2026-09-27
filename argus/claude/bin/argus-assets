@@ -2986,24 +2986,26 @@ function reclaimAbandonedModelControlLock(lock) {
   if (lockEntry.isSymbolicLink() || !lockEntry.isDirectory()) throw new Error(`model-control lock path is unsafe: ${lock}`);
   if (!modelControlLockIsAbandoned(lock)) return false;
   const ownerEntry = lstatSafe(join(lock, 'owner.json'));
-  const claim = join(lock, '.reclaim');
-  try {
-    mkdirSync(claim, { mode: 0o700 });
-    writeFileSync(join(claim, 'owner.json'), `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`, { flag: 'wx', mode: 0o600 });
-  } catch (error) {
+  // The claim sits beside the lock and names the directory judged abandoned. A caller that
+  // loses the race never writes into a lock another caller has re-acquired, and a claim
+  // left by a killed reclaimer blocks only that one directory.
+  const claim = `${lock}.reclaim-${lockEntry.dev}-${lockEntry.ino}`;
+  try { mkdirSync(claim, { mode: 0o700 }); }
+  catch (error) {
     if (error.code === 'EEXIST') return false;
     throw error;
   }
-  let quarantine = null;
   try {
+    writeFileSync(join(claim, 'owner.json'), `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`, { flag: 'wx', mode: 0o600 });
     if (!sameDirectoryIdentity(lockEntry, lstatSafe(lock)) ||
-        !sameFilesystemEntry(ownerEntry, lstatSafe(join(lock, 'owner.json')))) return false;
-    quarantine = `${lock}.stale-${process.pid}-${randomBytes(6).toString('hex')}`;
+        !sameFilesystemEntry(ownerEntry, lstatSafe(join(lock, 'owner.json'))) ||
+        !modelControlLockIsAbandoned(lock)) return false;
+    const quarantine = `${lock}.stale-${process.pid}-${randomBytes(6).toString('hex')}`;
     renameSync(lock, quarantine);
     rmSync(quarantine, { recursive: true, force: true });
     return true;
   } finally {
-    if (!quarantine && sameDirectoryIdentity(lockEntry, lstatSafe(lock))) rmSync(claim, { recursive: true, force: true });
+    rmSync(claim, { recursive: true, force: true });
   }
 }
 
