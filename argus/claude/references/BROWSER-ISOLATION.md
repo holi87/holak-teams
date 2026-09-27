@@ -103,7 +103,7 @@ Agent prompts name actions with the `browser_*` verbs; **the verb names the ACTI
 | `browser_navigate` | `--goto <route>` (baseUrl+route, waits for SPA render) |
 | `browser_navigate_back` | `--back` |
 | `browser_wait_for` | `--wait <selector>` |
-| `browser_snapshot` | `--snapshot` (compact accessibility tree — the DOM oracle) |
+| `browser_snapshot` | `--snapshot` (aria snapshot YAML — the DOM oracle) |
 | `browser_take_screenshot` | `--shot <file>` (full page) |
 | `browser_evaluate` | `--eval <js>` (prints JSON result) |
 | `browser_click` | `--click <selector>` |
@@ -115,7 +115,7 @@ Agent prompts name actions with the `browser_*` verbs; **the verb names the ACTI
 | `browser_handle_dialog` | `--dialog <accept\|dismiss[::text]>` — arm BEFORE the trigger |
 | `browser_resize` | `--viewport <WxH>` (e.g. `375x812`) |
 | `browser_console_messages` | `--console` |
-| `browser_network_requests` | `--net` (method + status + url) |
+| `browser_network_requests` | `--net` (label, method, status or FAILED, duration, resource type, url) |
 
 Hunt-driver-only capabilities (no `browser_*` equivalent):
 
@@ -128,6 +128,14 @@ Hunt-driver-only capabilities (no `browser_*` equivalent):
 | Pinned clock | `--clock <ISO datetime>` (Playwright clock API, installed before the first navigation — deterministic `Date`/timers for date/format oracles) |
 | Reduced motion | `--reduced-motion` (context `reducedMotion: 'reduce'` — a real `prefers-reduced-motion` signal) |
 | Debugging | `--headed` (headed run; default headless) |
+| Tabs | `--tab <name>` (switch to or open a named tab in the current actor's browser; the first tab is `main`, popups are `popup-<n>`) |
+| Actors | `--actor <name>=<role\|anon>` (repeatable; declares an extra actor with its own browser process), `--as <actor>` (switch to `primary` or a declared actor's current tab) |
+| Client-side faults | `--fail-next <glob>[::<status>[::<count>]]` (default 503, empty JSON body), `--abort-next <glob>[::<count>]`, `--delay-next <glob>::<ms>[::<count>]`, `--unroute`, `--offline`/`--online` — section 3a |
+| Payloads | `--capture-bodies <glob>` (repeatable session option), `--bodies` (print captured bodies as JSON lines) — section 3a |
+| UI races | `--race-arm <[actor/]tab>::<selector>` (arm one click target; repeat per target), `--race-fire` (click every armed target concurrently and report each outcome) |
+| Timing | `--wait-ms <0-60000>`, `--advance <ms>` (fast-forward the installed clock; requires `--clock`) |
+| Dry run | `--plan` (print the parsed actions and authorization checks as one JSON line; no config load, no browser) |
+| Version | `--version` (print the driver version) |
 
 Example — sweep a screen at mobile width as a student, capture evidence:
 
@@ -139,6 +147,39 @@ node scripts/hunt-driver.mjs --agent orion --role argus-orion \
   --shot <allocated-browserArtifactsDirectory>/screenshots/mycourses-375.png \
   --snapshot --console --net
 ```
+
+### 3a. Client-side controls and their authorization
+
+- **Faults stay in the lane's own browser.** `--fail-next`, `--abort-next`, and
+  `--delay-next` install `context.route` handlers on the current actor's browser context;
+  `--offline`/`--online` call `context.setOffline`. The target server and its dependencies
+  never receive an altered request, so a client-side fault is not `chaos` and takes no
+  exclusive reset/fault window. `--unroute` removes the current actor's driver routes.
+- **Faults need two decisions.** Every fault verb is interactive and therefore needs
+  `browser-state-change` for the lane's account. `--fail-next`, `--abort-next`,
+  `--delay-next`, and `--offline` additionally need a separate audited
+  `argus-assets authorization check` with the mutation `browser:client-fault`. The driver
+  runs both checks before Playwright starts and takes that mutation only from its own plan,
+  never from `ARGUS_AUTHORIZATION_MUTATION`. A denial means no browser launch.
+- **Bodies are opt-in and redacted.** Only responses whose absolute URL matches a
+  `--capture-bodies` glob are recorded, and only textual bodies (text, XML, JSON), each
+  capped at the recon config's `maxCapturedBodyBytes` (default 64 KiB) with its byte count
+  and SHA-256. `--bodies` prints them through `argus-assets redact` to stdout only; nothing
+  is written to disk. Bodies and request bodies of the configured auth endpoints
+  (`api.login`, `api.me`, `api.refresh`) and of every `bodyCaptureExclude` glob are
+  omitted. No header is kept except `content-type`.
+- **Each actor is its own browser.** Every `--actor` runs a separate persistent browser
+  process whose profile lives under the lane's allocated
+  `<browserArtifactsDirectory>/actor-profiles/<name>`, so engagement cleanup and crash
+  recovery remove it with the rest of the lane's browser artifacts; `--fresh` wipes it
+  too. Every non-anonymous actor account is authorized separately with its own
+  `browser-state-change` check.
+- **Same semantics as the automation helpers.** `--fail-next`, `--delay-next`, and
+  `--abort-next` behave like the TypeScript template's `failNext`, `delayNext`, and
+  `abortNext` route mocks (status with an empty JSON body, delay then continue, abort with
+  `failed`), so a hunt that finds a defect through a fault converts to a RED regression
+  without changing the fault. Record the fulfilled status in the repro: the driver
+  defaults to 503, `failNext` to 500.
 
 ## 4. The shared MCP browser: public, single-shot, read-only
 
