@@ -31,8 +31,9 @@ the run. In order: template selection, the lane plan, `npm ci` + `tsc --noEmit` 
 that doesn't typecheck doesn't run), readiness ("ENVIRONMENT NOT READY"), the environment
 baseline, a collect-only inventory (`reports/test-inventory.tsv`, `reports/expected-bugs.txt`,
 `reports/counterfactual-plan.tsv`), the quarantine and inventory gates, the evidence
-passes, the surface-coverage gate (`scripts/baseline-coverage.mjs`, baseline and full-suite),
-and `reports/argus-runner-result.json` (`argus/runner-result@1`). Exit codes are 0
+passes, the surface-coverage gate (`scripts/baseline-coverage.mjs`, baseline and full-suite;
+it writes `solution/coverage-result.json`, or `reports/coverage-result.json` inside an Argus
+engagement, where Kleio merges the canonical result), and `reports/argus-runner-result.json` (`argus/runner-result@1`). Exit codes are 0
 or 10-15 per `RUNNER-CONTRACT.md`, never Playwright's own.
 
 - **Lanes.** Each product lane (`api`, `ui`, `perf`, `security`, `db`, `resilience`) is a
