@@ -64,7 +64,7 @@ still need a production override.
 Read-only actions are `read`, `browser-read`, `database-read`, and `security-passive`.
 All other target-affecting work is high-risk and requires the exact enabled grant:
 
-- `browser-state-change` — login, submit, upload, checkout, enroll, or any stateful UI flow;
+- `browser-state-change` — login, submit, upload, checkout, enroll, or any stateful UI flow, including client-side network faults, which additionally need the mutation `browser:client-fault`;
 - `binary-evidence` — screenshot/video/binary trace capture after synthetic/masked content and independent review are confirmed;
 - `persistent-mutation` — create/update/delete target data through an API or UI;
 - `security-active` — fuzzing, injection payloads, authz abuse, scanners, or exploit attempts;
