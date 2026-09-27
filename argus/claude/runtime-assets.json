@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 9,
-      "bytes": 293975,
-      "sha256": "4c12efc7dadcec39961cf8c9b69939428b754b5cbf9698709bc4cc0eafaf2f09"
+      "bytes": 293843,
+      "sha256": "d2d3d2a5fd35f9bc125c27861e4c203ebb632cc28f28a546526ec3fbe1fa7aee"
     },
     {
       "id": "common-template",
@@ -271,9 +271,9 @@
       "kind": "template",
       "source": "argus/framework-template",
       "destination": "templates/typescript",
-      "files": 48,
-      "bytes": 255969,
-      "sha256": "6ba1b02a9c0eef34a40b99211752955931f18f1adc3c1ac6caf221757bdb3e73"
+      "files": 50,
+      "bytes": 256941,
+      "sha256": "080dde0e58d18ad879ca2a1c5409e584a4a9f19ab78ce08ce6a5964f47e1f21d"
     },
     {
       "id": "java-template",
