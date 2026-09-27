@@ -4,12 +4,15 @@ Specs declare what they need; setup/teardown lives here, never inline in tests.
 Layers: tests -> (these fixtures) -> qa.api_client / qa.pages -> qa.config.
 
 What this provides:
-  * api_as(role)        authenticated httpx.Client factory (token cached per role)
+  * api_as(role)        authenticated httpx.Client factory (token cached per API and role)
   * anon_client         unauthenticated httpx.Client (negative / public-route tests)
   * created_resources   teardown list — POST-created entities get DELETEd after the test
   * storage_state       session-scoped UI auth (once per run) -> .auth/user.json
   * browser_context_args overridden so UI contexts use UI_URL + the saved auth state
   * console_guard        fails a UI test on console errors / 5xx responses (UI lane only)
+  * _argus_stub, _argus_counterfactual  autouse, inert unless ARGUS_EVIDENCE_PASS is cf-*:
+                         then every client reaches a 127.0.0.1 stub serving the bug's
+                         counterfactual fixture instead of the target (SD-10)
 
 Determinism: NO retries, NO rerun plugin. Flakiness is fixed at the source.
 """
@@ -29,6 +32,9 @@ _ROOT = Path(__file__).parent
 sys.path.insert(0, str(_ROOT / "src"))
 
 from qa.api_client import login, make_client  # noqa: E402
+from qa.argus import counterfactual  # noqa: E402
+from qa.argus.errors import ArgusCounterfactualError  # noqa: E402
+from qa.argus.stub_server import StubServer  # noqa: E402
 from qa.config import ENV  # noqa: E402
 
 # Argus outcome adapter: inert unless scripts/runner-lib.sh exports ARGUS_RUNNER_MODE.
@@ -43,6 +49,75 @@ def pytest_configure(config: pytest.Config) -> None:
     (_ROOT / "reports" / "html").mkdir(parents=True, exist_ok=True)
 
 
+# ------------------------------------------------------------------ counterfactual
+# Counterfactual evidence (TEMPLATE-CONTRACT.md SD-10). Inert unless ARGUS_EVIDENCE_PASS
+# starts with cf-. Then each session (each xdist worker) runs one 127.0.0.1 stub, and each
+# test bound to a bug with a fixture runs against the pass's variant of
+# solution/counterfactual/<bug>.json: current_api_url(), and with it make_client, login,
+# api_as and anon_client, points at the stub, and tests/ui/conftest.py routes the browser's
+# API requests to it. No request reaches the target API; an undeclared one fails the test
+# with ArgusCounterfactualError. Every other test skips with a sentinel reason the outcome
+# adapter recognises.
+
+
+def _counterfactual_pass() -> str | None:
+    evidence_pass = os.environ.get("ARGUS_EVIDENCE_PASS", "")
+    return evidence_pass if evidence_pass.startswith("cf-") else None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _argus_stub() -> Iterator[StubServer | None]:
+    """One loopback counterfactual stub per session in a cf-* pass; None otherwise."""
+    if _counterfactual_pass() is None:
+        yield None
+        return
+    stub = StubServer.start()
+    try:
+        yield stub
+    finally:
+        stub.stop()
+
+
+@pytest.fixture(autouse=True)
+def _argus_counterfactual(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    _argus_stub: StubServer | None,
+) -> Iterator[counterfactual.CounterfactualContext | None]:
+    """Load this test's counterfactual variant into the stub, or skip with a sentinel reason."""
+    evidence_pass = _counterfactual_pass()
+    if _argus_stub is None or evidence_pass is None:
+        yield None
+        return
+    # The stub outlives the test: drop the previous test's exchanges and request log.
+    _argus_stub.load([])
+    root = Path(request.config.rootpath)
+    bug_id = counterfactual.bound_bug(root, request.node)
+    # The same validation as the inventory plan, contract check included, so a fixture the
+    # plan lists as invalid never runs.
+    fixture = counterfactual.load_fixture(root, bug_id) if bug_id else None
+    if isinstance(fixture, counterfactual.Exempt) and evidence_pass == "cf-correct":
+        pytest.skip(f"{counterfactual.EXEMPT_PREFIX}{fixture.reason}")
+    # Unbound tests, missing or invalid fixtures, exempt bugs in tamper passes, tamper passes
+    # beyond the fixture's tampers, and malformed pass names have no variant; the evidence
+    # gate reports missing and invalid fixtures.
+    variant = counterfactual.NO_VARIANT
+    if isinstance(fixture, counterfactual.CounterfactualFixture) and counterfactual.is_counterfactual_pass(evidence_pass):
+        variant = counterfactual.variant_for(fixture, evidence_pass)
+    if bug_id is None or not isinstance(fixture, counterfactual.CounterfactualFixture) or not isinstance(variant, counterfactual.CounterfactualVariant):
+        pytest.skip(counterfactual.NOT_APPLICABLE)
+    _argus_stub.load(counterfactual.variant_exchanges(fixture, variant))
+    monkeypatch.setenv("ARGUS_COUNTERFACTUAL_API_URL", _argus_stub.url)
+    yield counterfactual.CounterfactualContext(bug_id=bug_id, variant=variant.id, stub=_argus_stub)
+    unmatched = _argus_stub.unmatched()
+    _argus_stub.load([])
+    if unmatched:
+        listed = ", ".join(f"{record['method']} {record['path']}" for record in unmatched[:5])
+        raise ArgusCounterfactualError(
+            f"the counterfactual stub received {len(unmatched)} request(s) the fixture does not declare: {listed}"
+        )
+
+
 # --------------------------------------------------------------------------- API
 
 
@@ -50,8 +125,8 @@ def pytest_configure(config: pytest.Config) -> None:
 def api_as() -> Iterator[Callable[[str], httpx.Client]]:
     """Factory: ``client = api_as("user")`` -> bearer-authed httpx.Client.
 
-    Every client handed out is closed in teardown. Login is cached per role
-    (one auth per run), so calling this repeatedly is cheap.
+    Every client handed out is closed in teardown. Login is cached per API and
+    role (one auth per run), so calling this repeatedly is cheap.
     """
     clients: list[httpx.Client] = []
 

@@ -2,8 +2,9 @@
 
 `Endpoints` is the single registry of paths: specs reference `Endpoints.ORDERS`,
 never a raw string, so an API rename is a one-line change here. `login()` + the
-per-role token cache keep auth out of the specs (the conftest `api_as` fixture
-wraps this). ADAPT-ME: rename/extend per the real OpenAPI surface.
+per-API-and-role token cache keep auth out of the specs (the conftest `api_as` fixture
+wraps this). Clients follow `current_api_url()`, so in a cf-* evidence pass they reach the
+counterfactual stub instead of the target. ADAPT-ME: rename/extend per the real OpenAPI surface.
 """
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from qa.config import ENV
+from qa.config import ENV, current_api_url
 
 
 class Endpoints:
@@ -29,25 +30,28 @@ def make_client(
     token: str | None = None,
     timeout: float = 30.0,
 ) -> httpx.Client:
-    """Build an httpx.Client pinned to the API base URL, optionally bearer-authed."""
+    """Build an httpx.Client pinned to the API base URL (default: current_api_url()), optionally bearer-authed."""
     headers: dict[str, str] = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"  # <-- adapt scheme (Bearer/JWT/cookie)
-    return httpx.Client(base_url=base_url or ENV.api_url, headers=headers, timeout=timeout)
+    return httpx.Client(base_url=base_url or current_api_url(), headers=headers, timeout=timeout)
 
 
-# Token cache — one login per role for the whole run, not per test.
-_token_cache: dict[str, str] = {}
+# Token cache — one login per API and role for the whole run, not per test. Keying by the API
+# URL keeps a counterfactual stub's token and the real target's token apart.
+_token_cache: dict[tuple[str, str], str] = {}
 
 
 def login(role: str) -> str:
     """Authenticate `role` and return its token (cached). Adapt to the real auth flow."""
-    cached = _token_cache.get(role)
+    api_url = current_api_url()
+    key = (api_url, role)
+    cached = _token_cache.get(key)
     if cached:
         return cached
 
     creds = ENV.accounts[role]
-    with make_client() as client:
+    with make_client(base_url=api_url) as client:
         res = client.post(
             Endpoints.AUTH_LOGIN,
             json={"username": creds.username, "password": creds.password},  # <-- adapt payload
@@ -58,7 +62,7 @@ def login(role: str) -> str:
     token = body.get("token") or body.get("accessToken")  # <-- adapt token field
     if not token:
         raise RuntimeError(f"login({role}) returned no token field in {body!r}")
-    _token_cache[role] = token
+    _token_cache[key] = token
     return token
 
 

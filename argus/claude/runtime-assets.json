@@ -289,9 +289,9 @@
       "kind": "template",
       "source": "argus/framework-template-python",
       "destination": "templates/python",
-      "files": 39,
-      "bytes": 177197,
-      "sha256": "c9736cb6dc8e29c3941c5aead09cc64a569193436d869a0c319a15e702a47d44"
+      "files": 40,
+      "bytes": 207461,
+      "sha256": "304ee90d8edafbeafbc3f16cf93d98c9fc04da1d4923ad289b3e8da0da39f546"
     }
   ],
   "buildOnly": [
