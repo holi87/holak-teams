@@ -387,6 +387,77 @@ grep -Eq ' authorizationSource=preflight targetEnvironment=none features=none$' 
   { cat "$WORK/dry-run.stdout" >&2; fail 'authenticated dry run did not report the preflight authorization default and features=none'; }
 [ ! -e "$WORK/dry-run-artifacts/ai_agents_internal/fixture-claude-arguments.txt" ] || fail 'authenticated dry run started the controller'
 
+# --usage-json captures Claude's final JSON result document in a one-shot file outside the
+# artifact root. It switches only Claude's output format: the turn cap, model, effort, child
+# environment, and every signed binding stay exactly those of a text-mode launch. Both usage
+# forms advertise it, because the discovery adapter feature-detects it from --help.
+[ "$("$LAUNCHER" --help | grep -Fc -- '[--usage-json <absolute-path>]')" -eq 2 ] || \
+  fail 'argus-launch --help does not list --usage-json in both launch forms'
+assert_no_usage_temporaries() {
+  [ -z "$(find "$1" -name '.argus-usage.*' -print -quit)" ] || fail "$2 left a usage report temporary file in $1"
+}
+mkdir -p "$WORK/usage-target" "$WORK/usage-artifacts"
+usage_report="$WORK/usage-operator/usage.json"
+run_authenticated_launch usage "$WORK/usage-target" "$WORK/usage-artifacts" '' --usage-json "$usage_report"
+[ -f "$usage_report" ] || fail 'attested --usage-json launch did not write the usage report'
+assert_mode_0600 "$usage_report" 'attested usage report'
+assert_no_usage_temporaries "$WORK/usage-operator" 'attested --usage-json launch'
+jq -e '.type == "result" and .subtype == "success" and .is_error == false and (.usage | type) == "object"
+  and (.modelUsage | type) == "object" and .num_turns == 1 and .result == "ARGUS_FIXTURE_NATIVE_PREFLIGHT_OK"' \
+  "$usage_report" >/dev/null || { cat "$usage_report" >&2; fail 'attested usage report is not the Claude JSON result document'; }
+! grep -Fq '"type":"result"' "$WORK/usage.stdout" || fail 'attested --usage-json launch printed the JSON document instead of its result text'
+usage_arguments="$WORK/usage-artifacts/ai_agents_internal/fixture-claude-arguments.txt"
+[ "$(grep -Fx -A 1 -- '--output-format' "$usage_arguments" | tail -n 1)" = json ] || \
+  { cat "$usage_arguments" >&2; fail 'attested --usage-json launch did not run Claude with --output-format json'; }
+[ "$(grep -Fxc -- '--max-turns' "$usage_arguments")" -eq 1 ] && \
+  [ "$(grep -Fx -A 1 -- '--max-turns' "$usage_arguments" | tail -n 1)" = "$REVIEWED_CONTROLLER_TURNS" ] || \
+  fail "attested --usage-json launch did not keep exactly one --max-turns $REVIEWED_CONTROLLER_TURNS"
+text_arguments="$WORK/path artifacts/ai_agents_internal/fixture-claude-arguments.txt"
+! grep -Fxq -- '--output-format' "$text_arguments" || fail 'a launch without --usage-json changed the Claude output format'
+# Apart from the prompt, which names launch-specific paths, the argv differs only by the pair.
+[ "$(sed '$d' "$text_arguments")" = "$(sed '$d' "$usage_arguments" | awk 'skip { skip = 0; next } $0 == "--output-format" { skip = 1; next } { print }')" ] || \
+  fail 'attested --usage-json launch changed a Claude argument other than the output format'
+[ "$(jq -cS 'keys' "$WORK/path-operator/request.json")" = "$(jq -cS 'keys' "$WORK/usage-operator/request.json")" ] || \
+  fail '--usage-json changed the fields of the signed launch request'
+
+# An authenticated dry run validates the report path and reports it without writing anything.
+mkdir -p "$WORK/usage-dry-run-target" "$WORK/usage-dry-run-artifacts"
+prepare_signer "$WORK/usage-dry-run-operator" runtime-usage-dry-run
+PATH="$FIXTURE_PATH:$PATH" "$LAUNCHER" claude --target "$WORK/usage-dry-run-target" \
+  --artifact-root "$WORK/usage-dry-run-artifacts" --mode B --engagement-id launcher-usage-dry-run \
+  --trust-store "$WORK/usage-dry-run-operator/model-trust.json" --runtime-key-id runtime-usage-dry-run \
+  --request-output "$WORK/usage-dry-run-operator/request.json" --launch-authorization "$WORK/usage-dry-run-operator/authorization.json" \
+  --usage-json "$WORK/usage-dry-run-operator/usage.json" --wait-seconds 30 --dry-run \
+  >"$WORK/usage-dry-run.stdout" 2>"$WORK/usage-dry-run.stderr" &
+usage_dry_run_pid=$!
+wait_for_file "$WORK/usage-dry-run-operator/request.json" || { cat "$WORK/usage-dry-run.stderr" >&2; fail 'authenticated usage dry-run request was not created'; }
+sign_request "$WORK/usage-dry-run-operator" "$WORK/usage-dry-run-operator/request.json" "$WORK/usage-dry-run-operator/authorization.json"
+if ! wait "$usage_dry_run_pid"; then cat "$WORK/usage-dry-run.stderr" >&2; fail 'authenticated usage dry run failed'; fi
+grep -Eq "^ARGUS_LAUNCH .*maxTurns=$REVIEWED_CONTROLLER_TURNS .* features=none usageReport=json$" "$WORK/usage-dry-run.stdout" || \
+  { cat "$WORK/usage-dry-run.stdout" >&2; fail 'authenticated dry run did not report usageReport=json'; }
+[ ! -e "$WORK/usage-dry-run-operator/usage.json" ] || fail 'authenticated dry run wrote the usage report'
+assert_no_usage_temporaries "$WORK/usage-dry-run-operator" 'authenticated usage dry run'
+[ ! -e "$WORK/usage-dry-run-artifacts/ai_agents_internal/fixture-claude-arguments.txt" ] || fail 'authenticated usage dry run started the controller'
+
+# The report may not reuse an operator handshake path; the refusal precedes the request.
+prepare_signer "$WORK/usage-collision-operator" runtime-usage-collision
+for collision in request authorization; do
+  set +e
+  PATH="$FIXTURE_PATH:$PATH" "$LAUNCHER" claude --target "$WORK/usage-target" \
+    --artifact-root "$WORK/usage-collision-artifacts" --mode B --engagement-id launcher-usage-collision \
+    --trust-store "$WORK/usage-collision-operator/model-trust.json" --runtime-key-id runtime-usage-collision \
+    --request-output "$WORK/usage-collision-operator/request.json" --launch-authorization "$WORK/usage-collision-operator/authorization.json" \
+    --usage-json "$WORK/usage-collision-operator/$collision.json" --wait-seconds 30 \
+    >/dev/null 2>"$WORK/usage-collision-$collision.stderr"
+  usage_status=$?
+  set -e
+  [ "$usage_status" -ne 0 ] || fail "launcher accepted a usage report at the $collision path"
+  grep -Fq 'usage report must differ from the request and authorization paths' "$WORK/usage-collision-$collision.stderr" || \
+    { cat "$WORK/usage-collision-$collision.stderr" >&2; fail "usage report at the $collision path was not refused as a collision"; }
+  [ ! -e "$WORK/usage-collision-operator/request.json" ] || fail "usage report collision with the $collision path still wrote a launch request"
+  [ ! -e "$WORK/usage-collision-artifacts" ] || fail "usage report collision with the $collision path created the artifact root"
+done
+
 # A public environment string must never satisfy the mandatory native check.
 mkdir -p "$WORK/direct-target" "$WORK/direct-artifacts"
 set +e
@@ -757,6 +828,115 @@ for existing_case in manifest environment; do
     fail "existing different manifest refusal (--$existing_case) still started the controller"
 done
 
+# (a7) --usage-json on keyless launches. Every case runs with a fresh HOME that holds no trust
+# store and with every other known Argus variable forged, so the child environment proves the
+# unattested allowlist. Usage: run_usage_case <name> <engagement-id> [<launcher option>...]
+mkdir -p "$WORK/usage-unattested-target" "$WORK/usage-reports" "$WORK/usage-home"
+chmod 700 "$WORK/usage-reports"
+usage_seeded_environment=()
+for environment_name in "${known_argus_environment[@]}"; do
+  [ "$environment_name" = ARGUS_MODEL_TRUST_STORE ] || usage_seeded_environment+=("$environment_name=forged-$environment_name")
+done
+run_usage_case() {
+  local name="$1" engagement="$2"
+  shift 2
+  env -u ARGUS_MODEL_TRUST_STORE "${usage_seeded_environment[@]}" HOME="$WORK/usage-home" PATH="$FIXTURE_PATH:$PATH" \
+    "$LAUNCHER" claude --target "$WORK/usage-unattested-target" --artifact-root "$WORK/usage-artifacts-$name" \
+    --mode A --engagement-id "$engagement" --unattested "$@" \
+    >"$WORK/usage-unattested-$name.stdout" 2>"$WORK/usage-unattested-$name.stderr"
+}
+
+# A dry run validates the path and appends usageReport=json; nothing is written.
+set +e
+run_usage_case dry-run launcher-usage-dry-run --usage-json "$WORK/usage-reports/dry-run.json" --dry-run
+usage_status=$?
+set -e
+[ "$usage_status" -eq 0 ] || { cat "$WORK/usage-unattested-dry-run.stderr" >&2; fail 'unattested --usage-json dry run failed'; }
+grep -Eq "^ARGUS_LAUNCH .*maxTurns=$REVIEWED_CONTROLLER_TURNS .*attestation=UNATTESTED .* features=none usageReport=json$" \
+  "$WORK/usage-unattested-dry-run.stdout" || { cat "$WORK/usage-unattested-dry-run.stdout" >&2; fail 'unattested dry run did not report usageReport=json'; }
+[ ! -e "$WORK/usage-reports/dry-run.json" ] || fail 'unattested dry run wrote the usage report'
+
+# A real keyless launch writes the report, prints only the result text, and gives the child
+# ARGUS_LAUNCH_UNATTESTED=1 as its only Argus variable.
+set +e
+run_usage_case launch launcher-usage-launch --usage-json "$WORK/usage-reports/launch.json"
+usage_status=$?
+set -e
+[ "$usage_status" -eq 0 ] || { cat "$WORK/usage-unattested-launch.stderr" >&2; fail 'unattested --usage-json launch failed'; }
+[ "$(cat "$WORK/usage-unattested-launch.stdout")" = ARGUS_FIXTURE_UNATTESTED_PROMPT_OK ] || \
+  { cat "$WORK/usage-unattested-launch.stdout" >&2; fail 'unattested --usage-json launch did not print exactly the result text'; }
+assert_mode_0600 "$WORK/usage-reports/launch.json" 'unattested usage report'
+jq -e '.type == "result" and .subtype == "success" and (.usage | type) == "object"
+  and .modelUsage["claude-opus-fixture"].inputTokens == 10 and .result == "ARGUS_FIXTURE_UNATTESTED_PROMPT_OK"' \
+  "$WORK/usage-reports/launch.json" >/dev/null || { cat "$WORK/usage-reports/launch.json" >&2; fail 'unattested usage report is not the Claude JSON result document'; }
+usage_env_file="$WORK/usage-artifacts-launch/ai_agents_internal/fixture-child-environment.txt"
+[ "$(grep -c '^ARGUS_' "$usage_env_file")" -eq 1 ] && grep -Fxq 'ARGUS_LAUNCH_UNATTESTED=1' "$usage_env_file" || \
+  { grep '^ARGUS_' "$usage_env_file" >&2; fail 'unattested child received an Argus variable other than ARGUS_LAUNCH_UNATTESTED=1'; }
+usage_arguments="$WORK/usage-artifacts-launch/ai_agents_internal/fixture-claude-arguments.txt"
+[ "$(grep -Fx -A 1 -- '--output-format' "$usage_arguments" | tail -n 1)" = json ] && \
+  [ "$(grep -Fx -A 1 -- '--max-turns' "$usage_arguments" | tail -n 1)" = "$REVIEWED_CONTROLLER_TURNS" ] || \
+  { cat "$usage_arguments" >&2; fail "unattested --usage-json launch did not run Claude with --output-format json and --max-turns $REVIEWED_CONTROLLER_TURNS"; }
+
+# A controller stopped at its native turn cap still leaves its report, and the launcher exits
+# with Claude's own status.
+set +e
+run_usage_case max-turns launcher-usage-fixture-error-max-turns --usage-json "$WORK/usage-reports/max-turns.json"
+usage_status=$?
+set -e
+[ "$usage_status" -eq 1 ] || { cat "$WORK/usage-unattested-max-turns.stderr" >&2; fail "turn-capped launch exited $usage_status instead of Claude's status 1"; }
+jq -e --argjson turns "$REVIEWED_CONTROLLER_TURNS" \
+  '.type == "result" and .subtype == "error_max_turns" and .is_error == true and .num_turns == $turns and (has("result") | not)' \
+  "$WORK/usage-reports/max-turns.json" >/dev/null || { cat "$WORK/usage-reports/max-turns.json" >&2; fail 'turn-capped launch did not keep its error_max_turns usage report'; }
+[ ! -s "$WORK/usage-unattested-max-turns.stdout" ] || fail 'turn-capped launch printed result text it does not have'
+assert_no_usage_temporaries "$WORK/usage-reports" 'unattested --usage-json launches'
+
+# Every unsafe report path is refused before the artifact root exists. The root case, a report
+# path equal to the artifact root, would otherwise turn the report path into that directory.
+mkdir -p "$WORK/usage-shared"
+chmod 777 "$WORK/usage-shared"
+ln -s "$WORK/usage-reports" "$WORK/usage-reports-alias"
+ln -s "$WORK/usage-reports/missing.json" "$WORK/usage-reports/dangling.json"
+printf 'previous report\n' >"$WORK/usage-reports/existing.json"
+while IFS='|' read -r usage_case usage_path usage_message; do
+  set +e
+  run_usage_case "$usage_case" launcher-usage-refused --usage-json "$usage_path" --dry-run </dev/null
+  usage_status=$?
+  set -e
+  [ "$usage_status" -ne 0 ] || fail "launcher accepted the $usage_case usage report path"
+  grep -Fq -- "$usage_message" "$WORK/usage-unattested-$usage_case.stderr" || \
+    { cat "$WORK/usage-unattested-$usage_case.stderr" >&2; fail "$usage_case usage report refusal did not report: $usage_message"; }
+  [ ! -e "$WORK/usage-artifacts-$usage_case" ] || fail "$usage_case usage report refusal created the artifact root"
+done <<EOF
+existing|$WORK/usage-reports/existing.json|usage report already exists; usage reports are one-shot
+dangling|$WORK/usage-reports/dangling.json|usage report already exists; usage reports are one-shot
+relative|usage.json|usage report must be an absolute path
+missing-parent|$WORK/usage-missing/usage.json|usage report directory must be an existing directory
+alias-parent|$WORK/usage-reports-alias/usage.json|usage report directory may not be a symbolic link
+shared-parent|$WORK/usage-shared/usage.json|usage report directory must not be group/world writable
+target|$WORK/usage-unattested-target/usage.json|target and usage report must be physically disjoint
+root|$WORK/usage-artifacts-root|artifact root and usage report must be physically disjoint
+EOF
+[ "$(cat "$WORK/usage-reports/existing.json")" = 'previous report' ] || fail 'a refused launch replaced an existing usage report'
+[ ! -e "$WORK/usage-unattested-target/usage.json" ] || fail 'a refused launch wrote a usage report into the target'
+# The report may not live inside an existing artifact root either.
+mkdir -p "$WORK/usage-artifacts-inside"
+chmod 700 "$WORK/usage-artifacts-inside"
+set +e
+run_usage_case inside launcher-usage-inside --usage-json "$WORK/usage-artifacts-inside/usage.json"
+usage_status=$?
+set -e
+[ "$usage_status" -ne 0 ] || fail 'launcher accepted a usage report inside the artifact root'
+grep -Fq 'artifact root and usage report must be physically disjoint' "$WORK/usage-unattested-inside.stderr" || \
+  { cat "$WORK/usage-unattested-inside.stderr" >&2; fail 'usage report inside the artifact root was not refused as such'; }
+[ ! -e "$WORK/usage-artifacts-inside/usage.json" ] && [ ! -e "$WORK/usage-artifacts-inside/ai_agents_internal" ] || \
+  fail 'usage report refusal inside the artifact root still prepared or started the launch'
+set +e
+run_usage_case no-path launcher-usage-no-path --usage-json
+usage_status=$?
+set -e
+[ "$usage_status" -ne 0 ] && grep -Fq -- '--usage-json requires a path' "$WORK/usage-unattested-no-path.stderr" || \
+  fail '--usage-json without a path was not refused as such'
+
 # (b) Keyless mode cannot be mixed with attested launch options.
 set +e
 env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-combined" PATH="$FIXTURE_BIN:$PATH" \
@@ -847,4 +1027,4 @@ if [ "$probe_browser_status" -ne 2 ]; then
     grep -Fq 'WARN  no Playwright module is resolvable' "$WORK/doctor-browser.stdout" || fail 'doctor --browser did not warn about the skipped browser probe'
   fi
 fi
-printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, browser-provisioning dry run, unsigned operator feature passthrough to preflight, operator authorization manifest and environment binding/installation, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'
+printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, browser-provisioning dry run, unsigned operator feature passthrough to preflight, operator authorization manifest and environment binding/installation, one-shot --usage-json Claude result capture and path containment, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'

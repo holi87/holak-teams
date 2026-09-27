@@ -13,6 +13,25 @@ write_turn_cap_behavior() {
     '{requestedTurns:$attempted,completedTurns:$completed,outcome:$outcome,supervisorObserved:true}' >"$output"
 }
 
+# With --output-format json the fixture prints one Claude CLI result document, as the real CLI
+# does at the end of a print-mode run: measured usage, cost, turns, the subtype, and the result
+# text on success only. Otherwise it prints the plain result text (an error on stderr).
+# Usage: emit_result <success|error_max_turns> <text> <num_turns>
+emit_result() {
+  local subtype="$1" text="$2" turns="$3"
+  if [ "$output_format" = json ]; then
+    jq -cn --arg subtype "$subtype" --arg text "$text" --argjson turns "$turns" '
+      {type:"result",subtype:$subtype,is_error:($subtype != "success"),num_turns:$turns,total_cost_usd:0,
+       usage:{input_tokens:10,output_tokens:2,cache_read_input_tokens:0,cache_creation_input_tokens:0},
+       modelUsage:{"claude-opus-fixture":{inputTokens:10,outputTokens:2,cacheReadInputTokens:0,cacheCreationInputTokens:0,costUSD:0}}}
+      + (if $subtype == "success" then {result:$text} else {} end)'
+  elif [ "$subtype" = success ]; then
+    printf '%s\n' "$text"
+  else
+    printf '%s\n' "$text" >&2
+  fi
+}
+
 if [ "${1:-}" = "--version" ]; then
   printf '2.1.0 (Claude Code fixture)\n'
   exit 0
@@ -28,12 +47,15 @@ prompt="${!#}"
 previous=''
 max_turns=''
 turn_cap_probe=''
+output_format=text
 for argument in "$@"; do
   if [ "$previous" = '--plugin-dir' ]; then plugin_root="$argument"; fi
   if [ "$previous" = '--max-turns' ]; then max_turns="$argument"; fi
   if [ "$previous" = '--argus-turn-cap-probe' ]; then turn_cap_probe="$argument"; fi
+  if [ "$previous" = '--output-format' ]; then output_format="$argument"; fi
   previous="$argument"
 done
+case "$output_format" in text|json) ;; *) printf 'fixture: unsupported --output-format %s\n' "$output_format" >&2; exit 89 ;; esac
 if [ -n "$turn_cap_probe" ]; then
   [[ "$max_turns" =~ ^[1-9][0-9]*$ ]] || { printf 'fixture: turn-cap probe requires a positive integer\n' >&2; exit 87; }
   write_turn_cap_behavior "$turn_cap_probe" "$max_turns"
@@ -50,10 +72,20 @@ case "$prompt" in
     [ "${ARGUS_LAUNCH_UNATTESTED:-}" = 1 ] || { printf 'fixture: unattested prompt without ARGUS_LAUNCH_UNATTESTED=1\n' >&2; exit 88; }
     artifact_root="${prompt#* artifact-root=}"
     artifact_root="${artifact_root%% mode=*}"
+    engagement_id="${prompt#* engagementId=}"
+    engagement_id="${engagement_id%% *}"
     [ -d "$artifact_root/ai_agents_internal" ] || { printf 'fixture: unattested prompt omitted the artifact root\n' >&2; exit 81; }
     env | sort >"$artifact_root/ai_agents_internal/fixture-child-environment.txt"
     printf '%s\n' "$@" >"$artifact_root/ai_agents_internal/fixture-claude-arguments.txt"
-    printf 'ARGUS_FIXTURE_UNATTESTED_PROMPT_OK\n'
+    case "$engagement_id" in
+      *-fixture-error-max-turns)
+        # A controller stopped by its native turn cap: the real CLI reports subtype
+        # error_max_turns without result text and exits non-zero.
+        emit_result error_max_turns "Error: Reached max turns ($max_turns)" "$max_turns"
+        exit 1
+        ;;
+    esac
+    emit_result success ARGUS_FIXTURE_UNATTESTED_PROMPT_OK 1
     exit 0
     ;;
   *) printf 'fixture: authenticated launch JSON is missing\n' >&2; exit 86 ;;
@@ -101,4 +133,4 @@ for _ in $(seq 1 200); do
   sleep 0.05
 done
 [ -f "$artifact_root/ai_agents_internal/fixture-replay-complete" ] || { printf 'fixture: replay probe timed out\n' >&2; exit 85; }
-printf 'ARGUS_FIXTURE_NATIVE_PREFLIGHT_OK\n'
+emit_result success ARGUS_FIXTURE_NATIVE_PREFLIGHT_OK 1
