@@ -15,7 +15,7 @@
       "required": ["lane", "owner", "phase", "status", "dependsOn", "outputContracts", "transitions"],
       "properties": {
         "lane": { "$ref": "#/$defs/slug" }, "owner": { "$ref": "#/$defs/slug" },
-        "phase": { "enum": ["discovery", "hunting", "automation", "verification", "reporting"] },
+        "phase": { "enum": ["discovery", "hunting", "proof", "deep-hunt-1", "deep-proof-1", "deep-hunt-2", "deep-proof-2", "deep-hunt-3", "deep-proof-3", "automation", "verification", "reporting"] },
         "status": { "enum": ["planned", "running", "blocked", "completed"] },
         "dependsOn": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
         "outputContracts": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },

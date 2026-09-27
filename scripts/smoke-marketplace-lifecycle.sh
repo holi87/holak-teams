@@ -80,7 +80,7 @@ for lane in kleio theseus; do
   "$INSTALLED/bin/argus-assets" engagement cleanup --manifest "$MANIFEST" --lane "$lane" --token "$token" --outcome interrupted >/dev/null
 done
 "$INSTALLED/bin/argus-assets" engagement cleanup --manifest "$MANIFEST" --lane odysseus --token "$controller_token" --outcome interrupted >/dev/null
-jq -e '.schemaVersion == 2 and (has("migrations") | not) and ([.allocations[] | select(.status == "active")] | length) == 0' \
+jq -e '.schemaVersion == 3 and (has("migrations") | not) and ([.allocations[] | select(.status == "active")] | length) == 0' \
   "$TARGET/ai_agents_internal/engagement-state.json" >/dev/null || fail 'current lifecycle left incompatible or active state'
 
 printf 'PASS  Marketplace lifecycle: %s -> %s clean major update, retired readers absent, current two-lane smoke\n' "$PREVIOUS" "$CURRENT"

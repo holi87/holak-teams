@@ -28,12 +28,21 @@ import {
   verifyModelDocumentAuthentication,
 } from './model-policy.mjs';
 
-const PHASES = ['preflight', 'discovery', 'hunting', 'automation', 'verification', 'reporting', 'complete'];
-const HUNTERS = new Set(['antigone', 'ariadne', 'atalanta', 'charon', 'hermes', 'lynceus', 'orion', 'perseus', 'proteus', 'tiresias', 'tyche']);
-const AUTOMATION = new Set(['aegis', 'asklepios', 'atlas', 'daidalos', 'mnemosyne', 'nike', 'penelope', 'pistis', 'talos', 'theseus']);
-const VERIFIERS = new Set(['aristarchus', 'minos']);
-const REPORTERS = new Set(['kleio', 'metis', 'minos']);
-const ENGAGEMENT_STATE_VERSION = 2;
+const ENGAGEMENT_MANIFEST_VERSION = 2;
+const ENGAGEMENT_STATE_VERSION = 3;
+// The phase plan is derived from the packaged orchestration plan when the manifest is
+// created (derivePhasePlan). The runtime never hard-codes phase ids or lane membership.
+const PHASE_WAVES = ['controller', 'W0', 'W1', 'W2', 'W3', 'W4'];
+const PHASE_KINDS = ['control', 'work', 'proof', 'deep-hunt'];
+const PASS_PHASE_KINDS = ['proof', 'deep-hunt'];
+const PHASE_KEYS = ['id', 'wave', 'kind', 'pass', 'skippable', 'participants', 'standby'];
+const PROOF_VALIDATOR = 'minos';
+const SKIP_REASONS = ['converged', 'controller-budget'];
+const LEDGER_SNAPSHOT_STATUSES = [
+  ['confirmed', 'confirmed'], ['suspected', 'suspected'], ['needsOracle', 'needs-oracle'],
+  ['bounced', 'bounced'], ['quarantined', 'quarantined'],
+];
+const LEDGER_SNAPSHOT_KEYS = ['fragmentIds', ...LEDGER_SNAPSHOT_STATUSES.map(([field]) => field), 'newConfirmed', 'mergedAt'];
 const HEARTBEAT_STATUSES = ['started', 'running', 'blocked', 'degraded', 'complete', 'failed'];
 const EXECUTION_BINDING_FIELDS = ['modelDecisionId', 'modelDecisionIntegritySha256', 'dispatchId', 'attempt', 'runtime'];
 const DISPATCH_AUTHORIZATION_FIELDS = [
@@ -41,10 +50,12 @@ const DISPATCH_AUTHORIZATION_FIELDS = [
   'dispatchAuthorizationExpiresAt', 'dispatchParentSessionId',
 ];
 
-export function createDefaultEngagement({ template, target, targetRoot, artifactRoot, mode, engagementId, selectedAgents, browserSupport, accessibilityRequirement }) {
+export function createDefaultEngagement({ template, target, targetRoot, artifactRoot, mode, engagementId, selectedAgents, browserSupport, accessibilityRequirement, phasePlan }) {
+  if (!Array.isArray(phasePlan)) throw new Error('createDefaultEngagement requires a derived phasePlan');
   const manifest = structuredClone(template);
   const agents = [...new Set(selectedAgents)].sort();
   manifest.$schema = 'https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/engagement-manifest.schema.json';
+  manifest.schemaVersion = ENGAGEMENT_MANIFEST_VERSION;
   manifest.engagementId = engagementId;
   manifest.mode = mode;
   manifest.target = { identifier: target, root: targetRoot };
@@ -52,7 +63,7 @@ export function createDefaultEngagement({ template, target, targetRoot, artifact
   manifest.selectedAgents = agents;
   manifest.accessibilityPolicy = accessibilityPolicy(manifest.accessibilityPolicy, accessibilityRequirement);
   manifest.browserPolicy.coverage = deriveBrowserCoverage(manifest.browserPolicy.coverage, browserSupport);
-  manifest.phasePlan = PHASES.map((id) => ({ id, participants: phaseParticipants(id, agents) }));
+  manifest.phasePlan = structuredClone(phasePlan);
   return manifest;
 }
 
@@ -85,7 +96,7 @@ export function deriveBrowserCoverage(fallback, support) {
 export function validateEngagementManifest(manifest) {
   const errors = [];
   if (!plainObject(manifest)) return ['manifest must be a JSON object'];
-  if (manifest.schemaVersion !== 1) errors.push('schemaVersion must be 1');
+  if (manifest.schemaVersion !== ENGAGEMENT_MANIFEST_VERSION) errors.push(`schemaVersion must be ${ENGAGEMENT_MANIFEST_VERSION}`);
   if (!nonEmpty(manifest.engagementId)) errors.push('engagementId is required');
   if (!['A', 'B', 'C', 'D'].includes(manifest.mode)) errors.push('mode must be A, B, C, or D');
   if (!plainObject(manifest.target) || !nonEmpty(manifest.target.identifier) || !(manifest.target.root === null || nonEmpty(manifest.target.root))) {
@@ -114,17 +125,7 @@ export function validateEngagementManifest(manifest) {
   }
   validateAccessibilityPolicy(manifest.accessibilityPolicy, errors);
   validateBrowserPolicy(manifest.browserPolicy, manifest.selectedAgents, errors);
-  if (!Array.isArray(manifest.phasePlan) || manifest.phasePlan.length !== PHASES.length) {
-    errors.push(`phasePlan must contain ${PHASES.join(', ')}`);
-  } else {
-    const ids = manifest.phasePlan.map((phase) => phase?.id);
-    if (JSON.stringify(ids) !== JSON.stringify(PHASES)) errors.push(`phasePlan order must be ${PHASES.join(', ')}`);
-    for (const phase of manifest.phasePlan) {
-      if (!stringList(phase?.participants, false) || !phase.participants.every((slug) => manifest.selectedAgents.includes(slug))) {
-        errors.push(`phase ${phase?.id ?? '(missing)'} participants must be selected agent slugs`);
-      }
-    }
-  }
+  validatePhasePlan(manifest.phasePlan, Array.isArray(manifest.selectedAgents) ? manifest.selectedAgents : [], errors);
   const policy = manifest.writePolicy;
   if (!plainObject(policy)) return [...errors, 'writePolicy must be an object'];
   for (const key of ['auditPath', 'fragmentRoot', 'checkpointRoot', 'workerRoot']) {
@@ -170,22 +171,25 @@ export function validateEngagementManifest(manifest) {
 }
 
 export function createInitialEngagementState(manifest) {
+  const phases = phaseIds(manifest);
   return {
     $schema: 'https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/engagement-state.schema.json',
     schemaVersion: ENGAGEMENT_STATE_VERSION,
     engagementId: manifest.engagementId,
     revision: 0,
-    currentPhase: 'discovery',
+    currentPhase: phases[1],
     completedPhases: ['preflight'],
+    skippedPhases: {},
     dispatchableAgents: null,
     allocations: {},
-    barriers: Object.fromEntries(PHASES.map((phase) => [phase, []])),
+    barriers: Object.fromEntries(phases.map((phase) => [phase, []])),
     exclusiveLocks: {},
     nextIds: Object.fromEntries(Object.keys(manifest.idAllocators).map((kind) => [kind, 1])),
     idKeys: Object.fromEntries(Object.keys(manifest.idAllocators).map((kind) => [kind, {}])),
     checkpoints: {},
     fragments: {},
     merges: {},
+    ledgerSnapshots: {},
   };
 }
 
@@ -444,6 +448,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
         } else if (document.coverage.caseDepth) throw new Error('case depth claim requires canonical coverage result');
       }
       if (canonical.schema === 'final-summary' && document.runner === null && (manifest.mode !== 'B' || document.counts.automated !== 0)) throw new Error('runner=null is only valid for Mode B without automation');
+      if (canonical.schema === 'final-summary' && skippedPhaseStatusReasons(state).length > 0 && document.status === 'completed') document.status = 'degraded';
       if (canonical.schema === 'bug-ledger' && document.bugs.some(bug => bug.status === 'confirmed')) {
         const evidencePath = engagementPath(manifest, 'solution/evidence-reference.json');
         const evidenceRecords = state.fragments['solution/evidence-reference.json'] ?? [];
@@ -470,6 +475,9 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     }
     const result = { owner, fragments: records.length, sha256: sha256(output), mergedAt: new Date().toISOString() };
     state.merges[canonical.path] = result;
+    if (canonical.schema === 'bug-ledger') {
+      state.ledgerSnapshots[state.currentPhase] = ledgerSnapshot(manifest, state, JSON.parse(output), records, result.mergedAt);
+    }
     return { result: { ...result, path: destination }, changed: true };
   });
 }
@@ -494,7 +502,7 @@ export function allocateId(manifest, lane, token, kind, identity) {
 }
 
 export function writeCheckpoint(manifest, lane, token, phase, sequence, dispatchId, attempt, payload) {
-  if (!PHASES.includes(phase)) throw new Error(`unknown phase: ${phase}`);
+  if (!phaseIds(manifest).includes(phase)) throw new Error(`unknown phase: ${phase}`);
   if (!Number.isInteger(sequence) || sequence < 0) throw new Error('checkpoint sequence must be a non-negative integer');
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(dispatchId ?? '')) throw new Error('checkpoint dispatchId is invalid');
   if (!Number.isInteger(attempt) || attempt < 1) throw new Error('checkpoint attempt must be a positive integer');
@@ -552,7 +560,7 @@ export function ensurePreflightHeartbeat(manifest, timestamp = new Date().toISOS
     const relativePath = relative(manifest.artifactRoot, path).split(sep).join('/');
     const allocation = state.allocations.odysseus;
     if (existsSync(path)) {
-      const records = parseHeartbeatLog(readManagedFile(path, 'Odysseus heartbeat').toString('utf8'), 'odysseus');
+      const records = parseHeartbeatLog(readManagedFile(path, 'Odysseus heartbeat').toString('utf8'), 'odysseus', phaseIds(manifest));
       const initial = records[0];
       if (initial?.phase === 'preflight' && initial.completed === 0 && initial.total === 1 && initial.status === 'running') {
         return { disposition: 'existing', wrote: false, lane: 'odysseus', path: relativePath, record: initial };
@@ -569,7 +577,8 @@ export function ensurePreflightHeartbeat(manifest, timestamp = new Date().toISOS
 
 function appendHeartbeatRecord(manifest, lane, phase, completed, total, status, timestamp, { initialOnly = false, executionBinding = null } = {}) {
   if (!manifest.selectedAgents.includes(lane)) throw new Error(`heartbeat lane is not selected: ${lane}`);
-  if (!PHASES.includes(phase)) throw new Error(`heartbeat phase is invalid: ${phase}`);
+  const phases = phaseIds(manifest);
+  if (!phases.includes(phase)) throw new Error(`heartbeat phase is invalid: ${phase}`);
   if (!Number.isInteger(completed) || completed < 0 || !Number.isInteger(total) || total < 1 || completed > total) {
     throw new Error('heartbeat progress must satisfy 0 <= completed <= total');
   }
@@ -580,9 +589,9 @@ function appendHeartbeatRecord(manifest, lane, phase, completed, total, status, 
   const fd = openManagedAppendFile(path, `${lane} heartbeat`);
   try {
     const existing = readFileSync(fd, 'utf8');
-    const records = parseHeartbeatLog(existing, lane);
+    const records = parseHeartbeatLog(existing, lane, phases);
     const candidate = { lane, phase, completed, total, status, recordedAt: timestamp, ...(executionBinding ?? {}) };
-    if (records.length > 0) validateHeartbeatTransition(records.at(-1), candidate);
+    if (records.length > 0) validateHeartbeatTransition(records.at(-1), candidate, phases);
     const generation = executionBinding ? `\t${executionBinding.allocationId}\t${executionBinding.dispatchId}\t${executionBinding.attempt}` : '';
     writeFileSync(fd, `${timestamp}\t${lane}\t${phase}\t${completed}/${total}\t${status}${generation}\n`);
     fsyncSync(fd);
@@ -601,12 +610,12 @@ function heartbeatPath(manifest, lane, { createRoot = false } = {}) {
   return join(heartbeatRoot, `${lane}.log`);
 }
 
-function parseHeartbeatLog(content, expectedLane) {
+function parseHeartbeatLog(content, expectedLane, phases) {
   if (content === '') return [];
   if (!content.endsWith('\n')) throw new Error(`heartbeat log for ${expectedLane} has an incomplete record`);
   const records = content.trimEnd().split('\n').map((line, index) => {
-    const match = line.match(/^([^\t]+)\t([a-z][a-z0-9-]*)\t(preflight|discovery|hunting|automation|verification|reporting|complete)\t(\d+)\/(\d+)\t(started|running|blocked|degraded|complete|failed)(?:\t([a-f0-9]{24})\t([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\t([1-9][0-9]*))?$/);
-    if (!match || match[2] !== expectedLane || !validDate(match[1])) throw new Error(`heartbeat log for ${expectedLane} has an invalid record at line ${index + 1}`);
+    const match = line.match(/^([^\t]+)\t([a-z][a-z0-9-]*)\t([a-z][a-z0-9-]*)\t(\d+)\/(\d+)\t(started|running|blocked|degraded|complete|failed)(?:\t([a-f0-9]{24})\t([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\t([1-9][0-9]*))?$/);
+    if (!match || match[2] !== expectedLane || !phases.includes(match[3]) || !validDate(match[1])) throw new Error(`heartbeat log for ${expectedLane} has an invalid record at line ${index + 1}`);
     const completed = Number(match[4]);
     const total = Number(match[5]);
     if (!Number.isSafeInteger(completed) || !Number.isSafeInteger(total) || total < 1 || completed < 0 || completed > total) {
@@ -617,14 +626,14 @@ function parseHeartbeatLog(content, expectedLane) {
       ...(match[7] ? { allocationId: match[7], dispatchId: match[8], attempt: Number(match[9]) } : {}),
     };
   });
-  for (let index = 1; index < records.length; index += 1) validateHeartbeatTransition(records[index - 1], records[index]);
+  for (let index = 1; index < records.length; index += 1) validateHeartbeatTransition(records[index - 1], records[index], phases);
   return records;
 }
 
-function validateHeartbeatTransition(previous, candidate) {
+function validateHeartbeatTransition(previous, candidate, phases) {
   if (Date.parse(candidate.recordedAt) < Date.parse(previous.recordedAt)) throw new Error('heartbeat timestamp regressed');
-  const previousPhase = PHASES.indexOf(previous.phase);
-  const candidatePhase = PHASES.indexOf(candidate.phase);
+  const previousPhase = phases.indexOf(previous.phase);
+  const candidatePhase = phases.indexOf(candidate.phase);
   if (candidatePhase < previousPhase) throw new Error(`heartbeat phase regressed from ${previous.phase} to ${candidate.phase}`);
   const previousGeneration = previous.allocationId !== undefined;
   const candidateGeneration = candidate.allocationId !== undefined;
@@ -654,6 +663,7 @@ function validateHeartbeatTransition(previous, candidate) {
 export function arriveBarrier(manifest, lane, token, phase) {
   return mutateState(manifest, (state) => {
     requireLeaseState(manifest, state, lane, token);
+    if (Object.hasOwn(state.skippedPhases, phase)) throw new Error(`phase ${phase} was skipped (${state.skippedPhases[phase].reason})`);
     if (state.currentPhase !== phase) throw new Error(`current phase is ${state.currentPhase}, not ${phase}`);
     const participants = barrierParticipants(manifest, state, phase);
     if (!participants.includes(lane)) throw new Error(`${lane} is not a participant in ${phase}`);
@@ -671,11 +681,58 @@ export function advanceBarrier(manifest, lane, token) {
     const phase = state.currentPhase;
     const status = barrierStatus(manifest, state, phase);
     if (!status.complete) throw new Error(`phase ${phase} is waiting for: ${status.missing.join(', ')}`);
-    const index = PHASES.indexOf(phase);
-    if (index < 0 || index === PHASES.length - 1) throw new Error(`phase ${phase} cannot advance`);
+    // A proof phase ends with the validator's ledger merge: its snapshot is the convergence
+    // evidence a later deep-hunt skip is checked against.
+    if (phaseDefinition(manifest, phase).kind === 'proof' && status.participants.includes(PROOF_VALIDATOR) &&
+        !Object.hasOwn(state.ledgerSnapshots, phase)) {
+      throw new Error(`proof phase ${phase} requires a Minos bug-ledger merge before it can advance`);
+    }
+    const phases = phaseIds(manifest);
+    const index = phases.indexOf(phase);
+    const next = index < 0 ? undefined : nextUnskippedPhase(phases, state, index);
+    if (!next) throw new Error(`phase ${phase} cannot advance`);
     if (!state.completedPhases.includes(phase)) state.completedPhases.push(phase);
-    state.currentPhase = PHASES[index + 1];
+    state.currentPhase = next;
     return { result: { completed: phase, currentPhase: state.currentPhase }, changed: true };
+  });
+}
+
+// Skips the remaining deep-hunt passes. Only Odysseus may skip, only from the untouched
+// start of a skippable deep-hunt pass, and a converged skip must be backed by the previous
+// proof phase's ledger snapshot recording zero new confirmed defects. Every skip is recorded
+// with its reason; a controller-budget skip later degrades a completed final summary.
+export function skipPhases(manifest, lane, token, reason) {
+  if (lane !== 'odysseus') throw new Error('only odysseus may skip phases');
+  return mutateState(manifest, (state) => {
+    requireLeaseState(manifest, state, lane, token);
+    const current = state.currentPhase;
+    const definition = phaseDefinition(manifest, current);
+    if (definition.skippable !== true) throw new Error(`phase ${current} is not skippable`);
+    if (definition.kind !== 'deep-hunt') throw new Error('only a deep-hunt pass can start a skip');
+    if ((state.barriers[current] ?? []).length > 0) throw new Error(`phase ${current} already has arrivals`);
+    if (!SKIP_REASONS.includes(reason)) throw new Error('skip reason must be converged or controller-budget');
+    let basis = null;
+    if (reason === 'converged') {
+      const previous = manifest.phasePlan.find((phase) => phase.kind === 'proof' && phase.pass === definition.pass - 1);
+      const snapshot = previous ? state.ledgerSnapshots[previous.id] : undefined;
+      if (!snapshot || snapshot.newConfirmed.length > 0) {
+        throw new Error(`converged skip requires ${previous?.id ?? `the pass ${definition.pass - 1} proof phase`} to record zero new confirmed defects`);
+      }
+      basis = previous.id;
+    }
+    const phases = phaseIds(manifest);
+    const start = phases.indexOf(current);
+    const skippedAt = new Date().toISOString();
+    const skipped = [];
+    for (const phase of manifest.phasePlan.slice(start)) {
+      if (!PASS_PHASE_KINDS.includes(phase.kind) || phase.pass < definition.pass) break;
+      state.skippedPhases[phase.id] = { reason, skippedAt, basis };
+      skipped.push(phase.id);
+    }
+    const next = nextUnskippedPhase(phases, state, start);
+    if (!next) throw new Error(`phase ${current} has no later phase to continue with`);
+    state.currentPhase = next;
+    return { result: { skipped, currentPhase: state.currentPhase, reason }, changed: true };
   });
 }
 
@@ -705,11 +762,19 @@ export function cleanupWorker(manifest, lane, token, outcome) {
         throw new Error('Odysseus success cleanup requires the terminal complete phase and its completed final barrier');
       }
     } else if (outcome === 'success') {
-      const requiredPhases = PHASES.filter((phase) => barrierParticipants(manifest, state, phase).includes(lane));
-      const missingArrivals = requiredPhases.filter((phase) => !(state.barriers[phase] ?? []).includes(lane));
-      const lastPhaseIndex = Math.max(-1, ...requiredPhases.map((phase) => PHASES.indexOf(phase)));
-      if (missingArrivals.length > 0 || PHASES.indexOf(state.currentPhase) < lastPhaseIndex) {
-        throw new Error(`${lane} success cleanup requires all declared barrier arrivals; missing: ${missingArrivals.join(', ') || 'phase not reached'}`);
+      // A lane keeps one allocation while any later phase may still need it: as a participant
+      // until it has arrived everywhere, and on standby (proof repair, oracle desk) until the
+      // standby phase has passed. Skipped phases need nobody.
+      const phases = phaseIds(manifest);
+      const currentIndex = phases.indexOf(state.currentPhase);
+      const pending = phases.filter((phase, index) => {
+        if (Object.hasOwn(state.skippedPhases, phase)) return false;
+        if (barrierParticipants(manifest, state, phase).includes(lane) &&
+            (index > currentIndex || !(state.barriers[phase] ?? []).includes(lane))) return true;
+        return index >= currentIndex && standbyLanes(manifest, state, phase).includes(lane);
+      });
+      if (pending.length > 0) {
+        throw new Error(`${lane} success cleanup is not yet available: pending ${pending.join(', ')}; the lease stays active and Odysseus performs terminal cleanup`);
       }
     }
     const checkpointPlan = prepareCheckpointArchive(manifest, state, lane, allocation);
@@ -1258,10 +1323,20 @@ function barrierStatus(manifest, state, phase) {
 }
 
 function barrierParticipants(manifest, state, phase) {
-  const participants = phaseDefinition(manifest, phase).participants;
-  if (!Array.isArray(state.dispatchableAgents)) return participants;
+  return projectedPhaseLanes(state, phase, phaseDefinition(manifest, phase).participants);
+}
+
+// Standby lanes do not arrive at a barrier; they stay allocated so the phase can re-dispatch
+// them on their active lease.
+function standbyLanes(manifest, state, phase) {
+  return projectedPhaseLanes(state, phase, phaseDefinition(manifest, phase).standby);
+}
+
+function projectedPhaseLanes(state, phase, lanes) {
+  if (Object.hasOwn(state.skippedPhases, phase)) return [];
+  if (!Array.isArray(state.dispatchableAgents)) return lanes;
   const dispatchable = new Set(state.dispatchableAgents);
-  return participants.filter((lane) => dispatchable.has(lane));
+  return lanes.filter((lane) => dispatchable.has(lane));
 }
 
 function phaseDefinition(manifest, phase) {
@@ -1270,14 +1345,35 @@ function phaseDefinition(manifest, phase) {
   return definition;
 }
 
-function phaseParticipants(phase, agents) {
-  if (phase === 'preflight' || phase === 'complete') return agents.filter((agent) => agent === 'odysseus');
-  if (phase === 'discovery') return agents.filter((agent) => agent === 'kalchas');
-  if (phase === 'hunting') return agents.filter((agent) => HUNTERS.has(agent));
-  if (phase === 'automation') return agents.filter((agent) => AUTOMATION.has(agent));
-  if (phase === 'verification') return agents.filter((agent) => VERIFIERS.has(agent));
-  if (phase === 'reporting') return agents.filter((agent) => REPORTERS.has(agent));
-  return [];
+function phaseIds(manifest) {
+  return manifest.phasePlan.map((phase) => phase.id);
+}
+
+function nextUnskippedPhase(phases, state, index) {
+  return phases.slice(index + 1).find((phase) => !Object.hasOwn(state.skippedPhases, phase));
+}
+
+function ledgerSnapshot(manifest, state, ledger, records, mergedAt) {
+  const phases = phaseIds(manifest);
+  const currentIndex = phases.indexOf(state.currentPhase);
+  const byStatus = (status) => [...new Set(ledger.bugs.filter((bug) => bug.status === status).map((bug) => bug.id))].sort();
+  const snapshot = { fragmentIds: records.map((record) => record.id) };
+  for (const [field, status] of LEDGER_SNAPSHOT_STATUSES) snapshot[field] = byStatus(status);
+  // Convergence counts only defects no earlier phase had already confirmed.
+  const earlier = new Set(Object.entries(state.ledgerSnapshots)
+    .filter(([phase]) => phases.indexOf(phase) < currentIndex)
+    .flatMap(([, previous]) => previous.confirmed));
+  snapshot.newConfirmed = snapshot.confirmed.filter((id) => !earlier.has(id));
+  snapshot.mergedAt = mergedAt;
+  return snapshot;
+}
+
+// Recorded skips that left planned work undone. The final summary cannot claim completion
+// while any exists; a converged skip is evidence-backed and does not count.
+function skippedPhaseStatusReasons(state) {
+  return [...new Set(Object.values(state.skippedPhases)
+    .filter((skip) => skip.reason !== 'converged')
+    .map((skip) => `deep-hunt-skipped:${skip.reason}`))].sort();
 }
 
 function publicAllocation(allocation) {
@@ -1379,8 +1475,11 @@ function validateStateAllocations(manifest, state) {
 function validateCurrentState(manifest, state) {
   const errors = validateStateAllocations(manifest, state);
   if (!Number.isInteger(state.revision) || state.revision < 0) errors.push('revision must be a non-negative integer');
-  if (!PHASES.includes(state.currentPhase)) errors.push('currentPhase is invalid');
-  if (!Array.isArray(state.completedPhases) || state.completedPhases.some((phase) => !PHASES.includes(phase))) errors.push('completedPhases are invalid');
+  const phases = phaseIds(manifest);
+  if (!phases.includes(state.currentPhase)) errors.push('currentPhase is invalid');
+  if (!Array.isArray(state.completedPhases) || state.completedPhases.some((phase) => !phases.includes(phase))) errors.push('completedPhases are invalid');
+  validateSkippedPhases(manifest, state, errors);
+  validateLedgerSnapshots(phases, state.ledgerSnapshots, errors);
   if (!(state.dispatchableAgents === null || (stringList(state.dispatchableAgents, true) &&
       state.dispatchableAgents.includes('odysseus') && state.dispatchableAgents.every((lane) => manifest.selectedAgents.includes(lane))))) {
     errors.push('dispatchableAgents must be null or an immutable selected projection containing odysseus');
@@ -1392,7 +1491,7 @@ function validateCurrentState(manifest, state) {
       errors.push(`${lane}: checkpoint is not bound to a selected allocation`);
       continue;
     }
-    if (!PHASES.includes(checkpoint.phase)
+    if (!phases.includes(checkpoint.phase)
       || !Number.isInteger(checkpoint.sequence) || checkpoint.sequence < 0
       || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(checkpoint.dispatchId ?? '')
       || !Number.isInteger(checkpoint.attempt) || checkpoint.attempt < 1
@@ -1405,6 +1504,42 @@ function validateCurrentState(manifest, state) {
     }
   }
   return errors;
+}
+
+function validateSkippedPhases(manifest, state, errors) {
+  const skipped = state.skippedPhases;
+  if (!plainObject(skipped)) {
+    errors.push('skippedPhases must be an object');
+    return;
+  }
+  const phases = phaseIds(manifest);
+  for (const [phase, skip] of Object.entries(skipped)) {
+    const definition = manifest.phasePlan.find((item) => item.id === phase);
+    if (definition?.skippable !== true) errors.push(`skippedPhases.${phase}: phase is not skippable`);
+    if (Array.isArray(state.completedPhases) && state.completedPhases.includes(phase)) errors.push(`skippedPhases.${phase}: a skipped phase cannot be completed`);
+    if (!plainObject(skip) || Object.keys(skip).length !== 3 || !SKIP_REASONS.includes(skip.reason) || !validDate(skip.skippedAt) ||
+        !(skip.basis === null || phases.includes(skip.basis))) {
+      errors.push(`skippedPhases.${phase}: skip record must be exactly reason, skippedAt, and basis`);
+    }
+  }
+  if (Object.hasOwn(skipped, state.currentPhase)) errors.push('currentPhase must not be a skipped phase');
+}
+
+function validateLedgerSnapshots(phases, snapshots, errors) {
+  if (!plainObject(snapshots)) {
+    errors.push('ledgerSnapshots must be an object');
+    return;
+  }
+  for (const [phase, snapshot] of Object.entries(snapshots)) {
+    if (!phases.includes(phase)) errors.push(`ledgerSnapshots.${phase}: unknown phase`);
+    if (!plainObject(snapshot) || Object.keys(snapshot).length !== LEDGER_SNAPSHOT_KEYS.length ||
+        !LEDGER_SNAPSHOT_KEYS.every((key) => Object.hasOwn(snapshot, key)) ||
+        !Array.isArray(snapshot.fragmentIds) || !snapshot.fragmentIds.every(nonEmpty) ||
+        ![...LEDGER_SNAPSHOT_STATUSES.map(([field]) => field), 'newConfirmed'].every((field) => stringList(snapshot[field], false)) ||
+        !validDate(snapshot.mergedAt)) {
+      errors.push(`ledgerSnapshots.${phase}: snapshot must be exactly ${LEDGER_SNAPSHOT_KEYS.join(', ')}`);
+    }
+  }
 }
 
 function recoverInterruptedAllocation(manifest, state, lane, allocation) {
@@ -1798,6 +1933,57 @@ function validateBrowserPolicy(policy, selectedAgents, errors) {
       keys.add(key);
     }
   }
+}
+
+// A manifest carries exactly the phase plan derivePhasePlan produced for its mode and
+// selection. The runtime re-checks every property it relies on instead of trusting the file.
+function validatePhasePlan(plan, selectedAgents, errors) {
+  if (!Array.isArray(plan) || plan.length < 2) {
+    errors.push('phasePlan must contain at least the preflight and complete phases');
+    return;
+  }
+  const ids = plan.map((phase) => phase?.id);
+  if (!ids.every(validSlug) || new Set(ids).size !== ids.length) errors.push('phasePlan ids must be unique slugs');
+  if (ids[0] !== 'preflight' || ids.at(-1) !== 'complete') errors.push('phasePlan must start with preflight and end with complete');
+  let highestWave = 0;
+  plan.forEach((phase, index) => {
+    const id = validSlug(phase?.id) ? phase.id : `#${index}`;
+    if (!plainObject(phase)) {
+      errors.push(`phase ${id} must be an object`);
+      return;
+    }
+    const passKind = PASS_PHASE_KINDS.includes(phase.kind);
+    const unknown = Object.keys(phase).filter((key) => !PHASE_KEYS.includes(key));
+    const missing = PHASE_KEYS.filter((key) => key !== 'pass' && !Object.hasOwn(phase, key));
+    if (unknown.length > 0 || missing.length > 0) errors.push(`phase ${id} must contain exactly id, wave, kind, pass (proof and deep-hunt only), skippable, participants, and standby`);
+    if (!PHASE_KINDS.includes(phase.kind)) errors.push(`phase ${id} kind must be control, work, proof, or deep-hunt`);
+    if (passKind !== (Object.hasOwn(phase, 'pass') && Number.isInteger(phase.pass) && phase.pass >= 0 && phase.pass <= 3)) {
+      errors.push(`phase ${id} pass must be an integer 0-3 exactly when kind is proof or deep-hunt`);
+    }
+    if (typeof phase.skippable !== 'boolean' || (phase.skippable && !(passKind && phase.pass >= 2))) {
+      errors.push(`phase ${id} skippable must be boolean and true only for a proof or deep-hunt pass of 2 or more`);
+    }
+    const waveIndex = PHASE_WAVES.indexOf(phase.wave);
+    if (waveIndex < 0) errors.push(`phase ${id} wave must be controller or W0-W4`);
+    else if (waveIndex > 0) {
+      if (waveIndex < highestWave) errors.push(`phase ${id} regresses wave ${phase.wave}`);
+      highestWave = Math.max(highestWave, waveIndex);
+    }
+    const participants = phase.participants;
+    const standby = phase.standby;
+    if (!stringList(participants, false) || !stringList(standby, false) ||
+        ![...participants, ...standby].every((slug) => validSlug(slug) && selectedAgents.includes(slug))) {
+      errors.push(`phase ${id} participants and standby must be unique selected agent slugs`);
+      return;
+    }
+    for (const slug of participants) if (standby.includes(slug)) errors.push(`phase ${id} lists ${slug} as both participant and standby`);
+    const control = index === 0 || index === plan.length - 1;
+    if (control && (phase.kind !== 'control' || phase.wave !== 'controller' || standby.length > 0 || participants.some((slug) => slug !== 'odysseus'))) {
+      errors.push(`phase ${id} must be a controller control phase with at most odysseus participating and no standby`);
+    }
+    if (!control && (phase.kind === 'control' || phase.wave === 'controller')) errors.push(`phase ${id}: only preflight and complete may be controller control phases`);
+    if (phase.kind === 'proof' && participants.some((slug) => slug !== PROOF_VALIDATOR)) errors.push(`proof phase ${id} participants must be a subset of ${PROOF_VALIDATOR}`);
+  });
 }
 
 function sha256(value) {

@@ -65,7 +65,7 @@ argus_smoke_prepare_model_control "$CLI" "$MANIFEST" "$TARGET" "$TARGET" A \
   "$ROOT/scripts/fixtures/argus-preflight/full.json" "$HOST/main"
 
 # Parallel allocation is atomic and every resource coordinate is unique.
-lanes=(odysseus kalchas metis minos tyche hermes atlas)
+lanes=(odysseus kalchas metis tiresias minos tyche hermes atlas)
 argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST/main" odysseus >"$ALLOCATIONS/odysseus.json"
 CONTROLLER_TOKEN="$(token_for odysseus)"
 for lane in "${lanes[@]:1}"; do
@@ -107,13 +107,34 @@ for field in browserProfile browserArtifactsDirectory authDirectory temporaryDir
 done
 cp "$WORK/engagement-state.clean.json" "$STATE"
 
-# Discovery cannot advance before its declared participant arrives.
+# The derived plan names every discovery participant; the barrier waits for all of them.
+jq -e '[.phasePlan[].id] == ["preflight","discovery","hunting","proof","deep-hunt-1","deep-proof-1","deep-hunt-2","deep-proof-2","deep-hunt-3","deep-proof-3","automation","verification","reporting","complete"]' \
+  "$MANIFEST" >/dev/null || fail 'engagement init did not derive the Mode A phase plan'
+jq -e '.schemaVersion == 3 and .skippedPhases == {} and .ledgerSnapshots == {}' "$TARGET/ai_agents_internal/engagement-state.json" >/dev/null \
+  || fail 'engagement init did not create v3 state'
 if "$CLI" engagement barrier advance --manifest "$MANIFEST" --lane odysseus --token "$(token_for odysseus)" >/dev/null 2>&1; then
-  fail "discovery barrier advanced before Kalchas arrived"
+  fail "discovery barrier advanced before any participant arrived"
 fi
 "$CLI" engagement barrier arrive --manifest "$MANIFEST" --lane kalchas --token "$(token_for kalchas)" --phase discovery >/dev/null
+if "$CLI" engagement barrier advance --manifest "$MANIFEST" --lane odysseus --token "$(token_for odysseus)" >/dev/null 2>&1; then
+  fail "discovery barrier advanced with only Kalchas arrived"
+fi
+for lane in metis tiresias atlas; do
+  "$CLI" engagement barrier arrive --manifest "$MANIFEST" --lane "$lane" --token "$(token_for "$lane")" --phase discovery >/dev/null
+done
 "$CLI" engagement barrier advance --manifest "$MANIFEST" --lane odysseus --token "$(token_for odysseus)" >/dev/null
 [ "$("$CLI" engagement status --manifest "$MANIFEST" | jq -r .currentPhase)" = hunting ] || fail "phase did not advance to hunting"
+# Only a skippable deep-hunt pass can start a recorded skip; hunting is never skippable.
+if skip_output="$("$CLI" engagement barrier skip --manifest "$MANIFEST" --lane odysseus --token "$(token_for odysseus)" --reason converged 2>&1)"; then
+  fail "hunting phase accepted a converged skip"
+fi
+grep -Fq 'phase hunting is not skippable' <<<"$skip_output" || fail "hunting skip failed for the wrong reason: $skip_output"
+if skip_output="$("$CLI" engagement barrier skip --manifest "$MANIFEST" --lane odysseus --token "$(token_for odysseus)" 2>&1)"; then
+  fail "barrier skip ran without a reason"
+fi
+grep -Fq -- '--reason' <<<"$skip_output" || fail "reasonless skip failed for the wrong reason: $skip_output"
+[ "$("$CLI" engagement status --manifest "$MANIFEST" | jq -r '.currentPhase + ":" + (.skippedPhases | length | tostring)')" = hunting:0 ] \
+  || fail "refused skip changed the phase cursor or recorded a skip"
 
 # Reset/fault windows are owner-restricted and exclusive.
 "$CLI" engagement claim --manifest "$MANIFEST" --lane tyche --token "$(token_for tyche)" --resource fault >/dev/null
@@ -276,6 +297,8 @@ guard_shell "argus-assets engagement init --target app --artifact-root app --mod
 cp "$MANIFEST" "$WORK/alternate-engagement.json"
 guard_shell "argus-assets engagement validate --manifest $WORK/alternate-engagement.json" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets engagement heartbeat --manifest $MANIFEST --lane odysseus --token $(token_for odysseus) --phase hunting --completed 1 --total 4 --status running" allow
+guard_shell "argus-assets engagement barrier skip --manifest $MANIFEST --lane odysseus --token $(token_for odysseus) --reason converged" allow
+guard_shell "argus-assets engagement barrier skip --manifest $WORK/alternate-engagement.json --lane odysseus --token $(token_for odysseus) --reason converged" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets redact --input reports/result.txt --output app/redacted.txt" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets redact --input reports/result.txt --output ai_agents_internal/operator-decisions/forged.json" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets preflight --target app --artifact-root app --mode A" GUARD-TARGET-IMMUTABLE

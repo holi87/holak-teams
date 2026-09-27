@@ -321,6 +321,17 @@ for scenario in full partial; do
         "$CLI" engagement barrier arrive --manifest "$manifest" --lane "$lane" \
           --token "$(tr -d '\n' <"$WORK/partial-tokens/$lane")" --phase "$phase" >/dev/null
       done < <("$CLI" engagement barrier status --manifest "$manifest" --phase "$phase" | jq -r '.participants[]')
+      # A proof phase with its validator dispatched advances only after a Minos ledger merge.
+      if jq -e --arg phase "$phase" '.phasePlan[] | select(.id == $phase) | .kind == "proof"' "$manifest" >/dev/null &&
+        "$CLI" engagement barrier status --manifest "$manifest" --phase "$phase" | jq -e '.participants | index("minos")' >/dev/null; then
+        if [ ! -f "$WORK/partial-ledger.json" ]; then
+          jq -n --arg id "$(jq -r .engagementId "$manifest")" '{"$schema":"argus/bug-ledger@1",schemaVersion:1,engagementId:$id,bugs:[]}' >"$WORK/partial-ledger.json"
+          "$CLI" engagement fragment --manifest "$manifest" --lane minos --token "$(tr -d '\n' <"$WORK/partial-tokens/minos")" \
+            --canonical solution/bug-ledger.json --id partial-ledger --input "$WORK/partial-ledger.json" >/dev/null
+        fi
+        "$CLI" engagement merge --manifest "$manifest" --owner minos --token "$(tr -d '\n' <"$WORK/partial-tokens/minos")" \
+          --canonical solution/bug-ledger.json >/dev/null
+      fi
       "$CLI" engagement barrier advance --manifest "$manifest" --lane odysseus --token "$odysseus_token" >/dev/null
     done
     "$CLI" engagement barrier arrive --manifest "$manifest" --lane odysseus --token "$odysseus_token" --phase complete >/dev/null

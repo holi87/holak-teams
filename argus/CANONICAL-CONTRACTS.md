@@ -132,13 +132,15 @@ credentials. Keep credentials, tokens, and connection strings out of `summary` a
 | Final summary | `status`, `counts`, `runner`, `sourceSchemas`, `summary`, `generatedAt` | Terminal `completed`, `degraded`, or `blocked` | All linked source schemas, runner categories, and final barrier/merge evidence. |
 
 Only the controller changes coordination state: worker allocation, token generation,
-immutable dispatchable projection, barriers, exclusive locks, checkpoint sequences, ID
-identity mappings, fragment records, and merge records. Barrier participants are the
-manifest phase members contained in that sealed projection; worker `success` cleanup
-requires all of its declared arrivals. Heartbeat records bind progress to allocation,
-dispatch, and attempt generation. Odysseus alone advances phase barriers;
-manifest-designated owners alone allocate a given ID namespace or merge the corresponding
-canonical artifact.
+immutable dispatchable projection, barriers, recorded phase skips, exclusive locks,
+checkpoint sequences, ID identity mappings, fragment records, merge records, and ledger
+snapshots. Barrier participants and standby lanes are the members of the manifest's derived
+phase plan contained in that sealed projection; worker `success` cleanup waits until no
+participant or standby phase is pending. Heartbeat records bind progress to allocation,
+dispatch, and attempt generation. Odysseus alone advances phase barriers and records
+deep-hunt skips; a proof phase advances only after Minos's bug-ledger merge records its
+snapshot. Manifest-designated owners alone allocate a given ID namespace or merge the
+corresponding canonical artifact.
 
 ## Compatibility and migration
 
