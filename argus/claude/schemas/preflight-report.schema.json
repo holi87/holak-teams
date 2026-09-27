@@ -103,14 +103,15 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slug", "lane", "selected", "status", "dispatchAllowed", "stopsEngagement", "model", "missingTools", "missingCapabilities", "actions", "artifactPaths", "authorization"],
+        "required": ["slug", "lane", "selected", "status", "dispatchAllowed", "stopsEngagement", "pendingGates", "model", "missingTools", "missingCapabilities", "actions", "artifactPaths", "authorization"],
         "properties": {
           "slug": { "type": "string", "minLength": 1 },
           "lane": { "type": "string", "minLength": 1 },
           "selected": { "type": "boolean" },
-          "status": { "enum": ["not-selected", "ready", "degraded", "deferred", "skipped", "blocked"] },
+          "status": { "enum": ["not-selected", "ready", "degraded", "deferred", "skipped", "conditional", "blocked"] },
           "dispatchAllowed": { "type": "boolean" },
           "stopsEngagement": { "type": "boolean" },
+          "pendingGates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } },
           "downgradedFrom": { "enum": ["blocked"] },
           "model": {
             "type": "object",
@@ -168,6 +169,14 @@
           {
             "if": { "required": ["downgradedFrom"] },
             "then": { "properties": { "status": { "const": "deferred" }, "dispatchAllowed": { "const": false }, "stopsEngagement": { "const": false } } }
+          },
+          {
+            "if": { "required": ["status"], "properties": { "status": { "const": "conditional" } } },
+            "then": { "properties": { "pendingGates": { "minItems": 1 }, "dispatchAllowed": { "const": true }, "stopsEngagement": { "const": false } } }
+          },
+          {
+            "if": { "required": ["status"], "properties": { "status": { "enum": ["not-selected", "ready", "degraded", "deferred", "skipped", "blocked"] } } },
+            "then": { "properties": { "pendingGates": { "maxItems": 0 } } }
           }
         ]
       }
@@ -175,13 +184,14 @@
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["selected", "ready", "degraded", "deferred", "skipped", "blocked", "downgraded", "dispatchable"],
+      "required": ["selected", "ready", "degraded", "deferred", "skipped", "conditional", "blocked", "downgraded", "dispatchable"],
       "properties": {
         "selected": { "type": "integer", "minimum": 0 },
         "ready": { "type": "integer", "minimum": 0 },
         "degraded": { "type": "integer", "minimum": 0 },
         "deferred": { "type": "integer", "minimum": 0 },
         "skipped": { "type": "integer", "minimum": 0 },
+        "conditional": { "type": "integer", "minimum": 0 },
         "blocked": { "type": "integer", "minimum": 0 },
         "downgraded": { "type": "integer", "minimum": 0 },
         "dispatchable": { "type": "integer", "minimum": 0 }
@@ -196,7 +206,7 @@
         "required": ["slug", "status", "missingTools", "missingCapabilities", "reason"],
         "properties": {
           "slug": { "type": "string", "minLength": 1 },
-          "status": { "enum": ["deferred", "skipped", "blocked"] },
+          "status": { "enum": ["deferred", "skipped", "conditional", "blocked"] },
           "downgradedFrom": { "enum": ["blocked"] },
           "missingTools": { "$ref": "#/$defs/stringList" },
           "missingCapabilities": { "$ref": "#/$defs/stringList" },

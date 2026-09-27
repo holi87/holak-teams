@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
-import { generateKeyPairSync, sign as signSignature } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { createHash, generateKeyPairSync, sign as signSignature } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -316,7 +318,120 @@ const openFallback = structuredClone(policy);
 openFallback.fallbackPolicies['frontier-fail-closed'].allowWeakerModel = true;
 assert(validatePolicySchema(openFallback).length > 0, 'model policy schema accepted a weaker frontier fallback');
 
-console.log('PASS  Argus model routing: derived tier counts, controller turn budget, allowlisted standard path, native Claude enforcement, fail-closed Codex, authenticated frontier decisions, automatic frontier continuation and backoff, immutable telemetry');
+conditionalSealScenario();
+
+console.log('PASS  Argus model routing: derived tier counts, controller turn budget, allowlisted standard path, native Claude enforcement, fail-closed Codex, authenticated frontier decisions, automatic frontier continuation and backoff, immutable telemetry, sealed conditional lanes released only by resolve-gates');
+
+// End to end through the packaged CLI: preflight marks recon-provable lanes conditional, the
+// model-control seal binds their attempt-1 decisions, allocation waits for resolve-gates, and
+// only a gate the runtime re-checks from Kalchas's evidence releases a lane. The browser
+// runtime is declared available, so every pending gate is a target gate and no probe runs.
+function conditionalSealScenario() {
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'argus-routing-conditional-')));
+  try {
+    const target = join(work, 'target');
+    const artifacts = join(work, 'artifacts');
+    const modelHost = join(work, 'model-host');
+    mkdirSync(join(target, 'src', 'server'), { recursive: true });
+    mkdirSync(join(target, 'tests'), { recursive: true });
+    mkdirSync(artifacts);
+    writeFileSync(join(target, 'src', 'server', 'orders.ts'), 'export const orders = [];\n');
+    writeFileSync(join(target, 'tests', 'orders.spec.ts'), 'test("orders", () => {});\n');
+    const profile = join(work, 'profile.json');
+    writeFileSync(profile, `${JSON.stringify({ ...readJson('scripts/fixtures/argus-preflight/partial.json'), features: ['browser-runtime'] }, null, 2)}\n`);
+    const cli = join(ROOT, 'argus/claude/bin/argus-assets');
+    const smokeCli = join(ROOT, 'scripts/lib/argus-smoke-cli.sh');
+    const baseEnv = Object.fromEntries(Object.entries(process.env)
+      .filter(([name]) => !name.startsWith('ARGUS_') && !['DATABASE_URL', 'PGHOST', 'MYSQL_HOST'].includes(name)));
+    const smokeEnv = {
+      ...baseEnv,
+      ARGUS_SMOKE_REAL_CLI: cli,
+      ARGUS_SMOKE_HOST_ROOT: join(work, 'native-host'),
+      ARGUS_SMOKE_LAUNCHER: join(ROOT, 'argus/claude/bin/argus-launch'),
+      ARGUS_SMOKE_CLAUDE: join(ROOT, 'scripts/fixtures/argus-launcher/claude'),
+      ARGUS_SMOKE_PREFLIGHT_CLI: smokeCli,
+    };
+    const run = (command, args, env = smokeEnv) => spawnSync(command, args, { cwd: work, env, encoding: 'utf8' });
+    const succeed = (label, result) => {
+      assert(result.status === 0, `${label} failed (${result.status}): ${result.stderr || result.stdout}`);
+      return result.stdout;
+    };
+    const refuse = (label, result, expected) => {
+      assert(result.status !== 0, `${label} unexpectedly succeeded`);
+      assert(`${result.stdout}${result.stderr}`.includes(expected), `${label} failed for the wrong reason: ${result.stderr || result.stdout}`);
+    };
+
+    succeed('conditional preflight', run(smokeCli, ['preflight', '--target', target, '--artifact-root', artifacts, '--mode', 'A',
+      '--profile', profile, '--environment', 'unknown']));
+    const manifest = join(artifacts, 'ai_agents_internal', 'engagement.json');
+    succeed('model-control preparation', run('bash', ['-c', 'source "$1"; shift; argus_smoke_prepare_model_control "$@"', 'bash',
+      join(ROOT, 'scripts/lib/argus-smoke-model-control.sh'), smokeCli, manifest, target, artifacts, 'A', profile, modelHost]));
+    const report = JSON.parse(readFileSync(join(artifacts, 'ai_agents_internal', 'preflight.json'), 'utf8'));
+    const expectedConditional = {
+      asklepios: ['existing-suite'], charon: ['db-access'], mnemosyne: ['db-access'],
+      pistis: ['multi-service'], proteus: ['non-rest-surface'], tiresias: ['source-access'],
+    };
+    const conditional = Object.fromEntries(report.agents.filter((agent) => agent.status === 'conditional').map((agent) => [agent.slug, agent.pendingGates]));
+    assert(stable(conditional) === stable(expectedConditional), `preflight conditional lanes differ: ${JSON.stringify(conditional)}`);
+
+    const controlId = createHash('sha256').update(`${manifest}\0${JSON.parse(readFileSync(manifest, 'utf8')).engagementId}`).digest('hex').slice(0, 24);
+    const controlRoot = join(modelHost, controlId);
+    const cliEnv = { ...baseEnv, ARGUS_MODEL_TRUST_STORE: realpathSync(join(controlRoot, 'model-trust.json')) };
+    const decisionPath = (lane) => readFileSync(join(controlRoot, 'decisions', `${lane}.path`), 'utf8').trim();
+    const allocate = (lane, controllerToken) => run(cli, ['engagement', 'allocate', '--manifest', manifest, '--lane', lane,
+      '--decision', decisionPath(lane), ...(controllerToken ? ['--controller-token', controllerToken] : [])], cliEnv);
+    const controller = JSON.parse(succeed('odysseus allocation', allocate('odysseus'))).token;
+
+    // The seal binds every conditional lane with its own selected normal attempt-1 decision.
+    const seal = JSON.parse(readFileSync(join(artifacts, 'ai_agents_internal', 'model-control-seal.json'), 'utf8'));
+    for (const lane of Object.keys(expectedConditional)) {
+      assert(seal.dispatchableAgents.includes(lane), `seal omitted conditional lane ${lane}`);
+      const decision = JSON.parse(readFileSync(decisionPath(lane), 'utf8'));
+      assert(decision.agent === lane && decision.status === 'selected' && decision.signal === 'normal' && decision.attempt === 1
+        && seal.decisions[lane]?.modelDecisionId === decision.decisionId, `seal does not bind the attempt-1 decision of ${lane}`);
+    }
+    const sealedState = JSON.parse(succeed('engagement status', run(cli, ['engagement', 'status', '--manifest', manifest], cliEnv)));
+    assert(stable(sealedState.conditionalAgents) === stable(expectedConditional) && sealedState.gateResolution === null,
+      `sealed state conditional projection differs: ${JSON.stringify(sealedState.conditionalAgents)}`);
+
+    // A bound conditional map that differs from the sealed report is refused before any allocation.
+    const statePath = join(artifacts, 'ai_agents_internal', 'engagement-state.json');
+    const stateBytes = readFileSync(statePath);
+    const tampered = JSON.parse(stateBytes.toString('utf8'));
+    delete tampered.conditionalAgents.pistis;
+    writeFileSync(statePath, `${JSON.stringify(tampered, null, 2)}\n`);
+    refuse('tampered conditional projection', allocate('kalchas', controller), 'engagement state conditional projection differs from the sealed preflight');
+    writeFileSync(statePath, stateBytes);
+
+    refuse('pre-resolution conditional allocation', allocate('tiresias', controller), 'tiresias is conditional on source-access; run engagement resolve-gates first');
+    const kalchas = JSON.parse(succeed('kalchas allocation', allocate('kalchas', controller))).token;
+    succeed('kalchas discovery arrival', run(cli, ['engagement', 'barrier', 'arrive', '--manifest', manifest, '--lane', 'kalchas',
+      '--token', kalchas, '--phase', 'discovery'], cliEnv));
+
+    // The P-06 capability-evidence fixture, rebound to this engagement and target source tree.
+    const evidence = readJson('scripts/fixtures/argus-schemas/valid/capability-evidence.json');
+    evidence.engagementId = sealedState.engagementId;
+    const sourceGate = evidence.gates.find((gate) => gate.capability === 'source-access');
+    sourceGate.proof.path = join(target, 'src');
+    sourceGate.proof.fileRead = join(target, 'src', 'server', 'orders.ts');
+    const evidencePath = join(artifacts, 'solution', 'discovery', 'capability-evidence.json');
+    mkdirSync(join(artifacts, 'solution', 'discovery'), { recursive: true });
+    writeFileSync(evidencePath, `${JSON.stringify(evidence)}\n`);
+    const resolution = JSON.parse(succeed('resolve-gates', run(cli, ['engagement', 'resolve-gates', '--manifest', manifest,
+      '--controller-token', controller], cliEnv)));
+    assert(stable({ released: resolution.released, gateUnmet: resolution.gateUnmet })
+      === stable({ released: ['tiresias'], gateUnmet: ['asklepios', 'charon', 'mnemosyne', 'pistis', 'proteus'] }),
+      `resolve-gates released the wrong lanes: ${JSON.stringify(resolution)}`);
+    assert(resolution.gateResolution.evidenceSha256 === createHash('sha256').update(readFileSync(evidencePath)).digest('hex')
+      && resolution.gateResolution.capabilities['source-access'].basis === 'kalchas-evidence+path-check', 'resolve-gates did not bind the capability evidence');
+
+    const released = JSON.parse(succeed('released conditional allocation', allocate('tiresias', controller)));
+    assert(released.lane === 'tiresias' && typeof released.token === 'string', 'the released conditional lane did not receive a lease');
+    refuse('gate-unmet allocation', allocate('charon', controller), 'charon was omitted: gate unmet (db-access)');
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
 
 function decide(snapshot, overrides, activePolicy = policy) {
   const decision = resolveModelDecision(activePolicy, snapshot, { ...context, ...overrides });

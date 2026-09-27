@@ -86,6 +86,16 @@ require_controller_text 'start a new thread' "controller can resume a thread und
 require_controller_text 'argus-assets template detect' "controller does not detect template capabilities"
 require_controller_text 'template select' "controller does not require explicit template selection"
 require_controller_text 'dispatchAllowed=true' "controller does not gate dispatch from the preflight report"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'selected `ready`/`degraded`/`conditional` agent with `dispatchAllowed=true`.' "$SKILL" "run skill does not seal conditional lanes with their attempt-1 decisions"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'Dispatch persisted `ready`/`degraded` roles, and `conditional` roles only after' "$SKILL" "run skill can dispatch a conditional lane before gate resolution"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text '`argus-assets engagement resolve-gates` once' "$CORE" "orchestration core does not resolve conditional gates once after Kalchas arrives"
+require_text 'Never rerun preflight after the first' "$CORE" "orchestration core can rerun preflight after the seal"
+if grep -Fq 'Rerun after provisioning' "$CORE"; then
+  fail "orchestration core still reruns preflight after provisioning instead of resolving gates"
+fi
 require_controller_text 'Advance W0–W4' "controller does not own wave and barrier advancement"
 require_controller_text 'Collect every RESULT' "controller does not collect and validate worker results"
 require_controller_text 'selected-dispatchable-predecessors' "controller does not define dependency barrier semantics"

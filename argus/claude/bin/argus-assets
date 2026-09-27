@@ -1181,11 +1181,16 @@ function persistPreflightOrchestrationPlan(artifactRoot, mode, dispatchable) {
   const projection = projectOrchestrationPlan(orchestrationPlan, matrix, mode, dispatchable, raciContract);
   const path = join(artifactRoot, 'ai_agents_internal', 'orchestration-plan.json');
   if (!safePhysicalPath(artifactRoot, path)) throw new Error('orchestration plan output is not physically safe');
+  const serialized = `${JSON.stringify(projection, null, 2)}\n`;
   if (existsSync(path)) {
     const current = readSecureJson(path, 'orchestration plan');
     if (current.mode !== mode) throw new Error(`existing orchestration plan belongs to Mode ${current.mode}, not ${mode}`);
+    // The sealed report binds this projection by digest; a diagnostic preflight written to
+    // another output after the seal may confirm it but never change it.
+    if (lstatSafe(join(artifactRoot, 'ai_agents_internal', 'model-control-seal.json')) && `${JSON.stringify(current, null, 2)}\n` !== serialized) {
+      throw new Error('orchestration plan is sealed by the model-control seal; a diagnostic preflight cannot change the dispatchable projection');
+    }
   }
-  const serialized = `${JSON.stringify(projection, null, 2)}\n`;
   atomicPrivateWrite(path, serialized);
   return {
     path,
@@ -1443,7 +1448,7 @@ function requireCurrentModelPreflight(context, agent, runtime) {
   if (report.engagement.sha256 !== context.sha256) fail('model routing preflight engagement digest is stale; rerun preflight after every manifest change');
   if (report.mode !== context.engagement.mode) fail('model routing preflight mode differs from the engagement');
   const disposition = report.agents.find((entry) => entry.slug === agent);
-  if (!disposition?.selected || !['ready', 'degraded'].includes(disposition.status) || (agent !== 'odysseus' && disposition.dispatchAllowed !== true)) {
+  if (!disposition?.selected || !dispatchablePreflightStatus(disposition.status) || (agent !== 'odysseus' && disposition.dispatchAllowed !== true)) {
     fail(`${agent} is not dispatchable in the current model routing preflight`);
   }
   return { report, path, sha256: createHash('sha256').update(raw).digest('hex') };
@@ -2445,7 +2450,7 @@ function createModelControlSeal(context, runtime, preflight) {
     if (existingSeal.runtime !== runtime || existingSeal.preflightSha256 !== preflight.sha256) {
       fail('existing initial model-control seal differs from the current runtime or preflight report');
     }
-    bindDispatchableAgents(context.engagement, existingSeal.dispatchableAgents);
+    bindDispatchableAgents(context.engagement, existingSeal.dispatchableAgents, conditionalPreflightAgents(context.engagement, preflight.report));
     return existingSeal;
   }
   const decisions = {};
@@ -2462,7 +2467,7 @@ function createModelControlSeal(context, runtime, preflight) {
     decisions[agent] = executionBindingForDecision(selected[0]);
   }
   if (errors.length > 0) fail(`Odysseus bootstrap cannot seal the initial model-control set: ${errors.join('; ')}`);
-  bindDispatchableAgents(context.engagement, dispatchableAgents);
+  bindDispatchableAgents(context.engagement, dispatchableAgents, conditionalPreflightAgents(context.engagement, preflight.report));
   const seal = {
     schema: 'argus/model-control-seal@1',
     schemaVersion: 1,
@@ -2513,6 +2518,9 @@ function loadModelControlSeal(context, { required = true } = {}) {
   if (Array.isArray(state.dispatchableAgents) && JSON.stringify(state.dispatchableAgents) !== JSON.stringify(expectedAgents)) {
     fail('engagement state dispatchable projection differs from the model-control seal');
   }
+  if (Array.isArray(state.dispatchableAgents) && JSON.stringify(state.conditionalAgents) !== JSON.stringify(conditionalPreflightAgents(context.engagement, preflight))) {
+    fail('engagement state conditional projection differs from the sealed preflight');
+  }
   if (state.dispatchableAgents === null && Object.keys(state.allocations).length > 0) {
     fail('allocated engagement state has no sealed dispatchable projection');
   }
@@ -2526,10 +2534,26 @@ function loadModelControlSeal(context, { required = true } = {}) {
 function dispatchablePreflightAgents(engagement, report) {
   const selected = new Set(engagement.selectedAgents);
   return report.agents
-    .filter((entry) => selected.has(entry.slug) && entry.selected && ['ready', 'degraded'].includes(entry.status) &&
+    .filter((entry) => selected.has(entry.slug) && entry.selected && dispatchablePreflightStatus(entry.status) &&
       (entry.slug === 'odysseus' || entry.dispatchAllowed === true))
     .map((entry) => entry.slug)
     .sort();
+}
+
+// `ready` and `degraded` records dispatch directly; a `conditional` record is sealed with its
+// decision too, and the engagement runtime refuses its allocation until resolve-gates releases it.
+function dispatchablePreflightStatus(status) {
+  return status === 'ready' || status === 'degraded' || status === 'conditional';
+}
+
+// The conditional projection bound with the seal: each dispatchable `conditional` record's
+// pending gates, keyed by lane in sorted order, exactly as the engagement runtime stores it.
+function conditionalPreflightAgents(engagement, report) {
+  const dispatchable = new Set(dispatchablePreflightAgents(engagement, report));
+  return Object.fromEntries(report.agents
+    .filter((entry) => dispatchable.has(entry.slug) && entry.status === 'conditional')
+    .map((entry) => [entry.slug, [...new Set(entry.pendingGates)].sort()])
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)));
 }
 
 function requireSealedAllocationDecision(seal, decision) {
@@ -3411,6 +3435,27 @@ function requireUnattestedLaunchPreconditions({ options, modelRuntime, nativeLau
   }
 }
 
+// Odysseus's first allocation seals ai_agents_internal/preflight.json by digest, and every
+// later allocation and retry re-checks that digest. Rewriting the report would silently
+// change the sealed dispatchable and conditional projection, so a sealed engagement refuses
+// before any probe or write. A diagnostic report under another output path stays allowed.
+// The resolved output mirrors the preflight fallback: an unsafe --output falls back to the
+// sealed report, and an existing alias (for example a case variant) is caught by identity.
+function refuseSealedPreflightRewrite(artifactRootPath, output) {
+  const controlRoot = join(artifactRootPath, 'ai_agents_internal');
+  if (!lstatSafe(join(controlRoot, 'model-control-seal.json'))) return;
+  const sealedReport = join(controlRoot, 'preflight.json');
+  const requested = resolve(artifactRootPath, output ?? 'ai_agents_internal/preflight.json');
+  const requestedSafe = isWithin(artifactRootPath, requested) && safePhysicalPath(artifactRootPath, requested);
+  const effective = requestedSafe ? requested : sealedReport;
+  const effectiveStats = statSafe(effective);
+  const sealedStats = statSafe(sealedReport);
+  const sameEntry = Boolean(effectiveStats && sealedStats && effectiveStats.dev === sealedStats.dev && effectiveStats.ino === sealedStats.ino);
+  if (effective === sealedReport || sameEntry) {
+    fail('preflight.json is sealed by the model-control seal; release conditional lanes with `argus-assets engagement resolve-gates`, never by rerunning preflight');
+  }
+}
+
 async function preflight(argv) {
   assertTrustedModelRoutingAssets();
   const options = parsePreflightOptions(argv);
@@ -3442,6 +3487,7 @@ async function preflight(argv) {
   };
   const artifactRootCandidate = resolve(options.artifactRoot ?? targetPath ?? process.cwd());
   const artifactRootPath = statSafe(artifactRootCandidate)?.isDirectory() ? realpathSync(artifactRootCandidate) : artifactRootCandidate;
+  refuseSealedPreflightRewrite(artifactRootPath, options.output);
   const nativeLaunch = inspectNativeLaunchForPreflight({
     options,
     modelRuntime,
@@ -3819,7 +3865,7 @@ async function preflight(argv) {
   );
   if (orchestrationError !== null) {
     agents = agents.map((agent) => agent.selected
-      ? { ...withoutDowngrade(agent), status: 'blocked', dispatchAllowed: false, stopsEngagement: true, actions: [...agent.actions, `Orchestration projection failed: ${orchestrationError}`] }
+      ? { ...withoutDowngrade(agent), status: 'blocked', dispatchAllowed: false, stopsEngagement: true, pendingGates: [], actions: [...agent.actions, `Orchestration projection failed: ${orchestrationError}`] }
       : agent);
   }
   const selectedAgents = agents.filter((agent) => agent.selected);
@@ -3829,6 +3875,7 @@ async function preflight(argv) {
     degraded: selectedAgents.filter((agent) => agent.status === 'degraded').length,
     deferred: selectedAgents.filter((agent) => agent.status === 'deferred').length,
     skipped: selectedAgents.filter((agent) => agent.status === 'skipped').length,
+    conditional: selectedAgents.filter((agent) => agent.status === 'conditional').length,
     blocked: selectedAgents.filter((agent) => agent.status === 'blocked').length,
     downgraded: selectedAgents.filter((agent) => agent.downgradedFrom === 'blocked').length,
     dispatchable: selectedAgents.filter((agent) => agent.dispatchAllowed).length,
@@ -3836,7 +3883,7 @@ async function preflight(argv) {
   const mandatoryFailure = checks.some((check) => check.mandatory && check.status === 'fail');
   const status = mandatoryFailure || selectedAgents.some((agent) => agent.status === 'blocked' && agent.stopsEngagement)
     ? 'blocked'
-    : summary.degraded + summary.deferred + summary.skipped > 0
+    : summary.degraded + summary.deferred + summary.skipped + summary.conditional > 0
       ? 'degraded'
       : 'ready';
 
@@ -3871,7 +3918,7 @@ async function preflight(argv) {
   } else {
     console.log(
       `PREFLIGHT  ${status} mode=${mode} selected=${summary.selected} dispatchable=${summary.dispatchable} ` +
-      `degraded=${summary.degraded} deferred=${summary.deferred} skipped=${summary.skipped} blocked=${summary.blocked} ` +
+      `degraded=${summary.degraded} deferred=${summary.deferred} skipped=${summary.skipped} conditional=${summary.conditional} blocked=${summary.blocked} ` +
       `downgraded=${summary.downgraded} report=${persisted ? outputPath : 'NOT_PERSISTED'}` +
       (unattestedLaunch ? ' attestation=UNATTESTED' : ''),
     );
@@ -3904,11 +3951,19 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
   }
 
   let status = 'ready';
+  const requiredFallbacks = [];
   for (const id of missingRequired) {
     const capability = matrix.capabilities[id];
-    actions.push(`${id}: ${capability.fallback}`);
+    requiredFallbacks.push(`${id}: ${capability.fallback}`);
     if (capability.missingDisposition === 'skipped') status = 'skipped';
     else if (status !== 'skipped') status = 'deferred';
+  }
+  const pendingGates = conditionalPendingGates(status, missingRequired, matrix);
+  if (pendingGates.length > 0) {
+    status = 'conditional';
+    actions.push(conditionalLaneAction(pendingGates, requiredFallbacks));
+  } else {
+    actions.push(...requiredFallbacks);
   }
   for (const id of missingOptional) {
     actions.push(contract.slug === 'perseus' && id === 'browser-runtime'
@@ -3931,29 +3986,49 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
     contract,
     true,
     status,
-    status === 'ready' || status === 'degraded',
+    status === 'ready' || status === 'degraded' || status === 'conditional',
     [],
     [...missingRequired, ...missingOptional, ...missingCommands],
     actions,
     contract.artifactPaths,
     authorizationDecisions,
     modelRuntime,
+    pendingGates,
   );
 }
 
-function agentResult(contract, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths, authorization, modelRuntime) {
-  const model = buildModelRoutingPreview(modelPolicy, runtimeAdapters, { slug: contract.slug, runtime: modelRuntime });
-  return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed: contract.slug === 'odysseus' ? false : dispatchAllowed, stopsEngagement: status === 'blocked', model, missingTools, missingCapabilities, actions, artifactPaths, authorization };
+// A lane whose only unmet requirements are target or browser capabilities is recon-provable:
+// it becomes `conditional` instead of deferred/skipped, is sealed with its model decision,
+// and allocates only after `engagement resolve-gates` proves every pending gate.
+function conditionalPendingGates(status, missingRequired, matrix) {
+  if (status !== 'deferred' && status !== 'skipped') return [];
+  if (!missingRequired.every((id) => ['target', 'browser'].includes(matrix.capabilities[id]?.kind))) return [];
+  return [...missingRequired].sort();
 }
 
-// Every selected lane that will not run is a named residual risk, so the controller and the
-// final report can list uncovered surfaces without re-deriving them from agent records.
+function conditionalLaneAction(pendingGates, requiredFallbacks) {
+  return `Conditional on ${pendingGates.join(', ')}: sealed with a model decision now; allocate only after ` +
+    '`argus-assets engagement resolve-gates` releases the lane; if a gate stays unmet the lane is omitted and its ' +
+    `fallback is recorded as residual risk: ${requiredFallbacks.join(' ')}`;
+}
+
+function agentResult(contract, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths, authorization, modelRuntime, pendingGates = []) {
+  const model = buildModelRoutingPreview(modelPolicy, runtimeAdapters, { slug: contract.slug, runtime: modelRuntime });
+  return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed: contract.slug === 'odysseus' ? false : dispatchAllowed, stopsEngagement: status === 'blocked', pendingGates: [...pendingGates], model, missingTools, missingCapabilities, actions, artifactPaths, authorization };
+}
+
+// Every selected lane that will not run, or runs only once its gates are released, is a named
+// residual risk, so the controller and the final report can list uncovered surfaces without
+// re-deriving them from agent records.
 function preflightResidualRisks(selectedAgents) {
   const RESIDUAL_RISK_REASON_LIMIT = 600;
   return selectedAgents
     .filter((agent) => agent.status !== 'ready' && agent.status !== 'degraded')
     .map((agent) => {
-      const reason = agent.actions.join(' ') || `${agent.slug} is ${agent.status}`;
+      const detail = agent.actions.join(' ') || `${agent.slug} is ${agent.status}`;
+      // A conditional lane is sealed but not yet dispatchable: it stays a named risk until
+      // resolve-gates releases it or omits it with its fallback.
+      const reason = agent.status === 'conditional' ? `pending gate resolution: ${detail}` : detail;
       return {
         slug: agent.slug,
         status: agent.status,

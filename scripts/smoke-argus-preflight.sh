@@ -24,6 +24,12 @@ fail() {
   exit 1
 }
 
+digest_file() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 # Database coordinates are environment evidence for db-access; only the scenario that
 # asserts that detection exports one, so every other report stays host-independent.
 unset DATABASE_URL PGHOST MYSQL_HOST
@@ -92,6 +98,9 @@ assert(report.checks.some((check) => check.id === 'packaged-assets' && check.sta
 const bySlug = new Map(report.agents.map((agent) => [agent.slug, agent]));
 assert(bySlug.get('odysseus').dispatchAllowed === false, `${scenario}: controller must never be dispatchable`);
 assert(report.agents.every((agent) => typeof agent.stopsEngagement === 'boolean'), `${scenario}: every agent needs a boolean stopsEngagement`);
+assert(report.agents.every((agent) => Array.isArray(agent.pendingGates) && (agent.pendingGates.length > 0) === (agent.status === 'conditional')),
+  `${scenario}: pendingGates must be non-empty exactly on conditional records`);
+assert(report.summary.conditional === report.agents.filter((agent) => agent.selected && agent.status === 'conditional').length, `${scenario}: summary.conditional miscounted`);
 const residualSlugs = report.residualRisks.map((risk) => risk.slug).sort();
 const expectedResidualSlugs = report.agents
   .filter((agent) => agent.selected && agent.status !== 'ready' && agent.status !== 'degraded')
@@ -119,6 +128,7 @@ if (scenario === 'full' || scenario === 'partial') {
 }
 if (scenario === 'full') {
   assert(report.summary.ready === 27 && report.summary.dispatchable === 26, 'full: 26 specialists must be dispatchable');
+  assert(report.summary.conditional === 0, 'full: a fully provisioned engagement has no conditional lane');
   assert(report.residualRisks.length === 0, 'full: a fully provisioned engagement has no residual lane risk');
   assert(report.authorization.defaultReadOnly === false, 'full: explicit authorization fixture required');
 }
@@ -126,11 +136,34 @@ if (scenario === 'partial') {
   assert(bySlug.get('perseus').status === 'degraded' && bySlug.get('perseus').dispatchAllowed, 'partial: CLI security hunt must remain dispatchable without browser');
   assert(bySlug.get('perseus').actions.some(action => action.includes('Run authorized CLI request-level security checks')), 'partial: security fallback must explicitly exclude DOM checks');
   assert(report.summary.blocked === 0, 'partial: optional gaps must not block the engagement');
-  assert(bySlug.get('orion').status === 'deferred' && !bySlug.get('orion').dispatchAllowed, 'partial: browser lane must be deferred');
-  assert(bySlug.get('charon').status === 'skipped' && !bySlug.get('charon').dispatchAllowed, 'partial: DB lane must be skipped');
+  // Every lane whose only unmet requirements are target or browser gates is conditional:
+  // sealed and planned now, allocated only after resolve-gates releases it.
+  const expectedConditional = {
+    antigone: ['browser-runtime'], asklepios: ['existing-suite'], charon: ['db-access'], daidalos: ['browser-runtime'],
+    lynceus: ['browser-runtime'], mnemosyne: ['db-access'], orion: ['browser-runtime'], penelope: ['browser-runtime'],
+    pistis: ['multi-service'], proteus: ['non-rest-surface'], tiresias: ['source-access'],
+  };
+  const conditional = Object.fromEntries(report.agents.filter((agent) => agent.status === 'conditional').map((agent) => [agent.slug, agent.pendingGates]));
+  assert(JSON.stringify(conditional) === JSON.stringify(expectedConditional), `partial: conditional lanes differ: ${JSON.stringify(conditional)}`);
+  assert(report.summary.conditional === 11 && report.summary.deferred === 0 && report.summary.skipped === 0,
+    `partial: expected 11 conditional and no deferred or skipped lane, got ${JSON.stringify(report.summary)}`);
+  for (const [slug, gates] of Object.entries(expectedConditional)) {
+    const agent = bySlug.get(slug);
+    assert(agent.dispatchAllowed === true && agent.stopsEngagement === false, `partial: conditional ${slug} must be dispatchable without stopping the engagement`);
+    assert(agent.actions[0].startsWith(`Conditional on ${gates.join(', ')}: sealed with a model decision now;`)
+      && agent.actions[0].includes('`argus-assets engagement resolve-gates` releases the lane')
+      && agent.actions[0].includes(`is recorded as residual risk: ${gates[0]}: `), `partial: ${slug} lacks its conditional action: ${agent.actions[0]}`);
+    assert(!agent.actions.some((action) => gates.some((gate) => action.startsWith(`${gate}: `))), `partial: ${slug} kept a bare required-capability fallback`);
+  }
+  assert(bySlug.get('mnemosyne').actions.some((action) => action.startsWith('context7: ')), 'partial: a conditional lane must keep its optional-capability fallback');
+  assert(bySlug.get('charon').actions.some((action) => action.startsWith('Authorization denied database-read')), 'partial: a conditional lane must keep its authorization denials');
+  const plannedRoles = JSON.parse(fs.readFileSync(report.orchestration.path, 'utf8')).waves.flatMap((wave) => wave.roles.map((role) => role.slug));
+  assert(Object.keys(expectedConditional).every((slug) => plannedRoles.includes(slug)), 'partial: the orchestration projection must list the conditional lanes');
   const partialRisks = new Map(report.residualRisks.map((risk) => [risk.slug, risk]));
-  assert(partialRisks.get('orion')?.status === 'deferred' && partialRisks.get('orion').missingCapabilities.includes('browser-runtime'), 'partial: deferred browser lane must be a named residual risk');
-  assert(partialRisks.get('charon')?.status === 'skipped' && partialRisks.get('charon').missingCapabilities.includes('db-access'), 'partial: skipped DB lane must be a named residual risk');
+  assert(partialRisks.get('orion')?.status === 'conditional' && partialRisks.get('orion').reason.startsWith('pending gate resolution: Conditional on browser-runtime')
+    && partialRisks.get('orion').missingCapabilities.includes('browser-runtime'), 'partial: a conditional browser lane must be a named pending residual risk');
+  assert(partialRisks.get('charon')?.status === 'conditional' && partialRisks.get('charon').reason.startsWith('pending gate resolution: Conditional on db-access')
+    && partialRisks.get('charon').missingCapabilities.includes('db-access'), 'partial: a conditional DB lane must be a named pending residual risk');
   assert(!partialRisks.has('perseus') && !partialRisks.has('aegis'), 'partial: degraded dispatchable lanes are not residual lane risks');
   assert(bySlug.get('aegis').status === 'degraded' && bySlug.get('aegis').dispatchAllowed, 'partial: Context7 fallback must degrade, not block');
   assert(bySlug.get('aegis').actions.some((action) => action.includes('official documentation')), 'partial: fallback action must be explicit');
@@ -138,7 +171,7 @@ if (scenario === 'partial') {
   assert(bySlug.get('hermes').authorization.find((item) => item.action === 'load')?.ruleId === 'AUTH-PRODUCTION-READ-ONLY', 'partial: load must be denied by default policy');
 }
 if (scenario === 'insufficient') {
-  assert(report.summary.blocked === 27 && report.summary.dispatchable === 0, 'insufficient: no specialist may dispatch');
+  assert(report.summary.blocked === 27 && report.summary.dispatchable === 0 && report.summary.conditional === 0, 'insufficient: no specialist may dispatch');
   assert(report.summary.downgraded === 0 && report.agents.every((agent) => agent.stopsEngagement === true && agent.downgradedFrom === undefined),
     'insufficient: failed prerequisites must keep every selected lane blocked and stopping the engagement');
   assert(report.residualRisks.length === 27 && report.residualRisks.every((risk) => risk.status === 'blocked'), 'insufficient: every blocked lane must be a residual risk');
@@ -410,12 +443,14 @@ assert(broken.browserRuntime.candidates[0]?.result === 'failed' && broken.browse
   'broken fixture launch failure was not recorded as candidate evidence');
 assert(!capability(broken, 'browser-runtime').available && capability(broken, 'browser-runtime').evidence.includes('fixture: browser executable missing'),
   'broken fixture capability does not carry the first failure');
-assert(lanes(broken).get('orion').status !== 'ready' && !lanes(broken).get('orion').dispatchAllowed, 'orion must not be dispatchable without a functional browser runtime');
+assert(lanes(broken).get('orion').status === 'conditional' && JSON.stringify(lanes(broken).get('orion').pendingGates) === '["browser-runtime"]',
+  'orion must wait on the browser-runtime gate without a functional browser runtime');
 
 const disabled = load('disabled');
 assert(disabled.browserRuntime.status === 'not-probed' && disabled.browserRuntime.evidence === 'profile disabled browser runtime resolution'
   && disabled.browserRuntime.probedAt === null, 'browserRuntime=false must skip resolution');
-assert(!capability(disabled, 'db-access').available && lanes(disabled).get('charon').status === 'skipped', 'db-access must stay unavailable without database coordinates');
+assert(!capability(disabled, 'db-access').available && lanes(disabled).get('charon').status === 'conditional'
+  && JSON.stringify(lanes(disabled).get('charon').pendingGates) === '["db-access"]', 'db-access must stay a pending gate without database coordinates');
 
 const database = load('database');
 assert(capability(database, 'db-access').available, 'DATABASE_URL did not make db-access available for a URL target');
@@ -459,21 +494,83 @@ for scenario in full partial; do
     odysseus_allocation="$(argus_smoke_allocate "$CLI" "$manifest" "$WORK/model-control-host" odysseus)"
     odysseus_token="$(jq -r .token <<<"$odysseus_allocation")"
     seal="$target/ai_agents_internal/model-control-seal.json"
+    # The seal binds every dispatchable record, conditional lanes included, and the engagement
+    # state carries exactly the sealed report's conditional projection.
     jq -e --slurpfile preflight "$target/ai_agents_internal/preflight.json" '
-      ([ $preflight[0].agents[] | select(.selected and (.status == "ready" or .status == "degraded") and (.slug == "odysseus" or .dispatchAllowed == true)) | .slug ] | sort) as $expected |
+      ([ $preflight[0].agents[] | select(.selected and (.status == "ready" or .status == "degraded" or .status == "conditional") and (.slug == "odysseus" or .dispatchAllowed == true)) | .slug ] | sort) as $expected |
       (.dispatchableAgents | sort) == $expected and ([.decisions | keys[]] | sort) == $expected and
-      (.decisions | has("orion") | not) and (.decisions | has("charon") | not)
+      (.decisions | has("orion")) and (.decisions | has("charon"))
     ' "$seal" >/dev/null || fail 'partial model-control seal differs from the exact dispatchable preflight projection'
-    if "$CLI" model route --manifest "$manifest" --agent orion --runtime claude --signal normal \
-      --dispatch-id partial-deferred-orion --attempt 1 --controller-token "$odysseus_token" >/dev/null 2>&1; then
-      fail 'partial profile routed a deferred Orion decision'
+    "$CLI" engagement status --manifest "$manifest" >"$WORK/partial-sealed-state.json"
+    jq -e --slurpfile preflight "$target/ai_agents_internal/preflight.json" '
+      ([ $preflight[0].agents[] | select(.status == "conditional") | {key: .slug, value: .pendingGates} ] | from_entries) as $expected |
+      .conditionalAgents == $expected and (.conditionalAgents | length) == 11 and .gateResolution == null
+    ' "$WORK/partial-sealed-state.json" >/dev/null || fail 'sealed engagement state does not carry the conditional preflight projection'
+
+    # After the seal, preflight never rewrites the sealed report; a diagnostic report under
+    # another output path stays allowed and leaves the sealed report and projection intact.
+    sealed_report_digest="$(digest_file "$report")"
+    sealed_plan_digest="$(digest_file "$target/ai_agents_internal/orchestration-plan.json")"
+    if "$CLI" preflight --target "$target" --artifact-root "$target" --mode A --profile "$FIXTURES/partial.json" \
+      --environment unknown >/dev/null 2>"$WORK/sealed-preflight.stderr"; then
+      fail 'preflight rewrote the sealed report after the first allocation'
     fi
+    grep -Fq 'preflight.json is sealed by the model-control seal; release conditional lanes with `argus-assets engagement resolve-gates`, never by rerunning preflight' \
+      "$WORK/sealed-preflight.stderr" || fail "sealed preflight rerun failed for the wrong reason: $(cat "$WORK/sealed-preflight.stderr")"
+    if "$CLI" preflight --target "$target" --artifact-root "$target" --mode A --profile "$FIXTURES/partial.json" \
+      --environment unknown --output ../escaped-preflight.json >/dev/null 2>"$WORK/sealed-escape.stderr"; then
+      fail 'an unsafe output path fell back to the sealed report'
+    fi
+    grep -Fq 'preflight.json is sealed by the model-control seal' "$WORK/sealed-escape.stderr" || fail 'an unsafe output path was not refused as the sealed report'
+    test ! -e "$WORK/escaped-preflight.json" || fail 'a refused sealed preflight wrote outside the artifact root'
+    "$CLI" preflight --target "$target" --artifact-root "$target" --mode A --profile "$FIXTURES/partial.json" \
+      --environment unknown --output ai_agents_internal/preflight-diagnostic.json >/dev/null || fail 'a diagnostic preflight to another output was refused after the seal'
+    jq -e '.status == "degraded" and .summary.conditional == 11' "$target/ai_agents_internal/preflight-diagnostic.json" >/dev/null || \
+      fail 'the diagnostic preflight did not report the same conditional projection'
+    [ "$(digest_file "$report")" = "$sealed_report_digest" ] || fail 'a refused or diagnostic preflight changed the sealed report'
+    [ "$(digest_file "$target/ai_agents_internal/orchestration-plan.json")" = "$sealed_plan_digest" ] || \
+      fail 'a diagnostic preflight changed the sealed orchestration projection'
+
     mkdir -p "$WORK/partial-tokens"
     printf '%s\n' "$odysseus_token" >"$WORK/partial-tokens/odysseus"
+    # A conditional lane is sealed but refuses allocation until resolve-gates records its verdict.
+    if conditional_output="$(argus_smoke_allocate "$CLI" "$manifest" "$WORK/model-control-host" orion "$odysseus_token" 2>&1)"; then
+      fail 'a conditional lane allocated before engagement resolve-gates'
+    fi
+    grep -Fq 'orion is conditional on browser-runtime; run engagement resolve-gates first' <<<"$conditional_output" || \
+      fail "pre-resolution conditional allocation failed for the wrong reason: $conditional_output"
     while IFS= read -r lane; do
       allocation="$(argus_smoke_allocate "$CLI" "$manifest" "$WORK/model-control-host" "$lane" "$odysseus_token")"
       jq -r .token <<<"$allocation" >"$WORK/partial-tokens/$lane"
-    done < <(jq -r '.dispatchableAgents[] | select(. != "odysseus")' "$seal")
+    done < <(jq -r --slurpfile state "$WORK/partial-sealed-state.json" \
+      '.dispatchableAgents[] as $lane | select($lane != "odysseus" and ($state[0].conditionalAgents | has($lane) | not)) | $lane' "$seal")
+
+    # Kalchas arrives at discovery; resolve-gates then re-probes the browser runtime against a
+    # host-provisioned fixture (deterministic whatever the host has installed) and, with no
+    # capability evidence file, leaves every evidence-backed gate unmet.
+    "$CLI" engagement barrier arrive --manifest "$manifest" --lane kalchas \
+      --token "$(tr -d '\n' <"$WORK/partial-tokens/kalchas")" --phase discovery >/dev/null
+    partial_home="$WORK/partial-home"
+    mkdir -p "$partial_home/.cache/argus/browser-runtime/0.0.1/node_modules"
+    cp -R "$FIXTURES/fake-playwright" "$partial_home/.cache/argus/browser-runtime/0.0.1/node_modules/playwright"
+    HOME="$partial_home" "$CLI" engagement resolve-gates --manifest "$manifest" --controller-token "$odysseus_token" >"$WORK/partial-gates.json"
+    jq -e '.released == ["antigone","daidalos","lynceus","orion","penelope"]
+      and .gateUnmet == ["asklepios","charon","mnemosyne","pistis","proteus","tiresias"]
+      and .gateResolution.evidenceSha256 == null
+      and .gateResolution.capabilities["browser-runtime"].status == "proven"
+      and ([.gateResolution.capabilities[] | select(.status == "unmet")] | length) == 5' "$WORK/partial-gates.json" >/dev/null || \
+      fail "partial resolve-gates released the wrong lanes: $(cat "$WORK/partial-gates.json")"
+    while IFS= read -r lane; do
+      allocation="$(argus_smoke_allocate "$CLI" "$manifest" "$WORK/model-control-host" "$lane" "$odysseus_token")"
+      jq -r .token <<<"$allocation" >"$WORK/partial-tokens/$lane"
+    done < <(jq -r '.released[]' "$WORK/partial-gates.json")
+    if omitted_output="$(argus_smoke_allocate "$CLI" "$manifest" "$WORK/model-control-host" charon "$odysseus_token" 2>&1)"; then
+      fail 'a gate-unmet lane allocated after engagement resolve-gates'
+    fi
+    grep -Fq 'charon was omitted: gate unmet (db-access)' <<<"$omitted_output" || \
+      fail "gate-unmet allocation failed for the wrong reason: $omitted_output"
+    "$CLI" engagement barrier status --manifest "$manifest" --phase discovery | jq -e '.participants | index("tiresias") | not' >/dev/null || \
+      fail 'a gate-unmet discovery lane still holds the discovery barrier'
     while [ "$("$CLI" engagement status --manifest "$manifest" | jq -r .currentPhase)" != complete ]; do
       phase="$("$CLI" engagement status --manifest "$manifest" | jq -r .currentPhase)"
       while IFS= read -r lane; do
@@ -494,10 +591,12 @@ for scenario in full partial; do
       "$CLI" engagement barrier advance --manifest "$manifest" --lane odysseus --token "$odysseus_token" >/dev/null
     done
     "$CLI" engagement barrier arrive --manifest "$manifest" --lane odysseus --token "$odysseus_token" --phase complete >/dev/null
+    # Gate-unmet lanes never allocated, so cleanup covers exactly the allocated workers.
     while IFS= read -r lane; do
       "$CLI" engagement cleanup --manifest "$manifest" --lane "$lane" \
         --token "$(tr -d '\n' <"$WORK/partial-tokens/$lane")" --outcome success >/dev/null
-    done < <(jq -r '.dispatchableAgents[] | select(. != "odysseus")' "$seal")
+    done < <(jq -r --slurpfile gates "$WORK/partial-gates.json" \
+      '.dispatchableAgents[] as $lane | select($lane != "odysseus" and ($gates[0].gateUnmet | index($lane) | not)) | $lane' "$seal")
     "$CLI" engagement cleanup --manifest "$manifest" --lane odysseus --token "$odysseus_token" --outcome success >/dev/null
     jq -e '([.allocations[] | select(.status == "active")] | length) == 0 and (.exclusiveLocks | length) == 0' \
       "$target/ai_agents_internal/engagement-state.json" >/dev/null || fail 'partial lifecycle left active allocations or locks'
