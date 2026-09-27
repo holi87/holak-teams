@@ -38,8 +38,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 12462,
-      "sha256": "6d2be22b66527ea31aa6ab23e0235e220ff6f66fd5eadce2dcccb54b9b3fadec"
+      "bytes": 16084,
+      "sha256": "371710036e75c77215c88b07ff62e41661d9c7be5648051e9e33116d24d6b7bc"
     },
     {
       "id": "authorization-policy",
@@ -47,8 +47,8 @@
       "source": "argus/AUTHORIZATION-POLICY.md",
       "destination": "references/AUTHORIZATION-POLICY.md",
       "files": 1,
-      "bytes": 10209,
-      "sha256": "93e7a1426d8c87edf7e0029a834c345ecbdab4f78d663c747cab099b5aea631c"
+      "bytes": 10308,
+      "sha256": "bdaec36d6cce5f125724a4334db0c9c16bcfe4f49db653282d60befd14cb4184"
     },
     {
       "id": "engagement-policy",
@@ -137,8 +137,8 @@
       "source": "argus/shared-skills/qa-browser",
       "destination": "skills/qa-browser",
       "files": 1,
-      "bytes": 1750,
-      "sha256": "e2a4b844fe49a68bdc0a5d436263edf6de67850870b6c523ef6be261c3af07c8"
+      "bytes": 2370,
+      "sha256": "01feaffbefee9e2f8b7a55964200bfbd00563168c5737613121c36e37c77df3f"
     },
     {
       "id": "qa-framework-runner-skill",
