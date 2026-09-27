@@ -20,18 +20,19 @@ as the only controller policy. Do not read the Odysseus agent as a second policy
 
 Reject empty input with `ARGUS_PREFLIGHT_ERROR: TARGET_REQUIRED`. Require the launcher's
 exact `target`, `artifact-root`, `mode`, `engagement-id`, `launch-authorization`,
-`launch-receipt`, and `trust-store` arguments; missing launch coordinates return
+`launch-receipt`, and `trust-store` arguments; missing coordinates return
 `ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED`. Confirm `Agent` and two required
 specialists, then run `argus-assets preflight --target <target> --mode <A|B|C|D>
 --artifact-root <artifact-root> --engagement-id <engagement-id> --launch-authorization
-<launch-authorization> --launch-receipt <launch-receipt> --trust-store <trust-store>`.
-Never derive or replace any signed coordinate. A mandatory failure stops with evidence.
+<launch-authorization> --launch-receipt <launch-receipt> --trust-store <trust-store>`,
+appending `--feature <id>` per optional unsigned `features` entry. Never derive or
+replace signed coordinates. A mandatory failure stops with evidence.
 Pin the public-only host trust store's distinct `runtime-attestation` and
 `operator-approval` IDs, then rerun preflight; never sign, access private keys, or accept
 first-use trust. Persist exactly one normal attempt-1 decision for Odysseus and every
 selected `ready`/`degraded` agent with `dispatchAllowed=true`.
 Allocate Odysseus first with its decision, then workers with their decisions and its
-controller token. Give workers only their own lane token and public coordinates. Reject
+controller token. Give workers only their lane token and public coordinates. Reject
 late normal routes; retries keep the dispatch/allocation and run `engagement start-attempt`
 after emitting prior-attempt telemetry. Capture its returned lane token, replace the
 consumed token, and only then start the new thread; the stale token is revoked.

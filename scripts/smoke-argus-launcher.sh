@@ -115,6 +115,7 @@ wait_for_file() {
   return 1
 }
 
+# Usage: run_authenticated_launch <name> <target> <artifact-root> [<workspace>|''] [<launcher option>...]
 run_authenticated_launch() {
   local name="$1" target="$2" artifact="$3" workspace="${4:-}"
   local operator="$WORK/$name-operator" request authorization trust key_id output error pid
@@ -130,6 +131,10 @@ run_authenticated_launch() {
     --engagement-id "launcher-$name" --trust-store "$trust" --runtime-key-id "$key_id" \
     --request-output "$request" --launch-authorization "$authorization" --wait-seconds 30)
   [ -z "$workspace" ] || command+=(--workspace "$workspace")
+  if [ "$#" -gt 4 ]; then
+    shift 4
+    command+=("$@")
+  fi
   seeded_environment=()
   for environment_name in "${known_argus_environment[@]}"; do
     seeded_environment+=("$environment_name=forged-$environment_name")
@@ -202,6 +207,44 @@ run_authenticated_launch url-workspace 'https://example.test/qa?lane=workspace' 
 jq -e --arg workspace "$WORK/url-workspace" '.targetKind == "url" and .workspace == $workspace' \
   "$WORK/url-workspace-operator/request.json" >/dev/null || fail 'URL launch did not bind the explicit workspace'
 
+# Operator-declared features ride unsigned in the launch payload and reach preflight verbatim.
+# The launcher's cleared environment hides database coordinates, so without --feature a
+# database lane can never become available; with it, preflight confirms the capability.
+launch_payload_of() {
+  tail -n 1 "$1/ai_agents_internal/fixture-claude-arguments.txt" | sed 's|^/argus:run authenticatedLaunch=||'
+}
+launch_payload_of "$WORK/path artifacts" | jq -e '.features == []' >/dev/null || \
+  fail 'featureless launch payload did not carry an empty features array'
+jq -e '(.capabilities[] | select(.id == "db-access") | .available == false)
+  and (.agents[] | select(.slug == "charon") | .dispatchAllowed == false and (.missingCapabilities | index("db-access")) != null)' \
+  "$WORK/path artifacts/ai_agents_internal/preflight.json" >/dev/null || \
+  fail 'featureless Mode B launch detected db-access or made charon dispatchable'
+mkdir -p "$WORK/feature-target" "$WORK/feature-artifacts"
+run_authenticated_launch feature "$WORK/feature-target" "$WORK/feature-artifacts" '' --feature db-access
+launch_payload_of "$WORK/feature-artifacts" | jq -e '.features == ["db-access"]' >/dev/null || \
+  fail 'feature launch payload did not carry the declared db-access feature'
+jq -e 'has("features") | not' "$WORK/feature-operator/request.json" >/dev/null || \
+  fail 'operator-declared features leaked into the signed launch request'
+jq -e '[.capabilities[] | select(.id == "db-access")] | length == 1
+  and all(.available == true and .evidence == "target/profile feature confirmed: db-access")' \
+  "$WORK/feature-artifacts/ai_agents_internal/preflight.json" >/dev/null || {
+  jq '.capabilities' "$WORK/feature-artifacts/ai_agents_internal/preflight.json" >&2
+  fail 'declared db-access feature was not confirmed by preflight'
+}
+# Charon becomes dispatchable (degraded only by optional host commands or authorization
+# restrictions), while the default read-only authorization manifest still denies its
+# database reads: a feature widens availability, never authorization.
+jq -e '.agents[] | select(.slug == "charon") | (.status == "ready" or .status == "degraded") and .dispatchAllowed == true
+  and (.missingCapabilities | index("db-access")) == null' \
+  "$WORK/feature-artifacts/ai_agents_internal/preflight.json" >/dev/null || {
+  jq '.agents[] | select(.slug == "charon")' "$WORK/feature-artifacts/ai_agents_internal/preflight.json" >&2
+  fail 'declared db-access feature did not make charon dispatchable'
+}
+jq -e '[.agents[] | select(.slug == "charon") | .authorization[] | select(.action == "database-read") | .decision]
+  | length >= 1 and all(. == "deny")' \
+  "$WORK/feature-artifacts/ai_agents_internal/preflight.json" >/dev/null || \
+  fail 'declared db-access feature widened the default read-only authorization for database reads'
+
 # Signed coordinates are immutable even when the attacker reuses a valid signature.
 jq '.mode = "A"' "$WORK/path-operator/authorization.json" >"$WORK/path-operator/tampered-authorization.json"
 chmod 600 "$WORK/path-operator/tampered-authorization.json"
@@ -273,6 +316,8 @@ grep -Fq 'sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist
   { cat "$WORK/dry-run.stdout" >&2; fail 'authenticated dry run omitted sandbox policy @3'; }
 grep -Fq 'browserProvisioning=none' "$WORK/dry-run.stdout" || \
   { cat "$WORK/dry-run.stdout" >&2; fail 'authenticated dry run did not report browserProvisioning=none'; }
+grep -Eq ' features=none$' "$WORK/dry-run.stdout" || \
+  { cat "$WORK/dry-run.stdout" >&2; fail 'authenticated dry run did not report features=none'; }
 [ ! -e "$WORK/dry-run-artifacts/ai_agents_internal/fixture-claude-arguments.txt" ] || fail 'authenticated dry run started the controller'
 
 # A public environment string must never satisfy the mandatory native check.
@@ -431,6 +476,7 @@ grep -Fq "maxTurns=$REVIEWED_CONTROLLER_TURNS" "$WORK/unattested-dry-run.stdout"
 grep -Fq 'attestation=UNATTESTED' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run omitted the UNATTESTED marker'
 grep -Fq 'sandbox=os-native-target-readonly@3 ' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run omitted sandbox policy @3'
 grep -Fq 'browserProvisioning=none' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run did not report browserProvisioning=none'
+grep -Eq ' features=none$' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run did not report features=none'
 
 # (a2) --provision-browser is host preparation outside the signed request: a dry run only
 # reports it and never provisions anything into the (private) host cache.
@@ -446,6 +492,70 @@ set -e
 grep -Fq 'browserProvisioning=requested' "$WORK/unattested-provision.stdout" || \
   { cat "$WORK/unattested-provision.stdout" >&2; fail 'dry run with --provision-browser did not report browserProvisioning=requested'; }
 [ ! -e "$WORK/unattested-home-provision/.cache/argus/browser-runtime" ] || fail 'dry run with --provision-browser provisioned a browser runtime'
+
+# (a3) --feature is repeatable: ids are validated against the packaged capability matrix,
+# deduplicated, and sorted before the dry run reports them.
+mkdir -p "$WORK/unattested-home-features"
+set +e
+env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-features" PATH="$FIXTURE_BIN:$PATH" \
+  "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-features" \
+  --mode A --engagement-id launcher-unattested-features --unattested --dry-run \
+  --feature non-rest-surface --feature db-access --feature db-access \
+  >"$WORK/unattested-features.stdout" 2>"$WORK/unattested-features.stderr"
+unattested_status=$?
+set -e
+[ "$unattested_status" -eq 0 ] || { cat "$WORK/unattested-features.stderr" >&2; fail 'unattested dry run with --feature failed'; }
+grep -Eq ' features=db-access,non-rest-surface$' "$WORK/unattested-features.stdout" || \
+  { cat "$WORK/unattested-features.stdout" >&2; fail 'dry run did not report the sorted, deduplicated features=db-access,non-rest-surface'; }
+
+# (a4) An unknown or malformed feature id stops the launch before the artifact root exists.
+for bad_feature in bogus DB-ACCESS 'db-access,source-access' '-db-access' ''; do
+  set +e
+  env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-features" PATH="$FIXTURE_BIN:$PATH" \
+    "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-bad-feature" \
+    --mode A --engagement-id launcher-unattested-bad-feature --unattested --dry-run --feature "$bad_feature" \
+    >"$WORK/unattested-bad-feature.stdout" 2>"$WORK/unattested-bad-feature.stderr"
+  unattested_status=$?
+  set -e
+  [ "$unattested_status" -ne 0 ] || fail "launcher accepted the capability feature '$bad_feature'"
+  grep -Fq "unknown capability feature: $bad_feature" "$WORK/unattested-bad-feature.stderr" || \
+    { cat "$WORK/unattested-bad-feature.stderr" >&2; fail "feature '$bad_feature' refusal did not report an unknown capability feature"; }
+  [ ! -e "$WORK/unattested-artifacts-bad-feature" ] || fail "feature '$bad_feature' refusal created the artifact root"
+done
+set +e
+env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-features" PATH="$FIXTURE_BIN:$PATH" \
+  "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-bad-feature" \
+  --mode A --engagement-id launcher-unattested-bad-feature --unattested --dry-run --feature \
+  >/dev/null 2>"$WORK/unattested-bad-feature.stderr"
+unattested_status=$?
+set -e
+[ "$unattested_status" -ne 0 ] || fail 'launcher accepted --feature without a capability id'
+grep -Fq -- '--feature requires a capability id' "$WORK/unattested-bad-feature.stderr" || \
+  { cat "$WORK/unattested-bad-feature.stderr" >&2; fail '--feature without a capability id was not refused as such'; }
+
+# (a5) A real unattested launch appends the features to its prompt only when some are declared.
+for feature_case in none declared; do
+  feature_options=()
+  [ "$feature_case" = none ] || feature_options=(--feature source-access --feature db-access)
+  mkdir -p "$WORK/unattested-home-launch-$feature_case"
+  set +e
+  env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-launch-$feature_case" PATH="$FIXTURE_PATH:$PATH" \
+    "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-launch-$feature_case" \
+    --mode A --engagement-id "launcher-unattested-launch-$feature_case" --unattested \
+    ${feature_options[@]+"${feature_options[@]}"} \
+    >"$WORK/unattested-launch-$feature_case.stdout" 2>"$WORK/unattested-launch-$feature_case.stderr"
+  unattested_status=$?
+  set -e
+  [ "$unattested_status" -eq 0 ] || { cat "$WORK/unattested-launch-$feature_case.stderr" >&2; fail "unattested $feature_case-feature launch failed"; }
+  grep -Fxq 'ARGUS_FIXTURE_UNATTESTED_PROMPT_OK' "$WORK/unattested-launch-$feature_case.stdout" || \
+    fail "unattested $feature_case-feature launch did not reach the sandboxed controller"
+  unattested_prompt="$(tail -n 1 "$WORK/unattested-artifacts-launch-$feature_case/ai_agents_internal/fixture-claude-arguments.txt")"
+  case "$feature_case:$unattested_prompt" in
+    'none:/argus:run '*' unattestedLaunch=true engagementId=launcher-unattested-launch-none') ;;
+    'declared:/argus:run '*' unattestedLaunch=true engagementId=launcher-unattested-launch-declared features=db-access,source-access') ;;
+    *) fail "unattested $feature_case-feature launch prompt has unexpected features: $unattested_prompt" ;;
+  esac
+done
 
 # (b) Keyless mode cannot be mixed with attested launch options.
 set +e
@@ -537,4 +647,4 @@ if [ "$probe_browser_status" -ne 2 ]; then
     grep -Fq 'WARN  no Playwright module is resolvable' "$WORK/doctor-browser.stdout" || fail 'doctor --browser did not warn about the skipped browser probe'
   fi
 fi
-printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, browser-provisioning dry run, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'
+printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, browser-provisioning dry run, unsigned operator feature passthrough to preflight, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'

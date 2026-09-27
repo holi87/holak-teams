@@ -149,8 +149,10 @@ Before any target probe, test, or specialist dispatch:
    --engagement-id <engagement-id> --launch-authorization <launch-authorization>
    --launch-receipt <launch-receipt> --trust-store <trust-store>`.
    Require its exact persisted `ai_agents_internal/orchestration-plan.json`. Declare a feature or
-   environment only when user input or safe read-only evidence proves it. Unknown,
-   staging, and production-like targets stay read-only. Never invent an approver/grant.
+   environment only when user input or safe read-only evidence proves it. Launcher `features`
+   are operator-declared evidence: pass each verbatim as `--feature`; never add, drop, or
+   infer one. Unknown, staging, and production-like targets stay read-only. Never invent an
+   approver/grant.
 
    **Unattested exception** — only when `ARGUS_LAUNCH_UNATTESTED=1`:
    swap signed coordinates for `--unattested-launch` per `references/ENGAGEMENT-POLICY.md`.

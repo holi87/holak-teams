@@ -44,6 +44,18 @@ fi
 
 case "$prompt" in
   '/argus:run authenticatedLaunch='*) launch_payload="${prompt#'/argus:run authenticatedLaunch='}" ;;
+  '/argus:run target='*' unattestedLaunch=true '*)
+    # An unattested launch carries prose coordinates and no signed material to verify: record
+    # the exact argv and environment for the smoke, then stop without a preflight.
+    [ "${ARGUS_LAUNCH_UNATTESTED:-}" = 1 ] || { printf 'fixture: unattested prompt without ARGUS_LAUNCH_UNATTESTED=1\n' >&2; exit 88; }
+    artifact_root="${prompt#* artifact-root=}"
+    artifact_root="${artifact_root%% mode=*}"
+    [ -d "$artifact_root/ai_agents_internal" ] || { printf 'fixture: unattested prompt omitted the artifact root\n' >&2; exit 81; }
+    env | sort >"$artifact_root/ai_agents_internal/fixture-child-environment.txt"
+    printf '%s\n' "$@" >"$artifact_root/ai_agents_internal/fixture-claude-arguments.txt"
+    printf 'ARGUS_FIXTURE_UNATTESTED_PROMPT_OK\n'
+    exit 0
+    ;;
   *) printf 'fixture: authenticated launch JSON is missing\n' >&2; exit 86 ;;
 esac
 target="$(printf '%s' "$launch_payload" | jq -er '.target')"
@@ -57,6 +69,11 @@ trust_store="$(printf '%s' "$launch_payload" | jq -er '.["trust-store"]')"
 for value in target artifact_root mode engagement_id authorization receipt trust_store; do
   [ -n "${!value}" ] || { printf 'fixture: prompt omitted %s\n' "$value" >&2; exit 81; }
 done
+# Operator-declared features are unsigned launch input; /argus:run forwards each verbatim.
+feature_arguments=()
+while IFS= read -r feature; do
+  if [ -n "$feature" ]; then feature_arguments+=(--feature "$feature"); fi
+done < <(printf '%s' "$launch_payload" | jq -r '.features // [] | .[]')
 
 env | sed 's/^ARGUS_NATIVE_LAUNCH_CAPABILITY=.*/ARGUS_NATIVE_LAUNCH_CAPABILITY=<redacted>/' | sort \
   >"$artifact_root/ai_agents_internal/fixture-child-environment.txt"
@@ -67,6 +84,7 @@ set +e
 "$plugin_root/bin/argus-assets" preflight --target "$target" --artifact-root "$artifact_root" \
   --mode "$mode" --engagement-id "$engagement_id" --model-runtime claude \
   --launch-authorization "$authorization" --launch-receipt "$receipt" --trust-store "$trust_store" \
+  ${feature_arguments[@]+"${feature_arguments[@]}"} \
   --json >"$artifact_root/ai_agents_internal/fixture-preflight-stdout.json"
 preflight_status=$?
 set -e
