@@ -262,6 +262,30 @@ if ARGUS_ASSETS="$CLI" node "$PROJECT/scripts/baseline-coverage.mjs" >/dev/null 
 fi
 grep -Fq 'is not mapped to SRF-API-ORDERS-POST by automation-status' "$TMP/baseline-unmapped.err" || fail "baseline coverage failed for another reason: $(<"$TMP/baseline-unmapped.err")"
 
+# Inside an engagement the canonical coverage-result is Kleio's single-writer merge: the gate
+# writes its calculation to reports/ and succeeds, from the project root or any other directory.
+ENGAGED="$TMP/engaged"
+mkdir -p "$ENGAGED"
+"$CLI" engagement init --target "$ENGAGED" --artifact-root "$ENGAGED" --mode A --engagement-id coverage-gate-smoke >/dev/null
+mkdir -p "$ENGAGED/scripts" "$ENGAGED/solution" "$ENGAGED/reports"
+cp "$PROJECT/scripts/baseline-coverage.mjs" "$ENGAGED/scripts/"
+for input in surface-inventory coverage-observations evidence-reference bug-ledger automation-status; do
+  cp "$FIXTURES/$input.json" "$ENGAGED/solution/$input.json"
+done
+cp -R "$FIXTURES/reports/evidence" "$ENGAGED/reports/evidence"
+(cd "$ENGAGED" && ARGUS_ASSETS="$CLI" node scripts/baseline-coverage.mjs >"$TMP/baseline-engaged.out" 2>&1) \
+  || fail "baseline coverage failed inside an engagement: $(<"$TMP/baseline-engaged.out")"
+jq -e '.runnerCaseMapping == "verified" and (.overall | type) == "object"' "$ENGAGED/reports/coverage-result.json" >/dev/null \
+  || fail 'baseline coverage inside an engagement did not write reports/coverage-result.json'
+test ! -e "$ENGAGED/solution/coverage-result.json" || fail 'baseline coverage wrote the canonical coverage-result inside an engagement'
+grep -Fq 'runner-cases=verified' "$TMP/baseline-engaged.out" || fail "engaged baseline coverage summary omitted the runner-case mapping: $(<"$TMP/baseline-engaged.out")"
+jq -e '.surface_coverage.runnerCaseMapping == "verified"' "$ENGAGED/reports/summary.json" >/dev/null || fail 'engaged baseline coverage did not update reports/summary.json'
+rm "$ENGAGED/reports/coverage-result.json"
+(cd "$TMP" && ARGUS_ASSETS="$CLI" node "$ENGAGED/scripts/baseline-coverage.mjs" >/dev/null 2>"$TMP/baseline-engaged-outside.err") \
+  || fail "baseline coverage run from outside the engaged tree failed: $(<"$TMP/baseline-engaged-outside.err")"
+test -f "$ENGAGED/reports/coverage-result.json" && test ! -e "$ENGAGED/solution/coverage-result.json" \
+  || fail 'baseline coverage run from outside the engaged tree did not detect its engagement'
+
 # Without a registry the CLI refuses to credit any cited execution.
 if "$CLI" coverage validate --inventory "$FIXTURES/surface-inventory.json" --observations "$FIXTURES/coverage-observations.json" \
   --ledger "$FIXTURES/bug-ledger.json" --root "$FIXTURES" >/dev/null 2>"$TMP/no-registry.err"; then

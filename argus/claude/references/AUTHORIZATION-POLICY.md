@@ -119,6 +119,12 @@ argus-assets redact --input <text-file|-> --output <safe-file|->
 
 The command redacts structured JSON by sensitive key and applies packaged patterns to
 free text. Authorization audit values pass through the same redactor before write.
+The card and phone patterns are scoped so that the numbers that prove a defect (totals,
+IDs, epoch timestamps, log times) stay visible. A card number is a 13-19 digit run with a
+card-network leading digit (2-6) that passes the Luhn checksum. A phone number has a
+leading `+`, a `(555) 123-4567` layout, a phone label in text (`phone:`, `tel:`,
+`mobile=`), or a phone JSON key. Other digit runs are not masked, so evidence must never
+carry a real contact number outside those forms.
 Never print raw input before redaction. Preserve only the minimum non-sensitive evidence
 needed to reproduce a defect.
 

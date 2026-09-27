@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { redactText, redactValue, validateRedactionPatterns } from '../argus/runtime/authorization.mjs';
 import { validateCanonicalDocument, renderFinalSummary } from '../argus/runtime/contracts.mjs';
 import { calculateCoverage, validateCasePlan } from '../argus/runtime/coverage.mjs';
 import { binaryRegistrationErrors, binaryReviewAuditErrors, isBinaryReference, loadRedactionPatterns, parseAuditLog, validateEvidenceContent } from '../argus/runtime/evidence.mjs';
@@ -74,6 +75,26 @@ const ariadneRegistry = { ...registry, references: [reference('EVD-0001', 'ariad
 assert.deepEqual(reconcileFindings(selfCheck, ariadneRegistry, () => bytes).byBug['BUG-0001'], ['BUG-0001: independent executor collected the original reproduction evidence']);
 const trueIndependence = { ...registry, references: [...registry.references, reference('EVD-0003', 'ariadne')] };
 assert.deepEqual(reconcileFindings(selfCheck, trueIndependence, () => bytes), { errors: [], byBug: {} });
+// A co-finder of a merged row is an origin lane, never its independent reproducer: its filing
+// prefix (ORI files as orion) or the collector of its causal evidence names it, and the merge
+// quarantines the row.
+const coFound = copy(valid);
+Object.assign(coFound.bugs[0], { origin: ['ATA-001', 'ORI-001'], severity: 'Critical', merge: { rationale: 'One authorization defect reached from the API and the UI.', causalEvidence: [{ ref: 'ATA-001', evidenceIds: ['EVD-0001'] }, { ref: 'ORI-001', evidenceIds: ['EVD-0004'] }] } });
+coFound.bugs[0].verification.independent = { status: 'reproduced', executor: 'orion', evidenceIds: ['EVD-0003'], reason: 'Fresh-state reproduction from a second lane' };
+assert.deepEqual(validateCanonicalDocument('bug-ledger', coFound), []);
+const coFinderRefs = (executorCollector, causalCollector) => ({ ...registry, references: [...registry.references, reference('EVD-0003', executorCollector), reference('EVD-0004', causalCollector)] });
+const coFinder = reconcileFindings(coFound, coFinderRefs('orion', 'orion'), () => bytes).byBug;
+assert.deepEqual(coFinder, { 'BUG-0001': ['BUG-0001: independent executor orion is an origin lane'] });
+const coFoundLedger = copy(coFound);
+assert.deepEqual(quarantineFindings(coFoundLedger, coFinder), ['BUG-0001']);
+assert(row(coFoundLedger, 'BUG-0001').status === 'quarantined' && row(coFoundLedger, 'BUG-0001').quarantine.reasons.includes('independent executor orion is an origin lane'));
+assert.deepEqual(reconcileFindings(coFound, coFinderRefs('orion', 'talos'), () => bytes).byBug, { 'BUG-0001': ['BUG-0001: independent executor orion is an origin lane'] }, 'the ORI filing prefix did not name orion');
+const coTalos = copy(coFound);
+Object.assign(coTalos.bugs[0], { origin: ['ATA-001', 'TAL-001'], merge: { ...coTalos.bugs[0].merge, causalEvidence: [{ ref: 'ATA-001', evidenceIds: ['EVD-0001'] }, { ref: 'TAL-001', evidenceIds: ['EVD-0004'] }] } });
+coTalos.bugs[0].verification.independent.executor = 'talos';
+assert.deepEqual(reconcileFindings(coTalos, coFinderRefs('talos', 'talos'), () => bytes).byBug, { 'BUG-0001': ['BUG-0001: independent executor talos is an origin lane'] }, 'a causal-evidence collector reproduced independently');
+const thirdLane = copy(coFound); thirdLane.bugs[0].verification.independent.executor = 'perseus';
+assert.deepEqual(reconcileFindings(thirdLane, coFinderRefs('perseus', 'orion'), () => bytes), { errors: [], byBug: {} });
 
 // A quarantined row keeps its submitted blocks, never counts as confirmed, and stays valid.
 const drifted = copy(valid);
@@ -101,6 +122,67 @@ const har = cookie => JSON.stringify({ log: { entries: [{ request: { method: 'GE
 const rawHar = content(textRef('har', 'application/json'), har('raw-cookie-value'));
 for (const pattern of [/request header Cookie is not masked/, /request cookie sid is not masked/, /query parameter access_token is not masked/, /response header Set-Cookie is not masked/]) assert(rawHar.some(error => pattern.test(error)), `raw HAR was not rejected for ${pattern}: ${rawHar.join('; ')}`);
 assert.deepEqual(content(textRef('har', 'application/json'), har('[REDACTED]')), []);
+// Credentials in JSON bodies: quoted keys in text captures, escaped JSON in log lines, and
+// HAR bodies and form parameters. One redact pass yields a fixed point that stays JSON.
+const redactOnce = text => redactText(text, patterns).text;
+const loginBody = '{"username":"qa","password":"hunter2"}';
+for (const [kind, mediaType, capture] of [
+  ['http', 'text/plain', `POST /api/login HTTP/1.1\nContent-Type: application/json\n\n${loginBody}\n`],
+  ['http', 'message/http', `POST /api/login HTTP/1.1\nContent-Type: application/json\n\n${loginBody}\n`],
+  ['log', 'text/plain', `INFO login request body={\\"username\\":\\"qa\\",\\"password\\":\\"hunter2\\"}\n`],
+  ['text', 'text/plain', "{'username': 'qa', 'password': 'hunter2'}\n"],
+]) {
+  assert(content(textRef(kind, mediaType), capture).some(error => /redactor would change/.test(error)), `a ${mediaType} ${kind} body credential passed`);
+  const safe = redactOnce(capture);
+  assert(!safe.includes('hunter2'), `the redactor kept a ${mediaType} ${kind} body credential: ${safe}`);
+  assert.equal(redactOnce(safe), safe, `redaction of a ${mediaType} ${kind} body is not a fixed point`);
+  assert.deepEqual(content(textRef(kind, mediaType), safe), []);
+}
+assert.equal(redactOnce(`body ${loginBody}`), 'body {"username":"qa","password":"[REDACTED]"}');
+assert.deepEqual(JSON.parse(redactOnce(loginBody)), { username: 'qa', password: '[REDACTED]' });
+const bodyHar = ({ postData, content: responseContent = { mimeType: 'application/json', text: '{"id":7}' }, queryString = [] }) => ({ log: { entries: [{
+  request: { method: 'POST', url: 'https://app.test/api/login', headers: [], cookies: [], queryString, postData },
+  response: { status: 200, headers: [], cookies: [], content: responseContent },
+}] } });
+const jsonPost = { mimeType: 'application/json', text: loginBody };
+assert(content(textRef('har', 'application/json'), JSON.stringify(bodyHar({ postData: jsonPost }))).some(error => /values the packaged redactor would change/.test(error)), 'a HAR postData.text credential passed');
+assert(content(textRef('har', 'application/json'), JSON.stringify(bodyHar({ postData: { mimeType: 'text/plain', text: 'ok' }, content: { mimeType: 'application/json', text: '{"token":"opaque-session-value"}' } }))).some(error => /values the packaged redactor would change/.test(error)), 'a HAR response content.text token passed');
+const safeHar = redactValue(bodyHar({ postData: jsonPost }), patterns).value;
+assert.equal(safeHar.log.entries[0].request.postData.text, '{"username":"qa","password":"[REDACTED]"}');
+assert.deepEqual(content(textRef('har', 'application/json'), JSON.stringify(safeHar)), []);
+const formPost = secret => ({ mimeType: 'application/x-www-form-urlencoded', text: `username=qa&password=${secret}`, params: [{ name: 'username', value: 'qa' }, { name: 'password', value: secret }] });
+const formErrors = content(textRef('har', 'application/json'), JSON.stringify(bodyHar({ postData: formPost('hunter2'), queryString: [{ name: 'Password', value: 'hunter2' }] })));
+for (const pattern of [/request form parameter password is not masked/, /request query parameter Password is not masked/]) assert(formErrors.some(error => pattern.test(error)), `raw HAR pair was not rejected for ${pattern}: ${formErrors.join('; ')}`);
+assert.deepEqual(content(textRef('har', 'application/json'), JSON.stringify(bodyHar({ postData: formPost('[REDACTED]'), queryString: [{ name: 'page', value: '2' }] }))), []);
+// The numbers that prove a defect (totals, IDs, epoch timestamps, log times) stay visible:
+// a card is a Luhn-valid run with a card-network leading digit, and a phone number needs a
+// leading +, a (555) 123-4567 layout, a phone label in text, or a phone JSON key.
+// 1759000000000 passes Luhn, so only the leading digit keeps it; 5234567890123 has one and
+// fails Luhn.
+const numericProof = [
+  ['http', 'text/plain', 'HTTP/1.1 200 OK\n\n{"orderId":"1234567890","total":"123456.78","expected":"123457.00","createdAt":"1759000000000"}\n'],
+  ['http', 'application/json', JSON.stringify({ orderId: '1234567890', total: '123456.78', createdAt: '2026-09-27 16:33:13', id: '5234567890123', seq: '1234567890123456789' })],
+  ['log', 'text/plain', '2026-09-27 16:33:13 ERROR order 1234567890 total 123456.78 != 123457.00 at 1759000000000 offset +02:00 delta +1234.56\n'],
+];
+for (const [kind, mediaType, capture] of numericProof) assert.deepEqual(content(textRef(kind, mediaType), capture), [], `numeric proof was masked in ${mediaType} ${kind}: ${redactOnce(capture)}`);
+for (const [raw, leaked] of [
+  ['card 4111 1111 1111 1111 exp', '4111'], ['card 4242-4242-4242-4242', '4242'], ['amex 378282246310005', '378282'],
+  ['call +48 600 700 800', '600 700'], ['call +1 (555) 123-4567', '123-4567'], ['office (555) 123-4567', '123-4567'], ['desk 555.123.4567', '123.4567'],
+  ['Phone: 600 700 800', '700 800'], ['<a href="tel:600700800">', '600700800'], ['{"mobile":"600 700 800"}', '700 800'],
+]) {
+  const safe = redactOnce(raw);
+  assert(!safe.includes(leaked), `the redactor kept ${leaked}: ${safe}`);
+  assert.equal(redactOnce(safe), safe, `PII redaction is not a fixed point: ${safe}`);
+  assert(content(textRef('text', 'text/plain'), raw).some(error => /redactor would change/.test(error)), `unmasked PII passed: ${raw}`);
+}
+// A phone key masks the number in its value, not a flag or an invalid input the defect needs.
+assert.deepEqual(redactValue({ phone: '600 700 800', phoneNumber: 'ext 600700800', contact: { telephone: ['600 700 800'] }, mobile: true, fax: 'not-a-number', total: '123456.78', note: '600 700 800' }, patterns).value,
+  { phone: '[REDACTED:PHONE]', phoneNumber: 'ext [REDACTED:PHONE]', contact: { telephone: ['[REDACTED:PHONE]'] }, mobile: true, fax: 'not-a-number', total: '123456.78', note: '600 700 800' });
+const checkedPattern = extra => ({ ...patterns, patterns: [{ id: 'card', expression: '\\d{13}', flags: 'g', replacement: '[REDACTED:CARD]', check: 'luhn', ...extra }] });
+assert.deepEqual(validateRedactionPatterns(checkedPattern({})), []);
+assert(validateRedactionPatterns(checkedPattern({ check: 'mod97' })).some(error => /check must be one of luhn/.test(error)), 'an unknown match check was accepted');
+assert(validateRedactionPatterns(checkedPattern({ replacement: '$1' })).some(error => /literal replacement/.test(error)), 'a checked pattern accepted a group reference');
+assert(validateRedactionPatterns(checkedPattern({ keys: [] })).some(error => /keys must be a non-empty array/.test(error)), 'a keyed pattern accepted an empty key list');
 assert(content(textRef('har', 'application/json'), '{"log":{}}').some(error => /log\.entries/.test(error)), 'a HAR without entries passed');
 assert(content(textRef('dom-snapshot', 'text/html'), '<form><input name="p" type="password" value="hunter2"></form>').some(error => /password input with a value/.test(error)), 'a DOM snapshot with a password value passed');
 assert(content(textRef('dom-snapshot', 'text/html'), "<input value='x>y' TYPE=Password>").some(error => /password input with a value/.test(error)), 'a quoted > hid a password value');

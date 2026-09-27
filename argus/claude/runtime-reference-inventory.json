@@ -375,6 +375,12 @@
       ]
     },
     {
+      "value": "reports/coverage-result.json",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
       "value": "reports/evidence/",
       "consumers": [
         "atlas"

@@ -144,7 +144,7 @@ export function validateEvidenceContent(ref, bytes, { patterns = loadRedactionPa
   } else if (redactText(text, patterns).text !== text) {
     errors.push(`${label} contains text the packaged redactor would change`);
   }
-  if (ref.kind === 'har') errors.push(...harErrors(parsed ? value : null, label));
+  if (ref.kind === 'har') errors.push(...harErrors(parsed ? value : null, label, patterns));
   if (ref.kind === 'runner-result') errors.push(...runnerResultErrors(parsed ? value : null, label));
   if (ref.kind === 'dom-snapshot' && HTML_MEDIA_TYPES.has(ref.mediaType)) errors.push(...passwordInputErrors(text, label));
   return errors;
@@ -162,11 +162,13 @@ function ndjsonErrors(text, label, patterns) {
   return errors;
 }
 
-// HAR stores headers, cookies, and query parameters as name/value pairs, which key-based
-// redaction never sees, so each secret-bearing pair must hold a redaction placeholder.
-function harErrors(har, label) {
+// HAR stores headers, cookies, query parameters, and form parameters as name/value pairs,
+// which key-based redaction never sees, so each secret-bearing pair must hold a redaction
+// placeholder. Body text (postData.text, content.text) is a string the redactor already sees.
+function harErrors(har, label, patterns) {
   const entries = har?.log?.entries;
   if (!Array.isArray(entries)) return [`${label} HAR must contain a log.entries array`];
+  const secretNames = new Set([...HAR_SECRET_QUERY_NAMES, ...patterns.sensitiveKeys].map(pairName));
   const errors = [];
   entries.forEach((entry, index) => {
     for (const side of ['request', 'response']) {
@@ -179,10 +181,18 @@ function harErrors(har, label) {
       }
     }
     for (const query of arrayOf(entry?.request?.queryString)) {
-      if (HAR_SECRET_QUERY_NAMES.has(String(query?.name).toLowerCase()) && !isMasked(query?.value)) errors.push(`${label} entries[${index}].request query parameter ${query.name} is not masked`);
+      if (secretNames.has(pairName(query?.name)) && !isMasked(query?.value)) errors.push(`${label} entries[${index}].request query parameter ${query.name} is not masked`);
+    }
+    for (const param of arrayOf(entry?.request?.postData?.params)) {
+      if (secretNames.has(pairName(param?.name)) && !isMasked(param?.value)) errors.push(`${label} entries[${index}].request form parameter ${param.name} is not masked`);
     }
   });
   return errors;
+}
+
+// Compares pair names the way redactValue compares JSON keys.
+function pairName(name) {
+  return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
 function runnerResultErrors(document, label) {

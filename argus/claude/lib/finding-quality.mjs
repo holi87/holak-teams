@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { coverageEvidenceReferences } from './coverage.mjs';
 import { loadRedactionPatterns, validateEvidenceContent } from './evidence.mjs';
+
+const CAPABILITY_MATRIX_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'capabilities', 'capability-matrix.json');
+let filingPrefixLanes = null;
 
 // Rows whose proof blocks carry confirmed-grade verification.
 const PROVEN_STATUSES = new Set(['confirmed', 'quarantined']);
@@ -97,8 +103,36 @@ function confirmedLinkageErrors(bug, refs) {
       if (proof.reproduction.evidenceIds.includes(id)) errors.push(`${bug.id}: independent reproduction reuses original evidence`);
     }
     if (proof.reproduction.evidenceIds.some(id => refs.get(id)?.collectedBy === proof.independent.executor)) errors.push(`${bug.id}: independent executor collected the original reproduction evidence`);
+    if (originLanes(bug, refs).has(proof.independent.executor)) errors.push(`${bug.id}: independent executor ${proof.independent.executor} is an origin lane`);
   }
   return errors;
+}
+
+// The lanes that found a row: the lane each origin prefix files under (bugs/<PREFIX>-* in the
+// capability matrix) and the collectors of the causal evidence cited for each origin.
+function originLanes(bug, refs) {
+  const lanes = new Set(bug.origin.map(origin => filingLane(origin)).filter(Boolean));
+  for (const item of bug.merge?.causalEvidence ?? []) {
+    if (item.ref.startsWith('BUG-')) continue;
+    for (const id of item.evidenceIds) if (refs.get(id)?.collectedBy) lanes.add(refs.get(id).collectedBy);
+  }
+  return lanes;
+}
+
+function filingLane(origin) {
+  if (!filingPrefixLanes) {
+    let matrix;
+    try { matrix = JSON.parse(readFileSync(CAPABILITY_MATRIX_PATH, 'utf8')); }
+    catch (error) { throw new Error(`cannot load capability matrix ${CAPABILITY_MATRIX_PATH}: ${error.message}`); }
+    filingPrefixLanes = new Map();
+    for (const agent of matrix.agents ?? []) {
+      for (const path of agent.artifactPaths ?? []) {
+        const prefix = /^bugs\/([A-Z]{3})-\*$/.exec(path)?.[1];
+        if (prefix) filingPrefixLanes.set(prefix, agent.slug);
+      }
+    }
+  }
+  return filingPrefixLanes.get(origin.slice(0, 3)) ?? null;
 }
 
 // A merge across lanes (distinct origin prefixes; BUG refs name ledger rows, not lanes) must

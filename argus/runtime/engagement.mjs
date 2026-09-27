@@ -1464,7 +1464,7 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
     if (packaged?.paths) paths = packaged.paths;
     else {
       if (referencesPackagedCommand(command)) {
-        return guardDecision('deny', 'GUARD-SHELL-AMBIGUOUS', 'packaged command must be one exact standalone invocation', [], commandSha256);
+        return guardDecision('deny', 'GUARD-SHELL-AMBIGUOUS', `packaged command must be one exact standalone invocation${metacharacterHint(command)}`, [], commandSha256);
       }
       if (shellMayCreateLink(command)) {
         return guardDecision('deny', 'GUARD-LINK-ALIAS', 'shell command may create a filesystem link before a guarded write', [], commandSha256);
@@ -2481,9 +2481,20 @@ function shellMayCreateLink(command) {
   return /(?:^|[;&|\s])(?:[^\s;&|]*\/)?(?:ln|link)(?:\s|$)|\b(?:linkSync|symlinkSync|link|symlink)\s*\(|\.(?:hardlink_to|symlink_to)\s*\(/i.test(command);
 }
 
+// A packaged command is refused when any of these appear anywhere in it, quoted or not.
+const PACKAGED_COMMAND_METACHARACTER = /[;&|>\n\r`]|\$\(/;
+const METACHARACTER_NAMES = Object.freeze({ ';': 'a semicolon (;)', '&': 'an ampersand (&)', '|': 'a pipe (|)', '>': 'a redirection (>)', '`': 'a backtick (`)', '$(': 'a command substitution ($()', '\n': 'a newline', '\r': 'a carriage return' });
+
+// Names the refused character, never the command, so the audited reason stays command-free.
+function metacharacterHint(command) {
+  const found = PACKAGED_COMMAND_METACHARACTER.exec(command)?.[0];
+  if (!found) return '';
+  return `; it contains ${METACHARACTER_NAMES[found]}${/(?:^|\s)--json\s/.test(command) ? ', which an inline --json value must write as a JSON \\u escape' : ''}`;
+}
+
 function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256) {
   const value = command.trim();
-  if (/[;&|>\n\r`]|\$\(/.test(value)) return null;
+  if (PACKAGED_COMMAND_METACHARACTER.test(value)) return null;
   const tokens = shellTokens(value);
   const index = tokens.findIndex((token) => token === 'argus-assets' || token.endsWith('/argus-assets'));
   if (index !== 0) return null;
