@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Clean-room validation of the Java runtime adapter: the JUnit Platform outcome listener,
 # the Launcher-discovery inventory, and the SD-4 ledger join, run against a
-# target-independent fixture in a freshly copied Java template; then the contract oracle
-# self-tests in a second copy, the counterfactual evidence passes (SD-10) in a third, and an
-# end-to-end run of run-tests.sh (runner-lib.sh, lane plan, environment baseline, evidence
-# passes) in a scaffold against scripts/fixtures/argus-runtime/faulty-target.mjs. Only that
-# local 127.0.0.1 target is ever contacted; no browser is needed.
+# target-independent fixture in a freshly copied Java template; then the contract and data
+# oracle self-tests in a second copy, the counterfactual evidence passes (SD-10) in a third,
+# and an end-to-end run of run-tests.sh (runner-lib.sh, lane plan, environment baseline,
+# evidence passes) in a scaffold against scripts/fixtures/argus-runtime/faulty-target.mjs.
+# Only that local 127.0.0.1 target is ever contacted; no browser is needed.
 
 set -euo pipefail
 
@@ -279,6 +279,22 @@ awk -F'\t' 'NF != 7 || index($1, "qa.contract.OraclesContractSelfTest.") != 1 ||
   || { cat "$O" >&2; fail "an oracle self-test event is not a product pass"; }
 [ "$(cat "$ORACLES/reports/argus-adapter-status.txt" 2>/dev/null)" = "ok $oracle_cases" ] || fail "oracle self-test adapter status is not 'ok $oracle_cases'"
 if grep -Eq '127[.]0[.]0[.]1|argus-never-print-me' "$O"; then fail "an oracle self-test event carried test details"; fi
+
+# Data oracle self-tests in the same copy: invalid partitions, pagination conservation,
+# boundary and exact sums, identity vectors with credential consistency, and the i18n round
+# trip. Each passes on a correct in-memory or 127.0.0.1 stub implementation and fails on a
+# faulty one (a duplicate page, total drift, penny drift, byte truncation, one-sided
+# trimming), so a healthy run is `product pass` for every case.
+D="$WORK/oracles-data.tsv"
+data_oracle_cases="$(grep -Ec '^[[:space:]]*@Test[[:space:]]*$' "$ORACLES/src/test/java/qa/contract/OraclesDataSelfTest.java")"
+[ "$data_oracle_cases" -gt 0 ] || fail "the data oracle self-test class declares no cases"
+rm -f "$ORACLES/reports/argus-adapter-status.txt"
+run_logged oracles-data in_dir "$ORACLES" env ARGUS_RUNNER_MODE=baseline ARGUS_OUTCOME_FILE="$D" "${MVN[@]}" test -Dtest=OraclesDataSelfTest
+expect_lines "$D" "$data_oracle_cases"
+awk -F'\t' 'NF != 7 || index($1, "qa.contract.OraclesDataSelfTest.") != 1 || $2 != "product" || $3 != "pass" { bad = 1 } END { exit bad }' "$D" \
+  || { cat "$D" >&2; fail "a data oracle self-test event is not a product pass"; }
+[ "$(cat "$ORACLES/reports/argus-adapter-status.txt" 2>/dev/null)" = "ok $data_oracle_cases" ] || fail "data oracle self-test adapter status is not 'ok $data_oracle_cases'"
+if grep -Eq '127[.]0[.]0[.]1|Qa7' "$D"; then fail "a data oracle self-test event carried test details"; fi
 
 # (5) Counterfactual evidence (SD-6, SD-10) in a clean copy: the plan, every cf pass, and the
 # evidence gate over the adapter's own events. API_URL is a refused loopback port, so a case
@@ -566,4 +582,4 @@ cp "$WORK/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
 expect_event "$E2E_EV" environment infrastructure fail false n/a - environment-not-at-baseline
 stop_target
 
-printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, inert activation, contract oracle self-tests, the SD-10 counterfactual plan, passes and evidence, and an end-to-end runner against a faulty target\n'
+printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, inert activation, contract and data oracle self-tests, the SD-10 counterfactual plan, passes and evidence, and an end-to-end runner against a faulty target\n'
