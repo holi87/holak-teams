@@ -37,9 +37,11 @@ An approved skip is one that appears in the quarantine register by case id. `exp
 is written by the adapter about its own case, so it cannot also be the proof that the skip
 was approved; a skip with no register row breaks the gate.
 
-Where the caller names the confirmed defects (`--expected-bugs`), every one of them must
-appear as an event outside `baseline`. A selector that silently drops half the regression
-suite otherwise looks identical to a suite that ran it.
+Outside `baseline` the caller must name the confirmed defects (`--expected-bugs <file>`, the
+SD-4 list, empty when there are none): an omitted flag or a file that does not exist is a
+contract error (exit 14), and every listed defect must appear as an event, otherwise the
+run is a policy failure (exit 13). A selector that silently drops half the regression suite
+otherwise looks identical to a suite that ran it.
 
 The result carries `generatedAt`, `deliveryGate` and `missingExpectedBugs` so a reader
 holding only that file can tell what it is evidence of. `deliveryGate` is true only for
@@ -71,14 +73,14 @@ Quarantine is an expiring, auditable exception. A quarantined test carries the r
 quarantine tag and has exactly one row in `solution/quarantine.tsv`:
 `case_id`, `owner`, safe reason token, `expires_on`, and issue token. All modes exclude
 that tag from native execution, while `scripts/quarantine-contract.sh` emits an approved
-skip for each valid row. A tag/ledger count mismatch, malformed row, or expired entry is
-a policy failure (exit 13), never a silent skip. The portable quarantine evaluator is
+skip for each valid row. A malformed or duplicate row or an expired entry is a policy
+failure (exit 13), never a silent skip. The portable quarantine evaluator is
 byte-identical across TypeScript, Java, and Python templates. `--inventory
-reports/test-inventory.tsv` is the preferred form and joins by case id: a ledger row
-without a quarantined inventory row (`quarantine-entry-orphaned`), a quarantined row
-without a ledger row (`quarantine-unregistered`), and a quarantined regression
-(`regression-quarantine-forbidden`, never an approved skip) are policy failures.
-`--tagged-count` is the legacy count comparison.
+reports/test-inventory.tsv` is required (an omitted flag or an absent file is exit 14) and
+joins by case id: a ledger row without a quarantined inventory row
+(`quarantine-entry-orphaned`), a quarantined row without a ledger row
+(`quarantine-unregistered`), and a quarantined regression (`regression-quarantine-forbidden`,
+never an approved skip) are policy failures.
 
 If the underlying runner fails without adapter events, the wrapper emits an unexpected
 `infrastructure` outcome. In `defect-evidence`, an absent/empty adapter file is a contract
@@ -324,8 +326,13 @@ The steps run in this order; a denial finishes the run through `scripts/runner-c
     `scripts/inventory-gate.sh executed`, and in `defect-evidence` `scripts/evidence-gate.sh`
     (below).
 13. In `full-suite`, except under a contract smoke, the automation review gate (below).
-14. `scripts/runner-contract.sh` with `--quarantine` and `--expected-bugs` when those files
-    exist and `--contract-smoke` under a contract smoke.
+14. `scripts/runner-contract.sh` with `--quarantine` when the register exists,
+    `--expected-bugs reports/expected-bugs.txt` when the inventory pass wrote it, and
+    `--contract-smoke` under a contract smoke. Outside `baseline` an absent list is replaced
+    by an empty one only when the run already recorded why: it stopped before the inventory
+    pass produced an inventory, or step 9 recorded `expected-bugs expected-bugs-missing`.
+    That recorded outcome then decides the exit code; any other absence leaves the flag out
+    and is a contract error (exit 14).
 
 **Inventory and evidence gates.** `scripts/inventory-gate.sh static` checks the inventory
 (SD-3) against the confirmed-defect list (SD-4) and appends one event per violation; only an

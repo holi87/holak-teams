@@ -211,7 +211,7 @@ if (cd "$UNIT/env" && ARGUS_VERIFY_TIMEOUT_SECONDS=0 "$COMMON/scripts/environmen
 fi
 grep -Fq 'environment-timeout-invalid' "$UNIT/env/timeout.events" || fail "an invalid timeout was not denied"
 
-# Quarantine evaluator: exactly one evaluation basis, and --inventory needs a real file.
+# Quarantine evaluator: --inventory is required and needs a real file; --tagged-count is retired.
 printf 'case.one\tapi\tfalse\ttrue\t-\t-\t-\t-\n' >"$UNIT/inventory.tsv"
 for arguments in "--inventory $UNIT/inventory.tsv --tagged-count 1" "--inventory $UNIT/missing-inventory.tsv" ""; do
   set +e
@@ -627,6 +627,14 @@ rm "$WORK/expected-bugs-absent/scenario/expected-bugs.txt"
 run_case expected-bugs-absent 13 candidate-regression
 has_event expected-bugs-absent expected-bugs policy denied false n/a - expected-bugs-missing
 has_event expected-bugs-absent api.widget-regression policy denied false n/a BUG-0001 regression-for-unconfirmed-bug
+# runner-contract.sh requires the list outside baseline. The library substitutes an empty one
+# only for a run that stopped before the inventory pass (narrowing, reset-fails above) or whose
+# absence the inventory gate denied; an absence nothing recorded stays a contract error.
+prepare expected-bugs-unexplained quarantine-orphaned
+rm "$WORK/expected-bugs-unexplained/scenario/expected-bugs.txt"
+run_case expected-bugs-unexplained 14 candidate-regression
+has_event expected-bugs-unexplained api.retired policy denied false n/a - quarantine-entry-orphaned
+lacks_reason expected-bugs-unexplained '^expected-bugs-missing$'
 case_run coverage-baseline expected-bugs-missing 0 baseline
 lacks_reason coverage-baseline '^bug-uncovered$'
 # Inventory gate (executed): a selected test without any outcome, including a collision id

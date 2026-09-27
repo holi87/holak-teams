@@ -50,17 +50,29 @@ argus_call() {
 }
 
 argus_finish() {
-  local runner_exit="$1" code
+  local runner_exit="$1" code no_expected_bugs=""
   local args=()
   ARGUS_FINISHING=1
   trap - ERR EXIT
   set +e
   args=(--mode "$ARGUS_MODE" --events "$ARGUS_EVENTS" --output "$ARGUS_RESULT" --runner-exit "$runner_exit")
   if [ -f "$ARGUS_QUARANTINE_LEDGER" ]; then args+=(--quarantine "$ARGUS_QUARANTINE_LEDGER"); fi
-  if [ -f "$ARGUS_EXPECTED_BUGS" ]; then args+=(--expected-bugs "$ARGUS_EXPECTED_BUGS"); fi
+  # Outside baseline the evaluator requires the confirmed-defect list. When the inventory pass
+  # never produced it, the run has already recorded why: it stopped before any native pass
+  # (no inventory), or the inventory gate denied the absence as expected-bugs-missing. Only
+  # then is it evaluated against an empty list, so that recorded outcome decides the exit
+  # code; any other absence omits the list and stays a contract error (exit 14).
+  if [ -f "$ARGUS_EXPECTED_BUGS" ]; then
+    args+=(--expected-bugs "$ARGUS_EXPECTED_BUGS")
+  elif [ "$ARGUS_MODE" != baseline ] && { [ ! -s "$ARGUS_INVENTORY" ] ||
+    grep -Fxq "$(printf 'expected-bugs\tpolicy\tdenied\tfalse\tn/a\t-\texpected-bugs-missing')" "$ARGUS_EVENTS" 2>/dev/null; }; then
+    no_expected_bugs="$(mktemp)"
+    args+=(--expected-bugs "$no_expected_bugs")
+  fi
   if [ "${ARGUS_CONTRACT_SMOKE:-0}" = 1 ]; then args+=(--contract-smoke); fi
   bash "$ARGUS_ROOT/scripts/runner-contract.sh" "${args[@]}"
   code=$?
+  [ -z "$no_expected_bugs" ] || rm -f "$no_expected_bugs"
   echo "Argus contract: mode=$ARGUS_MODE result=$ARGUS_RESULT exit=$code"
   exit "$code"
 }
