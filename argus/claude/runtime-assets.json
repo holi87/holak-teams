@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 50970,
-      "sha256": "30dd0de73ac47767f821b9fffe00b61cad13cb8148c5ee9fed06cf3eaefb0955"
+      "bytes": 52613,
+      "sha256": "b524a008e55500920659860a3c51e97187c63df808ee96819f672e8e050a47b0"
     },
     {
       "id": "canonical-contracts",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 41,
-      "bytes": 197026,
-      "sha256": "eeb9992f5b804d5e59a814b9d0c7966caf3cbb1334fc652f8acf1583fe1159d6"
+      "bytes": 197957,
+      "sha256": "ce6153678f6b953e049accce530a7fb996689a14f7da3e6ebfa35dc77b07ff05"
     },
     {
       "id": "capability-matrix",
@@ -245,8 +245,8 @@
       "source": "argus/policies",
       "destination": "policies",
       "files": 4,
-      "bytes": 11911,
-      "sha256": "1b77d93352bc1c0463415ac788507dc9fc2cec476d1913b99c31bc397c5ac964"
+      "bytes": 13106,
+      "sha256": "a21762ce39a856835284f839fe763e6deb987346fe446f2dc972d0c7e28f6d35"
     },
     {
       "id": "runtime-library",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 385514,
-      "sha256": "79343fb0c8a40ea88b1817cad94eac2cd04b3d5b1441f163f5d0e84f177081a2"
+      "bytes": 393180,
+      "sha256": "a9526960fe646088c6a054ff9fd4841af9240a19617548ffac9ec837a955f067"
     },
     {
       "id": "common-template",
