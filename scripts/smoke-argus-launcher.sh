@@ -244,6 +244,73 @@ jq -e '[.agents[] | select(.slug == "charon") | .authorization[] | select(.actio
   | length >= 1 and all(. == "deny")' \
   "$WORK/feature-artifacts/ai_agents_internal/preflight.json" >/dev/null || \
   fail 'declared db-access feature widened the default read-only authorization for database reads'
+launch_payload_of "$WORK/path artifacts" | jq -e '.operatorAuthorization == {source:"preflight",environment:null,sha256:null}' >/dev/null || \
+  fail 'launch without operator authorization did not record the preflight default in its payload'
+
+# An operator-supplied authorization manifest (--authorization) is bound to the engagement id
+# and target, installed byte-for-byte with mode 0600 before the sandbox starts, and loaded by
+# preflight instead of the default. It rides unsigned in the payload; the evaluator still
+# decides every action, so the fixture's expired browser-state-change grant stays denied.
+AUTHORIZATION_FIXTURE="$ROOT/scripts/fixtures/argus-launcher/authorization.valid.json"
+OPERATOR_INPUT="$WORK/operator-authorization-input"
+mkdir -p "$OPERATOR_INPUT"
+chmod 700 "$OPERATOR_INPUT"
+# Usage: bind_operator_manifest <name> <engagement-id> [<jq filter>]
+bind_operator_manifest() {
+  local path="$OPERATOR_INPUT/$1.json"
+  jq --arg engagementId "$2" ".engagementId = \$engagementId | ${3:-.}" "$AUTHORIZATION_FIXTURE" >"$path"
+  chmod 600 "$path"
+  printf '%s\n' "$path"
+}
+assert_mode_0600() {
+  [ -n "$(find "$1" -maxdepth 0 -type f -perm 600 -print)" ] || fail "$2 is not a mode 0600 regular file"
+}
+jq -e '.engagementId == "launcher-operator-authorization" and .target.environment == "test"' "$AUTHORIZATION_FIXTURE" >/dev/null || \
+  fail 'operator authorization fixture changed its engagement id or environment'
+operator_manifest="$(bind_operator_manifest operator launcher-operator-authorization)"
+mkdir -p "$WORK/operator-authorization-target" "$WORK/operator-authorization-artifacts"
+run_authenticated_launch operator-authorization "$WORK/operator-authorization-target" "$WORK/operator-authorization-artifacts" '' \
+  --authorization "$operator_manifest"
+installed_manifest="$WORK/operator-authorization-artifacts/ai_agents_internal/authorization.json"
+cmp -s "$operator_manifest" "$installed_manifest" || fail 'launcher did not install the exact operator authorization manifest'
+assert_mode_0600 "$installed_manifest" 'installed operator authorization manifest'
+jq -e 'has("authorization") or has("operatorAuthorization") | not' "$WORK/operator-authorization-operator/request.json" >/dev/null || \
+  fail 'operator authorization leaked into the signed launch request'
+operator_manifest_sha256="$(launch_payload_of "$WORK/operator-authorization-artifacts" | \
+  jq -er '.operatorAuthorization | select(.source == "operator" and .environment == "test") | .sha256')" || \
+  fail 'operator authorization launch payload did not record the operator manifest'
+jq -e --arg sha256 "$operator_manifest_sha256" --arg manifest "$installed_manifest" \
+  '.authorization | .created == false and .sha256 == $sha256 and .manifestPath == $manifest
+    and .environment == "test" and .productionLike == false' \
+  "$WORK/operator-authorization-artifacts/ai_agents_internal/preflight.json" >/dev/null || {
+  jq '.authorization' "$WORK/operator-authorization-artifacts/ai_agents_internal/preflight.json" >&2
+  fail 'preflight did not load the installed operator authorization manifest'
+}
+jq -e '[.agents[].authorization[]? | select(.action == "browser-state-change")] | length >= 1
+  and all(.decision == "deny" and .ruleId == "AUTH-AUTHORIZATION-EXPIRED")' \
+  "$WORK/operator-authorization-artifacts/ai_agents_internal/preflight.json" >/dev/null || {
+  jq '[.agents[] | {slug, authorization}]' "$WORK/operator-authorization-artifacts/ai_agents_internal/preflight.json" >&2
+  fail 'an installed operator manifest widened an expired browser-state-change grant'
+}
+
+# --environment test alone installs the packaged default-deny manifest for that environment.
+mkdir -p "$WORK/environment-target" "$WORK/environment-artifacts"
+run_authenticated_launch environment "$WORK/environment-target" "$WORK/environment-artifacts" '' --environment test
+environment_manifest="$WORK/environment-artifacts/ai_agents_internal/authorization.json"
+assert_mode_0600 "$environment_manifest" 'installed environment authorization manifest'
+jq -e --arg target "$WORK/environment-target" \
+  '.engagementId == "launcher-environment" and .target == {identifiers:[$target],environment:"test",productionLike:null}
+    and ([.actionGrants[].enabled] | all(. == false)) and .allowedMutations == []' \
+  "$environment_manifest" >/dev/null || { cat "$environment_manifest" >&2; fail '--environment test did not install the default-deny test manifest'; }
+environment_manifest_sha256="$(launch_payload_of "$WORK/environment-artifacts" | \
+  jq -er '.operatorAuthorization | select(.source == "environment" and .environment == "test") | .sha256')" || \
+  fail '--environment launch payload did not record the environment choice'
+jq -e --arg sha256 "$environment_manifest_sha256" \
+  '.authorization | .created == false and .sha256 == $sha256 and .environment == "test" and .defaultReadOnly == true' \
+  "$WORK/environment-artifacts/ai_agents_internal/preflight.json" >/dev/null || {
+  jq '.authorization' "$WORK/environment-artifacts/ai_agents_internal/preflight.json" >&2
+  fail 'preflight did not load the launcher-initialized test manifest'
+}
 
 # Signed coordinates are immutable even when the attacker reuses a valid signature.
 jq '.mode = "A"' "$WORK/path-operator/authorization.json" >"$WORK/path-operator/tampered-authorization.json"
@@ -316,8 +383,8 @@ grep -Fq 'sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist
   { cat "$WORK/dry-run.stdout" >&2; fail 'authenticated dry run omitted sandbox policy @3'; }
 grep -Fq 'browserProvisioning=none' "$WORK/dry-run.stdout" || \
   { cat "$WORK/dry-run.stdout" >&2; fail 'authenticated dry run did not report browserProvisioning=none'; }
-grep -Eq ' features=none$' "$WORK/dry-run.stdout" || \
-  { cat "$WORK/dry-run.stdout" >&2; fail 'authenticated dry run did not report features=none'; }
+grep -Eq ' authorizationSource=preflight targetEnvironment=none features=none$' "$WORK/dry-run.stdout" || \
+  { cat "$WORK/dry-run.stdout" >&2; fail 'authenticated dry run did not report the preflight authorization default and features=none'; }
 [ ! -e "$WORK/dry-run-artifacts/ai_agents_internal/fixture-claude-arguments.txt" ] || fail 'authenticated dry run started the controller'
 
 # A public environment string must never satisfy the mandatory native check.
@@ -557,6 +624,139 @@ for feature_case in none declared; do
   esac
 done
 
+# (a6) Operator authorization flags. A dry run verifies the binding and reports both choices
+# without installing anything; every refusal happens before the artifact root exists.
+# Usage: run_authorization_case <name> <engagement-id> [<launcher option>...]
+run_authorization_case() {
+  local name="$1" engagement="$2"
+  shift 2
+  mkdir -p "$WORK/unattested-home-authorization"
+  env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-authorization" PATH="$FIXTURE_PATH:$PATH" \
+    "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-authorization-$name" \
+    --mode A --engagement-id "$engagement" --unattested "$@" \
+    >"$WORK/unattested-authorization-$name.stdout" 2>"$WORK/unattested-authorization-$name.stderr"
+}
+expect_authorization_refusal() {
+  local name="$1" status="$2" message="$3"
+  [ "$status" -ne 0 ] || fail "launcher accepted the $name operator authorization"
+  grep -Fq -- "$message" "$WORK/unattested-authorization-$name.stderr" || \
+    { cat "$WORK/unattested-authorization-$name.stderr" >&2; fail "$name operator authorization refusal did not report: $message"; }
+  [ ! -e "$WORK/unattested-artifacts-authorization-$name" ] || fail "$name operator authorization refusal created the artifact root"
+}
+unattested_manifest="$(bind_operator_manifest unattested launcher-unattested-authorization)"
+
+set +e
+run_authorization_case dry-run launcher-unattested-authorization --authorization "$unattested_manifest" --environment test --dry-run
+authorization_status=$?
+set -e
+[ "$authorization_status" -eq 0 ] || { cat "$WORK/unattested-authorization-dry-run.stderr" >&2; fail 'operator authorization dry run failed'; }
+grep -Eq ' authorizationSource=operator targetEnvironment=test features=none$' "$WORK/unattested-authorization-dry-run.stdout" || \
+  { cat "$WORK/unattested-authorization-dry-run.stdout" >&2; fail 'dry run did not report authorizationSource=operator targetEnvironment=test'; }
+grep -Fq 'AUTHORIZATION  verified source=operator environment=test sha256=' "$WORK/unattested-authorization-dry-run.stderr" || \
+  { cat "$WORK/unattested-authorization-dry-run.stderr" >&2; fail 'dry run did not verify the operator authorization manifest'; }
+[ ! -e "$WORK/unattested-artifacts-authorization-dry-run/ai_agents_internal/authorization.json" ] || \
+  fail 'dry run installed the operator authorization manifest'
+
+# local is the manifest environment development.
+set +e
+run_authorization_case local launcher-unattested-authorization --environment local --dry-run
+authorization_status=$?
+set -e
+[ "$authorization_status" -eq 0 ] || { cat "$WORK/unattested-authorization-local.stderr" >&2; fail '--environment local dry run failed'; }
+grep -Eq ' authorizationSource=environment targetEnvironment=development features=none$' "$WORK/unattested-authorization-local.stdout" || \
+  { cat "$WORK/unattested-authorization-local.stdout" >&2; fail '--environment local did not map to the development manifest environment'; }
+
+# A real unattested launch installs the manifest and names the choice in its prompt; the same
+# manifest may be relaunched into the same artifact root.
+for attempt in first repeat; do
+  set +e
+  run_authorization_case launch launcher-unattested-authorization --authorization "$unattested_manifest"
+  authorization_status=$?
+  set -e
+  [ "$authorization_status" -eq 0 ] || { cat "$WORK/unattested-authorization-launch.stderr" >&2; fail "unattested operator authorization $attempt launch failed"; }
+done
+grep -Fq 'AUTHORIZATION  unchanged source=operator environment=test' "$WORK/unattested-authorization-launch.stderr" || \
+  { cat "$WORK/unattested-authorization-launch.stderr" >&2; fail 'relaunch with the same operator manifest did not keep the installed copy'; }
+unattested_installed="$WORK/unattested-artifacts-authorization-launch/ai_agents_internal/authorization.json"
+cmp -s "$unattested_manifest" "$unattested_installed" || fail 'unattested launch did not install the exact operator authorization manifest'
+assert_mode_0600 "$unattested_installed" 'unattested installed operator authorization manifest'
+unattested_prompt="$(tail -n 1 "$WORK/unattested-artifacts-authorization-launch/ai_agents_internal/fixture-claude-arguments.txt")"
+[[ "$unattested_prompt" =~ \ engagementId=launcher-unattested-authorization\ authorizationSource=operator\ targetEnvironment=test\ authorizationSha256=[0-9a-f]{64}$ ]] || \
+  fail "unattested operator authorization prompt has unexpected authorization data: $unattested_prompt"
+
+# A symbolic link is refused, even to a valid manifest.
+ln -s "$unattested_manifest" "$OPERATOR_INPUT/symlink.json"
+set +e
+run_authorization_case symlink launcher-unattested-authorization --authorization "$OPERATOR_INPUT/symlink.json" --dry-run
+authorization_status=$?
+set -e
+expect_authorization_refusal symlink "$authorization_status" 'authorization manifest may not be a symbolic link'
+
+# The manifest must carry this engagement id and cover this target.
+set +e
+run_authorization_case engagement-mismatch launcher-unattested-other --authorization "$unattested_manifest" --dry-run
+authorization_status=$?
+set -e
+expect_authorization_refusal engagement-mismatch "$authorization_status" 'engagementId differs from the launch engagement id'
+foreign_manifest="$(bind_operator_manifest foreign launcher-unattested-authorization '.target.identifiers = ["https://other.example.test/"]')"
+set +e
+run_authorization_case target-mismatch launcher-unattested-authorization --authorization "$foreign_manifest" --dry-run
+authorization_status=$?
+set -e
+expect_authorization_refusal target-mismatch "$authorization_status" 'AUTH-TARGET-MISMATCH'
+
+# Schema violations, a conflicting --environment, and an unknown environment are refused.
+unknown_field_manifest="$(bind_operator_manifest unknown-field launcher-unattested-authorization '.actionGrants.load.productionOverrides = true')"
+set +e
+run_authorization_case schema launcher-unattested-authorization --authorization "$unknown_field_manifest" --dry-run
+authorization_status=$?
+set -e
+expect_authorization_refusal schema "$authorization_status" 'must NOT have additional property productionOverrides'
+set +e
+run_authorization_case environment-conflict launcher-unattested-authorization --authorization "$unattested_manifest" --environment production --dry-run
+authorization_status=$?
+set -e
+expect_authorization_refusal environment-conflict "$authorization_status" 'target.environment test differs from the requested environment production'
+set +e
+run_authorization_case bad-environment launcher-unattested-authorization --environment development --dry-run
+authorization_status=$?
+set -e
+expect_authorization_refusal bad-environment "$authorization_status" '--environment must be local, test, staging, or production'
+
+# A manifest inside the artifact root is refused: sandboxed agents can write there.
+mkdir -p "$WORK/unattested-artifacts-authorization-inside"
+cp "$unattested_manifest" "$WORK/unattested-artifacts-authorization-inside/operator.json"
+set +e
+run_authorization_case inside launcher-unattested-authorization \
+  --authorization "$WORK/unattested-artifacts-authorization-inside/operator.json" --dry-run
+authorization_status=$?
+set -e
+[ "$authorization_status" -ne 0 ] || fail 'launcher accepted an operator authorization manifest inside the artifact root'
+grep -Fq 'artifact root and authorization manifest must be physically disjoint' "$WORK/unattested-authorization-inside.stderr" || \
+  { cat "$WORK/unattested-authorization-inside.stderr" >&2; fail 'manifest inside the artifact root was not refused as such'; }
+
+# A different manifest already in the artifact root is never replaced, for either flag.
+mkdir -p "$WORK/unattested-artifacts-authorization-existing/ai_agents_internal"
+chmod 700 "$WORK/unattested-artifacts-authorization-existing" "$WORK/unattested-artifacts-authorization-existing/ai_agents_internal"
+existing_manifest="$WORK/unattested-artifacts-authorization-existing/ai_agents_internal/authorization.json"
+bind_operator_manifest existing-seed launcher-unattested-authorization '.rateLimits.maxTotalRequests = 10' >/dev/null
+cp "$OPERATOR_INPUT/existing-seed.json" "$existing_manifest"
+chmod 600 "$existing_manifest"
+for existing_case in manifest environment; do
+  existing_options=(--authorization "$unattested_manifest")
+  [ "$existing_case" = manifest ] || existing_options=(--environment test)
+  set +e
+  run_authorization_case existing launcher-unattested-authorization "${existing_options[@]}"
+  authorization_status=$?
+  set -e
+  [ "$authorization_status" -ne 0 ] || fail "launcher replaced an existing different authorization manifest (--$existing_case)"
+  grep -Fq 'a different authorization manifest already exists' "$WORK/unattested-authorization-existing.stderr" || \
+    { cat "$WORK/unattested-authorization-existing.stderr" >&2; fail "existing different manifest refusal (--$existing_case) did not report the conflict"; }
+  cmp -s "$OPERATOR_INPUT/existing-seed.json" "$existing_manifest" || fail "existing authorization manifest changed on refusal (--$existing_case)"
+  [ ! -e "$WORK/unattested-artifacts-authorization-existing/ai_agents_internal/fixture-claude-arguments.txt" ] || \
+    fail "existing different manifest refusal (--$existing_case) still started the controller"
+done
+
 # (b) Keyless mode cannot be mixed with attested launch options.
 set +e
 env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-combined" PATH="$FIXTURE_BIN:$PATH" \
@@ -647,4 +847,4 @@ if [ "$probe_browser_status" -ne 2 ]; then
     grep -Fq 'WARN  no Playwright module is resolvable' "$WORK/doctor-browser.stdout" || fail 'doctor --browser did not warn about the skipped browser probe'
   fi
 fi
-printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, browser-provisioning dry run, unsigned operator feature passthrough to preflight, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'
+printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, browser-provisioning dry run, unsigned operator feature passthrough to preflight, operator authorization manifest and environment binding/installation, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'
