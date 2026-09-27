@@ -533,6 +533,19 @@ guard_shell "argus-assets automation-review check --manifest $MANIFEST --output 
 guard_shell "argus-assets automation-review approve --manifest $MANIFEST" 'GUARD-SHELL-AMBIGUOUS: unknown automation-review operation'
 guard_shell "argus-assets engagement fragment --manifest $MANIFEST --lane aristarchus --token lease-token --canonical solution/automation-review.json --id review-r01 --json '{\"owner\":\"aristarchus\",\"reviews\":[]}'" allow
 guard_shell "argus-assets engagement fragment --manifest $MANIFEST --lane aristarchus --token lease-token --canonical solution/automation-review.json --id review-r01 --json @reports/review.json" 'GUARD-SHELL-AMBIGUOUS: batch --json input must be one inline single-line JSON object'
+# The guard refuses ; & | > backtick and $( anywhere in a packaged command, even inside the
+# quoted --json value, and names the character; the same text as JSON escapes is allowed.
+REVIEW_FRAGMENT="argus-assets engagement fragment --manifest $MANIFEST --lane aristarchus --token lease-token --canonical solution/automation-review.json --id review-r01 --json"
+guard_shell "$REVIEW_FRAGMENT '{\"owner\":\"aristarchus\",\"note\":\"the total bug passes green; the gate is dishonest\"}'" \
+  'GUARD-SHELL-AMBIGUOUS: packaged command must be one exact standalone invocation; it contains a semicolon (;), which an inline --json value must write as a JSON'
+guard_shell "$REVIEW_FRAGMENT '{\"owner\":\"aristarchus\",\"note\":\"wraps \`api/test_cart.py:42\` in try/except\"}'" 'it contains a backtick (`), which an inline --json value'
+guard_shell "$REVIEW_FRAGMENT '{\"owner\":\"aristarchus\",\"note\":\"expect(a && b)\"}'" 'it contains an ampersand (&), which an inline --json value'
+guard_shell "$REVIEW_FRAGMENT '{\"owner\":\"aristarchus\",\"note\":\"\$(date)\"}'" 'it contains a command substitution ($(), which an inline --json value'
+guard_shell "printf x | argus-assets list" 'GUARD-SHELL-AMBIGUOUS: packaged command must be one exact standalone invocation; it contains a pipe (|); audit='
+BS=$'\\'
+ESCAPED_NOTE="green${BS}u003b ${BS}u0060x${BS}u0060 ${BS}u0026 ${BS}u0024(y) ${BS}u007c ${BS}u003e ${BS}u0027"
+guard_shell "$REVIEW_FRAGMENT '{\"owner\":\"aristarchus\",\"note\":\"$ESCAPED_NOTE\"}'" allow
+[ "$(jq -r .note <<<"{\"note\":\"$ESCAPED_NOTE\"}")" = "green; \`x\` & \$(y) | > '" ] || fail 'the JSON escapes Aristarchus is told to use do not decode to the refused characters'
 # The automation review stays canonical: no lane writes it directly, and only Aristarchus
 # submits its single-document fragments.
 guard_as argus:aristarchus Write solution/automation-review.json GUARD-CANONICAL-SINGLE-WRITER
