@@ -104,7 +104,7 @@ This user-requested patch changes no agent prompt, runtime library, schema, or b
 
 ## Argus 5.0 effectiveness release
 
-This major release acts on the owner's 23 effectiveness recommendations from the review of the 4.9.x runs. Each recommendation was first checked against the code. It was then implemented as written, or in an adjusted variant where the literal proposal would have crossed a security boundary (see "Security boundaries" below). The full history is `git log --oneline d7fcef3..` (4.9.2 to 5.0.0); every commit subject names its subtask ID.
+This major release acts on the owner's 23 effectiveness recommendations. Each recommendation was first checked against the code. It was then implemented as written, or in an adjusted variant where the literal proposal would have crossed a security boundary (see "Security boundaries" below). The full history is `git log --oneline d7fcef3..` (4.9.2 to 5.0.0); every commit subject names its subtask ID.
 
 ### What 5.0 delivers
 
@@ -140,7 +140,7 @@ The release tail after the version bump finishes the list. T-24 adds the strict 
 
 Every overridden canonical contract now accepts only its current version, and retired versions fail closed.
 
-- **Canonical engagement contracts:** `bug-ledger` 1 → 2, `coverage-observations` 1 → 2, `coverage-result` 1 → 2, `final-summary` 1 → 2, `evidence-reference` 2 → 3, `preflight-report` 2 → 3. `policies/schema-compatibility.json` moves from schemaVersion 3 to 4. `lane-plan@2` and `automation-status@2` are unchanged; automation-status only gains optional `caseIds` and `surfaceIds`.
+- **Canonical engagement contracts:** `bug-ledger` 1 → 2, `coverage-observations` 1 → 2, `coverage-result` 1 → 2, `final-summary` 1 → 2, `evidence-reference` 2 → 3, `preflight-report` 2 → 3. `policies/schema-compatibility.json` moves from schemaVersion 3 to 4. `lane-plan@2` and `automation-status@2` keep their versions: lane-plan only widens its phase enum with the proof and deep-hunt phases, and automation-status only gains optional `caseIds` and `surfaceIds`.
 - **Engagement runtime:** `engagement-manifest` 1 → 2 and `engagement-state` 2 → 3, with no migration path. An active 4.x engagement must finish, or be cleaned with its original runtime, before the upgrade.
 - **Plan, model, and template contracts:** `orchestration-plan` 1 → 2, `model-policy` 1 → 2, `model-decision` 2 → 3, `model-telemetry-event` 2 → 3, `template-contract` 1 → 2. The maintainer-side `prompt-budgets` moves 1 → 2.
 - **Launch signer:** `native-launch-authorization` and `native-launch-receipt` stay at schemaVersion 1 but now require `maxTurns: 400` and `sandboxPolicy: os-native-target-readonly@3`. An isolated runtime-attestation signer built for 4.x must be updated before it can authorize a 5.0 launch.
