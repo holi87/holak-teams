@@ -677,10 +677,10 @@ function collectReviewCorpus(root, path, files) {
 }
 
 // Kleio writes the final summary's narrative, never its facts. Counts, likely-but-unproven
-// findings, the review verdict, the runner outcome, coverage, and source schemas are derived
-// from the merge-verified canonical inputs, and every status reason carries a ceiling the
-// merged status can never be better than (completed < degraded < blocked).
-const FINAL_SUMMARY_DERIVED_FIELDS = Object.freeze(['counts', 'unproven', 'automationReview', 'runner', 'coverage', 'sourceSchemas', 'statusReasons']);
+// findings, unresolved proof residuals, the review verdict, the runner outcome, coverage, and
+// source schemas are derived from the merge-verified canonical inputs, and every status reason
+// carries a ceiling the merged status can never be better than (completed < degraded < blocked).
+const FINAL_SUMMARY_DERIVED_FIELDS = Object.freeze(['counts', 'unproven', 'residuals', 'automationReview', 'runner', 'coverage', 'sourceSchemas', 'statusReasons']);
 const FINAL_SUMMARY_STATUS_ORDER = Object.freeze(['completed', 'degraded', 'blocked']);
 const FINAL_SUMMARY_TESTED_STATUSES = new Set(['implemented', 'passed', 'failed']);
 const FINAL_SUMMARY_DEGRADING_EXIT_CODES = new Set([11, 12, 13, 14, 15]);
@@ -712,6 +712,8 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
       confirmed: confirmed.length,
       suspected,
       needsOracle: idsWith('needs-oracle').length,
+      bounced: idsWith('bounced').length,
+      quarantined: idsWith('quarantined').length,
       duplicate: idsWith('duplicate').length,
       rejected: idsWith('rejected').length,
       headline: confirmed.length + suspected,
@@ -728,6 +730,17 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
     .map((bug) => {
       if (!bug.missingProof) throw new Error(`${bug.id} is ${bug.status} without missingProof`);
       return { id: bug.id, title: bug.title, severity: bug.severity, status: bug.status, missing: [...bug.missingProof.elements], detail: bug.missingProof.detail };
+    });
+  // A bounced or quarantined finding the proof loop left unresolved (proofLoop.exhaustion) is a
+  // named residual of the final report; it is never dropped.
+  const residuals = bugs.filter((bug) => bug.status === 'bounced' || bug.status === 'quarantined')
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+    .map((bug) => {
+      if (bug.status === 'bounced' ? !bug.repair : !bug.quarantine) throw new Error(`${bug.id} is ${bug.status} without ${bug.status === 'bounced' ? 'repair' : 'quarantine'}`);
+      return {
+        id: bug.id, title: bug.title, severity: bug.severity, status: bug.status,
+        repairRound: bug.repair?.round ?? null, missing: [...(bug.repair?.missing ?? [])], reasons: [...(bug.quarantine?.reasons ?? [])],
+      };
     });
 
   const runnerResult = (fragment ? fragment.runner !== null : Boolean(lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))))
@@ -760,6 +773,7 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   if (['blocked', 'stale', 'absent'].includes(automationReview.status)) ceilings.set(`automation-review-${automationReview.status}`, 'blocked');
   if (runner && counts.regression.uncovered.length > 0) ceilings.set('confirmed-bug-without-regression', 'blocked');
   if (coverage.criticalUnexecuted.length > 0) ceilings.set('critical-surface-unexecuted', 'degraded');
+  if (residuals.length > 0) ceilings.set('unresolved-proof-residuals', 'degraded');
   // Required-case depth is unproven unless the coverage result records it complete: a missing
   // depth, an unplanned surface, or any gap counts, so a summary cannot overstate coverage.
   const depth = coverage.caseDepth;
@@ -769,7 +783,7 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   for (const reason of skippedPhaseStatusReasons(state)) ceilings.set(reason, 'degraded');
   const statusReasons = [...ceilings.keys()].sort();
   const statusCeiling = [...ceilings.values()].reduce(worseFinalSummaryStatus, 'completed');
-  return { counts, unproven, automationReview, runner, coverage, sourceSchemas, statusCeiling, statusReasons };
+  return { counts, unproven, residuals, automationReview, runner, coverage, sourceSchemas, statusCeiling, statusReasons };
 }
 
 // The merge overwrites every derived field of Kleio's fragment and never raises its status.

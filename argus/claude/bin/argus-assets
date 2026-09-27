@@ -341,7 +341,7 @@ Engagement coordination:
     solution/discovery/capability-evidence.json, resolved against the artifact root.
   report-facts --manifest <path> [--output <json|->]
     Read-only. Prints the final-summary facts the merge derives and overwrites (counts,
-    unproven, automationReview, runner, coverage, sourceSchemas, statusReasons) plus the
+    unproven, residuals, automationReview, runner, coverage, sourceSchemas, statusReasons) plus the
     statusCeiling; the runner outcome comes from reports/argus-runner-result.json when present.
   lane-outcomes --manifest <path> --controller-token <odysseus-token>
     Controller only, after the final merges and before cleanup. Recomputes the count-only

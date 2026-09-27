@@ -184,18 +184,21 @@ obs.cases[1].oracleId = 'invented'; assert(validateCasePlan(inventory, observati
 const finalSummary = read('./fixtures/argus-schemas/valid/final-summary.json');
 const rendered = renderFinalSummary(finalSummary).split('\n');
 const statusAt = rendered.indexOf('Status: degraded');
-assert.deepEqual(rendered.slice(statusAt, statusAt + 3), ['Status: degraded', 'Status reason: case-depth-gaps', 'Status reason: critical-surface-unexecuted']);
-for (const line of ['- Defect headline (confirmed + suspected): 2', '- Needs oracle: 1', '- Confirmed with verified regression: 1 (uncovered: none)', '- Automated tests: 2', '## Likely, unproven',
+assert.deepEqual(rendered.slice(statusAt, statusAt + 4), ['Status: degraded', 'Status reason: case-depth-gaps', 'Status reason: critical-surface-unexecuted', 'Status reason: unresolved-proof-residuals']);
+for (const line of ['- Defect headline (confirmed + suspected): 2', '- Needs oracle: 1', '- Bounced: 1', '- Quarantined: 1', '- Confirmed with verified regression: 1 (uncovered: none)', '- Automated tests: 2', '## Likely, unproven',
   '- BUG-0003 (Minor, needs-oracle): Order total rounds half-cent amounts down — would be confirmed by: oracle — A cited rounding rule for order totals would decide whether this is a defect.',
+  '## Unresolved proof residuals', '- BUG-0006 (Major, bounced): Coupon applies twice after a retried checkout — repair round 1 — missing: reproduction',
+  '- BUG-0007 (Minor, quarantined): Order history omits cancelled orders — reasons: The original capture was replaced after collection; fresh evidence is required.',
   '- Verdict: APPROVE (REV-02, round 2, blockers 0, warnings 0)', '- Delivery gate: yes', '- Automated re-execution: 100%', '- Critical surface not executed: SRF-UI-HOME', '- Required-case depth: unknown (not fully planned)']) {
   assert(rendered.includes(line), `rendered final summary lacks: ${line}`);
 }
 const unprovenFree = copy(finalSummary);
-Object.assign(unprovenFree.counts.bugs, { suspected: 0, needsOracle: 0, headline: 1 }); unprovenFree.unproven = [];
+Object.assign(unprovenFree.counts.bugs, { suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, headline: 1 }); unprovenFree.unproven = []; unprovenFree.residuals = [];
 Object.assign(unprovenFree.counts.regression, { wired: 0, uncovered: ['BUG-0001'] });
 unprovenFree.automationReview = { status: 'absent', reviewId: null, round: null, blockers: 0, warnings: 0 };
 const unprovenFreeLines = renderFinalSummary(unprovenFree).split('\n');
 assert.equal(unprovenFreeLines[unprovenFreeLines.indexOf('## Likely, unproven') + 2], 'None.');
+assert.equal(unprovenFreeLines[unprovenFreeLines.indexOf('## Unresolved proof residuals') + 2], 'None.');
 assert(unprovenFreeLines.includes('- Confirmed with verified regression: 0 (uncovered: BUG-0001)'));
 assert(unprovenFreeLines.includes('- Verdict: ABSENT (no review round, blockers 0, warnings 0)'));
 const unfunded = copy(finalSummary); unfunded.runner = null; unfunded.counts.automated = 0;
@@ -206,6 +209,13 @@ for (const mutate of [
   (document) => { document.counts.bugs.headline = 1; },
   (document) => { document.unproven = document.unproven.slice(1); },
   (document) => { document.unproven.reverse(); },
+  (document) => { document.residuals = document.residuals.slice(1); },
+  (document) => { document.residuals.reverse(); },
+  (document) => { document.counts.bugs.bounced = 0; },
+  (document) => { document.residuals[0].missing = []; },
+  (document) => { document.residuals[1].reasons = []; },
+  (document) => { document.residuals[0].id = 'BUG-0002'; document.residuals.sort((left, right) => left.id.localeCompare(right.id)); },
+  (document) => { delete document.residuals; },
   (document) => { document.status = 'completed'; },
   (document) => { document.counts.regression.wired = 0; },
   (document) => { document.automationReview.reviewId = null; },

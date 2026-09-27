@@ -343,7 +343,7 @@ owns only its narrative (`summary`, `generatedAt`) and the status she proposes. 
 fragment from `argus-assets engagement report-facts --manifest <engagement.json> [--output
 <json|->]`, which is read-only, takes no lease token, and prints the derived fields plus their
 `statusCeiling`. The merge derives the same facts again, overwrites `counts`, `unproven`,
-`automationReview`, `runner`, `coverage`, `sourceSchemas`, and `statusReasons`, and sets the
+`residuals`, `automationReview`, `runner`, `coverage`, `sourceSchemas`, and `statusReasons`, and sets the
 status to the worse of Kleio's status and the ceiling (`completed` < `degraded` < `blocked`); it
 never raises a status. Because Kleio may supersede her fragment, re-running the merge after a
 late ledger, coverage, runner, or corpus change re-derives every fact.
@@ -351,11 +351,15 @@ late ledger, coverage, runner, or corpus change re-derives every fact.
 Each input counts only once merged and only while its file matches its merge digest:
 
 - `counts.bugs` from `solution/bug-ledger.json` (required while Minos is dispatchable;
-  otherwise every bug count is 0): `confirmed`, `suspected`, `needsOracle`, `duplicate`,
-  `rejected`, and `headline` = confirmed + suspected;
+  otherwise every bug count is 0): `confirmed`, `suspected`, `needsOracle`, `bounced`,
+  `quarantined`, `duplicate`, `rejected`, and `headline` = confirmed + suspected;
 - `unproven`: every `suspected` and `needs-oracle` row, sorted by ID, with its
   `missingProof.elements` as `missing` and its `missingProof.detail`, so no likely finding is
   dropped from the report;
+- `residuals`: every `bounced` and `quarantined` row the proof loop left unresolved
+  (`proofLoop.exhaustion`), sorted by ID, with `repair.round` as `repairRound` (or null),
+  `repair.missing` as `missing`, and `quarantine.reasons` as `reasons`; any residual caps the
+  status at `degraded` with the reason `unresolved-proof-residuals`;
 - `counts.regression`: `wired` counts the confirmed bugs covered by an `implemented`,
   `passed`, or `failed` automation-status test; `uncovered` lists the rest; `counts.automated`
   counts those tests and `counts.evidence` the canonical evidence references (0 when unmerged);

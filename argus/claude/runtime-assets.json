@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 53251,
-      "sha256": "318622b1ab688c8904751a32d8050dfdb52bf54a7ede8a7456da6a1e57d47b22"
+      "bytes": 53337,
+      "sha256": "533856f01d0bf6b4094d73493ad5a360ad3f7e0974ba11ffa0fb353a172af095"
     },
     {
       "id": "canonical-contracts",
@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 37078,
-      "sha256": "8b2d607663d070379c186a6f5f32811b1e565eebeea22a3bb0ba1590617491cc"
+      "bytes": 37454,
+      "sha256": "1863d33a217b69cd04727b96919482bda54879bc576db93ab90f2254828e3837"
     },
     {
       "id": "runner-contract",
@@ -155,8 +155,8 @@
       "source": "argus/shared-skills/qa-coverage-reporting",
       "destination": "skills/qa-coverage-reporting",
       "files": 1,
-      "bytes": 2898,
-      "sha256": "f024f654eeeec004d2a840cb876794758c6ef9f3d9e260cb88c3bf1193a2ae47"
+      "bytes": 2992,
+      "sha256": "eb8022b45e242558e03972fadeafbdbd16a203e07a6a5600a6d5a02351d8e3ab"
     },
     {
       "id": "competition-profile-skill",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 42,
-      "bytes": 202274,
-      "sha256": "41d5adb04eecbfaa8bb49a8cc4589812a704295e0d1e727f452e9f2fdc360a2d"
+      "bytes": 205118,
+      "sha256": "49a23dce53d71f692155b8319ac57477087025a060860a2938141f3a2e7bbf41"
     },
     {
       "id": "capability-matrix",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 407055,
-      "sha256": "3f6631648baa0d91861f83d8f771acacca2acdc214d573e4528ba3ba1a9e2ebc"
+      "bytes": 409266,
+      "sha256": "78386a8ada2a168eeeff669c473a5a51aded135ed4ef34c1d2c5e76203151664"
     },
     {
       "id": "common-template",
@@ -263,8 +263,8 @@
       "source": "argus/framework-template-common",
       "destination": "templates/common",
       "files": 25,
-      "bytes": 98496,
-      "sha256": "331f20a3087d2e1c1a3502b04efd04e0f130ff06d9c50fc73cebd09546bae46b"
+      "bytes": 98758,
+      "sha256": "43816c27767a9d8574383997b2de0deda6914e2ef4a03bd347a46231cab76b0c"
     },
     {
       "id": "typescript-template",

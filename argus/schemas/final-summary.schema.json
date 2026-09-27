@@ -13,6 +13,7 @@
     "statusReasons",
     "counts",
     "unproven",
+    "residuals",
     "automationReview",
     "runner",
     "coverage",
@@ -66,6 +67,8 @@
             "confirmed",
             "suspected",
             "needsOracle",
+            "bounced",
+            "quarantined",
             "duplicate",
             "rejected",
             "headline"
@@ -78,6 +81,12 @@
               "$ref": "#/$defs/count"
             },
             "needsOracle": {
+              "$ref": "#/$defs/count"
+            },
+            "bounced": {
+              "$ref": "#/$defs/count"
+            },
+            "quarantined": {
               "$ref": "#/$defs/count"
             },
             "duplicate": {
@@ -175,6 +184,121 @@
             "minLength": 1
           }
         }
+      }
+    },
+    "residuals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "severity",
+          "status",
+          "repairRound",
+          "missing",
+          "reasons"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/bugId"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "Blocker",
+              "Critical",
+              "Major",
+              "Minor",
+              "Trivial"
+            ]
+          },
+          "status": {
+            "enum": [
+              "bounced",
+              "quarantined"
+            ]
+          },
+          "repairRound": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 3
+          },
+          "missing": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "oracle-citation",
+                "reproduction",
+                "evidence",
+                "honest-status",
+                "independent-reproduction",
+                "arranged-precondition",
+                "layer-attribution",
+                "evidence-integrity"
+              ]
+            }
+          },
+          "reasons": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "bounced"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "repairRound": {
+                  "type": "integer"
+                },
+                "missing": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "quarantined"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "reasons": {
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "automationReview": {

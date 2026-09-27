@@ -72,6 +72,7 @@ try {
   testLedgerSnapshotNewConfirmed();
   testWorkPhaseMergeKeepsNewConfirmed();
   testConvergedSkip();
+  testProofResidualsReachFinalSummary();
   testStandbyBlocksSuccessCleanup();
   testClusterLaneStandbyDuringProof();
   testConditionalLaneProjection();
@@ -544,6 +545,39 @@ function testConvergedSkip() {
     `controller-budget skip did not degrade a completed final summary through its status reason: ${JSON.stringify(budgetSummary)}`);
 }
 
+// proofLoop.exhaustion: a finding the proof loop left bounced or quarantined is a named residual
+// of the final report. The merge counts and lists it and caps the summary at degraded.
+function testProofResidualsReachFinalSummary() {
+  const run = runToSecondDeepHunt('proof-residuals');
+  const { manifest, root } = run.fixture;
+  skipPhases(manifest, 'odysseus', run.tokens.controller, 'converged');
+  const bounced = {
+    ...structuredClone(bugLedgerFixture.bugs.find((bug) => bug.status === 'bounced')),
+    id: 'BUG-0001', origin: ['HER-001'], lane: 'hermes', repair: { round: 2, missing: ['reproduction'], assignedTo: 'hermes' },
+  };
+  const quarantined = {
+    id: 'BUG-0002', origin: ['HER-002'], title: 'Refund posts twice after a gateway timeout', severity: 'Blocker', priority: 'P1', lane: 'hermes',
+    oracleId: 'ORC-API-001', status: 'quarantined', wired: false, testId: null, evidenceIds: [], quarantine: { reasons: ['evidence digest drift EVD-0009'] },
+  };
+  const ledger = { $schema: 'argus/bug-ledger@2', schemaVersion: 2, engagementId: manifest.engagementId, bugs: [bounced, quarantined] };
+  writeFragment(manifest, 'minos', run.tokens.minos, 'solution/bug-ledger.json', 'proof-residuals-ledger', `${JSON.stringify(ledger)}\n`);
+  mergeCanonical(manifest, 'minos', run.tokens.minos, 'solution/bug-ledger.json');
+  mergeFinalSummary(run.fixture, run.tokens.kleio);
+  const summary = readSolutionJson(run.fixture, 'final-summary.json');
+  assert(summary.status === 'degraded' && JSON.stringify(summary.statusReasons) === '["unresolved-proof-residuals"]',
+    `unresolved proof residuals did not degrade the final summary: ${JSON.stringify(summary.statusReasons)}`);
+  assert(summary.counts.bugs.bounced === 1 && summary.counts.bugs.quarantined === 1 && summary.counts.bugs.headline === 0,
+    `final summary does not count the proof residuals: ${JSON.stringify(summary.counts.bugs)}`);
+  assert(JSON.stringify(summary.residuals.map((entry) => [entry.id, entry.status, entry.repairRound, entry.missing, entry.reasons])) ===
+    JSON.stringify([['BUG-0001', 'bounced', 2, ['reproduction'], []], ['BUG-0002', 'quarantined', null, [], ['evidence digest drift EVD-0009']]]),
+  `final summary dropped or misreported a proof residual: ${JSON.stringify(summary.residuals)}`);
+  const markdown = readFileSync(join(root, 'solution/FINAL-SUMMARY.md'), 'utf8');
+  assert(markdown.includes('\n- BUG-0001 (Major, bounced): ') && markdown.includes('\n- BUG-0002 (Blocker, quarantined): '),
+    'FINAL-SUMMARY.md does not name every proof residual');
+  for (const lane of ['hermes', 'kleio', 'minos']) cleanupWorker(manifest, lane, run.tokens[lane], 'interrupted');
+  cleanupWorker(manifest, 'odysseus', run.tokens.controller, 'interrupted');
+}
+
 function testStandbyBlocksSuccessCleanup() {
   const fixture = createFixture('standby-cleanup', ['metis', 'minos', 'odysseus']);
   const { manifest } = fixture;
@@ -840,8 +874,8 @@ function mergeFinalSummary(fixture, token) {
 
   const summary = structuredClone(finalSummaryFixture);
   summary.engagementId = fixture.manifest.engagementId;
-  Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [] });
-  summary.counts = { bugs: { confirmed: 0, suspected: 0, needsOracle: 0, duplicate: 0, rejected: 0, headline: 0 }, regression: { wired: 0, uncovered: [] }, automated: 0, evidence: 0 };
+  Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [], residuals: [] });
+  summary.counts = { bugs: { confirmed: 0, suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, headline: 0 }, regression: { wired: 0, uncovered: [] }, automated: 0, evidence: 0 };
   summary.automationReview = { status: 'not-applicable', reviewId: null, round: null, blockers: 0, warnings: 0 };
   writeFragment(fixture.manifest, 'kleio', token, 'solution/final-summary.json', 'final-summary', `${JSON.stringify(summary)}\n`);
   mergeCanonical(fixture.manifest, 'kleio', token, 'solution/final-summary.json');
