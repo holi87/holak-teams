@@ -115,6 +115,11 @@ environment=(
   "ARGUS_NATIVE_LAUNCH_RECEIPT=$receipt"
   "ARGUS_NATIVE_LAUNCH_CAPABILITY=$capability"
 )
+# Database coordinates feed preflight's environment feature detection; a smoke exports them
+# only around the single run that asserts db-access.
+for name in DATABASE_URL PGHOST MYSQL_HOST; do
+  if [ -n "${!name:-}" ]; then environment+=("$name=${!name}"); fi
+done
 cd "$workspace"
 case "$(uname -s)" in
   Darwin)
