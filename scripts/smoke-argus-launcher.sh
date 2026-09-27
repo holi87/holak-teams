@@ -271,6 +271,8 @@ sign_request "$WORK/dry-run-operator" "$WORK/dry-run-operator/request.json" "$WO
 if ! wait "$dry_run_pid"; then cat "$WORK/dry-run.stderr" >&2; fail 'authenticated dry run failed'; fi
 grep -Fq 'sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist@1' "$WORK/dry-run.stdout" || \
   { cat "$WORK/dry-run.stdout" >&2; fail 'authenticated dry run omitted sandbox policy @3'; }
+grep -Fq 'browserProvisioning=none' "$WORK/dry-run.stdout" || \
+  { cat "$WORK/dry-run.stdout" >&2; fail 'authenticated dry run did not report browserProvisioning=none'; }
 [ ! -e "$WORK/dry-run-artifacts/ai_agents_internal/fixture-claude-arguments.txt" ] || fail 'authenticated dry run started the controller'
 
 # A public environment string must never satisfy the mandatory native check.
@@ -428,6 +430,22 @@ set -e
 grep -Fq "maxTurns=$REVIEWED_CONTROLLER_TURNS" "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run omitted the controller turn cap'
 grep -Fq 'attestation=UNATTESTED' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run omitted the UNATTESTED marker'
 grep -Fq 'sandbox=os-native-target-readonly@3 ' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run omitted sandbox policy @3'
+grep -Fq 'browserProvisioning=none' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run did not report browserProvisioning=none'
+
+# (a2) --provision-browser is host preparation outside the signed request: a dry run only
+# reports it and never provisions anything into the (private) host cache.
+mkdir -p "$WORK/unattested-home-provision"
+set +e
+env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-provision" PATH="$FIXTURE_BIN:$PATH" \
+  "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-provision" \
+  --mode A --engagement-id launcher-unattested-provision --unattested --provision-browser --dry-run \
+  >"$WORK/unattested-provision.stdout" 2>"$WORK/unattested-provision.stderr"
+unattested_status=$?
+set -e
+[ "$unattested_status" -eq 0 ] || { cat "$WORK/unattested-provision.stderr" >&2; fail 'unattested --provision-browser dry run failed'; }
+grep -Fq 'browserProvisioning=requested' "$WORK/unattested-provision.stdout" || \
+  { cat "$WORK/unattested-provision.stdout" >&2; fail 'dry run with --provision-browser did not report browserProvisioning=requested'; }
+[ ! -e "$WORK/unattested-home-provision/.cache/argus/browser-runtime" ] || fail 'dry run with --provision-browser provisioned a browser runtime'
 
 # (b) Keyless mode cannot be mixed with attested launch options.
 set +e
@@ -519,4 +537,4 @@ if [ "$probe_browser_status" -ne 2 ]; then
     grep -Fq 'WARN  no Playwright module is resolvable' "$WORK/doctor-browser.stdout" || fail 'doctor --browser did not warn about the skipped browser probe'
   fi
 fi
-printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'
+printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, browser-provisioning dry run, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'

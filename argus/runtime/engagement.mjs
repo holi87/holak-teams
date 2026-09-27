@@ -1796,6 +1796,7 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     if (operation === 'check') return allow('packaged authorization audit owns the bounded mutation');
     return deny('authorization init cannot run inside an active engagement');
   }
+  if (primary === 'browser') return deny('browser provisioning is host/operator-only and cannot run inside an active engagement');
   if (primary === 'schema') {
     if (['list', 'validate'].includes(operation)) return allow('packaged schema command is read-only');
     return deny('unknown schema operation');

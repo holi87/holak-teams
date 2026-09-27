@@ -2399,6 +2399,12 @@
           "kind": "command",
           "mechanism": "cli-require-asset",
           "reference": "typescript-template"
+        },
+        {
+          "consumer": "runtime:pinnedPlaywrightVersion",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "typescript-template"
         }
       ]
     },

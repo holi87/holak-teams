@@ -309,6 +309,7 @@ guard_shell "argus-assets redact --input reports/result.txt --output ai_agents_i
 guard_shell "argus-assets preflight --target app --artifact-root app --mode A" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets copy-browser-driver $TARGET" allow
 guard_shell "argus-assets copy-browser-driver $WORK/outside-target" GUARD-TARGET-IMMUTABLE
+guard_shell "argus-assets browser provision --artifact-root $TARGET" GUARD-SHELL-AMBIGUOUS
 atlas_tmp="$(jq -r .temporaryDirectory "$ALLOCATIONS/atlas.json")"
 guard_shell "argus-assets copy-template typescript $atlas_tmp/template" allow
 guard_shell "argus-assets template detect --target $TARGET" allow
