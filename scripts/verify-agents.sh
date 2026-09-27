@@ -323,6 +323,12 @@ else
   fail "[argus] (p2) automatic frontier continuation contract"
 fi
 
+if "$ROOT/scripts/smoke-argus-controller-batch.sh"; then
+  pass "[argus] (p3) controller batch verbs: one-call initial routing and sealed per-wave allocation with no persisted token"
+else
+  fail "[argus] (p3) controller batch routing and allocation contract"
+fi
+
 if node "$ROOT/scripts/verify-agent-runtime-parity.mjs"; then
   pass "[agents] (q) 49-agent generated configuration, model mapping, support levels, and roster alignment"
 else

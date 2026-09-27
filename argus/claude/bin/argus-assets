@@ -246,6 +246,7 @@ Usage:
   argus-assets authorization check --manifest <path> --lane <slug> --action <action> --target <target> [options]
   argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup|resolve-gates> [options]
   argus-assets engagement allocate --manifest <engagement.json> --lane <slug> --decision <model-decision.json> [--dispatch-authorization <MDA-file>] [--token <lane-token>] [--controller-token <odysseus-token>]
+  argus-assets engagement allocate --manifest <engagement.json> --lanes <slug,slug> --controller-token <odysseus-token>
   argus-assets engagement start-attempt --manifest <engagement.json> --lane <slug> --decision <model-decision.json> --token <lane-token> [--controller-token <odysseus-token>] [--dispatch-authorization <MDA-file>] [--wait <true|false>]
   argus-assets schema <list|validate> [options]
   argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]
@@ -256,6 +257,7 @@ Usage:
   argus-assets model payload --document <unsigned-or-signed.json>
   argus-assets model request --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n> --checkpoint-ref <path> --token <lane-token>
   argus-assets model route --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n> [--request <escalation.json>] [--operator-decision <json>] [--controller-token <odysseus-token>]
+  argus-assets model route --manifest <engagement.json> --agents <slug,slug|dispatchable> --runtime <claude|codex> --signal normal --dispatch-prefix <id> --attempt 1
   argus-assets model telemetry --manifest <engagement.json> --decision <model-decision.json> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false> [options]
   argus-assets launch request --target <url-or-path> --workspace <absolute-path> --artifact-root <absolute-path> --mode <A|B|C|D> --engagement-id <id> --launcher <path> --launcher-pid <pid> --claude-executable <path> --runtime-key-id <id> --trust-store <path> --output <path>
   argus-assets launch verify --request <json> --authorization <json> --receipt <path> --trust-store <path>
@@ -299,6 +301,7 @@ Authorization check boundaries:
 Engagement coordination:
   init --target <target> --artifact-root <root> --mode <A|B|C|D> [--browser-support <json>] [--accessibility-requirement <json>]
   allocate --manifest <path> --lane <slug>
+  allocate --manifest <path> --lanes <slug,slug> --controller-token <odysseus-token>
   fragment --manifest <path> --lane <slug> --token <lease> --canonical <path> --id <id> --input <file|->
   merge --manifest <path> --owner <slug> --token <lease> --canonical <path>
   claim|release --manifest <path> --lane <slug> --token <lease> --resource <reset|fault>
@@ -954,42 +957,11 @@ function modelCommand(args) {
     return 0;
   }
   if (operation === 'route') {
+    if (rest.includes('--agents')) return routeModelDecisionBatch(rest);
     const options = parseNamedOptions(rest, new Set(['--manifest', '--agent', '--runtime', '--signal', '--dispatch-id', '--attempt', '--request', '--operator-decision', '--controller-token']));
     requireOptions(options, ['manifest', 'agent', 'runtime', 'signal', 'dispatchId', 'attempt'], 'model route');
     assertTrustedModelRoutingAssets();
-    const engagementContext = loadModelEngagement(options.manifest, options.agent);
-    const attempt = positiveInteger(options.attempt, '--attempt');
-    requirePinnedModelTrust(engagementContext);
-    if (unattestedEngagement(engagementContext) && options.runtime !== 'claude') {
-      fail('unattested engagements are claude-only: Codex dispatch requires a signed JIT dispatch authorization');
-    }
-    requireCurrentModelPreflight(engagementContext, options.agent, options.runtime);
-    requireModelRouteAuthority(engagementContext, options);
-    requirePreAllocationInitialRoute(engagementContext, options, attempt);
-    const escalationBinding = bindModelEscalation(engagementContext, options, attempt);
-    const availabilityBinding = bindModelUnavailable(engagementContext, options, attempt);
-    const outcomeBinding = bindModelOutcome(engagementContext, options, attempt);
-    const operatorDecision = bindOperatorDecision(engagementContext, options, attempt, escalationBinding, availabilityBinding);
-    const createdAt = new Date().toISOString();
-    const routingInput = {
-      slug: options.agent,
-      runtime: options.runtime,
-      signal: options.signal,
-      engagementId: engagementContext.engagement.engagementId,
-      engagementManifestSha256: engagementContext.sha256,
-      dispatchId: options.dispatchId,
-      attempt,
-      escalationBinding,
-      availabilityBinding,
-      outcomeBinding,
-      operatorDecision,
-      trust: modelLaunchAssurance(engagementContext.engagement.launchAssurance),
-      createdAt,
-    };
-    const preview = resolveModelDecision(policy, runtimeAdapters, routingInput);
-    const candidate = preview;
-    assertSchemaDocument(validateModelDecisionSchema, candidate, 'model decision');
-    const decision = persistModelDecision(policy, candidate, engagementContext);
+    const decision = routeModelDecision(options);
     console.log(JSON.stringify(decision));
     return decision.status === 'blocked' ? 2 : 0;
   }
@@ -1053,6 +1025,117 @@ function modelCommand(args) {
     return 0;
   }
   fail('usage: argus-assets model <list|benchmark|trust|payload|request|route|telemetry> [options]');
+}
+
+// Routes one exact agent/runtime/signal/dispatch/attempt and returns the persisted
+// immutable decision. The caller has already required its options and verified the
+// packaged routing assets.
+function routeModelDecision(options) {
+  const engagementContext = loadModelEngagement(options.manifest, options.agent);
+  const attempt = positiveInteger(options.attempt, '--attempt');
+  requirePinnedModelTrust(engagementContext);
+  if (unattestedEngagement(engagementContext) && options.runtime !== 'claude') {
+    fail('unattested engagements are claude-only: Codex dispatch requires a signed JIT dispatch authorization');
+  }
+  requireCurrentModelPreflight(engagementContext, options.agent, options.runtime);
+  requireModelRouteAuthority(engagementContext, options);
+  requirePreAllocationInitialRoute(engagementContext, options, attempt);
+  const escalationBinding = bindModelEscalation(engagementContext, options, attempt);
+  const availabilityBinding = bindModelUnavailable(engagementContext, options, attempt);
+  const outcomeBinding = bindModelOutcome(engagementContext, options, attempt);
+  const operatorDecision = bindOperatorDecision(engagementContext, options, attempt, escalationBinding, availabilityBinding);
+  const createdAt = new Date().toISOString();
+  const routingInput = {
+    slug: options.agent,
+    runtime: options.runtime,
+    signal: options.signal,
+    engagementId: engagementContext.engagement.engagementId,
+    engagementManifestSha256: engagementContext.sha256,
+    dispatchId: options.dispatchId,
+    attempt,
+    escalationBinding,
+    availabilityBinding,
+    outcomeBinding,
+    operatorDecision,
+    trust: modelLaunchAssurance(engagementContext.engagement.launchAssurance),
+    createdAt,
+  };
+  const candidate = resolveModelDecision(modelPolicy, runtimeAdapters, routingInput);
+  assertSchemaDocument(validateModelDecisionSchema, candidate, 'model decision');
+  return persistModelDecision(modelPolicy, candidate, engagementContext);
+}
+
+// Batch initial routing persists the normal attempt-1 decision of every listed agent in one
+// controller call before the first allocation. `--agents dispatchable` expands to Odysseus
+// plus every agent the current preflight makes dispatchable (the same projection the
+// model-control seal binds); an explicit list must name only such agents. Every agent is
+// validated before any decision is persisted, each dispatch ID is `<prefix>-<agent>`, and an
+// exact replay returns the already persisted decisions unchanged.
+function routeModelDecisionBatch(args) {
+  const options = parseNamedOptions(args, new Set([
+    '--manifest', '--agents', '--runtime', '--signal', '--dispatch-prefix', '--attempt',
+    '--agent', '--dispatch-id', '--request', '--operator-decision', '--controller-token',
+  ]));
+  for (const forbidden of ['agent', 'dispatchId', 'request', 'operatorDecision', 'controllerToken']) {
+    if (options[forbidden] !== undefined) fail(`batch model route does not accept --${camelToKebab(forbidden)}`);
+  }
+  requireOptions(options, ['manifest', 'agents', 'runtime', 'signal', 'dispatchPrefix', 'attempt'], 'batch model route');
+  if (options.signal !== 'normal' || positiveInteger(options.attempt, '--attempt') !== 1) {
+    fail('batch model route is valid only for the initial --signal normal --attempt 1 set');
+  }
+  requireStableIdentifier(options.dispatchPrefix, 'batch model route --dispatch-prefix');
+  assertTrustedModelRoutingAssets();
+  const context = loadModelEngagement(options.manifest);
+  requirePinnedModelTrust(context);
+  const state = getEngagementStatus(context.engagement);
+  if (Object.values(state.allocations).some((allocation) => allocation.status === 'active')) {
+    fail('batch model route selects the initial set and must run before any allocation becomes active');
+  }
+  const agents = batchRouteAgents(context, options.agents, options.runtime);
+  for (const agent of agents) requireStableIdentifier(`${options.dispatchPrefix}-${agent}`, `batch model route dispatch ID for ${agent}`);
+  const decisions = agents.map((agent) => {
+    const decision = routeModelDecision({
+      manifest: options.manifest,
+      agent,
+      runtime: options.runtime,
+      signal: 'normal',
+      dispatchId: `${options.dispatchPrefix}-${agent}`,
+      attempt: '1',
+    });
+    return {
+      agent,
+      dispatchId: decision.dispatchId,
+      decisionId: decision.decisionId,
+      relativePath: decision.relativePath,
+      status: decision.status,
+      reasonCode: decision.reasonCode,
+    };
+  });
+  console.log(JSON.stringify({
+    schema: 'argus/model-route-batch@1',
+    runtime: options.runtime,
+    dispatchPrefix: options.dispatchPrefix,
+    decisions,
+  }));
+  return decisions.some((decision) => decision.status === 'blocked') ? 2 : 0;
+}
+
+// Resolves the batch agent list against the current preflight: Odysseus always comes
+// first, duplicates are refused, and every agent must be selected and dispatchable.
+function batchRouteAgents(context, value, runtime) {
+  if (value === 'dispatchable') {
+    const { report } = requireCurrentModelPreflight(context, 'odysseus', runtime);
+    const dispatchable = dispatchablePreflightAgents(context.engagement, report);
+    return ['odysseus', ...dispatchable.filter((agent) => agent !== 'odysseus')];
+  }
+  const listed = value.split(',').map((agent) => agent.trim()).filter(Boolean);
+  if (listed.length === 0) fail('batch model route --agents must list at least one agent or be dispatchable');
+  if (new Set(listed).size !== listed.length) fail('batch model route --agents contains duplicate agents');
+  for (const agent of listed) {
+    if (!context.engagement.selectedAgents.includes(agent)) fail(`${agent} is not selected for engagement ${context.engagement.engagementId}`);
+    requireCurrentModelPreflight(context, agent, runtime);
+  }
+  return listed.includes('odysseus') ? ['odysseus', ...listed.filter((agent) => agent !== 'odysseus')] : listed;
 }
 
 function orchestrationCommand(args) {
@@ -2130,6 +2213,7 @@ function validateEngagement(args) {
 }
 
 function engagementAllocate(args) {
+  if (args.includes('--lanes')) return engagementAllocateBatch(args);
   const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--decision', '--dispatch-authorization', '--token', '--controller-token']));
   requireOptions(options, ['manifest', 'lane', 'decision'], 'engagement allocate');
   assertTrustedModelRoutingAssets();
@@ -2167,6 +2251,69 @@ function engagementAllocate(args) {
     })));
   });
   return 0;
+}
+
+// Per-wave batch allocation: the controller allocates several new worker lanes against their
+// sealed attempt-1 decisions in one call. Every lane is validated before any allocation; the
+// allocations then run in the listed order and stop at the first error. Each new lease token
+// is written to stdout only, exactly as a single-lane allocation returns it. Codex lanes need
+// a per-lane JIT dispatch authorization, so a Codex seal is refused.
+function engagementAllocateBatch(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lanes', '--controller-token', '--lane', '--decision', '--token', '--dispatch-authorization']));
+  for (const forbidden of ['lane', 'decision', 'token', 'dispatchAuthorization']) {
+    if (options[forbidden] !== undefined) fail(`batch engagement allocate does not accept --${camelToKebab(forbidden)}`);
+  }
+  requireOptions(options, ['manifest', 'lanes', 'controllerToken'], 'batch engagement allocate');
+  const lanes = options.lanes.split(',').map((lane) => lane.trim()).filter(Boolean);
+  if (lanes.length === 0) fail('batch engagement allocate --lanes must list at least one worker lane');
+  if (new Set(lanes).size !== lanes.length) fail('batch engagement allocate --lanes contains duplicate lanes');
+  if (lanes.includes('odysseus')) fail('batch engagement allocate cannot allocate odysseus; allocate the controller alone with --lane odysseus first');
+  assertTrustedModelRoutingAssets();
+  const initialContext = loadModelEngagement(options.manifest);
+  return withInitialModelControlLock(initialContext, () => {
+    const context = loadModelEngagement(options.manifest);
+    requirePinnedModelTrust(context);
+    const seal = loadModelControlSeal(context);
+    if (seal.runtime !== 'claude') fail('batch allocation is Claude-only; Codex requires a per-lane JIT dispatch authorization');
+    const state = getEngagementStatus(context.engagement);
+    const controller = state.allocations?.odysseus;
+    if (controller?.status !== 'active' || createHash('sha256').update(options.controllerToken).digest('hex') !== controller.leaseTokenSha256) {
+      fail('batch engagement allocate requires the active Odysseus controller token');
+    }
+    const decisionDirectory = resolve(context.artifactRoot, modelPolicy.routing.decisionDirectory);
+    const planned = lanes.map((lane) => {
+      if (!context.engagement.selectedAgents.includes(lane)) fail(`${lane} is not selected for engagement ${context.engagement.engagementId}`);
+      const sealed = seal.decisions[lane];
+      if (!sealed) fail(`${lane} has no decision in the immutable model-control seal`);
+      if (state.allocations?.[lane]?.status === 'active') {
+        fail(`${lane} already has an active allocation; batch allocation never resumes, use a single-lane allocate with its current token`);
+      }
+      const conditionalGates = plainObject(state.conditionalAgents) ? state.conditionalAgents[lane] : undefined;
+      if (conditionalGates && state.gateResolution?.lanes?.[lane] !== 'released') {
+        fail(`${lane} is conditional on ${conditionalGates.join(', ')} and not released by engagement resolve-gates`);
+      }
+      const decision = loadSelectedAllocationDecision(context, lane, join(decisionDirectory, `${sealed.modelDecisionId}.json`));
+      const preflight = requireCurrentModelPreflight(context, lane, decision.runtime);
+      if (preflight.sha256 !== seal.preflightSha256) fail('engagement allocation preflight differs from the sealed model-control report');
+      requireSealedAllocationDecision(seal, decision);
+      return { lane, executionBinding: executionBindingForDecision(decision) };
+    });
+    const allocations = [];
+    const failed = [];
+    for (const { lane, executionBinding } of planned) {
+      if (failed.length > 0) {
+        failed.push({ lane, error: `not attempted after ${failed[0].lane} failed` });
+        continue;
+      }
+      try {
+        allocations.push(allocateWorker(context.engagement, lane, { controllerToken: options.controllerToken, executionBinding }));
+      } catch (error) {
+        failed.push({ lane, error: error.message });
+      }
+    }
+    console.log(JSON.stringify({ schema: 'argus/engagement-allocation-batch@1', allocations, failed }));
+    return failed.length > 0 ? 1 : 0;
+  });
 }
 
 function engagementStartAttempt(args) {
