@@ -201,6 +201,7 @@ function materializeTypeScript(root, testRoot, harnessRoot, selection) {
   replaceIn(join(root, 'scripts', 'bug-coverage.mjs'), "join(ROOT, 'tests')", `join(ROOT, ${JSON.stringify(selection.testRoot)})`);
   replaceIn(join(root, 'scripts', 'app-source-guard.mjs'), "  'tests/',", `  ${JSON.stringify(`${selection.testRoot}/`)},`);
   replaceIn(join(root, 'scripts', 'app-source-guard.mjs'), "  'src/',", `  ${JSON.stringify(`${selection.harnessRoot}/`)},`);
+  replaceIn(join(root, 'scripts', 'argus-playwright-reporter.mjs'), "join(ROOT, 'src')", `join(ROOT, ${JSON.stringify(selection.harnessRoot)})`);
   replaceIn(join(root, 'run-tests.sh'), 'TEST_ROOT="${ARGUS_TEST_ROOT:-tests}"', `TEST_ROOT="\${ARGUS_TEST_ROOT:-${selection.testRoot}}"`);
 }
 

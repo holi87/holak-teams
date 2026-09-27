@@ -2,30 +2,38 @@
 // SD-7). It stays inert unless scripts/runner-lib.sh exports ARGUS_RUNNER_MODE, so the
 // reporter entry in playwright.config.ts changes nothing for a plain `playwright test`.
 //
-// - ARGUS_INVENTORY_ONLY=1 (a `--list` pass) writes reports/test-inventory.tsv (SD-3) and
-//   reports/expected-bugs.txt (SD-4), and emits the SD-4 ledger events.
+// - ARGUS_INVENTORY_ONLY=1 (a `--list` pass) writes reports/test-inventory.tsv (SD-3),
+//   reports/expected-bugs.txt (SD-4), and reports/counterfactual-plan.tsv (SD-10), and
+//   emits the SD-4 ledger events.
 // - Otherwise every final test attempt becomes one SD-5/SD-6 event, plus a `.cleanup`
-//   event when an ArgusCleanupError accompanies a different primary outcome.
+//   event when an ArgusCleanupError accompanies a different primary outcome. In cf-*
+//   passes a counterfactual sentinel skip emits nothing or the exemption event.
 // - Every event goes through scripts/outcome-event.sh. Events never carry titles,
 //   messages, URLs, or bodies; those stay in the native per-pass reports.
 // - reports/argus-adapter-status.txt records `ok <events>` or `error <failures>`.
 //
-// Node standard library only: the adapter must load before any dependency is trusted.
+// Node standard library only at load time: the adapter must load before any dependency is
+// trusted. The counterfactual module (src/argus/counterfactual.ts) is imported lazily, only
+// for an inventory with expected bugs and for cf-* passes; a failed import fails the status.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const REPORTS = join(ROOT, 'reports');
 const LEDGER = join(ROOT, 'solution', 'bug-ledger.json');
 const OUTCOME_EVENT = join(ROOT, 'scripts', 'outcome-event.sh');
+// The harness root; `template scaffold` rewrites this anchor to the selected layout.
+const HARNESS = join(ROOT, 'src');
+const COUNTERFACTUAL_MODULE = join(HARNESS, 'argus', 'counterfactual.ts');
 
 const MODES = new Set(['baseline', 'defect-evidence', 'candidate-regression', 'full-suite']);
-// Counterfactual passes (cf-correct, cf-tamper-<k>) are not supported by this adapter yet;
-// an unsupported pass fails the adapter status instead of emitting live semantics.
+// Passes other than live exist only in defect-evidence; any other pass fails the adapter
+// status instead of emitting live semantics.
 const PASSES = new Set(['live', 'repeat']);
+const COUNTERFACTUAL_PASS = /^cf-(correct|tamper-[1-9][0-9]*)$/;
 const PRODUCT_LANES = ['api', 'ui', 'perf', 'security', 'db', 'resilience'];
 const LANES = new Set([...PRODUCT_LANES, 'contract-smoke', 'setup']);
 const LEDGER_SCHEMAS = new Map([['argus/bug-ledger@1', 1], ['argus/bug-ledger@2', 2]]);
@@ -88,6 +96,17 @@ export function loadLedger(path = LEDGER) {
   return { state: 'valid', tokens, bugs, confirmed };
 }
 
+let counterfactualLoad;
+
+/** Import src/argus/counterfactual.ts once; resolves to { module } or { error }. */
+function loadCounterfactual() {
+  counterfactualLoad ??= import(pathToFileURL(COUNTERFACTUAL_MODULE).href).then(
+    (module) => ({ module }),
+    (error) => ({ error }),
+  );
+  return counterfactualLoad;
+}
+
 export default class ArgusPlaywrightReporter {
   constructor() {
     const mode = process.env.ARGUS_RUNNER_MODE ?? '';
@@ -103,9 +122,13 @@ export default class ArgusPlaywrightReporter {
     this.globalErrors = 0;
     this.entries = null;
     this.byTest = new Map();
+    this.counterfactual = COUNTERFACTUAL_PASS.test(this.pass);
+    this.pending = [];
+    this.fixtures = new Map();
     // The pass is irrelevant to a collect-only run; in an executed run only defect-evidence
     // has passes other than live.
-    this.passSupported = this.inventoryOnly || (PASSES.has(this.pass) && (this.pass === 'live' || mode === 'defect-evidence'));
+    this.passSupported = this.inventoryOnly || this.pass === 'live'
+      || (mode === 'defect-evidence' && (PASSES.has(this.pass) || this.counterfactual));
     if (!this.passSupported) this.fail(`unsupported evidence pass for mode ${mode}`);
   }
 
@@ -115,6 +138,7 @@ export default class ArgusPlaywrightReporter {
 
   onBegin(config, suite) {
     if (!this.active) return;
+    if (this.counterfactual && !this.inventoryOnly && this.passSupported) void loadCounterfactual();
     this.ledger = loadLedger();
     const described = suite.allTests().map((test, index) => ({ test, index, ...this.describe(test, config.rootDir) }));
     described.sort((left, right) => compareText(left.file, right.file)
@@ -138,19 +162,25 @@ export default class ArgusPlaywrightReporter {
       this.fail('a test ended that was not part of the collected suite');
       return;
     }
-    for (const event of this.classify(entry, test, result)) this.emit(event);
+    // cf-* classification needs the counterfactual module, which loads asynchronously;
+    // onEnd classifies these results once it has loaded.
+    if (this.counterfactual) this.pending.push({ entry, test, result });
+    else for (const event of this.classify(entry, test, result)) this.emit(event);
   }
 
   onError() {
     if (this.active) this.globalErrors += 1;
   }
 
-  onEnd() {
+  async onEnd() {
     if (!this.active) return undefined;
-    if (this.inventoryOnly) this.finishInventory();
-    else if (this.globalErrors > 0) {
-      // A load, configuration, or worker error outside any test leaves tests unreported.
-      this.emit(['playwright-global', 'automation', 'fail', 'false', 'n/a', '-', 'uncaught-error']);
+    if (this.inventoryOnly) await this.finishInventory();
+    else {
+      if (this.pending.length > 0) await this.finishCounterfactual();
+      if (this.globalErrors > 0) {
+        // A load, configuration, or worker error outside any test leaves tests unreported.
+        this.emit(['playwright-global', 'automation', 'fail', 'false', 'n/a', '-', 'uncaught-error']);
+      }
     }
     const status = this.failures > 0 ? `error ${this.failures}\n` : `ok ${this.events}\n`;
     try {
@@ -204,18 +234,24 @@ export default class ArgusPlaywrightReporter {
   }
 
   classify(entry, test, result) {
-    const id = this.pass === 'live' ? entry.id : `${entry.id}.${this.pass}`;
+    const id = this.caseId(entry);
     const bug = entry.regression ? entry.bug : '-';
     const other = (category, status, reason) => [id, category, status, 'false', 'n/a', bug, reason];
     let primary;
     if (test.expectedStatus === 'failed' || hasAnnotation(test, result, 'fail')) {
       primary = other('policy', 'denied', 'expected-failure-forbidden');
     } else if (result.status === 'skipped') {
+      const sentinel = this.counterfactual ? this.counterfactualSkip(entry, test, result) : null;
+      if (sentinel) return sentinel;
       primary = entry.regression ? other('policy', 'denied', 'regression-skipped') : [id, 'skip', 'skipped', 'false', 'n/a', '-', 'test-skipped'];
     } else if (result.status === 'timedOut') {
       primary = other('automation', 'fail', 'test-timeout');
     } else if (result.status === 'interrupted') {
       primary = other('infrastructure', 'fail', 'test-interrupted');
+    } else if (this.counterfactual && hasNamedError(result, 'ArgusCounterfactualError')) {
+      // An undeclared request got the stub's 501, so the test observed neither the correct
+      // response nor the tamper: its assertions prove nothing either way.
+      primary = other('automation', 'fail', 'counterfactual-unmatched-request');
     } else if (result.status === 'passed') {
       primary = this.productEvent(id, entry, true);
     } else {
@@ -223,7 +259,7 @@ export default class ArgusPlaywrightReporter {
       primary = outcome === 'product' ? this.productEvent(id, entry, false) : other(...outcome);
     }
     const events = [primary];
-    if (primary[6] !== 'cleanup-failed' && hasCleanupError(result)) {
+    if (primary[6] !== 'cleanup-failed' && hasNamedError(result, 'ArgusCleanupError')) {
       events.push([`${id}.cleanup`, 'automation', 'fail', 'false', 'n/a', bug, 'cleanup-failed']);
     }
     return events;
@@ -237,6 +273,13 @@ export default class ArgusPlaywrightReporter {
     }
     const bug = entry.bug;
     if (!entry.repetition.valid) return [id, 'policy', 'denied', 'false', 'n/a', bug, 'repetition-invalid'];
+    // Counterfactual passes run against deterministic stubs, so their rules ignore n.
+    if (this.counterfactual && this.pass === 'cf-correct') {
+      return passed ? [id, 'product', 'pass', 'false', 'reproduced', bug, 'counterfactual-correct-pass'] : [id, 'automation', 'fail', 'false', 'n/a', bug, 'counterfactual-correct-red'];
+    }
+    if (this.counterfactual) {
+      return passed ? [id, 'automation', 'fail', 'false', 'n/a', bug, 'counterfactual-tamper-survived'] : [id, 'product', 'fail', 'true', 'reproduced', bug, 'counterfactual-tamper-red'];
+    }
     if (this.mode === 'defect-evidence') {
       if (passed && entry.repetition.n > 1) return [id, 'product', 'pass', 'false', 'n/a', bug, 'intermittent-unreproduced'];
       if (this.pass === 'live') {
@@ -249,7 +292,72 @@ export default class ArgusPlaywrightReporter {
     return passed ? [id, 'product', 'pass', 'false', 'fixed', bug, 'regression-green'] : [id, 'product', 'fail', 'false', 'automated', bug, 'regression-red'];
   }
 
-  finishInventory() {
+  // SD-2: pass suffixes. A tamper pass names the tamper, recomputed from the fixture through
+  // variantFor; a case without an applicable tamper keeps the pass name.
+  caseId(entry) {
+    if (this.pass === 'live') return entry.id;
+    if (this.counterfactual && this.pass !== 'cf-correct') {
+      const fixture = entry.regression && entry.bug !== '-' ? this.fixtureFor(entry.bug) : null;
+      const variant = fixture?.kind === 'fixture' ? this.cf.variantFor(fixture, this.pass) : 'not-applicable';
+      if (variant !== 'not-applicable') return `${entry.id}.cf-${variant.id}`;
+    }
+    return `${entry.id}.${this.pass}`;
+  }
+
+  // SD-6: a sentinel skip emits nothing when the test has no applicable variant (and for an
+  // exempt bug in a tamper pass), and in cf-correct the exemption event. An exemption the
+  // bug's fixture does not declare is an ordinary skip (null).
+  counterfactualSkip(entry, test, result) {
+    const { NOT_APPLICABLE, EXEMPT_PREFIX, EXEMPTION_REASONS } = this.cf;
+    const descriptions = [...(result.annotations ?? []), ...(test.annotations ?? [])]
+      .filter((annotation) => annotation.type === 'skip').map((annotation) => annotation.description ?? '');
+    if (descriptions.includes(NOT_APPLICABLE)) return [];
+    const claim = descriptions.find((description) => description.startsWith(EXEMPT_PREFIX));
+    if (claim === undefined) return null;
+    if (this.pass !== 'cf-correct') return [];
+    const reason = claim.slice(EXEMPT_PREFIX.length);
+    const fixture = entry.regression && entry.bug !== '-' ? this.fixtureFor(entry.bug) : null;
+    if (fixture?.kind !== 'exempt' || fixture.reason !== reason || !EXEMPTION_REASONS.includes(reason)) return null;
+    return [[`${entry.id}.cf`, 'policy', 'pass', 'false', 'n/a', entry.bug, `counterfactual-exempt.${reason}`]];
+  }
+
+  // The structural fixture read (tamper ids and the exemption reason; the worker fixtures
+  // already skipped a fixture whose contract check fails); null when it cannot be read.
+  fixtureFor(bug) {
+    if (!this.fixtures.has(bug)) {
+      let fixture = null;
+      try {
+        fixture = this.cf.readFixture(ROOT, bug);
+      } catch {
+        fixture = null;
+      }
+      this.fixtures.set(bug, fixture);
+    }
+    return this.fixtures.get(bug);
+  }
+
+  async finishCounterfactual() {
+    const loaded = await loadCounterfactual();
+    if (loaded.error) {
+      this.fail(`cannot load ${toPosix(relative(ROOT, COUNTERFACTUAL_MODULE))}: ${loaded.error?.message ?? loaded.error}`);
+      return;
+    }
+    this.cf = loaded.module;
+    for (const { entry, test, result } of this.pending) {
+      for (const event of this.classify(entry, test, result)) this.emit(event);
+    }
+  }
+
+  // SD-10: one plan row per expected bug; empty when there are none.
+  async counterfactualPlan(expectedBugs) {
+    if (expectedBugs.length === 0) return '';
+    const loaded = await loadCounterfactual();
+    if (loaded.error) throw loaded.error;
+    const rows = await loaded.module.plan(ROOT, expectedBugs);
+    return rows.map((row) => `${loaded.module.planLine(row)}\n`).join('');
+  }
+
+  async finishInventory() {
     const ledger = this.ledger ?? loadLedger();
     if (ledger.state === 'invalid') this.emit(['bug-ledger', 'policy', 'denied', 'false', 'n/a', '-', 'bug-ledger-invalid']);
     else if (ledger.state === 'missing' && this.mode !== 'baseline') {
@@ -257,11 +365,20 @@ export default class ArgusPlaywrightReporter {
     }
     const inventory = join(REPORTS, 'test-inventory.tsv');
     const expectedBugs = join(REPORTS, 'expected-bugs.txt');
+    const counterfactualPlan = join(REPORTS, 'counterfactual-plan.tsv');
+    const unpublish = () => [inventory, expectedBugs, counterfactualPlan].forEach((path) => rmSync(path, { force: true }));
     if (!this.entries || this.globalErrors > 0) {
       // An incomplete collection must never be published as the inventory.
-      rmSync(inventory, { force: true });
-      rmSync(expectedBugs, { force: true });
+      unpublish();
       this.fail('the test collection is incomplete; no inventory was written');
+      return;
+    }
+    let plan;
+    try {
+      plan = await this.counterfactualPlan(ledger.confirmed);
+    } catch (error) {
+      unpublish();
+      this.fail(`cannot evaluate the counterfactual fixtures: ${error?.message ?? error}`);
       return;
     }
     const rows = this.entries.map((entry) => [
@@ -277,6 +394,7 @@ export default class ArgusPlaywrightReporter {
     try {
       writeAtomic(inventory, rows.map((row) => `${row}\n`).join(''));
       writeAtomic(expectedBugs, ledger.confirmed.map((id) => `${id}\n`).join(''));
+      writeAtomic(counterfactualPlan, plan);
     } catch {
       this.fail('cannot write the inventory artifacts');
     }
@@ -353,9 +471,9 @@ function isNetworkError(error) {
   return false;
 }
 
-function hasCleanupError(result) {
-  if ((result.errors ?? []).some((error) => errorName(error) === 'ArgusCleanupError')) return true;
-  const visit = (steps) => steps.some((step) => (step.error && errorName(step.error) === 'ArgusCleanupError') || visit(step.steps ?? []));
+function hasNamedError(result, name) {
+  if ((result.errors ?? []).some((error) => errorName(error) === name)) return true;
+  const visit = (steps) => steps.some((step) => (step.error && errorName(step.error) === name) || visit(step.steps ?? []));
   return visit(result.steps ?? []);
 }
 

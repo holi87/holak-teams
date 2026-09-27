@@ -1,0 +1,24 @@
+{
+  "$schema": "argus/counterfactual-fixture@1",
+  "schemaVersion": 1,
+  "bugId": "BUG-0000",
+  "oracle": { "kind": "contract", "sourceRef": "ORC-API-001" },
+  "contract": { "operationId": "createOrder", "status": 400 },
+  "exchanges": [
+    {
+      "id": "login",
+      "request": { "method": "POST", "path": "/auth/login" },
+      "response": { "status": 200, "body": { "token": "stub-token" } }
+    },
+    {
+      "id": "create-negative-quantity",
+      "request": { "method": "POST", "path": "/orders" },
+      "response": { "status": 400, "headers": { "content-type": "application/json" }, "body": { "error": "quantity must be positive" } }
+    }
+  ],
+  "subject": "create-negative-quantity",
+  "tampers": [
+    { "id": "observed-defect", "response": { "status": 201, "body": { "id": 1, "item": "x", "qty": -5 } } },
+    { "id": "wrong-rejection-status", "response": { "status": 422, "body": { "error": "quantity must be positive" } } }
+  ]
+}

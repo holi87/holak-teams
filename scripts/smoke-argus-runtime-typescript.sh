@@ -2,8 +2,9 @@
 # Clean-room validation of the TypeScript outcome adapter (RUNNER-CONTRACT.md SD-1 to SD-7):
 # collection inventory, ledger join for ledger v1 and v2, expected bugs, SD-4 ledger events,
 # SD-5 classification, SD-6 pass mapping including declared repetition, the adapter status,
-# inertness without ARGUS_RUNNER_MODE, and the contract oracle self-tests. Nothing contacts
-# a real target; no browser is needed.
+# inertness without ARGUS_RUNNER_MODE, the contract oracle self-tests, and counterfactual
+# evidence (SD-10 plan, cf-correct and cf-tamper passes against the in-worker stub).
+# Nothing contacts a real target; no browser is needed.
 
 set -euo pipefail
 
@@ -22,7 +23,8 @@ SRC="$SPEC:"
 
 # The adapter reads its activation from the environment; a caller's values must not leak in.
 unset ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY ARGUS_OUTCOME_FILE \
-  ARGUS_CONTRACT_SMOKE ARGUS_SMOKE_UNSET_PREREQUISITE
+  ARGUS_CONTRACT_SMOKE ARGUS_SMOKE_UNSET_PREREQUISITE ARGUS_COUNTERFACTUAL_API_URL \
+  ARGUS_API_ROUTE_PATTERN ARGUS_SMOKE_EXTRA_REQUEST OPENAPI_PATH
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 
@@ -68,8 +70,11 @@ line_of() {
 "$CLI" copy-template typescript "$T" >/dev/null
 (cd "$T" && npm ci --ignore-scripts) >"$WORK/install.log" 2>&1 || { tail -40 "$WORK/install.log" >&2; fail "npm ci failed in the TypeScript template"; }
 cp "$FIXTURES/classification.spec.ts" "$T/$SPEC"
+cp "$FIXTURES/counterfactual.spec.ts" "$T/tests/contract/counterfactual.spec.ts"
+cp "$FIXTURES/counterfactual-openapi.json" "$T/tests/contract/fixtures/counterfactual-openapi.json"
 cp "$FIXTURES/bug-ledger.json" "$LEDGER"
 cp "$LEDGER" "$WORK/bug-ledger.json"
+PLAN="$T/reports/counterfactual-plan.tsv"
 (cd "$T" && npx tsc --noEmit) >"$WORK/tsc.log" 2>&1 || { cat "$WORK/tsc.log" >&2; fail "the template with the Argus error helpers and fixtures does not typecheck"; }
 
 INVENTORY_CMD=(npx playwright test --list "--reporter=$REPORTER")
@@ -107,6 +112,7 @@ long_clean="${ID}long-title-$long_tail"
 long_hash="$(node -e 'process.stdout.write(require("node:crypto").createHash("sha256").update(process.argv[1], "utf8").digest("hex").slice(0, 12))' "$long_raw")"
 expect_line "$INV" "long title bound" "${long_clean:0:187}.$long_hash" contract-smoke false false - - - "$SRC$(line_of 'long title')"
 printf 'BUG-0001\n' | cmp -s - "$T/reports/expected-bugs.txt" || { show "$T/reports/expected-bugs.txt"; fail "expected-bugs must hold only the confirmed BUG-0001"; }
+printf 'BUG-0001\tmissing\t-\t-\n' | cmp -s - "$PLAN" || { show "$PLAN"; fail "the counterfactual plan must list the confirmed BUG-0001 as missing"; }
 [ ! -e "$T/reports/outcomes.raw.tsv" ] || { show "$T/reports/outcomes.raw.tsv"; fail "a valid ledger produced inventory events"; }
 expect_status 'ok 0' "inventory pass"
 
@@ -122,6 +128,7 @@ printf 'BUG-0001\n' | cmp -s - "$T/reports/expected-bugs.txt" || fail "ledger v1
 rm -f "$LEDGER"
 pw inventory-missing-baseline ARGUS_RUNNER_MODE=baseline ARGUS_INVENTORY_ONLY=1 "${INVENTORY_CMD[@]}"
 [ -f "$T/reports/expected-bugs.txt" ] && [ ! -s "$T/reports/expected-bugs.txt" ] || fail "baseline without a ledger must write an empty expected-bugs file"
+[ -f "$PLAN" ] && [ ! -s "$PLAN" ] || fail "baseline without a ledger must write an empty counterfactual plan"
 [ ! -e "$T/reports/outcomes.raw.tsv" ] || fail "baseline without a ledger emitted an event"
 grep -Fq "${ID}regression-reproduces-the-observed-defect	contract-smoke	true	false	-	ATA-001	-	" "$T/reports/test-inventory.tsv" || fail "provenance resolved without a ledger"
 pw inventory-missing ARGUS_RUNNER_MODE=defect-evidence ARGUS_INVENTORY_ONLY=1 "${INVENTORY_CMD[@]}"
@@ -151,7 +158,7 @@ printf "import { test } from '@playwright/test';\nthrow new Error('load failure 
 pw inventory-load-error ARGUS_RUNNER_MODE=defect-evidence ARGUS_INVENTORY_ONLY=1 "${INVENTORY_CMD[@]}"
 rm -f "$T/tests/contract/broken-load.spec.ts"
 [ "$PW_CODE" -ne 0 ] || fail "a collection error did not fail the inventory pass"
-[ ! -e "$T/reports/test-inventory.tsv" ] && [ ! -e "$T/reports/expected-bugs.txt" ] || fail "a collection error published inventory artifacts"
+[ ! -e "$T/reports/test-inventory.tsv" ] && [ ! -e "$T/reports/expected-bugs.txt" ] && [ ! -e "$PLAN" ] || fail "a collection error published inventory artifacts"
 expect_status 'error [0-9]+' "collection error"
 
 # --- Executed defect-evidence live pass (SD-5, SD-6) ------------------------------------
@@ -226,7 +233,8 @@ for activation in "" "ARGUS_RUNNER_MODE=not-a-mode"; do
     || fail "the adapter was not inert with '${activation:-no ARGUS_RUNNER_MODE}'"
 done
 
-for activation in "ARGUS_RUNNER_MODE=defect-evidence ARGUS_EVIDENCE_PASS=bogus" "ARGUS_RUNNER_MODE=full-suite ARGUS_EVIDENCE_PASS=repeat"; do
+for activation in "ARGUS_RUNNER_MODE=defect-evidence ARGUS_EVIDENCE_PASS=bogus" "ARGUS_RUNNER_MODE=full-suite ARGUS_EVIDENCE_PASS=repeat" \
+  "ARGUS_RUNNER_MODE=candidate-regression ARGUS_EVIDENCE_PASS=cf-correct" "ARGUS_RUNNER_MODE=defect-evidence ARGUS_EVIDENCE_PASS=cf-tamper-0"; do
   # shellcheck disable=SC2086 # the activation pairs are split on purpose
   pw unsupported-pass $activation npx playwright test --project=contract-smoke "--reporter=$REPORTER" --grep collision "$SPEC"
   [ "$PW_CODE" -ne 0 ] || fail "an unsupported evidence pass did not fail the run ($activation)"
@@ -250,4 +258,118 @@ awk -F'\t' -v prefix='contract-smoke:contract-oracles-contract.selftest.spec.ts:
   "$EV" >&2 || fail "an oracle self-test event is not product pass"
 expect_status "ok $oracle_cases" "oracle self-tests"
 
-printf 'PASS  Argus TypeScript runtime adapter: full-collection inventory, v1/v2 ledger join, ledger policy events, SD-5 classification, SD-6 live/repeat/strict/intermittent mapping, adapter status, inert default, and contract oracle self-tests\n'
+# --- Counterfactual evidence (SD-6, SD-10) -----------------------------------------------
+# Each cf pass serves solution/counterfactual/BUG-0001.json from the in-worker 127.0.0.1
+# stub. API_URL names a closed port, so a request that escaped the stub would surface as
+# target-unreachable instead of reaching anything.
+CF_SPEC=tests/contract/counterfactual.spec.ts
+CF_ID='contract-smoke:contract-counterfactual.spec.ts:widget-read-returns-the-specified-widget'
+CF_FIXTURE="$T/solution/counterfactual/BUG-0001.json"
+CF_ENV=(ARGUS_RUNNER_MODE=defect-evidence "OPENAPI_PATH=$T/tests/contract/fixtures/counterfactual-openapi.json" API_URL=http://127.0.0.1:9)
+mkdir -p "$T/solution/counterfactual"
+cp "$FIXTURES/counterfactual/BUG-0001.json" "$WORK/cf-fixture.json"
+cp "$WORK/cf-fixture.json" "$CF_FIXTURE"
+
+# cf_inventory <log> [VAR=value ...] / cf_pass <log> <pass> [VAR=value ...]
+cf_inventory() { local log="$1"; shift; pw "$log" "${CF_ENV[@]}" ARGUS_INVENTORY_ONLY=1 "$@" "${INVENTORY_CMD[@]}"; }
+cf_pass() {
+  local log="$1" pass="$2"
+  shift 2
+  pw "$log" "${CF_ENV[@]}" "ARGUS_EVIDENCE_PASS=$pass" "$@" npx playwright test --project=contract-smoke "--reporter=$REPORTER" "$CF_SPEC"
+}
+# expect_plan <label> <status> <tamper-ids> <reason>: the plan is exactly this BUG-0001 row.
+expect_plan() {
+  printf 'BUG-0001\t%s\t%s\t%s\n' "$2" "$3" "$4" | cmp -s - "$PLAN" || { show "$PLAN"; tail -20 "$WORK/$1.log" >&2; fail "$1: counterfactual plan is not 'BUG-0001 $2 $3 $4'"; }
+}
+# expect_only_event <label> <field...>: the pass emitted exactly this one event.
+expect_only_event() {
+  local label="$1"
+  shift
+  expect_line "$EV" "$label" "$@"
+  expect_count "$EV" 1 "$label events"
+  expect_status 'ok 1' "$label"
+}
+expect_no_events() {
+  [ "$PW_CODE" -eq 0 ] || { tail -40 "$WORK/$1.log" >&2; fail "$1: a run without a counterfactual variant exited $PW_CODE"; }
+  [ ! -e "$EV" ] || { show "$EV"; fail "$1: a test without a counterfactual variant emitted an event"; }
+  expect_status 'ok 0' "$1"
+}
+
+cf_inventory cf-inventory
+[ "$PW_CODE" -eq 0 ] || { tail -40 "$WORK/cf-inventory.log" >&2; fail "counterfactual inventory pass exited $PW_CODE"; }
+expect_plan cf-inventory fixture observed-defect,missing-field -
+expect_line "$T/reports/test-inventory.tsv" "counterfactual regression row" "$CF_ID" contract-smoke true false BUG-0001 - - "$CF_SPEC:$(grep -nF "'widget read returns the specified widget'" "$T/$CF_SPEC" | cut -d: -f1)"
+expect_status 'ok 0' "counterfactual inventory"
+
+cf_pass cf-correct cf-correct
+[ "$PW_CODE" -eq 0 ] || { tail -40 "$WORK/cf-correct.log" >&2; fail "cf-correct exited $PW_CODE"; }
+expect_only_event "cf-correct" "$CF_ID.cf-correct" product pass false reproduced BUG-0001 counterfactual-correct-pass
+cf_pass cf-tamper-1 cf-tamper-1
+expect_only_event "cf-tamper-1" "$CF_ID.cf-observed-defect" product fail true reproduced BUG-0001 counterfactual-tamper-red
+cf_pass cf-tamper-2 cf-tamper-2
+expect_only_event "cf-tamper-2" "$CF_ID.cf-missing-field" product fail true reproduced BUG-0001 counterfactual-tamper-red
+cf_pass cf-tamper-3 cf-tamper-3
+expect_no_events cf-tamper-3
+
+# A weakened copy that asserts only the status lets the missing-field tamper survive.
+cp "$T/$CF_SPEC" "$WORK/counterfactual.spec.ts"
+grep -v 'argus-smoke: strict body' "$WORK/counterfactual.spec.ts" >"$T/$CF_SPEC"
+cf_pass cf-weakened cf-tamper-2
+cp "$WORK/counterfactual.spec.ts" "$T/$CF_SPEC"
+expect_only_event "weakened regression" "$CF_ID.cf-missing-field" automation fail false n/a BUG-0001 counterfactual-tamper-survived
+
+# An undeclared request fails the pass, and outranks the tamper RED it may have caused.
+cf_pass cf-unmatched cf-correct ARGUS_SMOKE_EXTRA_REQUEST=1
+expect_only_event "unmatched request" "$CF_ID.cf-correct" automation fail false n/a BUG-0001 counterfactual-unmatched-request
+cf_pass cf-unmatched-tamper cf-tamper-1 ARGUS_SMOKE_EXTRA_REQUEST=1
+expect_only_event "unmatched request in a tamper pass" "$CF_ID.cf-observed-defect" automation fail false n/a BUG-0001 counterfactual-unmatched-request
+
+# An exemption records one event in cf-correct and nothing in a tamper pass.
+jq '{"$schema": ."$schema", schemaVersion, bugId, exemption: {reason: "front-end-logic", justification: "The defect lives in client-side rendering."}}' \
+  "$WORK/cf-fixture.json" >"$CF_FIXTURE"
+cf_inventory cf-exempt-inventory
+expect_plan cf-exempt-inventory exempt - front-end-logic
+cf_pass cf-exempt cf-correct
+expect_only_event "exempt fixture" "$CF_ID.cf" policy pass false n/a BUG-0001 counterfactual-exempt.front-end-logic
+cf_pass cf-exempt-tamper cf-tamper-1
+expect_no_events cf-exempt-tamper
+
+# Invalid fixtures: the plan names the reason, and the regression has no variant to run.
+jq '.tampers |= map(select(.id != "observed-defect"))' "$WORK/cf-fixture.json" >"$CF_FIXTURE"
+cf_inventory cf-no-observed-defect
+expect_plan cf-no-observed-defect invalid - missing-observed-defect
+cf_pass cf-invalid-correct cf-correct
+expect_no_events cf-invalid-correct
+jq '.exchanges[0].response.body.color = "red"' "$WORK/cf-fixture.json" >"$CF_FIXTURE"
+cf_inventory cf-contract-violation
+expect_plan cf-contract-violation invalid - correct-violates-contract
+cf_pass cf-contract-violation-correct cf-correct
+expect_no_events cf-contract-violation-correct
+rm -f "$CF_FIXTURE"
+cf_pass cf-missing-correct cf-correct
+expect_no_events cf-missing-correct
+jq '.tampers[1].id = "correct"' "$WORK/cf-fixture.json" >"$CF_FIXTURE"
+cf_inventory cf-reserved-tamper
+expect_plan cf-reserved-tamper invalid - schema-invalid
+jq '.bugId = "BUG-0002"' "$WORK/cf-fixture.json" >"$CF_FIXTURE"
+cf_inventory cf-foreign-bug
+expect_plan cf-foreign-bug invalid - schema-invalid
+
+# The example every scaffold ships is never read as a fixture (the first inventory above
+# listed BUG-0001 as missing beside it), but it must stay a valid one. Its contract names an
+# operation this smoke's OpenAPI document does not define, so only the shape is checked.
+CF_EXAMPLE="$T/solution/counterfactual/BUG-0000.example.json"
+[ -f "$CF_EXAMPLE" ] || fail "the scaffold omitted solution/counterfactual/BUG-0000.example.json"
+jq '.bugId = "BUG-0001" | del(.contract)' "$CF_EXAMPLE" >"$CF_FIXTURE"
+cf_inventory cf-shipped-example
+expect_plan cf-shipped-example fixture observed-defect,wrong-rejection-status -
+
+# A declared contract without an OpenAPI document is a missing prerequisite: the plan is
+# never published with a guessed status.
+cp "$WORK/cf-fixture.json" "$CF_FIXTURE"
+cf_inventory cf-no-openapi "OPENAPI_PATH=$WORK/absent-openapi.json"
+[ "$PW_CODE" -ne 0 ] || fail "an unverifiable contract did not fail the inventory pass"
+[ ! -e "$PLAN" ] && [ ! -e "$T/reports/test-inventory.tsv" ] || fail "an unverifiable contract published inventory artifacts"
+expect_status 'error [0-9]+' "unverifiable contract"
+
+printf 'PASS  Argus TypeScript runtime adapter: full-collection inventory, v1/v2 ledger join, ledger policy events, SD-5 classification, SD-6 live/repeat/strict/intermittent/counterfactual mapping, SD-10 counterfactual plan, adapter status, inert default, and contract oracle self-tests\n'

@@ -128,6 +128,13 @@ shapes.
   `front-end-logic`, `timing-or-load`, `data-layer`, `fault-injection`, or
   `non-http-protocol`, and `justification` has 1 to 500 characters.
 
+`schemas/counterfactual-fixture.schema.json` encodes both shapes. The tamper id `correct`
+is reserved, because `.cf-correct` already names the correct pass. The loaders also require
+`bugId` to equal the file name, unique exchange and tamper ids, and a `subject` that names an
+exchange. With `contract`, the correct subject response must have `contract.status` and pass
+the strict schema oracle for `contract.operationId`. Files named `*.example.json` are never
+loaded.
+
 Matching compares method and path exactly, plus any listed query parameters. An
 unmatched request gets `501 {"argusStub": "unmatched"}` and raises
 `ArgusCounterfactualError`.
