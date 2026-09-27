@@ -98,6 +98,32 @@
       "runtimeIncludes": "redirects are revalidated"
     },
     {
+      "name": "ariadne-entry-count",
+      "catalog": "ariadne",
+      "operation": "remove",
+      "pointer": "/entries/20",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 21 entries"
+    },
+    {
+      "name": "ariadne-notification-marker-drift",
+      "catalog": "ariadne",
+      "operation": "replace",
+      "pointer": "/entries/16/oracles/0",
+      "value": "The notification is sent when the event happens.",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly one notification per documented recipient"
+    },
+    {
+      "name": "ariadne-failed-job-marker-drift",
+      "catalog": "ariadne",
+      "operation": "replace",
+      "pointer": "/entries/20/oracles/0",
+      "value": "A failed job is logged somewhere.",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "silently dropped job"
+    },
+    {
       "name": "metis-iso-count",
       "catalog": "metis",
       "operation": "remove",
