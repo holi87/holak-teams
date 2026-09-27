@@ -2,7 +2,7 @@ import { test as base, Route, TestInfo } from '@playwright/test';
 import { dirname } from 'node:path';
 import { targetApiURL } from './api-url';
 import { ACTIVATION_ANNOTATION, boundBug, EXEMPT_PREFIX, isCounterfactualPass, loadFixture, NOT_APPLICABLE, variantExchanges, variantFor } from './counterfactual';
-import { ArgusCounterfactualError } from './errors';
+import { ArgusCounterfactualError, ArgusCounterfactualSubjectError } from './errors';
 import { StubResponse, StubServer } from './stub-server';
 
 // Counterfactual activation of the runner kit (TEMPLATE-CONTRACT.md SD-10 and "ADAPT: the
@@ -13,7 +13,10 @@ import { StubResponse, StubServer } from './stub-server';
 // stub in every lane, non-ui lanes also get it as baseURL, and the ui lane routes the
 // browser's API pattern to it. The fixture records the variant it served as a test
 // annotation; the outcome adapter credits no counterfactual verdict without it. An
-// undeclared request fails the test with ArgusCounterfactualError. Every other test skips
+// undeclared request fails the test with ArgusCounterfactualError. A test that bypasses the
+// stub (a per-file baseURL override, a URL captured at module load, a hand-built client)
+// fails with ArgusCounterfactualSubjectError: the override before its first request, and
+// any test whose subject exchange the stub never served at teardown. Every other test skips
 // with a sentinel the adapter recognises.
 type CounterfactualWorkerFixtures = { argusStub: StubServer | null };
 type CounterfactualFixtures = { argusCounterfactual: { bugId: string; variant: string; stub: StubServer } | null };
@@ -35,7 +38,7 @@ export const counterfactualTest = base.extend<CounterfactualFixtures, Counterfac
     { scope: 'worker', auto: true },
   ],
   argusCounterfactual: [
-    async ({ argusStub }, use, testInfo) => {
+    async ({ argusStub, baseURL }, use, testInfo) => {
       if (!argusStub) {
         await use(null);
         return;
@@ -59,6 +62,11 @@ export const counterfactualTest = base.extend<CounterfactualFixtures, Counterfac
         testInfo.skip(true, NOT_APPLICABLE);
         return;
       }
+      // A `test.use({ baseURL })` replaces the stub override below, so the test's requests
+      // would go to the target; refuse before the first one.
+      if (!isUiLane(testInfo.project.name) && baseURL !== argusStub.url) {
+        throw new ArgusCounterfactualSubjectError('baseURL is overridden for this test, so the counterfactual stub cannot serve its requests');
+      }
       argusStub.load(variantExchanges(fixture, variant));
       testInfo.annotations.push({ type: ACTIVATION_ANNOTATION, description: variant.id });
       const previous = process.env.ARGUS_COUNTERFACTUAL_API_URL;
@@ -69,11 +77,16 @@ export const counterfactualTest = base.extend<CounterfactualFixtures, Counterfac
         if (previous === undefined) delete process.env.ARGUS_COUNTERFACTUAL_API_URL;
         else process.env.ARGUS_COUNTERFACTUAL_API_URL = previous;
       }
-      const unmatched = argusStub.unmatched();
+      const requests = argusStub.requests();
       argusStub.load([]);
+      const unmatched = requests.filter((record) => record.matched === null);
       if (unmatched.length > 0) {
         const listed = unmatched.slice(0, 5).map((record) => `${record.method} ${record.path}`).join(', ');
         throw new ArgusCounterfactualError(`the counterfactual stub received ${unmatched.length} request(s) the fixture does not declare: ${listed}`);
+      }
+      // A test that skipped itself made no claim; every other outcome needs the subject served.
+      if (testInfo.status !== 'skipped' && !requests.some((record) => record.matched === fixture.subject)) {
+        throw new ArgusCounterfactualSubjectError(`the counterfactual stub never served the subject exchange ${fixture.subject}`);
       }
     },
     { auto: true },

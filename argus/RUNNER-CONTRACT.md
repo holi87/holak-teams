@@ -206,6 +206,7 @@ in every runtime.
 | `ArgusPrerequisiteError` | `infrastructure fail`, `prerequisite-missing` |
 | `ArgusRestoreError` | `infrastructure fail`, `fault-restore-failed` |
 | `ArgusCounterfactualError` | `automation fail`, `counterfactual-unmatched-request` |
+| TS: `ArgusCounterfactualSubjectError` (the stub never served the subject exchange, or a per-test `baseURL` override would bypass it) | `automation fail`, `counterfactual-subject-not-served` |
 | Any other error. | `automation fail`, `uncaught-error` |
 | Runtime skip. | `skip skipped false n/a`, `test-skipped`; for a regression test `policy denied`, `regression-skipped` |
 | `test.fail`, xfail, or xpass. | `policy denied`, `expected-failure-forbidden` |
@@ -260,7 +261,7 @@ The reason field of an adapter event comes only from SD-4, SD-5, and SD-6
 (`passed`, `assertion-failed`, `test-timeout`, `fixture-failed`, `hook-failed`,
 `container-failed`, `playwright-api-failed`, `target-unreachable`, `test-interrupted`, `cleanup-failed`,
 `prerequisite-missing`, `fault-restore-failed`, `counterfactual-unmatched-request`,
-`uncaught-error`, `test-skipped`, `regression-skipped`, `expected-failure-forbidden`,
+`counterfactual-subject-not-served`, `uncaught-error`, `test-skipped`, `regression-skipped`, `expected-failure-forbidden`,
 `expected-red`, `expected-red-passed`, `expected-red-repeat`, `flaky-red`,
 `intermittent-unreproduced`, `repetition-invalid`, `counterfactual-correct-pass`,
 `counterfactual-correct-red`, `counterfactual-tamper-red`,

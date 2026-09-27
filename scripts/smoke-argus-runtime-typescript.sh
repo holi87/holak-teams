@@ -388,6 +388,39 @@ pw cf-unactivated-tamper "${CF_ENV[@]}" ARGUS_EVIDENCE_PASS=cf-tamper-1 npx play
 expect_only_event "unactivated regression in a tamper pass" "$UNACTIVATED_ID.cf-observed-defect" automation fail false n/a BUG-0001 counterfactual-not-activated
 rm -f "$T/$UNACTIVATED_SPEC"
 
+# A regression that bypasses the stub (a URL captured at module load, a per-file baseURL)
+# reaches the real target. With API_URL naming a live buggy target its verdict would read as
+# counterfactual-correct-red and, worse, a credited tamper RED; the subject check makes both
+# counterfactual-subject-not-served, and the overridden baseURL fails before its request.
+BYPASS_SPEC=tests/contract/counterfactual-bypass.spec.ts
+BYPASS_PREFIX='contract-smoke:contract-counterfactual-bypass.spec.ts:'
+BYPASS_CAPTURED="${BYPASS_PREFIX}widget-read-through-a-URL-captured-at-module-load"
+BYPASS_OVERRIDE="${BYPASS_PREFIX}per-file-base-URL-widget-read-with-an-overridden-base-URL"
+cp "$FIXTURES/counterfactual-bypass.spec.ts" "$T/$BYPASS_SPEC"
+: >"$WORK/bypass-target.log"
+FAULTY_MODE=buggy PORT=0 node "$ROOT/scripts/fixtures/argus-runtime/faulty-target.mjs" >"$WORK/bypass-target.log" 2>&1 &
+TARGET_PID=$!
+bypass_port=""
+for _ in $(seq 1 100); do
+  bypass_port="$(sed -n 's/^listening \([0-9][0-9]*\)$/\1/p' "$WORK/bypass-target.log")"
+  [ -z "$bypass_port" ] || break
+  sleep 0.1
+done
+[ -n "$bypass_port" ] || { cat "$WORK/bypass-target.log" >&2; fail "the bypass target did not start"; }
+for pass in cf-correct cf-tamper-1; do
+  pw "cf-bypass-$pass" "${CF_ENV[@]}" "API_URL=http://127.0.0.1:$bypass_port" "ARGUS_EVIDENCE_PASS=$pass" \
+    npx playwright test --project=contract-smoke "--reporter=list,$REPORTER" "$BYPASS_SPEC"
+  suffix=".$pass"
+  [ "$pass" = cf-correct ] || suffix=.cf-observed-defect
+  expect_line "$EV" "captured URL in $pass" "$BYPASS_CAPTURED$suffix" automation fail false n/a BUG-0001 counterfactual-subject-not-served
+  expect_line "$EV" "overridden baseURL in $pass" "$BYPASS_OVERRIDE$suffix" automation fail false n/a BUG-0001 counterfactual-subject-not-served
+  expect_count "$EV" 2 "bypass events in $pass"
+  expect_status 'ok 2' "bypass $pass"
+done
+grep -Fq 'baseURL is overridden for this test' "$WORK/cf-bypass-cf-correct.log" || fail "the overridden baseURL was not refused before its request"
+stop_target
+rm -f "$T/$BYPASS_SPEC"
+
 # An exemption records one event in cf-correct and nothing in a tamper pass.
 jq '{"$schema": ."$schema", schemaVersion, bugId, exemption: {reason: "front-end-logic", justification: "The defect lives in client-side rendering."}}' \
   "$WORK/cf-fixture.json" >"$CF_FIXTURE"

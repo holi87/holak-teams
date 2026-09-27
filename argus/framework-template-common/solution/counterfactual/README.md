@@ -24,6 +24,10 @@ evidence gate fails a missing, invalid, or incomplete one.
 - The harness API URL points at the stub in every lane (TypeScript non-ui lanes also get it
   as Playwright's `baseURL`), and ui-lane tests route browser requests matching
   `ARGUS_API_ROUTE_PATTERN` (default `<API_URL>/**`) to it.
+- A regression reaches the API only through that URL, read at call time. In TypeScript a
+  per-test `baseURL` override fails before its first request, and a test whose subject
+  exchange the stub never served (a URL captured at module load, a hand-built client) fails
+  as `counterfactual-subject-not-served`: its verdict came from somewhere else.
 - Exemptions are a closed set: `front-end-logic`, `timing-or-load`, `data-layer`,
   `fault-injection`, `non-http-protocol`, with a 1-500 character justification:
 

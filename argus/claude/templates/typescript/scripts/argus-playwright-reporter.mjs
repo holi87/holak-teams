@@ -46,6 +46,7 @@ const ARGUS_ERRORS = new Map([
   ['ArgusPrerequisiteError', ['infrastructure', 'fail', 'prerequisite-missing']],
   ['ArgusRestoreError', ['infrastructure', 'fail', 'fault-restore-failed']],
   ['ArgusCounterfactualError', ['automation', 'fail', 'counterfactual-unmatched-request']],
+  ['ArgusCounterfactualSubjectError', ['automation', 'fail', 'counterfactual-subject-not-served']],
 ]);
 const MAX_REPETITION = 200;
 
@@ -252,6 +253,10 @@ export default class ArgusPlaywrightReporter {
       // An undeclared request got the stub's 501, so the test observed neither the correct
       // response nor the tamper: its assertions prove nothing either way.
       primary = other('automation', 'fail', 'counterfactual-unmatched-request');
+    } else if (this.counterfactual && hasNamedError(result, 'ArgusCounterfactualSubjectError')) {
+      // The stub never served the subject: the test reached the API some other way, so the
+      // verdict it produced (often against the real target) proves nothing either way.
+      primary = other('automation', 'fail', 'counterfactual-subject-not-served');
     } else if (result.status === 'passed') {
       primary = this.productEvent(id, entry, true, test, result);
     } else {

@@ -115,7 +115,8 @@ its base URL at call time through `counterfactualApiURL()` (`src/argus/api-url.t
 back to the target URL, never from a constant captured at module load; and a ui lane is a
 project named `ui` or `ui-<variant>` whose API calls match `ARGUS_API_ROUTE_PATTERN`
 (default `<API_URL>/**`). A `cf-*` verdict of a regression that never ran through the
-activation is `counterfactual-not-activated`. The kit relies
+activation is `counterfactual-not-activated`, and one whose subject exchange the stub never
+served is `counterfactual-subject-not-served`. The kit relies
 on seams it does not ship: Java's
 `qa.support.Config` (target URL), `qa.support.SchemaOracle` (one contract self-test), and
 the `qa.support.SummaryListener` line of the launcher service file; Python's
