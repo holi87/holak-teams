@@ -49,6 +49,13 @@ const DISPATCH_AUTHORIZATION_FIELDS = [
   'dispatchAuthorizationSha256', 'dispatchAuthorizationNonce', 'dispatchAuthorizedAt',
   'dispatchAuthorizationExpiresAt', 'dispatchParentSessionId',
 ];
+// A conditional lane is sealed with its model decision but allocates only after the
+// controller records the recon gate verdicts during discovery. Odysseus resolves the gates
+// and Kalchas's discovery arrival is their evidence, so neither can be conditional.
+const UNCONDITIONAL_LANES = ['odysseus', 'kalchas'];
+const GATE_RESOLUTION_KEYS = ['resolvedAt', 'evidenceSha256', 'capabilities', 'lanes'];
+const GATE_VERDICT_KEYS = ['status', 'basis', 'reason'];
+const GATE_RESOLUTION_PHASE = 'discovery';
 
 export function createDefaultEngagement({ template, target, targetRoot, artifactRoot, mode, engagementId, selectedAgents, browserSupport, accessibilityRequirement, phasePlan }) {
   if (!Array.isArray(phasePlan)) throw new Error('createDefaultEngagement requires a derived phasePlan');
@@ -181,6 +188,8 @@ export function createInitialEngagementState(manifest) {
     completedPhases: ['preflight'],
     skippedPhases: {},
     dispatchableAgents: null,
+    conditionalAgents: null,
+    gateResolution: null,
     allocations: {},
     barriers: Object.fromEntries(phases.map((phase) => [phase, []])),
     exclusiveLocks: {},
@@ -204,30 +213,53 @@ export function initializeEngagementState(manifest) {
   return { state: readState(manifest), created: true, path: statePath };
 }
 
-export function bindDispatchableAgents(manifest, agents) {
+export function bindDispatchableAgents(manifest, agents, conditional = {}) {
   const normalized = [...new Set(agents ?? [])].sort();
   if (!normalized.includes('odysseus') || normalized.some((lane) => !manifest.selectedAgents.includes(lane))) {
     throw new Error('dispatchable agent projection must include Odysseus and remain within selectedAgents');
   }
+  const conditionalAgents = normalizeConditionalAgents(conditional, normalized);
   return mutateState(manifest, (state) => {
     if (Object.values(state.allocations).some((allocation) => allocation.status === 'active')) {
       throw new Error('dispatchable agent projection must be sealed before allocation');
     }
     if (Array.isArray(state.dispatchableAgents)) {
-      if (JSON.stringify(state.dispatchableAgents) !== JSON.stringify(normalized)) {
+      if (JSON.stringify(state.dispatchableAgents) !== JSON.stringify(normalized) ||
+          JSON.stringify(state.conditionalAgents) !== JSON.stringify(conditionalAgents)) {
         throw new Error('dispatchable agent projection is immutable once bound');
       }
       return { result: normalized, changed: false };
     }
     state.dispatchableAgents = normalized;
+    state.conditionalAgents = conditionalAgents;
     return { result: normalized, changed: true };
   });
+}
+
+// Conditional lanes are dispatchable workers whose preflight record still waits on target or
+// browser gates. Keys and gate lists are sorted so the bound projection compares byte-stably.
+function normalizeConditionalAgents(conditional, dispatchable) {
+  if (conditional === null || conditional === undefined) return {};
+  if (!plainObject(conditional)) throw new Error('conditional lanes must be an object of lane gate lists');
+  const normalized = {};
+  for (const lane of Object.keys(conditional).sort()) {
+    if (!dispatchable.includes(lane) || UNCONDITIONAL_LANES.includes(lane)) {
+      throw new Error(`conditional lane ${lane} must be a dispatchable worker other than ${UNCONDITIONAL_LANES.join(' and ')}`);
+    }
+    const gates = conditional[lane];
+    if (!Array.isArray(gates) || gates.length === 0 || !gates.every(validCapabilityId)) {
+      throw new Error(`conditional lane ${lane} must list one or more capability ids`);
+    }
+    normalized[lane] = [...new Set(gates)].sort();
+  }
+  return normalized;
 }
 
 export function allocateWorker(manifest, lane, { resumeToken, controllerToken, executionBinding, dispatchAuthorization } = {}) {
   requireSelected(manifest, lane);
   return mutateState(manifest, (state) => {
     requireDispatchableState(state, lane);
+    requireConditionalRelease(state, lane);
     const workerRoot = engagementPath(manifest, join(manifest.writePolicy.workerRoot, lane));
     const leasePath = join(workerRoot, '.lease');
     const leaseEntry = lstatEntry(leasePath);
@@ -681,6 +713,11 @@ export function advanceBarrier(manifest, lane, token) {
     const phase = state.currentPhase;
     const status = barrierStatus(manifest, state, phase);
     if (!status.complete) throw new Error(`phase ${phase} is waiting for: ${status.missing.join(', ')}`);
+    // Conditional lanes are verdict-bound in discovery: leaving it unresolved would strand
+    // them, because gate resolution runs only while discovery is the current phase.
+    if (phase === GATE_RESOLUTION_PHASE && hasConditionalLanes(state) && state.gateResolution === null) {
+      throw new Error('discovery cannot advance before engagement resolve-gates records the conditional lane verdicts');
+    }
     // A proof phase ends with the validator's ledger merge: its snapshot is the convergence
     // evidence a later deep-hunt skip is checked against.
     if (phaseDefinition(manifest, phase).kind === 'proof' && status.participants.includes(PROOF_VALIDATOR) &&
@@ -733,6 +770,48 @@ export function skipPhases(manifest, lane, token, reason) {
     if (!next) throw new Error(`phase ${current} has no later phase to continue with`);
     state.currentPhase = next;
     return { result: { skipped, currentPhase: state.currentPhase, reason }, changed: true };
+  });
+}
+
+// Read-only precondition check for gate resolution. The CLI runs it before interpreting any
+// evidence, so a call that resolveConditionalGates would refuse never probes a browser or
+// rewrites the browser runtime record. It returns the gates the resolution must cover.
+export function conditionalGateRequest(manifest, controllerToken) {
+  return withStateLock(manifest, () => {
+    const state = readState(manifest);
+    requireGateResolutionPreconditions(manifest, state, controllerToken);
+    return { conditionalAgents: structuredClone(state.conditionalAgents), capabilities: conditionalGateUnion(state.conditionalAgents) };
+  });
+}
+
+// Records the one-shot verdict for every conditional gate. Only the controller may resolve,
+// only in discovery after Kalchas has arrived, and only once. The caller supplies a verdict
+// per capability; the lane outcomes are always computed here: a lane is released exactly
+// when every one of its gates is proven, and otherwise it is omitted as gate-unmet.
+export function resolveConditionalGates(manifest, controllerToken, resolution = {}) {
+  if (!plainObject(resolution) || Object.keys(resolution).some((key) => !['evidenceSha256', 'capabilities'].includes(key))) {
+    throw new Error('gate resolution accepts only evidenceSha256 and capabilities; lane verdicts are computed by the runtime');
+  }
+  const { evidenceSha256 = null, capabilities } = resolution;
+  if (!(evidenceSha256 === null || /^[a-f0-9]{64}$/.test(evidenceSha256))) throw new Error('gate resolution evidenceSha256 must be null or a SHA-256 hex digest');
+  return mutateState(manifest, (state) => {
+    requireGateResolutionPreconditions(manifest, state, controllerToken);
+    const required = conditionalGateUnion(state.conditionalAgents);
+    if (!plainObject(capabilities) || JSON.stringify(Object.keys(capabilities).sort()) !== JSON.stringify(required)) {
+      throw new Error(`gate resolution must cover exactly the conditional gates: ${required.join(', ')}`);
+    }
+    const verdicts = {};
+    for (const id of required) {
+      if (!validGateVerdict(capabilities[id])) throw new Error(`gate verdict for ${id} must be exactly status (proven or unmet), basis, and reason`);
+      verdicts[id] = { status: capabilities[id].status, basis: capabilities[id].basis, reason: capabilities[id].reason };
+    }
+    state.gateResolution = {
+      resolvedAt: new Date().toISOString(),
+      evidenceSha256,
+      capabilities: verdicts,
+      lanes: conditionalLaneVerdicts(state.conditionalAgents, verdicts),
+    };
+    return { result: structuredClone(state.gateResolution), changed: true };
   });
 }
 
@@ -1304,6 +1383,56 @@ function requireDispatchableState(state, lane) {
   }
 }
 
+function requireConditionalRelease(state, lane) {
+  if (!plainObject(state.conditionalAgents) || !Object.hasOwn(state.conditionalAgents, lane)) return;
+  const gates = state.conditionalAgents[lane];
+  const verdict = state.gateResolution?.lanes?.[lane];
+  if (!verdict) throw new Error(`${lane} is conditional on ${gates.join(', ')}; run engagement resolve-gates first`);
+  if (verdict !== 'released') {
+    const unmet = gates.filter((gate) => state.gateResolution.capabilities[gate]?.status !== 'proven');
+    throw new Error(`${lane} was omitted: gate unmet (${unmet.join(', ')})`);
+  }
+}
+
+function requireGateResolutionPreconditions(manifest, state, controllerToken) {
+  requireLeaseState(manifest, state, 'odysseus', controllerToken);
+  if (state.gateResolution !== null) throw new Error('gate resolution is immutable once recorded');
+  if (!hasConditionalLanes(state)) throw new Error('no conditional lanes await gate resolution');
+  if (state.currentPhase !== GATE_RESOLUTION_PHASE) {
+    throw new Error(`resolve-gates runs only in ${GATE_RESOLUTION_PHASE}; the current phase is ${state.currentPhase}`);
+  }
+  if (state.dispatchableAgents.includes('kalchas') && !(state.barriers[GATE_RESOLUTION_PHASE] ?? []).includes('kalchas')) {
+    throw new Error('resolve-gates requires the Kalchas discovery arrival');
+  }
+}
+
+function hasConditionalLanes(state) {
+  return plainObject(state.conditionalAgents) && Object.keys(state.conditionalAgents).length > 0;
+}
+
+function conditionalGateUnion(conditionalAgents) {
+  return [...new Set(Object.values(conditionalAgents ?? {}).flat())].sort();
+}
+
+function conditionalLaneVerdicts(conditionalAgents, verdicts) {
+  return Object.fromEntries(Object.entries(conditionalAgents).map(([lane, gates]) =>
+    [lane, gates.every((gate) => verdicts[gate]?.status === 'proven') ? 'released' : 'gate-unmet']));
+}
+
+// Lanes omitted by gate resolution leave every phase's participants and standby lanes, like
+// a role that was never dispatchable, so no barrier or success cleanup waits for them.
+function omittedConditionalLanes(state) {
+  const lanes = plainObject(state.gateResolution?.lanes) ? state.gateResolution.lanes : {};
+  return new Set(Object.keys(lanes).filter((lane) => lanes[lane] === 'gate-unmet'));
+}
+
+function validGateVerdict(verdict) {
+  return plainObject(verdict) && Object.keys(verdict).length === GATE_VERDICT_KEYS.length &&
+    GATE_VERDICT_KEYS.every((key) => Object.hasOwn(verdict, key)) && ['proven', 'unmet'].includes(verdict.status) &&
+    typeof verdict.basis === 'string' && /^[a-z][a-z0-9+-]{0,63}$/.test(verdict.basis) &&
+    nonEmpty(verdict.reason) && verdict.reason.length <= 240;
+}
+
 function requireCanonical(manifest, path) {
   const normalized = String(path).replace(/^\.\//, '');
   const canonical = manifest.writePolicy.canonicalArtifacts.find((item) => item.path === normalized);
@@ -1336,7 +1465,8 @@ function projectedPhaseLanes(state, phase, lanes) {
   if (Object.hasOwn(state.skippedPhases, phase)) return [];
   if (!Array.isArray(state.dispatchableAgents)) return lanes;
   const dispatchable = new Set(state.dispatchableAgents);
-  return lanes.filter((lane) => dispatchable.has(lane));
+  const omitted = omittedConditionalLanes(state);
+  return lanes.filter((lane) => dispatchable.has(lane) && !omitted.has(lane));
 }
 
 function phaseDefinition(manifest, phase) {
@@ -1484,6 +1614,7 @@ function validateCurrentState(manifest, state) {
       state.dispatchableAgents.includes('odysseus') && state.dispatchableAgents.every((lane) => manifest.selectedAgents.includes(lane))))) {
     errors.push('dispatchableAgents must be null or an immutable selected projection containing odysseus');
   }
+  validateConditionalLanes(state, errors);
   if (!plainObject(state.checkpoints)) errors.push('checkpoints must be an object');
   else for (const [lane, checkpoint] of Object.entries(state.checkpoints)) {
     const allocation = state.allocations?.[lane];
@@ -1523,6 +1654,68 @@ function validateSkippedPhases(manifest, state, errors) {
     }
   }
   if (Object.hasOwn(skipped, state.currentPhase)) errors.push('currentPhase must not be a skipped phase');
+}
+
+// conditionalAgents and gateResolution are bound with the dispatchable projection: both stay
+// null until it exists, then conditionalAgents is the sealed (possibly empty) lane map and
+// gateResolution is null until the one-shot resolution, whose lane verdicts must be exactly
+// the ones its capability verdicts imply.
+function validateConditionalLanes(state, errors) {
+  const conditional = state.conditionalAgents;
+  const resolution = state.gateResolution;
+  if (!Array.isArray(state.dispatchableAgents)) {
+    if (conditional !== null) errors.push('conditionalAgents must be null until the dispatchable projection is bound');
+    if (resolution !== null) errors.push('gateResolution must be null until the dispatchable projection is bound');
+    return;
+  }
+  if (!plainObject(conditional)) {
+    errors.push('conditionalAgents must be an object once the dispatchable projection is bound');
+    return;
+  }
+  const lanes = Object.keys(conditional);
+  let lanesValid = JSON.stringify(lanes) === JSON.stringify([...lanes].sort());
+  if (!lanesValid) errors.push('conditionalAgents lanes must be sorted');
+  for (const lane of lanes) {
+    const gates = conditional[lane];
+    if (!state.dispatchableAgents.includes(lane) || UNCONDITIONAL_LANES.includes(lane)) {
+      errors.push(`conditionalAgents.${lane}: lane must be a dispatchable worker other than ${UNCONDITIONAL_LANES.join(' and ')}`);
+      lanesValid = false;
+    }
+    if (!Array.isArray(gates) || gates.length === 0 || !gates.every(validCapabilityId) ||
+        JSON.stringify(gates) !== JSON.stringify([...new Set(gates)].sort())) {
+      errors.push(`conditionalAgents.${lane}: gates must be a sorted, unique, non-empty capability id list`);
+      lanesValid = false;
+    }
+  }
+  if (resolution === null) return;
+  if (!plainObject(resolution) || Object.keys(resolution).length !== GATE_RESOLUTION_KEYS.length ||
+      !GATE_RESOLUTION_KEYS.every((key) => Object.hasOwn(resolution, key)) || !validDate(resolution.resolvedAt) ||
+      !(resolution.evidenceSha256 === null || /^[a-f0-9]{64}$/.test(resolution.evidenceSha256 ?? '')) ||
+      !plainObject(resolution.capabilities) || !plainObject(resolution.lanes)) {
+    errors.push(`gateResolution must be exactly ${GATE_RESOLUTION_KEYS.join(', ')}`);
+    return;
+  }
+  if (!lanesValid) return;
+  if (lanes.length === 0) {
+    errors.push('gateResolution requires at least one conditional lane');
+    return;
+  }
+  const required = conditionalGateUnion(conditional);
+  if (JSON.stringify(Object.keys(resolution.capabilities).sort()) !== JSON.stringify(required)) {
+    errors.push('gateResolution.capabilities must cover exactly the conditional gates');
+    return;
+  }
+  for (const [id, verdict] of Object.entries(resolution.capabilities)) {
+    if (!validGateVerdict(verdict)) errors.push(`gateResolution.capabilities.${id}: verdict must be exactly status, basis, and reason`);
+  }
+  if (JSON.stringify(Object.keys(resolution.lanes).sort()) !== JSON.stringify(lanes)) {
+    errors.push('gateResolution.lanes must cover exactly the conditional lanes');
+    return;
+  }
+  const expected = conditionalLaneVerdicts(conditional, resolution.capabilities);
+  for (const lane of lanes) {
+    if (resolution.lanes[lane] !== expected[lane]) errors.push(`gateResolution.lanes.${lane} must be ${expected[lane]}`);
+  }
 }
 
 function validateLedgerSnapshots(phases, snapshots, errors) {
@@ -1567,7 +1760,7 @@ function collectDirectPaths(value, output = []) {
 }
 
 function shellMayWrite(command) {
-  return /(?:^|[;&|\s])(?:rm|mv|cp|install|touch|mkdir|chmod|chown|truncate|tee|patch)(?:\s|$)|(?:^|\s)(?:sed\s+[^\n]*-[A-Za-z]*i|perl\s+[^\n]*-[A-Za-z]*[pi][A-Za-z]*)|(?:^|[^<])>{1,2}\s*[^&]|\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|unlink(?:Sync)?|rename(?:Sync)?|chmod(?:Sync)?|rm(?:Sync)?|rmdir(?:Sync)?|rmtree|remove|write_text|write_bytes|open|allocateWorker|startWorkerAttempt)\s*\(|\.write_(?:text|bytes)\s*\(/i.test(command);
+  return /(?:^|[;&|\s])(?:rm|mv|cp|install|touch|mkdir|chmod|chown|truncate|tee|patch)(?:\s|$)|(?:^|\s)(?:sed\s+[^\n]*-[A-Za-z]*i|perl\s+[^\n]*-[A-Za-z]*[pi][A-Za-z]*)|(?:^|[^<])>{1,2}\s*[^&]|\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|unlink(?:Sync)?|rename(?:Sync)?|chmod(?:Sync)?|rm(?:Sync)?|rmdir(?:Sync)?|rmtree|remove|write_text|write_bytes|open|allocateWorker|startWorkerAttempt|resolveConditionalGates)\s*\(|\.write_(?:text|bytes)\s*\(/i.test(command);
 }
 
 function shellMayCreateLink(command) {
@@ -1589,7 +1782,7 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
   if (['help', '--help', '-h', 'list', 'path', 'inventory', 'verify'].includes(primary)) return allow('packaged read-only command');
   if (primary === 'engagement') {
     if (operation === 'init') return deny('engagement init cannot run inside an active engagement');
-    if (['validate', 'allocate', 'start-attempt', 'status', 'claim', 'release', 'fragment', 'merge', 'id', 'checkpoint', 'heartbeat', 'barrier', 'cleanup'].includes(operation)) {
+    if (['validate', 'allocate', 'start-attempt', 'status', 'claim', 'release', 'fragment', 'merge', 'id', 'checkpoint', 'heartbeat', 'barrier', 'cleanup', 'resolve-gates'].includes(operation)) {
       const requestedManifest = optionValue(tokens, '--manifest');
       const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
       if (requestedManifest && resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
@@ -1999,6 +2192,10 @@ function stringList(value, requireNonEmpty) {
 }
 
 function validSlug(value) {
+  return typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
+}
+
+function validCapabilityId(value) {
   return typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
 }
 

@@ -380,10 +380,65 @@ selected decision and active allocation directly and may retry without a checkpo
 no worker thread began.
 
 The manifest is `schemaVersion: 2` with the derived phase plan. State is `schemaVersion: 3`
-only, carries `skippedPhases` and `ledgerSnapshots`, and contains no migration surface. Any
+only, carries `skippedPhases`, `ledgerSnapshots`, `conditionalAgents`, and `gateResolution`,
+and contains no migration surface. Any
 older, unrecognized, or malformed shape is rejected rather than guessed. Argus 5 upgrade:
 a manifest (`schemaVersion: 1`) or state (`schemaVersion: 2`) written by Argus 4 is
 rejected, so an active older engagement must finish with its original runtime.
+
+## Conditional lanes and gate resolution
+
+A conditional lane is a dispatchable worker whose preflight record still waits on target or
+browser capability gates that recon may prove. Model-control sealing binds
+`conditionalAgents` together with the dispatchable projection: a sorted map from each
+conditional lane to its sorted, unique gate IDs (empty when no lane is conditional).
+Odysseus and Kalchas are never conditional. The map is immutable: re-binding a different
+projection or conditional map fails with `dispatchable agent projection is immutable once
+bound`. A conditional lane is sealed with its normal attempt-1 model decision like every
+dispatchable lane, but allocation refuses it until the gates are resolved: `<lane> is
+conditional on <gates>; run engagement resolve-gates first`.
+
+`argus-assets engagement resolve-gates --manifest <manifest> --controller-token
+<odysseus-token> [--evidence <path>]` records the verdicts exactly once. It prints `GATES  none`
+and changes nothing when no lane is conditional. Otherwise it requires the active Odysseus
+token (argument or `ARGUS_ENGAGEMENT_CONTROLLER_TOKEN`), `discovery` as the current phase,
+and, when Kalchas is dispatchable, Kalchas's discovery arrival. A refused call interprets no
+evidence and probes nothing. The evidence is Kalchas's
+`solution/discovery/capability-evidence.json` (`argus/capability-evidence@1`, see
+`CANONICAL-CONTRACTS.md`); `--evidence` resolves against the artifact root and must stay under
+`solution/discovery`. It must be a non-aliased single-link regular file that validates and
+names this engagement. An aliased, malformed, or foreign file is refused without recording
+anything; a missing file leaves every evidence-backed gate unmet. Recon evidence is input,
+never authority, so the runtime re-checks every gate it can:
+
+| Gate | Proven only when | Basis |
+|---|---|---|
+| `browser-runtime` | A fresh functional probe launches headless Chromium; the probe rewrites `ai_agents_internal/browser-runtime.json` | `runtime-probe` |
+| `source-access` | Kalchas recorded `proven`; `path` is a readable directory disjoint from the artifact root and inside `target.root` when one is recorded; `fileRead` is a readable regular file inside it; both are resolved physically | `kalchas-evidence+path-check` |
+| `existing-suite` | The same checks, with `testFile` | `kalchas-evidence+path-check` |
+| `non-rest-surface` | Kalchas recorded `proven` and every `surfaceId` exists in the validated `solution/surface-inventory.json` | `kalchas-evidence+inventory` |
+| `db-access`, `multi-service` | Never by recon: the runtime cannot re-verify credentials or a service topology, so only an operator `--feature` at launch declares them | `operator-feature-required` |
+| Any other gate | Never | `not-recon-provable` |
+
+State then holds `gateResolution`: `resolvedAt`, `evidenceSha256` (the SHA-256 of the
+evidence bytes, or `null`), one `{status: proven|unmet, basis, reason}` verdict per conditional
+gate, and one outcome per conditional lane. The runtime computes every lane outcome itself,
+`released` exactly when all of the lane's gates are proven and `gate-unmet` otherwise, and
+never accepts a caller-supplied lane map. Reasons are fixed runtime strings, so no proof
+value (path, host, query, or surface ID) enters state. The resolution is immutable: a second
+run fails with `gate resolution is immutable once recorded`, and every state load re-checks
+that the lane outcomes follow from the gate verdicts.
+
+Discovery cannot advance while conditional lanes exist without a recorded resolution
+(`discovery cannot advance before engagement resolve-gates records the conditional lane
+verdicts`), because resolution is only possible during discovery. A conditional discovery
+participant, such as Tiresias waiting on `source-access`, keeps the discovery barrier open
+until it is released and arrives or is omitted. A released lane allocates and participates
+normally. A `gate-unmet` lane is omitted: allocation fails with `<lane> was omitted: gate
+unmet (<gates>)`, and the lane leaves every phase's participants and standby lanes exactly
+like a role outside the dispatchable projection, so no barrier, standby window, or success
+cleanup waits for it. Under the `selected-dispatchable-predecessors` dependency policy it
+counts as a non-dispatched predecessor, and its unmet gates remain a named residual risk.
 
 ## Canonical machine contracts
 

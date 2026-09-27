@@ -52,6 +52,7 @@ import {
   buildGuardAudit,
   claimExclusive,
   cleanupWorker,
+  conditionalGateRequest,
   createDefaultEngagement,
   evaluateWriteGuard,
   ensurePreflightHeartbeat,
@@ -61,6 +62,7 @@ import {
   locateEngagementManifest,
   mergeCanonical,
   releaseExclusive,
+  resolveConditionalGates,
   skipPhases,
   startWorkerAttempt,
   validateEngagementManifest,
@@ -239,7 +241,7 @@ Usage:
   argus-assets preflight --target <url-or-path> --mode <A|B|C|D> [options]
   argus-assets authorization init --target <url-or-path> [options]
   argus-assets authorization check --manifest <path> --lane <slug> --action <action> --target <target> [options]
-  argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup> [options]
+  argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup|resolve-gates> [options]
   argus-assets engagement allocate --manifest <engagement.json> --lane <slug> --decision <model-decision.json> [--dispatch-authorization <MDA-file>] [--token <lane-token>] [--controller-token <odysseus-token>]
   argus-assets engagement start-attempt --manifest <engagement.json> --lane <slug> --decision <model-decision.json> --token <lane-token> [--controller-token <odysseus-token>] [--dispatch-authorization <MDA-file>]
   argus-assets schema <list|validate> [options]
@@ -301,6 +303,9 @@ Engagement coordination:
   heartbeat --manifest <path> --lane <slug> --token <lease> --phase <phase> --completed <n> --total <n> --status <status>
   barrier arrive|status|advance --manifest <path> [lease options]
   cleanup --manifest <path> --lane <slug> --token <lease> --outcome <success|failure|interrupted>
+  resolve-gates --manifest <path> [--controller-token <odysseus-token>] [--evidence <path>]
+    Once, in discovery after Kalchas arrives; --evidence defaults to
+    solution/discovery/capability-evidence.json, resolved against the artifact root.
 
 Capability-based templates:
   detect --target <repo> [--output <json|->]
@@ -2001,10 +2006,11 @@ function engagementCommand(args) {
     if (operation === 'heartbeat') return engagementHeartbeat(rest);
     if (operation === 'barrier') return engagementBarrier(rest);
     if (operation === 'cleanup') return engagementCleanup(rest);
+    if (operation === 'resolve-gates') return engagementResolveGates(rest);
   } catch (error) {
     fail(`engagement ${operation ?? '(missing)'}: ${error.message}`);
   }
-  fail('usage: argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup> [options]');
+  fail('usage: argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup|resolve-gates> [options]');
 }
 
 function initializeEngagement(args) {
@@ -2515,6 +2521,165 @@ function engagementCleanup(args) {
   const { manifest: engagement } = loadEngagement(options);
   console.log(JSON.stringify(cleanupWorker(engagement, options.lane, leaseToken(options), options.outcome)));
   return 0;
+}
+
+// Conditional lanes wait on target or browser gates that recon may prove. The controller
+// resolves them once, in discovery after Kalchas arrives. Kalchas's capability evidence is
+// recon input, never authority: the runtime re-probes the browser runtime, re-checks source
+// and suite paths itself, and matches protocol surfaces against the validated surface
+// inventory. The runtime cannot re-verify database credentials or a service topology, so
+// recon never releases db-access or multi-service; only an operator --feature at launch
+// declares them. Every recorded reason is a fixed string, so no proof value reaches state.
+function engagementResolveGates(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--controller-token', '--evidence']));
+  requireOptions(options, ['manifest'], 'engagement resolve-gates');
+  const { manifest: engagement } = loadEngagement(options);
+  const state = getEngagementStatus(engagement);
+  if (!plainObject(state.conditionalAgents) || Object.keys(state.conditionalAgents).length === 0) {
+    console.log('GATES  none');
+    return 0;
+  }
+  const controllerToken = controllerCapabilityToken(options);
+  if (!nonEmptyString(controllerToken)) fail('engagement resolve-gates requires --controller-token or ARGUS_ENGAGEMENT_CONTROLLER_TOKEN');
+  const request = conditionalGateRequest(engagement, controllerToken);
+  const artifactRoot = realpathSync(engagement.artifactRoot);
+  const context = { engagement, artifactRoot, evidence: loadCapabilityEvidence(engagement, artifactRoot, options.evidence) };
+  // Evidence-backed gates fail closed first, so a refused call never re-probes the browser.
+  const ordered = [...request.capabilities.filter((id) => id !== 'browser-runtime'), ...request.capabilities.filter((id) => id === 'browser-runtime')];
+  const capabilities = Object.fromEntries(ordered.map((id) => [id, resolveCapabilityGate(id, context)]));
+  const gateResolution = resolveConditionalGates(engagement, controllerToken, { evidenceSha256: context.evidence.sha256, capabilities });
+  const lanes = Object.keys(gateResolution.lanes);
+  console.log(JSON.stringify({
+    gateResolution,
+    released: lanes.filter((lane) => gateResolution.lanes[lane] === 'released'),
+    gateUnmet: lanes.filter((lane) => gateResolution.lanes[lane] === 'gate-unmet'),
+  }));
+  return 0;
+}
+
+// A missing evidence file is a recon result (every evidence-backed gate stays unmet); an
+// aliased, malformed, or foreign file is refused without recording anything.
+function loadCapabilityEvidence(engagement, artifactRoot, explicit) {
+  const discoveryRoot = join(artifactRoot, 'solution', 'discovery');
+  const path = resolve(artifactRoot, explicit ?? join('solution', 'discovery', 'capability-evidence.json'));
+  if (path === discoveryRoot || !isWithin(discoveryRoot, path) || !safePhysicalPath(artifactRoot, path)) {
+    fail('engagement resolve-gates: capability evidence must be a file under <artifactRoot>/solution/discovery without symbolic links');
+  }
+  if (!lstatSafe(path)) return { document: null, sha256: null };
+  const raw = readSecureSingleLink(path, 'capability evidence');
+  let document;
+  try { document = JSON.parse(raw.toString('utf8')); }
+  catch (error) { fail(`engagement resolve-gates: capability evidence is not valid JSON: ${error.message}`); }
+  const errors = validateCanonicalDocument('capability-evidence', document);
+  if (errors.length) fail(`engagement resolve-gates: capability evidence is invalid: ${errors.join('; ')}`);
+  if (document.engagementId !== engagement.engagementId) fail('engagement resolve-gates: capability evidence belongs to another engagement');
+  return { document, sha256: createHash('sha256').update(raw).digest('hex') };
+}
+
+function resolveCapabilityGate(id, context) {
+  if (id === 'browser-runtime') return resolveBrowserRuntimeGate(context);
+  if (id === 'source-access') return resolveRootGate(context, id, 'fileRead', { root: 'source root', file: 'read file' });
+  if (id === 'existing-suite') return resolveRootGate(context, id, 'testFile', { root: 'suite root', file: 'test file' });
+  if (id === 'non-rest-surface') return resolveSurfaceGate(context);
+  if (id === 'db-access') {
+    return gateVerdict('unmet', 'operator-feature-required',
+      'recon cannot release db-access: database credentials are not re-verified by the runtime; the operator declares it with --feature db-access at launch');
+  }
+  if (id === 'multi-service') {
+    return gateVerdict('unmet', 'operator-feature-required',
+      'recon cannot release multi-service: the service topology is not re-verified by the runtime; the operator declares it with --feature multi-service at launch');
+  }
+  return gateVerdict('unmet', 'not-recon-provable', 'not recon-provable');
+}
+
+function gateVerdict(status, basis, reason) {
+  return { status, basis, reason };
+}
+
+// The probe rewrites ai_agents_internal/browser-runtime.json, the record browser lanes read.
+function resolveBrowserRuntimeGate({ engagement, artifactRoot }) {
+  const probedAt = new Date().toISOString();
+  const result = recordBrowserRuntime({
+    artifactRootPath: artifactRoot,
+    persist: true,
+    engagementId: engagement.engagementId,
+    probedAt,
+    result: resolveBrowserRuntime({ targetPath: engagement.target.root, artifactRootPath: artifactRoot, profile: {}, probeAllowed: true, probedAt }),
+  });
+  return result.status === 'available'
+    ? gateVerdict('proven', 'runtime-probe', 'the runtime probe launched headless Chromium; see ai_agents_internal/browser-runtime.json')
+    : gateVerdict('unmet', 'runtime-probe', 'the runtime probe found no functional Playwright runtime; see ai_agents_internal/browser-runtime.json');
+}
+
+function provenReconGate({ evidence }, capability, basis) {
+  if (!evidence.document) return { unmet: gateVerdict('unmet', basis, 'capability evidence file missing') };
+  const gate = evidence.document.gates.find((item) => item.capability === capability);
+  if (gate.verdict !== 'proven') return { unmet: gateVerdict('unmet', basis, `recon verdict is ${gate.verdict}`) };
+  return { gate };
+}
+
+// Both proof paths are resolved physically: the root must be a readable directory disjoint
+// from the worker-writable artifact root and inside the engagement target root when one is
+// recorded, and the named file a readable regular file inside that root.
+function resolveRootGate(context, capability, fileField, labels) {
+  const basis = 'kalchas-evidence+path-check';
+  const recorded = provenReconGate(context, capability, basis);
+  if (recorded.unmet) return recorded.unmet;
+  const { proof } = recorded.gate;
+  const root = readablePhysicalEntry(proof.path, 'directory');
+  if (!root) return gateVerdict('unmet', basis, `${labels.root} is not an existing readable directory`);
+  if (isWithin(context.artifactRoot, root) || isWithin(root, context.artifactRoot)) {
+    return gateVerdict('unmet', basis, `${labels.root} overlaps the artifact root`);
+  }
+  const targetRoot = context.engagement.target.root;
+  if (targetRoot !== null) {
+    const physicalTarget = readablePhysicalEntry(targetRoot, 'directory');
+    if (!physicalTarget || !isWithin(physicalTarget, root)) return gateVerdict('unmet', basis, `${labels.root} is outside the engagement target root`);
+  }
+  const file = readablePhysicalEntry(proof[fileField], 'file');
+  if (!file || file === root || !isWithin(root, file)) {
+    return gateVerdict('unmet', basis, `${labels.file} is not a readable regular file inside the ${labels.root}`);
+  }
+  return gateVerdict('proven', basis, `${labels.root} and ${labels.file} re-checked by the runtime`);
+}
+
+function readablePhysicalEntry(path, kind) {
+  if (typeof path !== 'string' || !path.startsWith('/')) return null;
+  try {
+    const physical = realpathSync(path);
+    const stats = statSync(physical);
+    if (kind === 'directory' ? !stats.isDirectory() : !stats.isFile()) return null;
+    accessSync(physical, kind === 'directory' ? constants.R_OK | constants.X_OK : constants.R_OK);
+    return physical;
+  } catch {
+    return null;
+  }
+}
+
+function resolveSurfaceGate(context) {
+  const basis = 'kalchas-evidence+inventory';
+  const recorded = provenReconGate(context, 'non-rest-surface', basis);
+  if (recorded.unmet) return recorded.unmet;
+  const inventory = loadResolvedSurfaceInventory(context);
+  if (!inventory) return gateVerdict('unmet', basis, 'validated surface inventory is missing');
+  const known = new Set(inventory.items.map((item) => item.id));
+  if (!recorded.gate.proof.surfaceIds.every((id) => known.has(id))) {
+    return gateVerdict('unmet', basis, 'a recon surface id is absent from the validated surface inventory');
+  }
+  return gateVerdict('proven', basis, 'every recon surface id is present in the validated surface inventory');
+}
+
+// The canonical inventory is written only by Kalchas's validated merge, so a present but
+// invalid or foreign document means tampering and is refused rather than read as unmet.
+function loadResolvedSurfaceInventory({ engagement, artifactRoot }) {
+  const path = join(artifactRoot, 'solution', 'surface-inventory.json');
+  if (!safePhysicalPath(artifactRoot, path)) fail('engagement resolve-gates: solution/surface-inventory.json escapes the artifact root or crosses a symbolic link');
+  if (!lstatSafe(path)) return null;
+  const inventory = readSecureJson(path, 'surface inventory');
+  const errors = validateCanonicalDocument('surface-inventory', inventory);
+  if (errors.length) fail(`engagement resolve-gates: surface inventory is invalid: ${errors.join('; ')}`);
+  if (inventory.engagementId !== engagement.engagementId) fail('engagement resolve-gates: surface inventory belongs to another engagement');
+  return inventory;
 }
 
 function guardCommand(args) {

@@ -299,6 +299,11 @@ guard_shell "argus-assets engagement validate --manifest $WORK/alternate-engagem
 guard_shell "argus-assets engagement heartbeat --manifest $MANIFEST --lane odysseus --token $(token_for odysseus) --phase hunting --completed 1 --total 4 --status running" allow
 guard_shell "argus-assets engagement barrier skip --manifest $MANIFEST --lane odysseus --token $(token_for odysseus) --reason converged" allow
 guard_shell "argus-assets engagement barrier skip --manifest $WORK/alternate-engagement.json --lane odysseus --token $(token_for odysseus) --reason converged" GUARD-SHELL-AMBIGUOUS
+guard_shell "argus-assets engagement resolve-gates --manifest $MANIFEST --controller-token $(token_for odysseus)" allow
+guard_shell "argus-assets engagement resolve-gates --manifest $MANIFEST --controller-token $(token_for odysseus) --evidence solution/discovery/capability-evidence.json" allow
+guard_shell "argus-assets engagement resolve-gates --manifest $WORK/alternate-engagement.json --controller-token $(token_for odysseus)" GUARD-SHELL-AMBIGUOUS
+# No arrow function here: its ">" alone would already look like a redirection.
+guard_shell "node -e \"import('./runtime/engagement.mjs').then(function (m) { m.resolveConditionalGates({}, 'token', {}) })\"" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets redact --input reports/result.txt --output app/redacted.txt" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets redact --input reports/result.txt --output ai_agents_internal/operator-decisions/forged.json" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets preflight --target app --artifact-root app --mode A" GUARD-TARGET-IMMUTABLE
@@ -452,6 +457,148 @@ for (const [index, line] of fs.readFileSync(process.argv[2], 'utf8').trim().spli
   if (event.command) throw new Error(`audit event ${index + 1} contains raw command`);
 }
 NODE
+
+# Conditional lanes: resolve-gates re-checks Kalchas's capability evidence once, in discovery.
+# The sealed main engagement has no conditional lanes, so resolution is a read-only no-op.
+[ "$("$CLI" engagement resolve-gates --manifest "$MANIFEST")" = 'GATES  none' ] || fail 'resolve-gates without conditional lanes did not report none'
+[ "$("$CLI" engagement status --manifest "$MANIFEST" | jq -c '[.conditionalAgents, .gateResolution]')" = '[{},null]' ] \
+  || fail 'model-control sealing did not bind an empty conditional map'
+
+# Each scenario gets a fresh engagement whose target root is disjoint from its artifact root.
+# The conditional map is bound through the packaged runtime before Odysseus and Kalchas
+# allocate; Kalchas then merges the surface inventory and arrives at discovery.
+prepare_conditional_engagement() {
+  local name="$1" conditional="$2" base="$WORK/conditional-$1"
+  mkdir -p "$base/target/src/server" "$base/target/tests" "$base/artifacts"
+  printf 'export const orders = [];\n' >"$base/target/src/server/orders.ts"
+  printf 'test("orders", () => {});\n' >"$base/target/tests/orders.spec.ts"
+  "$CLI" engagement init --target "$base/target" --artifact-root "$base/artifacts" --mode A --engagement-id "conditional-$name" >/dev/null
+  node --input-type=module - "$ROOT" "$base/artifacts/ai_agents_internal/engagement.json" "$conditional" \
+    "$ROOT/scripts/fixtures/argus-coverage/surface-inventory.json" >"$base/tokens.json" <<'NODE'
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const [root, manifestPath, conditional, inventoryPath] = process.argv.slice(2);
+const runtime = await import(pathToFileURL(join(root, 'argus/claude/lib/engagement.mjs')).href);
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+const binding = (seed) => {
+  const digest = createHash('sha256').update(`${manifest.engagementId}:${seed}`).digest('hex');
+  return { modelDecisionId: `MDR-${digest.slice(0, 24)}`, modelDecisionIntegritySha256: digest, dispatchId: `dispatch:${seed}`, attempt: 1, runtime: 'claude' };
+};
+runtime.bindDispatchableAgents(manifest, manifest.selectedAgents, JSON.parse(conditional));
+const controller = runtime.allocateWorker(manifest, 'odysseus', { executionBinding: binding('odysseus') });
+const kalchas = runtime.allocateWorker(manifest, 'kalchas', { controllerToken: controller.token, executionBinding: binding('kalchas') });
+const inventory = { ...JSON.parse(readFileSync(inventoryPath, 'utf8')), engagementId: manifest.engagementId };
+runtime.writeFragment(manifest, 'kalchas', kalchas.token, 'solution/surface-inventory.json', 'recon-inventory', `${JSON.stringify(inventory)}\n`);
+runtime.mergeCanonical(manifest, 'kalchas', kalchas.token, 'solution/surface-inventory.json');
+runtime.arriveBarrier(manifest, 'kalchas', kalchas.token, 'discovery');
+console.log(JSON.stringify({ controller: controller.token, kalchas: kalchas.token }));
+NODE
+}
+
+# The P-06 fixture, rebound to this engagement: source-access points at <source-root>, and
+# existing-suite plus non-rest-surface (surface id <surface>) are proven for the scenario.
+write_capability_evidence() {
+  local base="$1" source_root="$2" read_file="$3" surface="${4:-SRF-API-ORDERS-POST}"
+  mkdir -p "$base/artifacts/solution/discovery"
+  jq --arg id "$(jq -r .engagementId "$base/artifacts/ai_agents_internal/engagement.json")" --arg surface "$surface" \
+    --arg src "$source_root" --arg file "$read_file" --arg suite "$base/target/tests" --arg test "$base/target/tests/orders.spec.ts" '
+    .engagementId = $id
+    | .gates |= map(
+        if .capability == "source-access" then .proof.path = $src | .proof.fileRead = $file
+        elif .capability == "existing-suite" then
+          .verdict = "proven" | .summary = "The target ships a runnable test suite." | .evidenceIds = ["EVD-0005"]
+          | .proof = {kind: "suite-root", path: $suite, runner: "vitest", testFile: $test}
+        elif .capability == "non-rest-surface" then
+          .verdict = "proven" | .summary = "Order creation is also exposed over GraphQL." | .evidenceIds = ["EVD-0006"]
+          | .proof = {kind: "protocol-surface", protocols: ["graphql"], surfaceIds: [$surface]}
+        else . end)' \
+    "$ROOT/scripts/fixtures/argus-schemas/valid/capability-evidence.json" >"$base/artifacts/solution/discovery/capability-evidence.json"
+}
+
+# A host-provisioned fake Playwright comes first in candidate order, so the browser gate's
+# functional re-probe is deterministic whatever else the host has installed.
+CONDITIONAL_HOME="$WORK/conditional-home"
+mkdir -p "$CONDITIONAL_HOME/.cache/argus/browser-runtime/0.0.1/node_modules"
+cp -R "$ROOT/scripts/fixtures/argus-preflight/fake-playwright" "$CONDITIONAL_HOME/.cache/argus/browser-runtime/0.0.1/node_modules/playwright"
+
+# Full scenario: every recon-provable gate is re-checked and released; db-access and
+# multi-service stay unmet although Kalchas recorded them as proven.
+prepare_conditional_engagement gates \
+  '{"asklepios":["existing-suite"],"charon":["db-access"],"orion":["browser-runtime"],"pistis":["multi-service"],"proteus":["non-rest-surface"],"tiresias":["source-access"]}'
+GATES="$WORK/conditional-gates"
+GATES_MANIFEST="$GATES/artifacts/ai_agents_internal/engagement.json"
+GATES_CONTROLLER="$(jq -r .controller "$GATES/tokens.json")"
+write_capability_evidence "$GATES" "$GATES/target/src" "$GATES/target/src/server/orders.ts"
+if gate_output="$(HOME="$CONDITIONAL_HOME" "$CLI" engagement resolve-gates --manifest "$GATES_MANIFEST" --controller-token "$(jq -r .kalchas "$GATES/tokens.json")" 2>&1)"; then
+  fail 'resolve-gates accepted a worker token as the controller token'
+fi
+grep -Fq 'invalid or inactive lease for odysseus' <<<"$gate_output" || fail "worker-token resolve-gates failed for the wrong reason: $gate_output"
+test ! -e "$GATES/artifacts/ai_agents_internal/browser-runtime.json" || fail 'a refused resolve-gates re-probed the browser runtime'
+if gate_output="$(HOME="$CONDITIONAL_HOME" "$CLI" engagement resolve-gates --manifest "$GATES_MANIFEST" --controller-token "$GATES_CONTROLLER" \
+  --evidence reports/capability-evidence.json 2>&1)"; then
+  fail 'resolve-gates read capability evidence outside solution/discovery'
+fi
+grep -Fq 'capability evidence must be a file under <artifactRoot>/solution/discovery' <<<"$gate_output" || fail "misplaced evidence failed for the wrong reason: $gate_output"
+(cd "$WORK" && HOME="$CONDITIONAL_HOME" ARGUS_ENGAGEMENT_CONTROLLER_TOKEN="$GATES_CONTROLLER" \
+  "$CLI" engagement resolve-gates --manifest "$GATES_MANIFEST") >"$WORK/resolve-gates.json"
+jq -e '(.released == ["asklepios","orion","proteus","tiresias"]) and (.gateUnmet == ["charon","pistis"])' "$WORK/resolve-gates.json" >/dev/null \
+  || fail "resolve-gates released the wrong lanes: $(cat "$WORK/resolve-gates.json")"
+jq -e --arg digest "$(digest_file "$GATES/artifacts/solution/discovery/capability-evidence.json")" '.gateResolution as $g
+  | $g.evidenceSha256 == $digest
+  and $g.capabilities["browser-runtime"] == {status: "proven", basis: "runtime-probe", reason: "the runtime probe launched headless Chromium; see ai_agents_internal/browser-runtime.json"}
+  and $g.capabilities["source-access"] == {status: "proven", basis: "kalchas-evidence+path-check", reason: "source root and read file re-checked by the runtime"}
+  and $g.capabilities["existing-suite"] == {status: "proven", basis: "kalchas-evidence+path-check", reason: "suite root and test file re-checked by the runtime"}
+  and $g.capabilities["non-rest-surface"] == {status: "proven", basis: "kalchas-evidence+inventory", reason: "every recon surface id is present in the validated surface inventory"}
+  and ([$g.capabilities["db-access"], $g.capabilities["multi-service"]] | map(.status + ":" + .basis)) == ["unmet:operator-feature-required", "unmet:operator-feature-required"]
+  and ($g.capabilities["db-access"].reason | contains("credentials are not re-verified by the runtime"))' "$WORK/resolve-gates.json" >/dev/null \
+  || fail "resolve-gates recorded unexpected verdicts: $(cat "$WORK/resolve-gates.json")"
+jq -e --arg id conditional-gates '.engagementId == $id and .status == "available" and .source == "host-provisioned"' \
+  "$GATES/artifacts/ai_agents_internal/browser-runtime.json" >/dev/null || fail 'resolve-gates did not rewrite browser-runtime.json from its re-probe'
+GATES_STATE="$GATES/artifacts/ai_agents_internal/engagement-state.json"
+jq -e --slurpfile out "$WORK/resolve-gates.json" '.gateResolution == $out[0].gateResolution' "$GATES_STATE" >/dev/null || fail 'resolve-gates output differs from the persisted state'
+for proof_value in orders.ts 127.0.0.1 'SELECT 1' shop_test SRF-API-ORDERS-POST; do
+  if grep -Fq "$proof_value" "$GATES_STATE"; then fail "engagement state copied a proof value: $proof_value"; fi
+done
+if gate_output="$(HOME="$CONDITIONAL_HOME" "$CLI" engagement resolve-gates --manifest "$GATES_MANIFEST" --controller-token "$GATES_CONTROLLER" 2>&1)"; then
+  fail 'resolve-gates recorded a second resolution'
+fi
+grep -Fq 'gate resolution is immutable once recorded' <<<"$gate_output" || fail "second resolve-gates failed for the wrong reason: $gate_output"
+
+# Kalchas's proven verdicts stay unmet when the runtime's own checks disagree: a source root
+# outside the engagement target root, and a surface id absent from the validated inventory.
+prepare_conditional_engagement outside '{"proteus":["non-rest-surface"],"tiresias":["source-access"]}'
+OUTSIDE="$WORK/conditional-outside"
+mkdir -p "$WORK/elsewhere/src"
+printf 'export {};\n' >"$WORK/elsewhere/src/index.ts"
+write_capability_evidence "$OUTSIDE" "$WORK/elsewhere/src" "$WORK/elsewhere/src/index.ts" SRF-API-UNKNOWN
+"$CLI" engagement resolve-gates --manifest "$OUTSIDE/artifacts/ai_agents_internal/engagement.json" \
+  --controller-token "$(jq -r .controller "$OUTSIDE/tokens.json")" >"$WORK/resolve-outside.json"
+jq -e '.released == [] and .gateUnmet == ["proteus","tiresias"]
+  and .gateResolution.capabilities["source-access"] == {status: "unmet", basis: "kalchas-evidence+path-check", reason: "source root is outside the engagement target root"}
+  and .gateResolution.capabilities["non-rest-surface"] == {status: "unmet", basis: "kalchas-evidence+inventory", reason: "a recon surface id is absent from the validated surface inventory"}' \
+  "$WORK/resolve-outside.json" >/dev/null || fail "recon verdicts the runtime could not re-check were released: $(cat "$WORK/resolve-outside.json")"
+
+# Foreign evidence is refused without recording anything; missing evidence leaves every
+# evidence-backed gate unmet with a null evidence digest.
+prepare_conditional_engagement missing '{"proteus":["non-rest-surface"],"tiresias":["source-access"]}'
+MISSING="$WORK/conditional-missing"
+MISSING_MANIFEST="$MISSING/artifacts/ai_agents_internal/engagement.json"
+MISSING_CONTROLLER="$(jq -r .controller "$MISSING/tokens.json")"
+write_capability_evidence "$MISSING" "$MISSING/target/src" "$MISSING/target/src/server/orders.ts"
+jq '.engagementId = "another-engagement"' "$MISSING/artifacts/solution/discovery/capability-evidence.json" >"$WORK/foreign-evidence.json"
+mv "$WORK/foreign-evidence.json" "$MISSING/artifacts/solution/discovery/capability-evidence.json"
+if gate_output="$("$CLI" engagement resolve-gates --manifest "$MISSING_MANIFEST" --controller-token "$MISSING_CONTROLLER" 2>&1)"; then
+  fail 'resolve-gates accepted capability evidence from another engagement'
+fi
+grep -Fq 'capability evidence belongs to another engagement' <<<"$gate_output" || fail "foreign evidence failed for the wrong reason: $gate_output"
+[ "$("$CLI" engagement status --manifest "$MISSING_MANIFEST" | jq -c .gateResolution)" = null ] || fail 'refused resolve-gates recorded a resolution'
+rm "$MISSING/artifacts/solution/discovery/capability-evidence.json"
+"$CLI" engagement resolve-gates --manifest "$MISSING_MANIFEST" --controller-token "$MISSING_CONTROLLER" >"$WORK/resolve-missing.json"
+jq -e '.gateUnmet == ["proteus","tiresias"] and .gateResolution.evidenceSha256 == null
+  and ([.gateResolution.capabilities[] | .status + ":" + .reason] | unique) == ["unmet:capability evidence file missing"]' \
+  "$WORK/resolve-missing.json" >/dev/null || fail "missing capability evidence did not leave the gates unmet: $(cat "$WORK/resolve-missing.json")"
 
 # Cleanup removes sensitive/temporary state and held locks on both success and failure.
 touch "$TARGET/ai_agents_internal/workers/tyche/browser-profile/session" \
