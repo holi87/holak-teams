@@ -295,6 +295,28 @@ The controller form is `engagement allocate --manifest <manifest> --lane odysseu
 controller captures the returned `token`, replaces its stored lane capability, and only then
 spawns the retry.
 
+Two batch forms save controller turns without widening any authority. `model route
+--manifest <manifest> --agents <slug,slug|dispatchable> --runtime claude --signal normal
+--dispatch-prefix <id> --attempt 1` persists the whole initial set in one call before the
+first allocation: `dispatchable` expands to Odysseus plus every lane the current preflight
+makes dispatchable (the projection the seal binds), Odysseus always comes first, and each
+dispatch ID is `<prefix>-<agent>`. It refuses any other signal or attempt, `--agent`,
+`--dispatch-id`, `--request`, `--operator-decision`, and `--controller-token`, and any
+active allocation. Every listed agent is validated before a decision is persisted, an exact
+replay returns the same decisions, and one `argus/model-route-batch@1` line reports each
+agent's `dispatchId`, `decisionId`, `relativePath`, `status`, and `reasonCode`; the exit code
+is 2 when any decision is blocked. `engagement allocate --manifest <manifest> --lanes
+<slug,slug> --controller-token <odysseus-token>` then allocates one wave of new worker lanes
+under the initial model-control lock. It requires the seal, refuses `odysseus`, `--lane`,
+`--decision`, `--token`, and `--dispatch-authorization`, and is Claude-only because every
+Codex lane needs its own JIT dispatch authorization. Each lane must have its sealed decision,
+no active allocation, a released gate when it is conditional, and the sealed preflight digest
+before any lane is allocated; allocation then runs in the listed order and stops at the first
+error. The `argus/engagement-allocation-batch@1` line carries each new allocation with its
+token, on stdout only, plus the failed or unattempted lanes, and exits 1 when any failed.
+Neither form persists a token, and the write guard applies to both exactly as to their
+single-lane forms.
+
 Each allocation returns a lease token once plus deterministic unique resources: managed
 browser profile, browser-artifact directory, auth directory, temporary directory, output
 directory, synthetic account alias, data namespace, and port. State stores only the token
