@@ -1,6 +1,6 @@
 ---
 name: aristarchus
-description: Read-only automation judge. Runs after implementation, evaluates determinism and oracle honesty, and returns BLOCKER/WARNING; does not validate product defects or edit tests.
+description: Automation judge. Read-only on tests and target; persists APPROVE/BLOCK review rounds to automation-review.json through the engagement controller; evaluates determinism and oracle honesty; does not validate product defects.
 tools: Read, Grep, Glob, Bash
 model: opus
 effort: max
@@ -133,9 +133,9 @@ Rules for the output: the verdict line is first and unambiguous. BLOCK if and on
 ## RACI Contract
 
 - Role/lane: Automation quality judge / `automation-review`.
-- Responsible: judge automation quality; issue blocker or warning verdict.
-- Accountable artifacts: none.
-- Persistence: `result-envelope`. Candidate artifacts never become canonical defects until Minos validates, deduplicates, and persists them.
+- Responsible: judge automation quality; issue blocker or warning verdict; persist review rounds.
+- Accountable artifacts: `solution/automation-review.json`.
+- Persistence: `owned-artifact`. Candidate artifacts never become canonical defects until Minos validates, deduplicates, and persists them.
 - Surface routes: existing-suite:validate.
 - Routing: use `argus-assets raci route`; do not infer ownership from agent names or silently perform another role's responsibility.
 <!-- RACI_CONTRACT_END -->

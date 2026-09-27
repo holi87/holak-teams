@@ -48,6 +48,7 @@ import {
   allocateWorker,
   appendHeartbeat,
   arriveBarrier,
+  automationReviewStatus,
   bindDispatchableAgents,
   buildGuardAudit,
   claimExclusive,
@@ -61,8 +62,10 @@ import {
   initializeEngagementState,
   locateEngagementManifest,
   mergeCanonical,
+  readAutomationReview,
   releaseExclusive,
   resolveConditionalGates,
+  reviewCorpusDigest,
   skipPhases,
   startWorkerAttempt,
   validateEngagementManifest,
@@ -199,6 +202,9 @@ switch (command) {
   case 'coverage':
     process.exitCode = coverageCommand(args);
     break;
+  case 'automation-review':
+    process.exitCode = automationReviewCommand(args);
+    break;
   case 'raci':
     process.exitCode = raciCommand(args);
     break;
@@ -258,6 +264,8 @@ Usage:
   argus-assets schema <list|validate> [options]
   argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--evidence <json>] [--ledger <json>] [--automation-status <json>] [--root <dir>] [--output <json|->]
   argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
+  argus-assets automation-review digest --manifest <engagement.json>
+  argus-assets automation-review check --manifest <engagement.json> [--emit-gate <path>] [--json]
   argus-assets model list
   argus-assets model benchmark
   argus-assets model trust --manifest <engagement.json> --runtime-key-id <key> --operator-key-id <key>
@@ -316,7 +324,7 @@ Engagement coordination:
   init --target <target> --artifact-root <root> --mode <A|B|C|D> [--browser-support <json>] [--accessibility-requirement <json>]
   allocate --manifest <path> --lane <slug>
   allocate --manifest <path> --lanes <slug,slug> --controller-token <odysseus-token>
-  fragment --manifest <path> --lane <slug> --token <lease> --canonical <path> --id <id> --input <file|->
+  fragment --manifest <path> --lane <slug> --token <lease> --canonical <path> --id <id> (--input <file|-> | --json <single-line-object>)
   merge --manifest <path> --owner <slug> --token <lease> --canonical <path>
   claim|release --manifest <path> --lane <slug> --token <lease> --resource <reset|fault>
   id --manifest <path> --lane <slug> --token <lease> --kind <kind> --identity <stable-key>
@@ -327,6 +335,13 @@ Engagement coordination:
   resolve-gates --manifest <path> [--controller-token <odysseus-token>] [--evidence <path>]
     Once, in discovery after Kalchas arrives; --evidence defaults to
     solution/discovery/capability-evidence.json, resolved against the artifact root.
+
+Automation review (Aristarchus's canonical solution/automation-review.json):
+  digest prints the current test-corpus digest {sha256, fileCount, roots} for a review round.
+  check exits 0 when the latest round APPROVEs the current corpus or Aristarchus is not
+  dispatchable, 13 when it is BLOCKED, STALE (the corpus changed), or ABSENT, and 14 for an
+  invalid manifest, review record, or corpus. --emit-gate writes verdict=, reviewId=, and corpusSha256=
+  lines for the runner; --json prints the status object instead of the status line.
 
 Browser provisioning (host/operator-only; argus-launch --provision-browser runs it before the sandbox):
   provision reuses a host Playwright outside the artifact root that already launches headless
@@ -2319,6 +2334,97 @@ function coverageArtifactReader(rootOption) {
   };
 }
 
+// The automation review gate follows the runner exit-code contract: 0 lets the run proceed,
+// 13 is a policy denial (BLOCKED, STALE, or ABSENT review), and 14 is an invalid input
+// (manifest, state, or review record). The gate file never carries a lease token.
+function automationReviewCommand(args) {
+  const [operation, ...rest] = args;
+  const usage = 'usage: argus-assets automation-review digest --manifest <engagement.json> | check --manifest <engagement.json> [--emit-gate <path>] [--json]';
+  const invalid = (message) => {
+    console.error(`FAIL  automation-review ${operation ?? '(missing)'}: ${message}`);
+    return 14;
+  };
+  if (!['digest', 'check'].includes(operation)) return invalid(usage);
+  const values = operation === 'check' ? ['--manifest', '--emit-gate'] : ['--manifest'];
+  const options = {};
+  for (let index = 0; index < rest.length; index += 1) {
+    const name = rest[index];
+    if (operation === 'check' && name === '--json') {
+      if (options.json) return invalid('duplicate option: --json');
+      options.json = true;
+      continue;
+    }
+    const value = rest[index + 1];
+    if (!values.includes(name)) return invalid(`unknown option: ${name}`);
+    if (value == null || value.startsWith('--')) return invalid(`${name} requires a value`);
+    const key = kebabToCamel(name.slice(2));
+    if (Object.hasOwn(options, key)) return invalid(`duplicate option: ${name}`);
+    options[key] = value;
+    index += 1;
+  }
+  if (!options.manifest) return invalid(`${operation} requires --manifest`);
+
+  let engagement;
+  let status;
+  let review;
+  let currentSha256 = null;
+  try {
+    engagement = loadAutomationReviewEngagement(options.manifest);
+    if (operation === 'digest') {
+      process.stdout.write(`${JSON.stringify(reviewCorpusDigest(engagement), null, 2)}\n`);
+      return 0;
+    }
+    const state = getEngagementStatus(engagement);
+    review = readAutomationReview(engagement, state);
+    status = automationReviewStatus(engagement, state);
+    if (status.status === 'stale') currentSha256 = reviewCorpusDigest(engagement).sha256;
+  } catch (error) {
+    return invalid(error.message);
+  }
+
+  const verdict = status.status.toUpperCase();
+  const reviewedSha256 = review?.latest.corpus.sha256 ?? null;
+  if (options.emitGate) {
+    const gatePath = resolve(options.emitGate);
+    assertActiveEngagementWrites([gatePath], 'automation-review gate');
+    try {
+      atomicPrivateWrite(gatePath, `verdict=${verdict}\nreviewId=${status.reviewId ?? '-'}\ncorpusSha256=${reviewedSha256 ?? '-'}\n`);
+    } catch (error) {
+      return invalid(`cannot write gate ${gatePath}: ${error.message}`);
+    }
+  }
+  const denied = ['blocked', 'stale', 'absent'].includes(status.status);
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify({ schema: 'argus/automation-review-status@1', ...status, reviewedCorpusSha256: reviewedSha256 }, null, 2)}\n`);
+    return denied ? 13 : 0;
+  }
+  const round = status.reviewId ? ` review=${status.reviewId} round=${status.round}` : '';
+  if (status.status === 'approved') {
+    console.log(`AUTOMATION-REVIEW APPROVED${round} warnings=${status.warnings} corpus=${reviewedSha256}`);
+  } else if (status.status === 'not-applicable') {
+    console.log('AUTOMATION-REVIEW NOT-APPLICABLE aristarchus is not dispatchable and no review is merged');
+  } else if (status.status === 'blocked') {
+    console.log(`AUTOMATION-REVIEW BLOCKED${round} blockers=${status.blockers} warnings=${status.warnings}; re-review required`);
+  } else if (status.status === 'stale') {
+    console.log(`AUTOMATION-REVIEW STALE${round} reviewed=${reviewedSha256} current=${currentSha256}; the test corpus changed after the review; re-review required`);
+  } else {
+    const canonical = engagement.writePolicy.canonicalArtifacts.find((item) => item.schema === 'automation-review');
+    console.log(`AUTOMATION-REVIEW ABSENT no merged ${canonical.path} while aristarchus is dispatchable; re-review required`);
+  }
+  return denied ? 13 : 0;
+}
+
+// loadEngagement exits 1 on an unreadable manifest; the review gate reports every invalid
+// manifest as 14 instead, so the aliasing and JSON checks run here first.
+function loadAutomationReviewEngagement(manifestPath) {
+  const candidate = resolve(manifestPath);
+  const stats = statSafe(candidate) ? lstatSync(candidate) : null;
+  if (!stats?.isFile() || stats.isSymbolicLink() || stats.nlink !== 1) throw new Error(`engagement manifest must be a single-link regular file: ${candidate}`);
+  try { JSON.parse(readFileSync(candidate, 'utf8')); }
+  catch (error) { throw new Error(`engagement manifest is not valid JSON: ${error.message}`); }
+  return loadEngagement({ manifest: candidate }).manifest;
+}
+
 function schemaCommand(args) {
   const [operation, ...rest] = args;
   if (operation === 'list') {
@@ -2926,10 +3032,14 @@ function engagementRelease(args) {
 }
 
 function engagementFragment(args) {
-  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--canonical', '--id', '--input']));
-  requireOptions(options, ['manifest', 'lane', 'canonical', 'id', 'input'], 'engagement fragment');
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--token', '--canonical', '--id', '--input', '--json']));
+  requireOptions(options, ['manifest', 'lane', 'canonical', 'id'], 'engagement fragment');
+  // A read-only lane without Write submits its document inline; the write guard admits only
+  // one single-line JSON object there, never a file, heredoc, or redirected stdin.
+  if ((options.input === undefined) === (options.json === undefined)) fail('engagement fragment requires exactly one of --input <file|-> or --json <single-line-object>');
+  if (options.json !== undefined && !/^\{[^\n\r]*\}$/.test(options.json)) fail('engagement fragment --json must be one inline single-line JSON object');
   const { manifest: engagement } = loadEngagement(options);
-  const content = readTextInput(options.input);
+  const content = options.json ?? readTextInput(options.input);
   console.log(JSON.stringify(writeFragment(engagement, options.lane, leaseToken(options), options.canonical, options.id, content)));
   return 0;
 }

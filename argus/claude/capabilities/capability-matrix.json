@@ -379,7 +379,9 @@
         "Glob",
         "Bash"
       ],
-      "artifactPaths": []
+      "artifactPaths": [
+        "solution/automation-review.json"
+      ]
     },
     {
       "slug": "asklepios",

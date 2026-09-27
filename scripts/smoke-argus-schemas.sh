@@ -29,7 +29,7 @@ for unsupported_version in 2 4; do
     fail "preflight report reader did not name the supported v3 contract for schemaVersion $unsupported_version"
 done
 
-for kind in bug-ledger lane-plan evidence-reference automation-status surface-inventory coverage-observations coverage-result final-summary model-escalation-request runner-result capability-evidence; do
+for kind in bug-ledger lane-plan evidence-reference automation-status surface-inventory coverage-observations coverage-result final-summary model-escalation-request runner-result capability-evidence automation-review; do
   "$CLI" schema validate --kind "$kind" --input "$FIXTURES/valid/$kind.json" >/dev/null
   invalid_count=0
   for invalid in "$FIXTURES/invalid/$kind.json" "$FIXTURES/invalid/$kind-"*.json "$FIXTURES/semantic-invalid/$kind-"*.json; do
@@ -87,6 +87,7 @@ KALCHAS="$(argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST" kalchas "$ODYSSEUS" |
 ATALANTA="$(argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST" atalanta "$ODYSSEUS" | jq -r .token)"
 TALOS="$(argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST" talos "$ODYSSEUS" | jq -r .token)"
 DAIDALOS="$(argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST" daidalos "$ODYSSEUS" | jq -r .token)"
+ARISTARCHUS="$(argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST" aristarchus "$ODYSSEUS" | jq -r .token)"
 
 for invalid in "$FIXTURES/invalid/bug-ledger.json" "$FIXTURES/invalid/bug-ledger-"*.json "$FIXTURES/semantic-invalid/bug-ledger-"*.json; do
   [ -f "$invalid" ] || continue
@@ -270,6 +271,122 @@ jq -e '."$schema" == "argus/automation-status@2" and .schemaVersion == 2' "$TARG
 "$CLI" engagement merge --manifest "$MANIFEST" --owner atlas --token "$ATLAS" --canonical solution/automation-status.json >/dev/null
 jq -e '.tests | map(.testId) == ["REG-0001", "TST-0002"]' "$TARGET/solution/automation-status.json" >/dev/null || fail 'automation fragments were not merged in deterministic test ID order'
 
+# Aristarchus persists append-only review rounds bound to the test-corpus digest. The check gate
+# exits 13 until the latest round APPROVEs the corpus exactly as it is now.
+review_check() {
+  local expected="$1" text="$2" code=0
+  shift 2
+  (cd "$TARGET" && "$CLI" automation-review check --manifest "$MANIFEST" "$@") >"$WORK/review-check.out" 2>&1 || code=$?
+  [ "$code" -eq "$expected" ] || fail "automation-review check $* exited $code, expected $expected: $(<"$WORK/review-check.out")"
+  grep -Fq -- "$text" "$WORK/review-check.out" || fail "automation-review check $* did not report '$text': $(<"$WORK/review-check.out")"
+}
+review_digest() { "$CLI" automation-review digest --manifest "$MANIFEST"; }
+review_fragment() {
+  "$CLI" engagement fragment --manifest "$MANIFEST" --lane aristarchus --token "$ARISTARCHUS" --canonical "$REVIEW_CANONICAL" --id "$1" --json "$(<"$2")" "${@:3}"
+}
+review_merge() { "$CLI" engagement merge --manifest "$MANIFEST" --owner aristarchus --token "$ARISTARCHUS" --canonical "$REVIEW_CANONICAL"; }
+REVIEW_CANONICAL=solution/automation-review.json
+REVIEW_GATE="$TARGET/reports/automation-review.gate"
+review_check 13 "AUTOMATION-REVIEW ABSENT no merged $REVIEW_CANONICAL while aristarchus is dispatchable; re-review required"
+mkdir -p "$TARGET/tests"
+printf "test('order total', async () => { expect(await total()).toBe(42); });\n" >"$TARGET/tests/a.spec.ts"
+printf '#!/usr/bin/env bash\nexec npx playwright test "$@"\n' >"$TARGET/run-tests.sh"
+review_digest >"$WORK/review-digest-1.json"
+node --input-type=module - "$TARGET" "$WORK/review-digest-1.json" <<'NODE'
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+const [target, digestPath] = process.argv.slice(2);
+const digest = JSON.parse(readFileSync(digestPath, 'utf8'));
+const hash = (value) => createHash('sha256').update(value).digest('hex');
+const lines = ['run-tests.sh', 'tests/a.spec.ts'].map((path) => `${path}\0${hash(readFileSync(join(target, path)))}\n`).sort();
+if (digest.sha256 !== hash(lines.join('')) || digest.fileCount !== 2 || JSON.stringify(digest.roots) !== '["run-tests.sh","tests"]') {
+  throw new Error(`automation-review digest does not hash the sorted path/sha256 lines: ${JSON.stringify(digest)}`);
+}
+NODE
+# Dependency, report, and packaged-driver files never enter the corpus; a symbolic link fails closed.
+mkdir -p "$TARGET/tests/node_modules/dep" "$TARGET/tests/test-results" "$TARGET/scripts"
+printf 'module.exports = 1;\n' >"$TARGET/tests/node_modules/dep/index.js"
+printf 'run output\n' >"$TARGET/tests/test-results/out.txt"
+printf '// packaged driver\n' >"$TARGET/scripts/hunt-driver.mjs"
+printf '{}\n' >"$TARGET/scripts/driver.config.json"
+review_digest >"$WORK/review-digest-2.json"
+jq -e --slurpfile first "$WORK/review-digest-1.json" '.sha256 == $first[0].sha256 and .fileCount == 2 and .roots == ["run-tests.sh", "scripts", "tests"]' \
+  "$WORK/review-digest-2.json" >/dev/null || fail "excluded corpus paths changed the review digest: $(<"$WORK/review-digest-2.json")"
+ln -s ../reports "$TARGET/tests/linked-reports"
+if review_digest >"$WORK/review-digest-link.out" 2>&1; then fail 'automation-review digest followed a symbolic link inside the corpus'; fi
+grep -Fq 'automation review corpus cannot contain a symbolic link: tests/linked-reports' "$WORK/review-digest-link.out" || fail "corpus symlink failed for another reason: $(<"$WORK/review-digest-link.out")"
+rm "$TARGET/tests/linked-reports"
+
+# Round 1 BLOCKs. Only Aristarchus submits the single document, inline through --json.
+jq -c --argjson corpus "$(review_digest)" '.engagementId = "schema-fixture" | .reviews = [.reviews[0] | .corpus = $corpus]' \
+  "$FIXTURES/valid/automation-review.json" >"$WORK/review-r1.json"
+if "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical "$REVIEW_CANONICAL" --id foreign-review --json "$(<"$WORK/review-r1.json")" >"$WORK/review-foreign.out" 2>&1; then
+  fail 'a non-owner submitted an automation review fragment'
+fi
+grep -Fq "$REVIEW_CANONICAL is a single-document contract; only aristarchus may submit fragments" "$WORK/review-foreign.out" || fail "foreign review fragment failed for another reason: $(<"$WORK/review-foreign.out")"
+if review_fragment review-both "$WORK/review-r1.json" --input "$WORK/review-r1.json" >/dev/null 2>&1; then fail 'engagement fragment accepted both --json and --input'; fi
+review_fragment review-r01 "$WORK/review-r1.json" >/dev/null
+review_merge >/dev/null
+review_check 13 'AUTOMATION-REVIEW BLOCKED review=REV-01 round=1 blockers=1 warnings=1; re-review required' --emit-gate reports/automation-review.gate
+[ "$(<"$REVIEW_GATE")" = "$(printf 'verdict=BLOCKED\nreviewId=REV-01\ncorpusSha256=%s' "$(jq -r '.reviews[0].corpus.sha256' "$WORK/review-r1.json")")" ] || \
+  fail "the BLOCK gate file is wrong: $(<"$REVIEW_GATE")"
+review_check 13 '"status": "blocked"' --json
+if (cd "$TARGET" && "$CLI" automation-review check --manifest "$MANIFEST" --emit-gate solution/bug-ledger.json) >"$WORK/review-gate-canonical.out" 2>&1; then
+  fail 'the automation review gate overwrote a canonical artifact'
+fi
+grep -Fq 'GUARD-CANONICAL-SINGLE-WRITER' "$WORK/review-gate-canonical.out" || fail "canonical gate output was not refused by the write guard: $(<"$WORK/review-gate-canonical.out")"
+
+# The lane repairs the blocker; the cumulative document appends an APPROVE REV-02 over the repaired corpus.
+printf "test('order total rejects a wrong sum', async () => { expect(await total()).not.toBe(41); });\n" >>"$TARGET/tests/a.spec.ts"
+review_check 13 'AUTOMATION-REVIEW BLOCKED review=REV-01'
+jq -c --argjson corpus "$(review_digest)" --slurpfile fixture "$FIXTURES/valid/automation-review.json" \
+  '.reviews += [$fixture[0].reviews[1] | .corpus = $corpus]' "$WORK/review-r1.json" >"$WORK/review-r2.json"
+review_fragment review-r02 "$WORK/review-r2.json" >/dev/null
+review_merge >/dev/null
+jq -e --slurpfile submitted "$WORK/review-r2.json" '. == $submitted[0]' "$TARGET/$REVIEW_CANONICAL" >/dev/null || fail 'the merged review record is not the cumulative REV-02 document'
+"$CLI" engagement status --manifest "$MANIFEST" | jq -e --arg path "$REVIEW_CANONICAL" '.merges[$path] | .effectiveFragment == "review-r02" and .supersededFragments == 1' >/dev/null || \
+  fail 'the review merge record does not name the superseding round'
+review_check 0 'AUTOMATION-REVIEW APPROVED review=REV-02 round=2 warnings=0' --emit-gate reports/automation-review.gate
+grep -Fxq 'verdict=APPROVED' "$REVIEW_GATE" && grep -Fxq 'reviewId=REV-02' "$REVIEW_GATE" || fail "the APPROVE gate file is wrong: $(<"$REVIEW_GATE")"
+# An approval is re-checked against the live corpus, so an unreadable corpus is invalid input.
+ln -s ../reports "$TARGET/tests/linked-reports"
+review_check 14 'automation review corpus cannot contain a symbolic link: tests/linked-reports'
+rm "$TARGET/tests/linked-reports"
+
+# Any corpus edit after the approval makes it STALE, and re-merging the stale round fails.
+cp "$TARGET/tests/a.spec.ts" "$WORK/a.spec.ts.approved"
+printf "test.skip('hidden', async () => {});\n" >>"$TARGET/tests/a.spec.ts"
+review_check 13 'AUTOMATION-REVIEW STALE review=REV-02 round=2' --emit-gate reports/automation-review.gate
+grep -Fq 're-review required' "$WORK/review-check.out" || fail 'the STALE status does not require a re-review'
+grep -Fxq 'verdict=STALE' "$REVIEW_GATE" || fail "the STALE gate file is wrong: $(<"$REVIEW_GATE")"
+if review_merge >"$WORK/review-stale-merge.out" 2>&1; then fail 'a review round merged against a changed test corpus'; fi
+grep -Fq 'automation review REV-02 judged corpus' "$WORK/review-stale-merge.out" || fail "the stale merge failed for another reason: $(<"$WORK/review-stale-merge.out")"
+cp "$WORK/a.spec.ts.approved" "$TARGET/tests/a.spec.ts"
+review_check 0 'AUTOMATION-REVIEW APPROVED review=REV-02'
+
+# Published rounds are append-only: a fragment that rewrites REV-01 is stored but never merges.
+jq -c '.reviews[0].blockers[0].direction = "Accept the swallowed failure."' "$WORK/review-r2.json" >"$WORK/review-altered.json"
+review_fragment review-r03 "$WORK/review-altered.json" >/dev/null
+if review_merge >"$WORK/review-altered.out" 2>&1; then fail 'an automation review fragment that altered REV-01 merged'; fi
+grep -Fq 'automation-review supersession altered REV-01' "$WORK/review-altered.out" || fail "the altered review failed for another reason: $(<"$WORK/review-altered.out")"
+jq -e --slurpfile submitted "$WORK/review-r2.json" '. == $submitted[0]' "$TARGET/$REVIEW_CANONICAL" >/dev/null || fail 'a refused review merge changed the published record'
+review_check 0 'AUTOMATION-REVIEW APPROVED review=REV-02'
+printf '{"schemaVersion":' >"$WORK/broken-engagement.json"
+code=0
+"$CLI" automation-review check --manifest "$WORK/broken-engagement.json" >"$WORK/review-broken.out" 2>&1 || code=$?
+[ "$code" -eq 14 ] || fail "automation-review check of a malformed manifest exited $code, expected 14: $(<"$WORK/review-broken.out")"
+# Without a merged record the review is required exactly while Aristarchus is dispatchable.
+node --input-type=module - "$ROOT/argus/runtime/engagement.mjs" "$MANIFEST" <<'NODE'
+import { readFileSync } from 'node:fs';
+const [runtime, manifestPath] = process.argv.slice(2);
+const { automationReviewStatus } = await import(runtime);
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+const status = (dispatchableAgents) => automationReviewStatus(manifest, { dispatchableAgents, merges: {} }).status;
+if (status(null) !== 'absent' || status(['aristarchus', 'odysseus']) !== 'absent') throw new Error('an unmerged review was not absent while Aristarchus is dispatchable');
+if (status(['kleio', 'odysseus']) !== 'not-applicable') throw new Error('an unmerged review was required although Aristarchus is not dispatchable');
+NODE
+
 if "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/final-summary.json --id foreign --input "$FIXTURES/valid/final-summary.json" >/dev/null 2>&1; then
   fail "cross-engagement canonical fragment unexpectedly passed"
 fi
@@ -291,4 +408,4 @@ jq '.engagementId = "schema-fixture"' "$FIXTURES/valid/final-summary.json" >"$WO
 grep -Fq 'Source schema: argus/final-summary@1' "$TARGET/solution/FINAL-SUMMARY.md" || fail "rendered summary has no source schema"
 grep -Fq 'Required-case depth: 50%' "$TARGET/solution/FINAL-SUMMARY.md" || fail "rendered summary has no surface-derived coverage"
 
-printf 'PASS  Argus schemas: current fixtures, retired version rejection, deterministic collection merges, fragment rejection, per-bug ledger quarantine, latest-revision ledgers, reviewer-registered audited binary evidence, stable IDs, runner results, and source-versioned summary\n'
+printf 'PASS  Argus schemas: current fixtures, retired version rejection, deterministic collection merges, fragment rejection, per-bug ledger quarantine, latest-revision ledgers, append-only corpus-bound automation reviews, reviewer-registered audited binary evidence, stable IDs, runner results, and source-versioned summary\n'

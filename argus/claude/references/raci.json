@@ -88,7 +88,11 @@
     { "stateMachine": "automation", "from": "implemented", "to": "skipped", "accountable": "atlas" },
     { "stateMachine": "final-summary", "from": "reporting", "to": "completed", "accountable": "kleio" },
     { "stateMachine": "final-summary", "from": "reporting", "to": "degraded", "accountable": "kleio" },
-    { "stateMachine": "final-summary", "from": "reporting", "to": "blocked", "accountable": "kleio" }
+    { "stateMachine": "final-summary", "from": "reporting", "to": "blocked", "accountable": "kleio" },
+    { "stateMachine": "automation-review", "from": "pending", "to": "approved", "accountable": "aristarchus" },
+    { "stateMachine": "automation-review", "from": "pending", "to": "blocked", "accountable": "aristarchus" },
+    { "stateMachine": "automation-review", "from": "blocked", "to": "approved", "accountable": "aristarchus" },
+    { "stateMachine": "automation-review", "from": "approved", "to": "blocked", "accountable": "aristarchus" }
   ],
   "artifacts": [
     { "path": "README.md", "accountable": "kleio" },
@@ -103,6 +107,7 @@
     { "path": "solution/coverage-observations.json", "accountable": "kleio" },
     { "path": "solution/coverage-result.json", "accountable": "kleio" },
     { "path": "solution/final-summary.json", "accountable": "kleio" },
+    { "path": "solution/automation-review.json", "accountable": "aristarchus" },
     { "path": "solution/FINDINGS.md", "accountable": "kleio" },
     { "path": "solution/ACCESSIBILITY-REPORT.md", "accountable": "kleio" },
     { "path": "solution/IMPLEMENTATION-REPORT.md", "accountable": "kleio" },
@@ -124,7 +129,7 @@
     { "slug": "aegis", "role": "Security automation engineer", "lane": "security-automation", "responsible": ["automate confirmed security defects", "maintain tests/security"], "accountableArtifacts": [], "persistence": "tests-only", "description": "Security automation engineer. Owns tests/security/ and automates Minos-confirmed security defects; does not discover, validate, deduplicate, or persist canonical defects." },
     { "slug": "antigone", "role": "Accessibility hunter", "lane": "accessibility-hunt", "responsible": ["discover accessibility candidates", "submit ANG evidence"], "accountableArtifacts": [], "persistence": "candidate-file", "description": "Accessibility hunter. Discovers WCAG candidates and persists ANG candidate reports; Minos validates, deduplicates, and promotes canonical defects, while Daidalos owns automation." },
     { "slug": "ariadne", "role": "Journey and lifecycle hunter", "lane": "journey-hunt", "responsible": ["discover cross-feature journey candidates", "maintain state model fragments"], "accountableArtifacts": ["solution/STATE_MODEL.md"], "persistence": "candidate-file", "description": "Journey hunter. Owns cross-feature business invariants and STATE_MODEL; persists ARI candidates, while Minos validates and Talos or Daidalos automates by the failing surface." },
-    { "slug": "aristarchus", "role": "Automation quality judge", "lane": "automation-review", "responsible": ["judge automation quality", "issue blocker or warning verdict"], "accountableArtifacts": [], "persistence": "result-envelope", "description": "Read-only automation judge. Runs after implementation, evaluates determinism and oracle honesty, and returns BLOCKER/WARNING; does not validate product defects or edit tests." },
+    { "slug": "aristarchus", "role": "Automation quality judge", "lane": "automation-review", "responsible": ["judge automation quality", "issue blocker or warning verdict", "persist review rounds"], "accountableArtifacts": ["solution/automation-review.json"], "persistence": "owned-artifact", "description": "Automation judge. Read-only on tests and target; persists APPROVE/BLOCK review rounds to automation-review.json through the engagement controller; evaluates determinism and oracle honesty; does not validate product defects." },
     { "slug": "asklepios", "role": "Test-suite sanitation specialist", "lane": "suite-sanitation", "responsible": ["sanitize existing suite", "document test health", "submit product candidates"], "accountableArtifacts": ["solution/TEST-HEALTH.md"], "persistence": "candidate-file", "description": "Existing-suite sanitation specialist. Owns TEST-HEALTH and approved test repairs, persists ASK product candidates for Minos, and leaves final automation judgment to Aristarchus." },
     { "slug": "atalanta", "role": "REST API and public-data hunter", "lane": "api-hunt", "responsible": ["discover REST API candidates", "cover public-data integrity when DB access is absent"], "accountableArtifacts": [], "persistence": "candidate-file", "description": "REST API hunter. Persists ATA candidates for API and public-data behavior; non-REST events belong to Proteus, canonical validation to Minos, and automation to Talos." },
     { "slug": "atlas", "role": "Automation architect", "lane": "automation-architecture", "responsible": ["own shared harness", "own runner", "merge automation status; contribute coverage observations"], "accountableArtifacts": ["run-tests.sh", "solution/ARCHITECTURE.md", "solution/automation-status.json"], "persistence": "owned-artifact", "description": "Automation architect. Owns the shared harness, fourteen oracle helpers, run-tests.sh, automation status; contributes coverage observations; delegates lane tests and never validates product defects." },

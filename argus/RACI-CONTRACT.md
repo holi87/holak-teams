@@ -59,6 +59,7 @@ The accountable owner is also the sole owner of that artifact's `fragment → ca
 | `solution/coverage-observations.json` | kleio |
 | `solution/coverage-result.json` | kleio |
 | `solution/final-summary.json` | kleio |
+| `solution/automation-review.json` | aristarchus |
 | `solution/FINDINGS.md` | kleio |
 | `solution/ACCESSIBILITY-REPORT.md` | kleio |
 | `solution/IMPLEMENTATION-REPORT.md` | kleio |
@@ -135,6 +136,10 @@ Engagement transitions are derived, not declared freely: they are exactly the co
 | final-summary | reporting → completed | kleio |
 | final-summary | reporting → degraded | kleio |
 | final-summary | reporting → blocked | kleio |
+| automation-review | pending → approved | aristarchus |
+| automation-review | pending → blocked | aristarchus |
+| automation-review | blocked → approved | aristarchus |
+| automation-review | approved → blocked | aristarchus |
 
 ## Agent contracts
 
@@ -143,7 +148,7 @@ Engagement transitions are derived, not declared freely: they are exactly the co
 | aegis | Security automation engineer | security-automation | tests-only | — |
 | antigone | Accessibility hunter | accessibility-hunt | candidate-file | — |
 | ariadne | Journey and lifecycle hunter | journey-hunt | candidate-file | `solution/STATE_MODEL.md` |
-| aristarchus | Automation quality judge | automation-review | result-envelope | — |
+| aristarchus | Automation quality judge | automation-review | owned-artifact | `solution/automation-review.json` |
 | asklepios | Test-suite sanitation specialist | suite-sanitation | candidate-file | `solution/TEST-HEALTH.md` |
 | atalanta | REST API and public-data hunter | api-hunt | candidate-file | — |
 | atlas | Automation architect | automation-architecture | owned-artifact | `run-tests.sh`, `solution/ARCHITECTURE.md`, `solution/automation-status.json` |

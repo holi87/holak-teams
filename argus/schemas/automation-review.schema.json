@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/automation-review.schema.json",
+  "title": "Argus automation review rounds v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "engagementId", "owner", "reviews"],
+  "properties": {
+    "$schema": { "const": "argus/automation-review@1" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "owner": { "const": "aristarchus" },
+    "reviews": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/review" } }
+  },
+  "$defs": {
+    "reviewId": { "type": "string", "pattern": "^REV-[0-9]{2}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewId", "round", "supersedes", "verdict", "reviewedAt", "corpus", "reviewedCommit", "blockers", "warnings", "resolved", "uncoveredConfirmedBugs", "evidenceCommands"],
+      "properties": {
+        "reviewId": { "$ref": "#/$defs/reviewId" },
+        "round": { "type": "integer", "minimum": 1, "maximum": 99 },
+        "supersedes": { "type": ["string", "null"], "pattern": "^REV-[0-9]{2}$" },
+        "verdict": { "enum": ["APPROVE", "BLOCK"] },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "corpus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sha256", "fileCount", "roots"],
+          "properties": {
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "fileCount": { "type": "integer", "minimum": 1 },
+            "roots": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/text" } }
+          }
+        },
+        "reviewedCommit": { "type": ["string", "null"], "pattern": "^[a-f0-9]{7,40}$" },
+        "blockers": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+        "resolved": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["blockerId", "previousReviewId", "resolution"],
+            "properties": {
+              "blockerId": { "type": "string", "pattern": "^ARB-[0-9]{3}$" },
+              "previousReviewId": { "$ref": "#/$defs/reviewId" },
+              "resolution": { "$ref": "#/$defs/text" }
+            }
+          }
+        },
+        "uncoveredConfirmedBugs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^BUG-[0-9]{4}$" } },
+        "evidenceCommands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["command", "exitCode", "outputSha256"],
+            "properties": {
+              "command": { "$ref": "#/$defs/text" },
+              "exitCode": { "type": "integer" },
+              "outputSha256": { "$ref": "#/$defs/sha256" }
+            }
+          }
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "file", "line", "category", "pattern", "consequence", "ownerLane", "direction"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^ARB-[0-9]{3}$" },
+        "file": { "$ref": "#/$defs/text" },
+        "line": { "type": "integer", "minimum": 1 },
+        "category": {
+          "enum": [
+            "green-encoding", "disabled-test", "narrowed-run", "swallowed-failure", "vacuous-oracle", "hallucinated-api",
+            "flaky-red", "shared-state", "unwired-lane", "uncovered-confirmed-bug", "other"
+          ]
+        },
+        "pattern": { "$ref": "#/$defs/text" },
+        "consequence": { "$ref": "#/$defs/text" },
+        "ownerLane": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "direction": { "$ref": "#/$defs/text" }
+      }
+    }
+  }
+}

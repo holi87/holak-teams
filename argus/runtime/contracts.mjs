@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { validateCoverageObservations, validateCoverageResult, validateSurfaceInventory } from './coverage.mjs';
 import { validateEvidenceReferences, validateRunnerResultSemantics } from './evidence.mjs';
 import { compileJsonSchema } from './json-schema.mjs';
@@ -20,6 +21,7 @@ export const CONTRACT_KINDS = Object.freeze([
   'model-escalation-request',
   'runner-result',
   'capability-evidence',
+  'automation-review',
 ]);
 
 const COLLECTION_CONTRACTS = Object.freeze({
@@ -84,6 +86,7 @@ export function isCollectionContract(kind) {
 const SUPERSESSION_INVARIANTS = Object.freeze({
   'bug-ledger': bugLedgerSupersessionErrors,
   'surface-inventory': surfaceInventorySupersessionErrors,
+  'automation-review': automationReviewSupersessionErrors,
 });
 
 export function assertSupersession(kind, previous, next) {
@@ -269,6 +272,7 @@ function semanticErrors(kind, document) {
   if (kind === 'coverage-result') return validateCoverageResult(document);
   if (kind === 'runner-result') return validateRunnerResultSemantics(document);
   if (kind === 'capability-evidence') return validateCapabilityEvidence(document);
+  if (kind === 'automation-review') return validateAutomationReview(document);
   return [];
 }
 
@@ -310,7 +314,7 @@ function compareRfc3339(left, right) {
 
 function parseRfc3339Instant(value) {
   const match = /^(\d{4}-\d{2}-\d{2})[Tt ](\d{2}:\d{2}:)(\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}(?::?\d{2})?)$/.exec(value);
-  if (!match) throw new Error(`invalid RFC3339 timestamp reached lane-plan semantics: ${value}`);
+  if (!match) throw new Error(`invalid RFC3339 timestamp reached contract semantics: ${value}`);
   const leapSecond = match[3] === '60';
   const zone = normalizeRfc3339Zone(match[5]);
   const baseSecond = Date.parse(`${match[1]}T${match[2]}${leapSecond ? '59' : match[3]}${zone}`) / 1000;
@@ -399,6 +403,51 @@ function surfaceInventorySupersessionErrors(previous, next) {
   if (next.discovery.candidates < previous.discovery.candidates) {
     errors.push(`surface-inventory supersession decreased discovery.candidates from ${previous.discovery.candidates} to ${next.discovery.candidates}`);
   }
+  return errors;
+}
+
+// Review rounds are append-only: a newer document repeats every earlier round unchanged, so a
+// verdict, its findings, and the corpus it judged can never be rewritten after publication.
+function automationReviewSupersessionErrors(previous, next) {
+  if (next.reviews.length < previous.reviews.length) {
+    return [`automation-review supersession dropped rounds: ${previous.reviews.length} -> ${next.reviews.length}`];
+  }
+  return previous.reviews
+    .filter((review, index) => !isDeepStrictEqual(review, next.reviews[index]))
+    .map((review) => `automation-review supersession altered ${review.reviewId}`);
+}
+
+// Rounds are numbered REV-01, REV-02, ... without gaps, each supersedes its predecessor, and
+// every blocker of one round is accounted for in the next round's resolved list. A verdict is
+// BLOCK exactly when blockers remain, so APPROVE can never carry an open blocker.
+function validateAutomationReview(document) {
+  const errors = [];
+  const findingIds = new Set();
+  let previous = null;
+  document.reviews.forEach((review, index) => {
+    const label = `automation review ${review.reviewId}`;
+    if (previous && compareAscii(previous.reviewId, review.reviewId) >= 0) errors.push('automation reviews must be sorted by unique reviewId');
+    if (review.round !== index + 1) errors.push(`${label} round ${review.round} breaks contiguous rounds from 1`);
+    if (review.round !== Number(review.reviewId.slice(4))) errors.push(`${label} round must equal its reviewId suffix`);
+    const expectedSupersedes = previous ? previous.reviewId : null;
+    if (review.supersedes !== expectedSupersedes) errors.push(`${label} must supersede ${expectedSupersedes ?? 'null'}`);
+    if ((review.verdict === 'BLOCK') !== (review.blockers.length > 0)) errors.push(`${label} verdict must be BLOCK if and only if blockers remain`);
+    for (const finding of [...review.blockers, ...review.warnings]) {
+      if (findingIds.has(finding.id)) errors.push(`duplicate automation review finding id: ${finding.id}`);
+      findingIds.add(finding.id);
+    }
+    const expectedResolved = previous ? previous.blockers.map((blocker) => blocker.id).sort() : [];
+    const resolved = review.resolved.map((item) => item.blockerId).sort();
+    if (!isDeepStrictEqual(resolved, expectedResolved)) {
+      errors.push(`${label} resolved must list exactly the blockers of ${previous?.reviewId ?? 'no earlier round'}: ${expectedResolved.join(', ') || 'none'}`);
+    }
+    if (review.resolved.some((item) => item.previousReviewId !== previous?.reviewId)) errors.push(`${label} resolved entries must cite ${previous?.reviewId ?? 'no earlier round'}`);
+    if (review.uncoveredConfirmedBugs.length > 0 && !review.blockers.some((blocker) => blocker.category === 'uncovered-confirmed-bug')) {
+      errors.push(`${label} lists uncovered confirmed bugs without an uncovered-confirmed-bug blocker`);
+    }
+    if (previous && compareRfc3339(previous.reviewedAt, review.reviewedAt) >= 0) errors.push(`${label} reviewedAt must be later than ${previous.reviewId}`);
+    previous = review;
+  });
   return errors;
 }
 

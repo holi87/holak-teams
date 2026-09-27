@@ -16,6 +16,12 @@ node "$ROOT/scripts/sync-argus-runtime-assets.mjs" --check >/dev/null
 [ "$(jq -r '.accountable' <<<"$($CLI raci route --activity persist)")" = minos ] || fail 'canonical defect persistence did not route to Minos'
 [ "$(jq -r '.accountable' <<<"$($CLI raci route --artifact solution/STATE_MODEL.md)")" = ariadne ] || fail 'STATE_MODEL ownership did not route to Ariadne'
 [ "$(jq -r '.accountable' <<<"$($CLI raci route --transition defect:confirmed:automated)")" = atlas ] || fail 'defect automation transition did not route to Atlas'
+# Aristarchus owns the persisted review record and its verdict transitions, yet stays without Write.
+[ "$(jq -r '.accountable' <<<"$($CLI raci route --artifact solution/automation-review.json)")" = aristarchus ] || fail 'automation review ownership did not route to Aristarchus'
+[ "$(jq -r '.accountable' <<<"$($CLI raci route --transition automation-review:blocked:approved)")" = aristarchus ] || fail 'automation review re-approval did not route to Aristarchus'
+jq -e '.agents[] | select(.slug == "aristarchus") | .persistence == "owned-artifact" and .accountableArtifacts == ["solution/automation-review.json"]' "$ROOT/argus/raci.json" >/dev/null || fail 'Aristarchus RACI does not own the automation review record'
+jq -e '.agents[] | select(.slug == "aristarchus") | (.requiredTools | index("Write")) == null and (.artifactPaths | index("solution/automation-review.json")) != null' "$ROOT/argus/capabilities/capability-matrix.json" >/dev/null || fail 'Aristarchus capability contract gained Write or lost its review record path'
+if grep -Eq '^tools: .*Write' "$ROOT/argus/claude/agents/aristarchus.md"; then fail 'Aristarchus unexpectedly has Write'; fi
 if "$CLI" raci route --surface unknown --activity discover >/dev/null 2>&1; then fail 'unknown surface route was accepted'; fi
 
 # Independent reproduction, proof repair and source-oracle routes, and plan-derived transitions.
@@ -69,6 +75,10 @@ expect_raci_failure 'non-controller engagement transition' 'engagement:hunting:p
   '(.stateTransitions[] | select(.stateMachine == "engagement" and .from == "hunting" and .to == "proof") | .accountable) = "minos"'
 expect_raci_failure 'missing quarantine transition' 'missing canonical state transition: defect:confirmed:quarantined' \
   '.stateTransitions |= map(select(.stateMachine != "defect" or .from != "confirmed" or .to != "quarantined"))'
+expect_raci_failure 'missing automation review re-approval' 'missing canonical state transition: automation-review:blocked:approved' \
+  '.stateTransitions |= map(select(.stateMachine != "automation-review" or .from != "blocked"))'
+expect_raci_failure 'unowned automation review record' 'solution/automation-review.json: agent accountability is missing or inconsistent' \
+  '(.agents[] | select(.slug == "aristarchus") | .accountableArtifacts) = []'
 expect_raci_failure 'missing reproduce activity' 'defect lifecycle must define eleven unique activities' \
   '.defectLifecycle |= map(select(.activity != "reproduce"))'
 expect_raci_failure 'discover owner as reproducer' 'api-rest: reproduce candidate atalanta is the surface discover owner' \

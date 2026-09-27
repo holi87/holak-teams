@@ -5,7 +5,7 @@
   "skillsScanned": 7,
   "entrypointsScanned": 1,
   "runtimeFilesScanned": 10,
-  "runtimeImportsScanned": 23,
+  "runtimeImportsScanned": 24,
   "hooksScanned": 1,
   "pluginAssetReferences": [
     {
@@ -472,6 +472,12 @@
         "kleio",
         "metis",
         "talos"
+      ]
+    },
+    {
+      "value": "solution/automation-review.json",
+      "consumers": [
+        "aristarchus"
       ]
     },
     {
@@ -2384,6 +2390,12 @@
           "kind": "runtime",
           "mechanism": "runtime-import",
           "reference": "./finding-quality.mjs"
+        },
+        {
+          "consumer": "lib/engagement.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./json-schema.mjs"
         },
         {
           "consumer": "lib/engagement.mjs",

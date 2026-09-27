@@ -12,6 +12,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -20,8 +21,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { assertSupersession, isCollectionContract, mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalDocument, validateCanonicalFragment } from './contracts.mjs';
 import { binaryRegistrationErrors, binaryReviewAuditErrors, isBinaryReference, loadRedactionPatterns, parseAuditLog, validateEvidenceContent } from './evidence.mjs';
+import { compileJsonSchema } from './json-schema.mjs';
 import {
   modelAuthenticatedDocumentSha256,
   modelConfigSha256,
@@ -148,7 +151,7 @@ export function validateEngagementManifest(manifest) {
   } else {
     const paths = new Set();
     for (const item of policy.canonicalArtifacts) {
-      if (!safeRelative(item?.path) || !validSlug(item?.owner) || !['markdown', 'text', 'json', 'json-document'].includes(item?.format) || (item.schema !== undefined && ![null, 'bug-ledger', 'lane-plan', 'evidence-reference', 'automation-status', 'surface-inventory', 'coverage-observations', 'coverage-result', 'final-summary'].includes(item.schema)) || (item.schema && item.format !== 'json-document')) {
+      if (!safeRelative(item?.path) || !validSlug(item?.owner) || !['markdown', 'text', 'json', 'json-document'].includes(item?.format) || (item.schema !== undefined && ![null, 'bug-ledger', 'lane-plan', 'evidence-reference', 'automation-status', 'surface-inventory', 'coverage-observations', 'coverage-result', 'final-summary', 'automation-review'].includes(item.schema)) || (item.schema && item.format !== 'json-document')) {
         errors.push('canonical artifact path, owner, or format is invalid');
       } else if (paths.has(item.path)) errors.push(`duplicate canonical artifact: ${item.path}`);
       else paths.add(item.path);
@@ -477,6 +480,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
       }
       const document = mergeCanonicalDocuments(canonical.schema, documents);
       if (canonical.schema === 'evidence-reference') verifyEvidenceRegistry(manifest, records, documents, document);
+      if (canonical.schema === 'automation-review') assertCurrentReviewCorpus(manifest, document);
       if (canonical.schema === 'coverage-result') {
         const readDocument = (kind, path) => {
           const checked = validateCanonicalFragment(kind, readManagedFile(engagementPath(manifest, path), path));
@@ -559,6 +563,129 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     }
     return { result: { ...result, path: destination }, changed: true };
   });
+}
+
+// Aristarchus's review record binds each round to the test corpus it judged. The corpus is the
+// selected template's test and harness roots (or, without a valid selection, the generated test
+// directories) plus the runner entry point and scripts/, minus dependency, build, and report
+// output and the packaged hunt driver. Each line is `<path>\0<sha256>\n`, and the digest covers
+// the sorted lines, so it changes whenever a corpus file is added, removed, or edited.
+const REVIEW_CORPUS_EXCLUDED_SEGMENTS = new Set([
+  'node_modules', '.git', 'target', 'build', 'dist', '.venv', 'venv', '__pycache__', '.pytest_cache',
+  'reports', 'test-results', 'playwright-report',
+]);
+const REVIEW_CORPUS_EXCLUDED_FILES = new Set([
+  'scripts/hunt-driver.mjs', 'scripts/driver.config.json', 'scripts/driver.config.example.json', 'scripts/driver-config.schema.json',
+]);
+const REVIEW_CORPUS_FIXED_ROOTS = ['run-tests.sh', 'scripts'];
+const TEMPLATE_SELECTION_RECORD = 'ai_agents_internal/template-selection.json';
+const TEMPLATE_SELECTION_SCHEMA = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas', 'template-selection.schema.json');
+let templateSelectionValidator = null;
+
+export function reviewCorpusDigest(manifest) {
+  const root = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
+  const selection = reviewTemplateSelection(manifest);
+  const candidates = selection
+    ? [selection.testRoot, selection.harnessRoot]
+    : manifest.writePolicy.generatedTestRoots.map((path) => path.replace(/\/+$/, ''))
+      .filter((path) => canonicalCorpusRoot(path) && reviewCorpusEntry(root, path)?.isDirectory());
+  const roots = [...new Set([...candidates, ...REVIEW_CORPUS_FIXED_ROOTS])].filter((path) => reviewCorpusEntry(root, path)).sort();
+  const files = new Map();
+  for (const path of roots) collectReviewCorpus(root, path, files);
+  const lines = [...files].map(([path, digest]) => `${path}\0${digest}\n`).sort();
+  return { sha256: sha256(lines.join('')), fileCount: files.size, roots };
+}
+
+// The canonical review record, verified against its merge record, or null before the first merge.
+export function readAutomationReview(manifest, state) {
+  const canonical = automationReviewCanonical(manifest);
+  const merge = state.merges?.[canonical.path];
+  if (!merge) return null;
+  const content = readManagedFile(engagementPath(manifest, canonical.path), canonical.path);
+  if (sha256(content) !== merge.sha256) throw new Error(`${canonical.path} does not match its merge record`);
+  const { errors, document } = validateCanonicalFragment('automation-review', content);
+  if (errors.length) throw new Error(`${canonical.path} is invalid: ${errors.join('; ')}`);
+  if (document.engagementId !== manifest.engagementId) throw new Error(`${canonical.path} engagementId does not match ${manifest.engagementId}`);
+  return { path: canonical.path, document, latest: document.reviews.at(-1) };
+}
+
+// approved: the latest round APPROVEs the current corpus. blocked: it BLOCKs. stale: it APPROVEd
+// a corpus that has since changed. absent: Aristarchus is dispatchable and nothing is merged yet.
+export function automationReviewStatus(manifest, state) {
+  const review = readAutomationReview(manifest, state);
+  if (!review) {
+    const required = (state.dispatchableAgents ?? manifest.selectedAgents).includes('aristarchus');
+    return { status: required ? 'absent' : 'not-applicable', reviewId: null, round: null, blockers: 0, warnings: 0 };
+  }
+  const { latest } = review;
+  const status = latest.verdict === 'BLOCK' ? 'blocked'
+    : latest.corpus.sha256 !== reviewCorpusDigest(manifest).sha256 ? 'stale' : 'approved';
+  return { status, reviewId: latest.reviewId, round: latest.round, blockers: latest.blockers.length, warnings: latest.warnings.length };
+}
+
+function automationReviewCanonical(manifest) {
+  const canonical = manifest.writePolicy.canonicalArtifacts.find((item) => item.schema === 'automation-review');
+  if (!canonical) throw new Error('engagement manifest declares no automation-review canonical artifact');
+  return canonical;
+}
+
+// A merge publishes only a latest round that judged the corpus as it is now.
+function assertCurrentReviewCorpus(manifest, document) {
+  const latest = document.reviews.at(-1);
+  const current = reviewCorpusDigest(manifest);
+  if (latest.corpus.sha256 !== current.sha256) {
+    throw new Error(`automation review ${latest.reviewId} judged corpus ${latest.corpus.sha256}, but the current test corpus is ${current.sha256}; re-review required`);
+  }
+}
+
+// A selection counts only when it is a schema-valid record whose roots are canonical relative
+// paths; otherwise the digest falls back to the generated test roots.
+function reviewTemplateSelection(manifest) {
+  const path = engagementPath(manifest, TEMPLATE_SELECTION_RECORD);
+  const entry = reviewCorpusEntry(resolvePhysical(manifest.artifactRoot, manifest.artifactRoot), TEMPLATE_SELECTION_RECORD);
+  if (!entry) return null;
+  let selection;
+  try { selection = JSON.parse(readManagedFile(path, TEMPLATE_SELECTION_RECORD).toString('utf8')); }
+  catch { return null; }
+  templateSelectionValidator ??= compileJsonSchema(JSON.parse(readFileSync(TEMPLATE_SELECTION_SCHEMA, 'utf8')));
+  if (templateSelectionValidator(selection).length || !canonicalCorpusRoot(selection.testRoot) || !canonicalCorpusRoot(selection.harnessRoot)) return null;
+  return selection;
+}
+
+function canonicalCorpusRoot(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(value) && value.split('/').every((part) => part !== '.' && part !== '..');
+}
+
+// lstat of a corpus path below the physical artifact root, or null when it does not exist. A
+// symbolic link anywhere on the path throws, so the corpus cannot alias files outside it.
+function reviewCorpusEntry(root, path) {
+  let cursor = root;
+  let stats = null;
+  for (const part of path.split('/')) {
+    cursor = join(cursor, part);
+    try { stats = lstatSync(cursor); }
+    catch (error) {
+      if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return null;
+      throw error;
+    }
+    if (stats.isSymbolicLink()) throw new Error(`automation review corpus cannot contain a symbolic link: ${relative(root, cursor).split(sep).join('/')}`);
+  }
+  return stats;
+}
+
+function collectReviewCorpus(root, path, files) {
+  if (path.split('/').some((part) => REVIEW_CORPUS_EXCLUDED_SEGMENTS.has(part)) || REVIEW_CORPUS_EXCLUDED_FILES.has(path)) return;
+  const absolute = join(root, ...path.split('/'));
+  const stats = lstatSync(absolute);
+  if (stats.isSymbolicLink()) throw new Error(`automation review corpus cannot contain a symbolic link: ${path}`);
+  if (stats.isDirectory()) {
+    for (const name of readdirSync(absolute).sort()) collectReviewCorpus(root, `${path}/${name}`, files);
+    return;
+  }
+  if (!stats.isFile()) throw new Error(`automation review corpus entry is not a regular file: ${path}`);
+  const fd = openSync(absolute, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try { files.set(path, sha256(readFileSync(fd))); }
+  finally { closeSync(fd); }
 }
 
 export function allocateId(manifest, lane, token, kind, identity) {
@@ -2000,10 +2127,45 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
       join(destination, 'scripts', 'driver-config.schema.json'),
     ] } : deny('copy-browser-driver destination is missing');
   }
+  if (primary === 'automation-review') {
+    return classifyAutomationReviewCommand(operation, tokens.slice(index + 3), manifest, manifestPath, cwd, allow, deny);
+  }
   if (Object.hasOwn(PACKAGED_QUERY_OPTIONS, primary)) {
     return classifyPackagedQuery(primary, operation, tokens.slice(index + 3), allow, deny);
   }
   return deny('unknown packaged command operation');
+}
+
+// Automation review commands only read the engagement and the test corpus. They must name the
+// active manifest, accept exactly their declared options, and only `check --emit-gate <path>`
+// writes: that destination goes through the ordinary write-root and canonical-owner checks.
+const AUTOMATION_REVIEW_OPTIONS = Object.freeze({
+  digest: Object.freeze({ values: ['--manifest'], flags: [] }),
+  check: Object.freeze({ values: ['--manifest', '--emit-gate'], flags: ['--json'] }),
+});
+
+function classifyAutomationReviewCommand(operation, args, manifest, manifestPath, cwd, allow, deny) {
+  if (!Object.hasOwn(AUTOMATION_REVIEW_OPTIONS, operation ?? '')) return deny('unknown automation-review operation');
+  const accepted = AUTOMATION_REVIEW_OPTIONS[operation];
+  for (let cursor = 0; cursor < args.length; cursor += 1) {
+    if (accepted.flags.includes(args[cursor])) continue;
+    const value = args[cursor + 1];
+    if (!accepted.values.includes(args[cursor]) || !value || value.startsWith('--')) {
+      return deny(`automation-review ${operation} accepts only its declared options`);
+    }
+    cursor += 1;
+  }
+  const requestedManifest = optionValue(args, '--manifest');
+  const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
+  try {
+    if (!requestedManifest || resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
+      return deny('automation review must bind to the active engagement manifest');
+    }
+  } catch {
+    return deny('automation review manifest cannot be resolved safely');
+  }
+  const gate = optionValue(args, '--emit-gate');
+  return gate ? { paths: [gate] } : allow(`automation-review ${operation} is read-only`);
 }
 
 // Packaged queries print to stdout only. Each operation lists exactly the options its CLI
