@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/scripts/eval/discovery/schemas/spot-check.schema.json",
+  "title": "Argus discovery evaluation human spot-check sheet v1 (review set sampled from first-pass judge verdicts)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "createdAt", "runsSha256", "judgeSha256", "all", "samplingSeed", "rate", "minimum", "population", "items"],
+  "properties": {
+    "schema": { "const": "argus-eval/spot-check@1" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "runsSha256": { "$ref": "#/$defs/sha256" },
+    "judgeSha256": { "$ref": "#/$defs/sha256" },
+    "all": { "type": "boolean" },
+    "samplingSeed": { "type": ["integer", "null"], "minimum": 0, "maximum": 4294967295 },
+    "rate": { "type": ["number", "null"], "minimum": 0.000001, "maximum": 1 },
+    "minimum": { "type": ["integer", "null"], "minimum": 0, "maximum": 999999 },
+    "population": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdicts", "mandatory", "remaining", "selected", "strata"],
+      "properties": {
+        "verdicts": { "$ref": "#/$defs/count" },
+        "mandatory": { "$ref": "#/$defs/count" },
+        "remaining": { "$ref": "#/$defs/count" },
+        "selected": { "$ref": "#/$defs/count" },
+        "strata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["real-seeded", "false-positive", "duplicate"],
+          "properties": {
+            "real-seeded": { "$ref": "#/$defs/stratum" },
+            "false-positive": { "$ref": "#/$defs/stratum" },
+            "duplicate": { "$ref": "#/$defs/stratum" }
+          }
+        }
+      }
+    },
+    "items": { "type": "array", "items": { "$ref": "#/$defs/item" } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "all": { "const": true } } },
+      "then": { "properties": { "samplingSeed": { "type": "null" }, "rate": { "type": "null" }, "minimum": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "all": { "const": false } } },
+      "then": { "properties": { "samplingSeed": { "type": "integer" }, "rate": { "type": "number" }, "minimum": { "type": "integer" } } }
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "bugId": { "type": "string", "pattern": "^BUG-[0-9]{4}$" },
+    "seedId": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]*$" },
+    "stratum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["remaining", "selected"],
+      "properties": {
+        "remaining": { "$ref": "#/$defs/count" },
+        "selected": { "$ref": "#/$defs/count" }
+      }
+    },
+    "judge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "seedId", "duplicateOf", "reason"],
+      "properties": {
+        "outcome": { "enum": ["real", "false-positive", "duplicate", null] },
+        "seedId": { "$ref": "#/$defs/seedId" },
+        "duplicateOf": { "type": ["string", "null"], "pattern": "^BUG-[0-9]{4}$" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "human": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "seedId", "duplicateOf", "reviewer", "reviewedAt", "reason", "reproduced", "evidenceRef"],
+      "properties": {
+        "outcome": { "enum": ["real", "false-positive", "duplicate"] },
+        "seedId": { "$ref": "#/$defs/seedId" },
+        "duplicateOf": { "type": ["string", "null"], "pattern": "^BUG-[0-9]{4}$" },
+        "reviewer": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "reason": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "reproduced": { "type": "boolean" },
+        "evidenceRef": { "type": ["string", "null"], "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "outcome": { "enum": ["false-positive", "duplicate"] } } },
+          "then": { "properties": { "seedId": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "outcome": { "const": "duplicate" } } },
+          "then": { "properties": { "duplicateOf": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "outcome": { "enum": ["real", "false-positive"] } } },
+          "then": { "properties": { "duplicateOf": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "reproduced": { "const": true } } },
+          "then": { "properties": { "evidenceRef": { "type": "string" } } }
+        }
+      ]
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "findingId", "reasonSelected", "judge", "packetPath", "human"],
+      "properties": {
+        "runId": { "type": "string", "pattern": "^r[0-9]{1,2}-[AB]-(?:faulty|corrected)-[a-z][a-z0-9-]{0,31}$" },
+        "findingId": { "$ref": "#/$defs/bugId" },
+        "reasonSelected": { "enum": ["judge-failed", "disagreement", "probe-mismatch", "unseeded-real", "low-confidence", "random", "census"] },
+        "judge": { "$ref": "#/$defs/judge" },
+        "packetPath": { "type": "string", "pattern": "^/(?:[^/\\u0000]+/)*judge-packets/[^/\\u0000]+/BUG-[0-9]{4}\\.json$" },
+        "human": {
+          "type": ["object", "null"],
+          "allOf": [{ "if": { "type": "object" }, "then": { "$ref": "#/$defs/human" } }]
+        }
+      }
+    }
+  }
+}
