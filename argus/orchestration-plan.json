@@ -78,6 +78,20 @@
       "A brief given to a lane is additive. It may set order and add targets; it may never remove a catalog row from that lane's obligation."
     ]
   },
+  "essentialLanes": {
+    "policy": "blocked-essential-lane-stops-engagement",
+    "includeMandatoryLanes": true,
+    "modes": {
+      "A": ["kalchas", "metis", "atlas", "minos", "kleio"],
+      "B": ["kalchas", "metis", "minos", "kleio"],
+      "C": ["kalchas", "metis", "atlas", "minos", "kleio"],
+      "D": ["kalchas", "metis", "atlas", "minos", "kleio"]
+    },
+    "rule": [
+      "Odysseus, an essential lane, or a blocked mandatory lane of the mode stops the engagement.",
+      "Any other blocked lane is downgraded to deferred with downgradedFrom=blocked and a named residual risk; it is never dispatched and its surfaces are reported uncovered."
+    ]
+  },
   "waves": [
     { "id": "W0", "barrierAfter": true },
     { "id": "W1", "barrierAfter": true },

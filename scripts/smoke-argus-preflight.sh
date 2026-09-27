@@ -34,7 +34,7 @@ const [runtimePath, schemaPath, reportPath] = process.argv.slice(2);
 const { compileJsonSchema } = await import(pathToFileURL(runtimePath));
 const validate = compileJsonSchema(JSON.parse(readFileSync(schemaPath, 'utf8')));
 const errors = validate(JSON.parse(readFileSync(reportPath, 'utf8')));
-if (errors.length > 0) throw new Error(`preflight v2 schema rejected ${reportPath}: ${JSON.stringify(errors)}`);
+if (errors.length > 0) throw new Error(`preflight v3 schema rejected ${reportPath}: ${JSON.stringify(errors)}`);
 NODE
 }
 
@@ -46,7 +46,7 @@ const fs = require('fs');
 const [path, expectedStatus, scenario] = process.argv.slice(2);
 const report = JSON.parse(fs.readFileSync(path, 'utf8'));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
-assert(report.schemaVersion === 2, `${scenario}: schemaVersion`);
+assert(report.schemaVersion === 3, `${scenario}: schemaVersion`);
 assert(report.status === expectedStatus, `${scenario}: expected ${expectedStatus}, got ${report.status}`);
 assert(Array.isArray(report.agents) && report.agents.length === 27, `${scenario}: 27 agent records required`);
 assert(report.target.reachable === (scenario !== 'insufficient'), `${scenario}: target reachability mismatch`);
@@ -60,6 +60,19 @@ assert(report.checks.some((check) => check.id === 'packaged-assets' && check.sta
 
 const bySlug = new Map(report.agents.map((agent) => [agent.slug, agent]));
 assert(bySlug.get('odysseus').dispatchAllowed === false, `${scenario}: controller must never be dispatchable`);
+assert(report.agents.every((agent) => typeof agent.stopsEngagement === 'boolean'), `${scenario}: every agent needs a boolean stopsEngagement`);
+const residualSlugs = report.residualRisks.map((risk) => risk.slug).sort();
+const expectedResidualSlugs = report.agents
+  .filter((agent) => agent.selected && agent.status !== 'ready' && agent.status !== 'degraded')
+  .map((agent) => agent.slug)
+  .sort();
+assert(JSON.stringify(residualSlugs) === JSON.stringify(expectedResidualSlugs), `${scenario}: residualRisks must list exactly the selected lanes that will not run`);
+for (const risk of report.residualRisks) {
+  const agent = bySlug.get(risk.slug);
+  assert(risk.status === agent.status && risk.reason.length > 0 && risk.reason.length <= 600, `${scenario}/${risk.slug}: residual risk is not bound to its agent record`);
+  assert(JSON.stringify(risk.missingTools) === JSON.stringify(agent.missingTools)
+    && JSON.stringify(risk.missingCapabilities) === JSON.stringify(agent.missingCapabilities), `${scenario}/${risk.slug}: residual risk lost its missing tools or capabilities`);
+}
 if (scenario !== 'insufficient') {
   assert(report.orchestration?.sha256 && report.orchestration.specialists === report.summary.dispatchable, `${scenario}: bound orchestration projection required`);
   const plan = JSON.parse(fs.readFileSync(report.orchestration.path, 'utf8'));
@@ -67,8 +80,13 @@ if (scenario !== 'insufficient') {
   const dispatchable = report.agents.filter((agent) => agent.dispatchAllowed).map((agent) => agent.slug).sort();
   assert(JSON.stringify(planned) === JSON.stringify(dispatchable), `${scenario}: projection differs from dispatchable specialists`);
 }
+if (scenario === 'full' || scenario === 'partial') {
+  assert(report.summary.downgraded === 0, `${scenario}: no lane may be downgraded`);
+  assert(report.agents.every((agent) => agent.stopsEngagement === false && agent.downgradedFrom === undefined), `${scenario}: no lane may stop the engagement`);
+}
 if (scenario === 'full') {
   assert(report.summary.ready === 27 && report.summary.dispatchable === 26, 'full: 26 specialists must be dispatchable');
+  assert(report.residualRisks.length === 0, 'full: a fully provisioned engagement has no residual lane risk');
   assert(report.authorization.defaultReadOnly === false, 'full: explicit authorization fixture required');
 }
 if (scenario === 'partial') {
@@ -77,6 +95,10 @@ if (scenario === 'partial') {
   assert(report.summary.blocked === 0, 'partial: optional gaps must not block the engagement');
   assert(bySlug.get('orion').status === 'deferred' && !bySlug.get('orion').dispatchAllowed, 'partial: browser lane must be deferred');
   assert(bySlug.get('charon').status === 'skipped' && !bySlug.get('charon').dispatchAllowed, 'partial: DB lane must be skipped');
+  const partialRisks = new Map(report.residualRisks.map((risk) => [risk.slug, risk]));
+  assert(partialRisks.get('orion')?.status === 'deferred' && partialRisks.get('orion').missingCapabilities.includes('browser-runtime'), 'partial: deferred browser lane must be a named residual risk');
+  assert(partialRisks.get('charon')?.status === 'skipped' && partialRisks.get('charon').missingCapabilities.includes('db-access'), 'partial: skipped DB lane must be a named residual risk');
+  assert(!partialRisks.has('perseus') && !partialRisks.has('aegis'), 'partial: degraded dispatchable lanes are not residual lane risks');
   assert(bySlug.get('aegis').status === 'degraded' && bySlug.get('aegis').dispatchAllowed, 'partial: Context7 fallback must degrade, not block');
   assert(bySlug.get('aegis').actions.some((action) => action.includes('official documentation')), 'partial: fallback action must be explicit');
   assert(report.authorization.defaultReadOnly === true, 'partial: generated manifest must default to read-only');
@@ -84,6 +106,9 @@ if (scenario === 'partial') {
 }
 if (scenario === 'insufficient') {
   assert(report.summary.blocked === 27 && report.summary.dispatchable === 0, 'insufficient: no specialist may dispatch');
+  assert(report.summary.downgraded === 0 && report.agents.every((agent) => agent.stopsEngagement === true && agent.downgradedFrom === undefined),
+    'insufficient: failed prerequisites must keep every selected lane blocked and stopping the engagement');
+  assert(report.residualRisks.length === 27 && report.residualRisks.every((risk) => risk.status === 'blocked'), 'insufficient: every blocked lane must be a residual risk');
   assert(report.orchestration.sha256 === null, 'insufficient: orchestration must not persist after failed prerequisites');
   assert(report.checks.some((check) => check.id === 'target-reachable' && check.status === 'fail'), 'insufficient: target failure required');
   assert(report.checks.some((check) => check.id === 'tool:Agent' && check.status === 'fail'), 'insufficient: Agent failure required');
@@ -118,7 +143,7 @@ json_target="$WORK/json-target"
 mkdir -p "$json_target"
 "$CLI" preflight --target "$json_target" --mode B --json \
   >"$WORK/preflight-json.stdout" 2>"$WORK/preflight-json.stderr"
-jq -e '.schemaVersion == 2' "$WORK/preflight-json.stdout" >/dev/null || fail 'preflight --json stdout is not one JSON document'
+jq -e '.schemaVersion == 3' "$WORK/preflight-json.stdout" >/dev/null || fail 'preflight --json stdout is not one JSON document'
 diff -u <(jq -S . "$WORK/preflight-json.stdout") <(jq -S . "$json_target/ai_agents_internal/preflight.json") >/dev/null || \
   fail 'preflight --json stdout differs from the persisted report'
 
@@ -142,6 +167,9 @@ for (const agent of report.agents) {
   if (agent.model.adapterId !== 'codex-custom-agent@1') throw new Error(`${agent.slug}: wrong Codex adapter`);
   if (agent.model.status !== 'blocked' || !agent.model.missingCapabilities.includes('maxTurns') || (agent.selected && agent.status !== 'blocked')) {
     throw new Error(`${agent.slug}: Codex native turn-cap failure is not explicit`);
+  }
+  if (agent.selected && (agent.stopsEngagement !== true || agent.downgradedFrom !== undefined)) {
+    throw new Error(`${agent.slug}: Codex prerequisite failure downgraded a lane instead of stopping the engagement`);
   }
 }
 NODE
@@ -338,6 +366,57 @@ for scenario in full partial; do
     [ "$(jq -r .engagement.sha256 "$report")" = "$(jq -r .engagementManifestSha256 "$decision")" ] || fail 'preflight and model routing engagement digests differ'
   fi
 done
+
+# Without Edit, Mode A blocks four essential lanes, which stop the engagement, and six
+# non-essential automation lanes, which become deferred residuals with downgradedFrom=blocked.
+target="$WORK/missing-edit-target"
+mkdir -p "$target"
+jq '.availableTools -= ["Edit"]' "$FIXTURES/full.json" >"$WORK/missing-edit-profile.json"
+if "$CLI" preflight \
+  --target "$target" \
+  --artifact-root "$target" \
+  --mode A \
+  --profile "$WORK/missing-edit-profile.json" \
+  >"$WORK/missing-edit.stdout" 2>&1; then
+  fail 'blocked essential lanes unexpectedly passed preflight'
+else
+  status=$?
+  [ "$status" -eq 2 ] || fail "blocked essential lanes exited $status instead of 2"
+fi
+grep -Fq 'downgraded=6 ' "$WORK/missing-edit.stdout" || fail 'preflight console line omitted the downgraded lane count'
+report="$target/ai_agents_internal/preflight.json"
+validate_report_schema "$report"
+node - "$report" <<'NODE'
+const fs = require('fs');
+const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const assert = (condition, message) => { if (!condition) throw new Error(`missing-edit: ${message}`); };
+const bySlug = new Map(report.agents.map((agent) => [agent.slug, agent]));
+const essentialBlocked = ['atlas', 'kleio', 'metis', 'minos'];
+const downgraded = ['aegis', 'asklepios', 'daidalos', 'mnemosyne', 'nike', 'talos'];
+assert(report.status === 'blocked', `expected blocked, got ${report.status}`);
+assert(report.summary.blocked === 4 && report.summary.downgraded === 6, `expected 4 blocked and 6 downgraded, got ${report.summary.blocked}/${report.summary.downgraded}`);
+for (const slug of essentialBlocked) {
+  const agent = bySlug.get(slug);
+  assert(agent.status === 'blocked' && agent.stopsEngagement === true && agent.downgradedFrom === undefined, `${slug} must stay blocked and stop the engagement`);
+}
+for (const slug of downgraded) {
+  const agent = bySlug.get(slug);
+  assert(agent.status === 'deferred' && agent.downgradedFrom === 'blocked' && agent.dispatchAllowed === false && agent.stopsEngagement === false,
+    `${slug} must be a never-dispatched deferred lane downgraded from blocked`);
+  assert(agent.missingTools.includes('Edit'), `${slug} lost its missing tool evidence`);
+  assert(agent.actions.at(-1).startsWith(`Residual risk: ${slug} is blocked (Edit`), `${slug} does not name its residual risk`);
+  const risk = report.residualRisks.find((entry) => entry.slug === slug);
+  assert(risk?.status === 'deferred' && risk.downgradedFrom === 'blocked' && risk.reason.includes('Residual risk:'), `${slug} is missing from residualRisks`);
+}
+assert(report.agents.filter((agent) => agent.stopsEngagement).map((agent) => agent.slug).sort().join(',') === essentialBlocked.join(','),
+  'only the blocked essential lanes may stop the engagement');
+const plan = JSON.parse(fs.readFileSync(report.orchestration.path, 'utf8'));
+const planned = plan.waves.flatMap((wave) => wave.roles.map((role) => role.slug));
+assert(downgraded.every((slug) => !planned.includes(slug)) && essentialBlocked.every((slug) => !planned.includes(slug)),
+  'the orchestration projection kept a blocked or downgraded lane');
+assert(report.orchestration.specialists === report.summary.dispatchable && plan.essentialLanes.includes('kalchas'),
+  'the orchestration projection is not bound to the dispatchable set or lost its essential lanes');
+NODE
 
 target="$WORK/insufficient-target"
 mkdir -p "$target"

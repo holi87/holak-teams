@@ -16,6 +16,9 @@ const DEFAULT_VALIDATOR = 'minos';
 // they must stay reachable (standby) while the first proof phase runs.
 const PROOF_CANDIDATE_PERSISTENCE = Object.freeze(['candidate-file', 'fragment-only']);
 const ROUTED_STATUSES = Object.freeze(['bounced', 'needs-oracle', 'quarantined', 'suspected', 'confirmed']);
+// Kalchas recon feeds every lane and Minos's ledger merge gates every proof phase, so no mode
+// may treat either as optional.
+const ALWAYS_ESSENTIAL = Object.freeze(['kalchas', 'minos']);
 
 export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
   const errors = validateSchema(plan).map(formatSchemaError);
@@ -132,6 +135,28 @@ export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
     }
   }
 
+  // A blocked essential lane stops the engagement, while any other blocked lane is only
+  // downgraded. A stale or inactive slug would silently shrink that set, so each is checked.
+  const essential = plan.essentialLanes;
+  if (essential !== undefined) {
+    if (!isObject(essential)) errors.push('essentialLanes: must be an object');
+    else {
+      const byMode = isObject(essential.modes) ? essential.modes : {};
+      for (const mode of MODES) {
+        const listed = stringList(byMode[mode]);
+        for (const slug of listed) {
+          const role = planBySlug.get(slug);
+          if (!role) errors.push(`essentialLanes.modes.${mode}: unknown role ${slug}`);
+          else if (role.dispatch !== true) errors.push(`essentialLanes.modes.${mode}: ${slug} is not dispatched`);
+          else if (!stringList(role.modes).includes(mode)) errors.push(`essentialLanes.modes.${mode}: ${slug} is inactive in Mode ${mode}`);
+        }
+        for (const slug of ALWAYS_ESSENTIAL) {
+          if (!listed.includes(slug)) errors.push(`essentialLanes.modes.${mode}: must list ${slug}`);
+        }
+      }
+    }
+  }
+
   const phases = phaseList(plan);
   validatePhases(plan, phases, planBySlug, proofCandidates, errors);
   validateProofLoop(plan.proofLoop, planBySlug, proofCandidates, errors);
@@ -202,10 +227,56 @@ export function projectOrchestrationPlan(plan, capabilityMatrix, mode, dispatcha
     deepHunt: projectDeepHunt(plan.deepHunt, mode, selectedSlugs),
     proofLoop: projectProofLoop(plan.proofLoop, selectedSlugs),
     huntingBrief: [...plan.huntingBrief],
+    essentialLanes: essentialLaneSet(plan, mode),
     omitted: active
       .filter((role) => !selectedSlugs.has(role.slug))
       .map((role) => ({ slug: role.slug, reason: 'not-in-dispatchable-set' })),
   };
+}
+
+// Applies the essential-lane policy to evaluated preflight records without mutating them. A
+// blocked controller, essential lane, or mandatory lane of the mode stops the engagement; any
+// other blocked lane becomes a never-dispatched deferred record that names its residual risk.
+export function applyEssentialLanePolicy(agents, plan, mode) {
+  if (!Array.isArray(agents)) throw new Error('preflight agent records must be an array');
+  if (!MODES.includes(mode)) throw new Error(`unknown Argus mode: ${mode}`);
+  if (!isObject(plan) || !isObject(plan.essentialLanes) || !isObject(plan.essentialLanes.modes) || !Array.isArray(plan.essentialLanes.modes[mode])) {
+    throw new Error(`orchestration plan declares no essential lanes for Mode ${mode}`);
+  }
+  const essential = new Set(essentialLaneSet(plan, mode));
+  return agents.map((agent) => {
+    if (!isObject(agent)) throw new Error('preflight agent record must be an object');
+    if (agent.selected !== true || agent.status !== 'blocked') return { ...agent, stopsEngagement: false };
+    if (agent.slug === CONTROLLER || essential.has(agent.slug)) return { ...agent, stopsEngagement: true };
+    const missing = [...stringList(agent.missingTools), ...stringList(agent.missingCapabilities)];
+    const cause = missing.length > 0 ? missing.join(', ') : 'model routing unavailable';
+    return {
+      ...agent,
+      status: 'deferred',
+      downgradedFrom: 'blocked',
+      dispatchAllowed: false,
+      stopsEngagement: false,
+      actions: [
+        ...stringList(agent.actions),
+        `Residual risk: ${agent.slug} is blocked (${cause}); it is not dispatched and its surfaces are reported uncovered.`,
+      ],
+    };
+  });
+}
+
+// The essential set for one mode: the declared lanes plus, when the plan opts in, every
+// mandatory lane active in a mode where the mandatory-lane policy applies.
+function essentialLaneSet(plan, mode) {
+  const lanes = new Set(stringList(plan.essentialLanes.modes[mode]));
+  const mandatory = isObject(plan.mandatoryLanes) ? plan.mandatoryLanes : {};
+  if (plan.essentialLanes.includeMandatoryLanes === true && stringList(mandatory.modes).includes(mode)) {
+    const roles = Array.isArray(plan.roles) ? plan.roles.filter(isObject) : [];
+    const active = new Set(roles.filter((role) => stringList(role.modes).includes(mode)).map((role) => role.slug));
+    for (const slug of stringList(mandatory.roles)) {
+      if (active.has(slug)) lanes.add(slug);
+    }
+  }
+  return [...lanes].sort();
 }
 
 function buildPhasePlan(plan, mode, selected) {

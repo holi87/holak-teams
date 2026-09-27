@@ -59,8 +59,13 @@ or absent inherited capability fails closed.
 a canonical solution fragment and never an input to `engagement fragment` or `engagement
 merge`. New reports identify the actual writer schema URL
 `https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/preflight-report.schema.json`
-and `schemaVersion: 2`. The report-only reader accepts only v2 and exposes
-`readCompatible=2` rather than inventing an `argus/<contract>@<version>` identity.
+and `schemaVersion: 3`. The report-only reader accepts only v3 and exposes
+`readCompatible=3` rather than inventing an `argus/<contract>@<version>` identity.
+Every v3 agent record carries `stopsEngagement`. A blocked Odysseus, essential lane
+(`essentialLanes` in the orchestration plan), or mandatory lane of the mode stops the
+engagement; any other blocked lane is recorded as `deferred` with `downgradedFrom=blocked`
+and is never dispatched. `summary.downgraded` counts those lanes, and `residualRisks` names
+every selected lane that is not `ready` or `degraded`.
 
 Run `argus-assets schema validate --kind preflight-report --input ai_agents_internal/preflight.json`
 to validate the current report. Successful output includes the version and report-only

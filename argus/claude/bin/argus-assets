@@ -84,7 +84,7 @@ import {
   validateModelDecisionBinding,
   validateModelPolicy,
 } from '../lib/model-policy.mjs';
-import { projectOrchestrationPlan, validateOrchestrationPlan } from '../lib/orchestration-plan.mjs';
+import { applyEssentialLanePolicy, projectOrchestrationPlan, validateOrchestrationPlan } from '../lib/orchestration-plan.mjs';
 import {
   detectTemplateCapabilities,
   materializeTemplateLayout,
@@ -1920,7 +1920,7 @@ function schemaCommand(args) {
   const [operation, ...rest] = args;
   if (operation === 'list') {
     for (const kind of CONTRACT_KINDS) console.log(`${kind}\t${schemaId(kind)}`);
-    console.log(`preflight-report\t${preflightReportSchema.properties.$schema.const}\tschemaVersion=2\treadCompatible=2\treport-only`);
+    console.log(`preflight-report\t${preflightReportSchema.properties.$schema.const}\tschemaVersion=3\treadCompatible=3\treport-only`);
     return 0;
   }
   if (operation === 'validate') {
@@ -1933,8 +1933,8 @@ function schemaCommand(args) {
     catch (error) { fail(`schema validate: input is not valid JSON: ${error.message}`); }
     if (options.kind === 'preflight-report') {
       const version = document?.schemaVersion;
-      const validate = version === 2 ? validatePreflightReportSchema : null;
-      if (!validate) fail(`schema validate preflight-report: unsupported schemaVersion ${String(version)}; expected 2`);
+      const validate = version === 3 ? validatePreflightReportSchema : null;
+      if (!validate) fail(`schema validate preflight-report: unsupported schemaVersion ${String(version)}; expected 3`);
       const errors = validate(document);
       if (errors.length) fail(`schema validate preflight-report@${version}: ${formatSchemaErrors(errors)}`);
       console.log(`PASS  schema preflight-report schemaVersion=${version} validator=${document.$schema} report-only input=${options.input}`);
@@ -3338,6 +3338,9 @@ async function preflight(argv) {
     mandatoryFailure: prerequisiteFailure,
     authorizationDecisions: authorizationByAgent.get(contract.slug),
   }));
+  // Only a blocked controller, essential lane, or mandatory lane stops the engagement; other
+  // blocked lanes become named residuals. Failed prerequisites keep every selected lane blocked.
+  if (!prerequisiteFailure) agents = applyEssentialLanePolicy(agents, orchestrationPlan, mode);
   let orchestration = { path: join(artifactRootPath, 'ai_agents_internal', 'orchestration-plan.json'), sha256: null, specialists: 0 };
   let orchestrationError = null;
   try {
@@ -3356,7 +3359,7 @@ async function preflight(argv) {
   );
   if (orchestrationError !== null) {
     agents = agents.map((agent) => agent.selected
-      ? { ...agent, status: 'blocked', dispatchAllowed: false, actions: [...agent.actions, `Orchestration projection failed: ${orchestrationError}`] }
+      ? { ...withoutDowngrade(agent), status: 'blocked', dispatchAllowed: false, stopsEngagement: true, actions: [...agent.actions, `Orchestration projection failed: ${orchestrationError}`] }
       : agent);
   }
   const selectedAgents = agents.filter((agent) => agent.selected);
@@ -3367,10 +3370,11 @@ async function preflight(argv) {
     deferred: selectedAgents.filter((agent) => agent.status === 'deferred').length,
     skipped: selectedAgents.filter((agent) => agent.status === 'skipped').length,
     blocked: selectedAgents.filter((agent) => agent.status === 'blocked').length,
+    downgraded: selectedAgents.filter((agent) => agent.downgradedFrom === 'blocked').length,
     dispatchable: selectedAgents.filter((agent) => agent.dispatchAllowed).length,
   };
   const mandatoryFailure = checks.some((check) => check.mandatory && check.status === 'fail');
-  const status = mandatoryFailure || summary.blocked > 0
+  const status = mandatoryFailure || selectedAgents.some((agent) => agent.status === 'blocked' && agent.stopsEngagement)
     ? 'blocked'
     : summary.degraded + summary.deferred + summary.skipped > 0
       ? 'degraded'
@@ -3378,7 +3382,7 @@ async function preflight(argv) {
 
   const report = {
     $schema: 'https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/preflight-report.schema.json',
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt: profile.generatedAt ?? new Date().toISOString(),
     mode,
     modelRuntime,
@@ -3392,6 +3396,7 @@ async function preflight(argv) {
     capabilities: Object.entries(capabilityState).map(([id, state]) => ({ id, ...state })),
     agents,
     summary,
+    residualRisks: preflightResidualRisks(selectedAgents),
   };
 
   let persisted = false;
@@ -3406,7 +3411,7 @@ async function preflight(argv) {
     console.log(
       `PREFLIGHT  ${status} mode=${mode} selected=${summary.selected} dispatchable=${summary.dispatchable} ` +
       `degraded=${summary.degraded} deferred=${summary.deferred} skipped=${summary.skipped} blocked=${summary.blocked} ` +
-      `report=${persisted ? outputPath : 'NOT_PERSISTED'}` +
+      `downgraded=${summary.downgraded} report=${persisted ? outputPath : 'NOT_PERSISTED'}` +
       (unattestedLaunch ? ' attestation=UNATTESTED' : ''),
     );
   }
@@ -3477,7 +3482,33 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
 
 function agentResult(contract, selected, status, dispatchAllowed, missingTools, missingCapabilities, actions, artifactPaths, authorization, modelRuntime) {
   const model = buildModelRoutingPreview(modelPolicy, runtimeAdapters, { slug: contract.slug, runtime: modelRuntime });
-  return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed: contract.slug === 'odysseus' ? false : dispatchAllowed, model, missingTools, missingCapabilities, actions, artifactPaths, authorization };
+  return { slug: contract.slug, lane: contract.lane, selected, status, dispatchAllowed: contract.slug === 'odysseus' ? false : dispatchAllowed, stopsEngagement: status === 'blocked', model, missingTools, missingCapabilities, actions, artifactPaths, authorization };
+}
+
+// Every selected lane that will not run is a named residual risk, so the controller and the
+// final report can list uncovered surfaces without re-deriving them from agent records.
+function preflightResidualRisks(selectedAgents) {
+  const RESIDUAL_RISK_REASON_LIMIT = 600;
+  return selectedAgents
+    .filter((agent) => agent.status !== 'ready' && agent.status !== 'degraded')
+    .map((agent) => {
+      const reason = agent.actions.join(' ') || `${agent.slug} is ${agent.status}`;
+      return {
+        slug: agent.slug,
+        status: agent.status,
+        ...(agent.downgradedFrom ? { downgradedFrom: agent.downgradedFrom } : {}),
+        missingTools: [...agent.missingTools],
+        missingCapabilities: [...agent.missingCapabilities],
+        reason: reason.length > RESIDUAL_RISK_REASON_LIMIT ? `${reason.slice(0, RESIDUAL_RISK_REASON_LIMIT - 3)}...` : reason,
+      };
+    });
+}
+
+// A lane re-blocked after a failed orchestration projection is blocked outright, not downgraded.
+function withoutDowngrade(agent) {
+  const record = { ...agent };
+  delete record.downgradedFrom;
+  return record;
 }
 
 function evaluateRiskAuthorizations(contract, authorization, target, now) {

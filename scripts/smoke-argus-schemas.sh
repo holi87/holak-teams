@@ -18,11 +18,16 @@ fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 node "$ROOT/scripts/validate-argus-schemas.mjs"
 
 schema_listing="$($CLI schema list)"
-grep -Fq $'preflight-report\thttps://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/preflight-report.schema.json\tschemaVersion=2\treadCompatible=2\treport-only' <<<"$schema_listing" || fail 'schema list omitted the current report-only preflight reader'
-printf '{"schemaVersion":3}\n' >"$WORK/unsupported-preflight.json"
-if "$CLI" schema validate --kind preflight-report --input "$WORK/unsupported-preflight.json" >/dev/null 2>&1; then
-  fail 'preflight report reader accepted an unsupported schemaVersion'
-fi
+grep -Fq $'preflight-report\thttps://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/preflight-report.schema.json\tschemaVersion=3\treadCompatible=3\treport-only' <<<"$schema_listing" || fail 'schema list omitted the current report-only preflight reader'
+for unsupported_version in 2 4; do
+  printf '{"schemaVersion":%s}\n' "$unsupported_version" >"$WORK/unsupported-preflight-$unsupported_version.json"
+  if "$CLI" schema validate --kind preflight-report --input "$WORK/unsupported-preflight-$unsupported_version.json" \
+    >/dev/null 2>"$WORK/unsupported-preflight-$unsupported_version.err"; then
+    fail "preflight report reader accepted unsupported schemaVersion $unsupported_version"
+  fi
+  grep -Fq "unsupported schemaVersion $unsupported_version; expected 3" "$WORK/unsupported-preflight-$unsupported_version.err" || \
+    fail "preflight report reader did not name the supported v3 contract for schemaVersion $unsupported_version"
+done
 
 for kind in bug-ledger lane-plan evidence-reference automation-status surface-inventory coverage-observations coverage-result final-summary model-escalation-request runner-result capability-evidence; do
   "$CLI" schema validate --kind "$kind" --input "$FIXTURES/valid/$kind.json" >/dev/null

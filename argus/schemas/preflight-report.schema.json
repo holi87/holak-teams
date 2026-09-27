@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/holi87/holak-teams/argus/schemas/preflight-report.schema.json",
-  "title": "Argus runtime preflight report v2",
+  "title": "Argus runtime preflight report v3",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "generatedAt", "mode", "modelRuntime", "status", "target", "artifactRoot", "authorization", "engagement", "orchestration", "checks", "capabilities", "agents", "summary"],
+  "required": ["$schema", "schemaVersion", "generatedAt", "mode", "modelRuntime", "status", "target", "artifactRoot", "authorization", "engagement", "orchestration", "checks", "capabilities", "agents", "summary", "residualRisks"],
   "properties": {
     "$schema": { "const": "https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/preflight-report.schema.json" },
-    "schemaVersion": { "const": 2 },
+    "schemaVersion": { "const": 3 },
     "generatedAt": { "type": "string", "format": "date-time" },
     "mode": { "enum": ["A", "B", "C", "D"] },
     "modelRuntime": { "enum": ["claude", "codex"] },
@@ -102,13 +102,15 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slug", "lane", "selected", "status", "dispatchAllowed", "model", "missingTools", "missingCapabilities", "actions", "artifactPaths", "authorization"],
+        "required": ["slug", "lane", "selected", "status", "dispatchAllowed", "stopsEngagement", "model", "missingTools", "missingCapabilities", "actions", "artifactPaths", "authorization"],
         "properties": {
           "slug": { "type": "string", "minLength": 1 },
           "lane": { "type": "string", "minLength": 1 },
           "selected": { "type": "boolean" },
           "status": { "enum": ["not-selected", "ready", "degraded", "deferred", "skipped", "blocked"] },
           "dispatchAllowed": { "type": "boolean" },
+          "stopsEngagement": { "type": "boolean" },
+          "downgradedFrom": { "enum": ["blocked"] },
           "model": {
             "type": "object",
             "additionalProperties": false,
@@ -156,13 +158,23 @@
               }
             }
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": { "required": ["stopsEngagement"], "properties": { "stopsEngagement": { "const": true } } },
+            "then": { "properties": { "status": { "const": "blocked" } } }
+          },
+          {
+            "if": { "required": ["downgradedFrom"] },
+            "then": { "properties": { "status": { "const": "deferred" }, "dispatchAllowed": { "const": false }, "stopsEngagement": { "const": false } } }
+          }
+        ]
       }
     },
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["selected", "ready", "degraded", "deferred", "skipped", "blocked", "dispatchable"],
+      "required": ["selected", "ready", "degraded", "deferred", "skipped", "blocked", "downgraded", "dispatchable"],
       "properties": {
         "selected": { "type": "integer", "minimum": 0 },
         "ready": { "type": "integer", "minimum": 0 },
@@ -170,7 +182,31 @@
         "deferred": { "type": "integer", "minimum": 0 },
         "skipped": { "type": "integer", "minimum": 0 },
         "blocked": { "type": "integer", "minimum": 0 },
+        "downgraded": { "type": "integer", "minimum": 0 },
         "dispatchable": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "residualRisks": {
+      "type": "array",
+      "maxItems": 27,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slug", "status", "missingTools", "missingCapabilities", "reason"],
+        "properties": {
+          "slug": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["deferred", "skipped", "blocked"] },
+          "downgradedFrom": { "enum": ["blocked"] },
+          "missingTools": { "$ref": "#/$defs/stringList" },
+          "missingCapabilities": { "$ref": "#/$defs/stringList" },
+          "reason": { "type": "string", "minLength": 1 }
+        },
+        "allOf": [
+          {
+            "if": { "required": ["downgradedFrom"] },
+            "then": { "properties": { "status": { "const": "deferred" } } }
+          }
+        ]
       }
     }
   },

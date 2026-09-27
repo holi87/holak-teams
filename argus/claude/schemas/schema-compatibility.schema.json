@@ -13,7 +13,7 @@
         "lane-plan": { "$ref": "#/$defs/override" },
         "evidence-reference": { "$ref": "#/$defs/override" },
         "automation-status": { "$ref": "#/$defs/override" },
-        "preflight-report": { "$ref": "#/$defs/override" }
+        "preflight-report": { "$ref": "#/$defs/preflightReportOverride" }
       }
     }
   },
@@ -21,6 +21,10 @@
     "override": {
       "type": "object", "additionalProperties": false, "required": ["current", "readCompatible"],
       "properties": { "current": { "const": 2 }, "readCompatible": { "const": [2] } }
+    },
+    "preflightReportOverride": {
+      "type": "object", "additionalProperties": false, "required": ["current", "readCompatible"],
+      "properties": { "current": { "const": 3 }, "readCompatible": { "const": [3] } }
     }
   }
 }

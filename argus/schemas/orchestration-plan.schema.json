@@ -15,6 +15,7 @@
     "phases",
     "roles",
     "mandatoryLanes",
+    "essentialLanes",
     "deepHunt",
     "proofLoop",
     "huntingBrief"
@@ -316,6 +317,61 @@
         "rule": {
           "type": "array",
           "minItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 20
+          }
+        }
+      }
+    },
+    "essentialLanes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "includeMandatoryLanes",
+        "modes",
+        "rule"
+      ],
+      "properties": {
+        "policy": {
+          "const": "blocked-essential-lane-stops-engagement"
+        },
+        "includeMandatoryLanes": {
+          "type": "boolean"
+        },
+        "modes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ],
+          "properties": {
+            "A": {
+              "$ref": "#/$defs/stringList",
+              "minItems": 1
+            },
+            "B": {
+              "$ref": "#/$defs/stringList",
+              "minItems": 1
+            },
+            "C": {
+              "$ref": "#/$defs/stringList",
+              "minItems": 1
+            },
+            "D": {
+              "$ref": "#/$defs/stringList",
+              "minItems": 1
+            }
+          }
+        },
+        "rule": {
+          "type": "array",
+          "minItems": 2,
           "uniqueItems": true,
           "items": {
             "type": "string",
