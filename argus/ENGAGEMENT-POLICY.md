@@ -420,7 +420,10 @@ inspection is in scope.
 record carries the active allocation ID, dispatch ID, and attempt; `start-attempt` begins a
 new heartbeat generation on the same allocation/dispatch, and a generation may advance only
 by one attempt. Progress within one generation is event-driven and monotonic by timestamp,
-phase, completed units, and terminal status;
+phase, completed units, and terminal status. Within a phase, a `started` record at
+completed 0 opens a new work unit with its own total, so a phase-scoped re-dispatch on the
+same allocation (a Minos cluster thread, the consolidator, a repair round) reports its own
+progress; the other rules apply within each work unit;
 cross-lane tokens, missing allocations, regressions, malformed logs, symlinks, and
 multi-link files fail closed. Preflight alone may create the initial Odysseus record before
 the controller lease exists, and a resumed preflight never rewrites it. Heartbeat paths are

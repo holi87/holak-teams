@@ -77,6 +77,7 @@ try {
   testConditionalGateResolution();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
+  testRedispatchedHeartbeatWorkUnits();
   console.log('PASS  Argus engagement state: derived phases, standby, proof ledger gate, recorded skips, conditional lanes, one-shot gate resolution, decision-bound leases, authenticated heartbeat, and link defenses');
 } finally {
   rmSync(work, { recursive: true, force: true });
@@ -979,6 +980,37 @@ function testAuthenticatedMonotonicHeartbeats() {
   );
   assert(readFileSync(statePeer, 'utf8') === stateBefore, 'hard-linked state peer was modified');
   unlinkSync(statePeer);
+}
+
+// A phase-scoped re-dispatch (Minos cluster threads, the consolidator, a repair round) reuses
+// the lane's allocation, so it cannot open a new execution generation. A `started` record at
+// completed 0 opens a new work unit instead; every monotonic rule still holds inside a unit.
+function testRedispatchedHeartbeatWorkUnits() {
+  const { manifest } = createFixture('heartbeat-work-units', ['hermes', 'minos', 'odysseus']);
+  const odysseus = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('work-unit-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: odysseus.token, executionBinding: executionBinding('work-unit-minos') });
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: odysseus.token, executionBinding: executionBinding('work-unit-hermes') });
+  let second = 0;
+  const at = () => `2026-07-12T09:00:${String(second++).padStart(2, '0')}.000Z`;
+  const beat = (lane, token, completed, total, status) => appendHeartbeat(manifest, lane, token, 'proof', completed, total, status, at());
+  // Two cluster threads, each a complete work unit, then the consolidator.
+  for (let cluster = 0; cluster < 2; cluster += 1) {
+    beat('minos', minos.token, 0, 1, 'started');
+    beat('minos', minos.token, 1, 1, 'complete');
+  }
+  beat('minos', minos.token, 0, 3, 'started');
+  beat('minos', minos.token, 1, 3, 'running');
+  expectThrowMessage(() => beat('minos', minos.token, 0, 3, 'running'), 'heartbeat progress regressed from 1 to 0', 'progress regression inside a consolidator work unit');
+  expectThrowMessage(() => beat('minos', minos.token, 1, 4, 'running'), 'heartbeat total changed within proof', 'total drift inside a consolidator work unit');
+  beat('minos', minos.token, 3, 3, 'complete');
+  expectThrowMessage(() => beat('minos', minos.token, 3, 3, 'running'), 'heartbeat status regressed from complete to running', 'resume after completion inside one work unit');
+  expectThrowMessage(() => beat('minos', minos.token, 1, 2, 'started'), 'heartbeat total changed within proof', 'a started record with progress opened a work unit');
+  // Repair round 2 reopens the filing lane on its lease, also after a thread that ended at running.
+  beat('hermes', hermes.token, 0, 2, 'running');
+  beat('hermes', hermes.token, 1, 2, 'running');
+  beat('hermes', hermes.token, 0, 1, 'started');
+  beat('hermes', hermes.token, 1, 1, 'complete');
+  for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', odysseus.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
 }
 
 function executionBinding(seed, overrides = {}) {

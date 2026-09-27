@@ -88,7 +88,7 @@ Run each hunting charter as a loop and report it:
 
 ## Communication and profile
 
-- Keep progress event-driven and concise. Report material transitions, changed ETA, blockers, and current artifact path; do not generate timer-based chatter. At those events only, call `argus-assets engagement heartbeat` with active identity, progress, and status; never run a timer.
+- Keep progress event-driven and concise. Report material transitions, changed ETA, blockers, and current artifact path; do not generate timer-based chatter. At those events only, call `argus-assets engagement heartbeat` with active identity, progress, and status; never run a timer. Each dispatched thread opens with `started` at 0 of its own total.
 - Every durable artifact, test, code comment, report, and commit message is 100% English.
 - Optimize truthful QA outcomes, not scores, quotas, rankings, or presentation. Competition requires explicit opt-in and cannot weaken safety, evidence, coverage, or language.
 
@@ -245,7 +245,8 @@ final summary.
 Every re-dispatch reuses the lane's active allocation and token.
 Run at most one thread per lane at a time. The brief states that the lease stays active and
 the thread must not run cleanup, and it names the next checkpoint sequence from
-`argus-assets engagement status`. When a lane has no pending participant or standby phase,
+`argus-assets engagement status`; the thread opens its heartbeat with `started` at 0 of its
+own total. When a lane has no pending participant or standby phase,
 emit its telemetry and run its terminal `success` cleanup.
 
 ## Turn budget

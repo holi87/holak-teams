@@ -1159,6 +1159,10 @@ function validateHeartbeatTransition(previous, candidate, phases) {
     return;
   }
   if (candidatePhase > previousPhase) return;
+  // A phase-scoped re-dispatch on the same allocation (a Minos cluster thread, the consolidator,
+  // a repair round) opens its own work unit with `started` at completed 0. The monotonic rules
+  // below apply within each work unit, never across them.
+  if (candidate.status === 'started' && candidate.completed === 0) return;
   if (candidate.total !== previous.total) throw new Error(`heartbeat total changed within ${candidate.phase}`);
   if (candidate.completed < previous.completed) throw new Error(`heartbeat progress regressed from ${previous.completed} to ${candidate.completed}`);
   const allowed = {

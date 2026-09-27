@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 52802,
-      "sha256": "55372f9f99bf9a32d6585949c37f68a866b655be7d99199167ffe57eed61662b"
+      "bytes": 53077,
+      "sha256": "0311157069a668fc92024732d32e4d5527a7551a82bcbe56fd4593728162fbb5"
     },
     {
       "id": "canonical-contracts",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 15644,
-      "sha256": "aff712b882c220bfb483b7867a78857c43434138086bec5d0001581b4b2aa956"
+      "bytes": 15713,
+      "sha256": "e5c9dea018645636bf4f5a20b429e108885f44af9de8c7c39ea1e368c595b265"
     },
     {
       "id": "qa-core-skill",
@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 11861,
-      "sha256": "049eb78063e775f587cb746dbede27ac46335bc00094465fcb79e4747698a95e"
+      "bytes": 11928,
+      "sha256": "df896131101ea18ea714aa5c35e786ec01d13f190031771fb2e3e4145433864b"
     },
     {
       "id": "qa-browser-skill",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 405326,
-      "sha256": "61c3173e7fc259956ffbcd55d8dd4d10d04740f51862a8c3c642173370cf7b57"
+      "bytes": 405654,
+      "sha256": "27abc95e95c6a8cebbd753e45424732bd161f9854827e288c827e376dd4a6f3c"
     },
     {
       "id": "common-template",
