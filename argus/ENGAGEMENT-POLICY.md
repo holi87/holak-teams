@@ -729,3 +729,4 @@ as `failure` or `interrupted`.
 | `GUARD-CANONICAL-SINGLE-WRITER` | A direct tool attempted to write a canonical artifact. |
 | `GUARD-SHELL-AMBIGUOUS` | A write-capable shell/process command cannot be bounded safely. |
 | `GUARD-EXPLICIT-BYPASS` | An exact, unexpired operator bypass authorized the path. |
+| `GUARD-ENGAGEMENT-OPT-IN` | A command names a fault or reset opt-in outside one `run-tests.sh` invocation under the calling lane, or names the runner's fault-injection grant (RUNNER-CONTRACT.md). |
