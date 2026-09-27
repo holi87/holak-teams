@@ -134,7 +134,8 @@ printf '\nunapproved-regression\n' >>"$WORK/argus/claude/agents/aegis.md"
 node "$CHECK" --root "$WORK" --skip-corpus-approval >"$WORK/output.log" 2>&1 || { cat "$WORK/output.log" >&2; fail '--skip-corpus-approval still ran the approval check'; }
 grep -Fq 'SKIP  corpus approval (development only; the release gate never passes this flag)' "$WORK/output.log" || fail '--skip-corpus-approval did not announce the skip'
 
-# (9) The approval tool derives benchmark evidence from real revisions and refuses bad evidence.
+# (9) The approval tool derives benchmark evidence from real revisions and a real adjudicate.mjs
+# discovery summary, and refuses bad evidence.
 REPO="$(fresh_copy benchmark-repo)"
 git_repo() { GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git -C "$REPO" -c user.name=smoke -c user.email=smoke@example.invalid -c commit.gpgsign=false "$@"; }
 git_repo init -q
@@ -144,38 +145,69 @@ BASE_REVISION="$(git_repo rev-parse HEAD)"
 perl -0pi -e 's/Mission/Missjon/' "$REPO/argus/claude/agents/aegis.md"
 git_repo commit -qam candidate
 CANDIDATE_REVISION="$(git_repo rev-parse HEAD)"
-adjudication() {
-  jq -n --arg base "$BASE_REVISION" --arg candidate "$CANDIDATE_REVISION" --arg status "$1" --argjson recall "$2" '{
-    status: $status, results: [],
-    comparison: [
-      {variant: "baseline", revision: $base, runs: 3, meanRecall: 0.75, meanCriticalRecall: 1, meanPrecision: 0.9, totalCost: 1, totalTokens: 10},
-      {variant: "candidate", revision: $candidate, runs: 3, meanRecall: $recall, meanCriticalRecall: 1, meanPrecision: 0.9, totalCost: 1, totalTokens: 10}
-    ]}'
+# Benchmark evidence comes from the real producer: a synthetic paired comparison of the two
+# revisions (modes A and B, three repeats) scored by scripts/eval/discovery/adjudicate.mjs.
+# summary <name> <baseline seeds> <candidate seeds> [<extra plan fields>] writes the
+# argus-eval/discovery-summary@1 to $SCRATCH/<name>.json and prints adjudicate's exit status;
+# each seeds argument is the seeds every faulty run confirms per mode, as {"A":n,"B":n}.
+summary() {
+  local name="$1" work="$SCRATCH/eval-$1" extra="${4:-}" plan status
+  [ -n "$extra" ] || extra='{}'
+  mkdir -p "$work"
+  plan="$(jq -nc --arg base "$BASE_REVISION" --arg candidate "$CANDIDATE_REVISION" --argjson baseSeeds "$2" \
+    --argjson candidateSeeds "$3" --argjson extra "$extra" \
+    '{variants: {baseline: {revision: $base, seeds: $baseSeeds}, candidate: {revision: $candidate, seeds: $candidateSeeds}}} + $extra')"
+  node "$ROOT/scripts/fixtures/argus-eval/benchmark-comparison.mjs" --work "$work" --plan "$plan" >"$work/inputs.json" \
+    || fail "benchmark comparison fixture $name could not be built"
+  set +e
+  node "$ROOT/scripts/eval/discovery/adjudicate.mjs" --runs "$(jq -r .runs "$work/inputs.json")" \
+    --verdicts "$(jq -r .verdicts "$work/inputs.json")" --output "$SCRATCH/$name.json" >"$work/adjudicate.log" 2>&1
+  status=$?
+  set -e
+  printf '%s\n' "$status"
 }
 approve_benchmark() {
   node "$APPROVE" --root "$REPO" --approved-for smoke --benchmark "$1" \
-    --baseline-variant baseline --candidate-variant candidate --adjudicated-at 2026-09-01 "${@:2}"
+    --baseline-variant baseline --candidate-variant candidate "${@:2}"
 }
-adjudication scored 0.5 >"$SCRATCH/regressed.json"
+expect_refusal() {
+  local path="$1" label="$2" message="$3"
+  if approve_benchmark "$path" >"$SCRATCH/approve.log" 2>&1; then fail "approval tool accepted $label"; fi
+  grep -Fq -- "$message" "$SCRATCH/approve.log" || { cat "$SCRATCH/approve.log" >&2; fail "$label was refused for an unexpected reason"; }
+}
+[ "$(summary regressed '{"A":3,"B":2}' '{"A":3,"B":1}')" = 0 ] || fail 'adjudicate.mjs did not score the regressed comparison'
 if approve_benchmark "$SCRATCH/regressed.json" --write >"$SCRATCH/approve.log" 2>&1; then fail 'approval tool wrote a regressed approval'; fi
-grep -Fq 'refusing a regressed approval: benchmark regression: meanRecall 0.5 < 0.75 - 0' "$SCRATCH/approve.log" || { cat "$SCRATCH/approve.log" >&2; fail 'regressed approval refused for an unexpected reason'; }
-adjudication UNSCORED 0.75 >"$SCRATCH/unscored.json"
-if approve_benchmark "$SCRATCH/unscored.json" >"$SCRATCH/approve.log" 2>&1; then fail 'approval tool accepted an unscored comparison'; fi
-grep -Fq 'adjudication status must be "scored"' "$SCRATCH/approve.log" || { cat "$SCRATCH/approve.log" >&2; fail 'unscored comparison refused for an unexpected reason'; }
-adjudication scored 0.75 >"$SCRATCH/scored.json"
+grep -Fq 'refusing a regressed approval in mode B: benchmark regression: meanRecall' "$SCRATCH/approve.log" \
+  || { cat "$SCRATCH/approve.log" >&2; fail 'a regression in one mode was refused for an unexpected reason'; }
+[ "$(summary unscored '{"A":3,"B":2}' '{"A":3,"B":2}' '{"dropVerdict":true}')" = 20 ] || fail 'adjudicate.mjs scored a comparison with a missing verdict'
+expect_refusal "$SCRATCH/unscored.json" 'an UNSCORED comparison' 'discovery summary status must be "scored", found "UNSCORED"'
+[ "$(summary test-mode '{"A":3,"B":2}' '{"A":3,"B":2}' '{"testMode":true}')" = 0 ] || fail 'adjudicate.mjs did not score the testMode comparison'
+expect_refusal "$SCRATCH/test-mode.json" 'a testMode comparison' 'is a testMode comparison; a stub-adapter run cannot approve a corpus'
+jq -n --arg base "$BASE_REVISION" --arg candidate "$CANDIDATE_REVISION" '{status: "scored", results: [], comparison: [
+  {variant: "baseline", revision: $base, runs: 3, meanRecall: 0.75, meanCriticalRecall: 1, meanPrecision: 0.9},
+  {variant: "candidate", revision: $candidate, runs: 3, meanRecall: 0.75, meanCriticalRecall: 1, meanPrecision: 0.9}]}' >"$SCRATCH/legacy.json"
+expect_refusal "$SCRATCH/legacy.json" 'a pre-5.0 comparison document' 'the pre-5.0 comparison shape is no longer read'
+# The candidate finds more in mode A and as much in mode B: every mode passes, and the recorded
+# figures are each side's weakest mode.
+[ "$(summary scored '{"A":3,"B":2}' '{"A":4,"B":2}')" = 0 ] || fail 'adjudicate.mjs did not score the comparison'
 printf '\nuncommitted\n' >>"$REPO/argus/claude/agents/aegis.md"
-if approve_benchmark "$SCRATCH/scored.json" >"$SCRATCH/approve.log" 2>&1; then fail 'approval tool accepted prompts that differ from the candidate revision'; fi
-grep -Fq "differ from candidate revision $CANDIDATE_REVISION" "$SCRATCH/approve.log" || { cat "$SCRATCH/approve.log" >&2; fail 'dirty candidate refused for an unexpected reason'; }
+expect_refusal "$SCRATCH/scored.json" 'prompts that differ from the candidate revision' "differ from candidate revision $CANDIDATE_REVISION"
 git_repo checkout -q -- argus/claude/agents/aegis.md
 approve_benchmark "$SCRATCH/scored.json" --write >"$SCRATCH/approve.log" 2>&1 || { cat "$SCRATCH/approve.log" >&2; fail 'approval tool refused valid benchmark evidence'; }
 jq -e --arg base "$CORPUS_SHA" --arg comparison "$(shasum -a 256 "$SCRATCH/scored.json" | cut -d' ' -f1)" \
-  --arg baseRevision "$BASE_REVISION" --arg candidateRevision "$CANDIDATE_REVISION" '
-  .approvedCorpus as $corpus | $corpus.benchmark
-  | .status == "non-regressed" and .comparisonSha256 == $comparison and .adjudicatedAt == "2026-09-01"
+  --arg baseRevision "$BASE_REVISION" --arg candidateRevision "$CANDIDATE_REVISION" --slurpfile summary "$SCRATCH/scored.json" '
+  ($summary[0].variants | map({key: .name, value: .perMode}) | from_entries) as $modes
+  | .approvedCorpus as $corpus | $corpus.benchmark
+  | .status == "non-regressed" and .comparisonSha256 == $comparison and .adjudicatedAt == $summary[0].createdAt[0:10]
     and .baseline.revision == $baseRevision and .baseline.corpusSha256 == $base
     and .candidate.revision == $candidateRevision and .candidate.corpusSha256 == $corpus.sha256
-    and $corpus.sha256 != $base' "$REPO/argus/prompt-budgets.json" >/dev/null \
-  || fail 'approval tool recorded evidence that does not match the revisions and adjudication'
+    and $corpus.sha256 != $base
+    and .baseline.runs == 3 and .candidate.runs == 3
+    and .baseline.meanRecall == $modes.baseline.B.meanRecall and .candidate.meanRecall == $modes.candidate.B.meanRecall
+    and .candidate.meanRecall < $modes.candidate.A.meanRecall
+    and .baseline.meanPrecision == $modes.baseline.B.pooledPrecision and .candidate.meanPrecision == $modes.candidate.B.pooledPrecision' \
+  "$REPO/argus/prompt-budgets.json" >/dev/null \
+  || fail 'approval tool recorded evidence that does not match the revisions and the per-mode minima of the discovery summary'
 expect_pass "$REPO" 'approved benchmark evidence' 'benchmark non-regressed'
 
 printf 'PASS  Prompt corpus approval: agent and profile rewrites rejected, pending expiry, benchmark binding and non-regression enforced, release gate never skips approval\n'
