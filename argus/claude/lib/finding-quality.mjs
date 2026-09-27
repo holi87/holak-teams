@@ -38,6 +38,7 @@ export function validateFindingQuality(bugs) {
     const proof = bug.verification;
     if (!proof) { errors.push(`${bug.id}: confirmed findings require verification`); continue; }
     if (proof.reproduction.occurrences > proof.reproduction.attempts) errors.push(`${bug.id}: occurrences exceed attempts`);
+    if ((proof.reproduction.occurrences < proof.reproduction.attempts || proof.reproduction.attempts === 1) && proof.independent.status === 'not-required') errors.push(`${bug.id}: intermittent or single-attempt confirmation requires independent reproduction or an explicit unavailable reason`);
     if (proof.independent.status === 'reproduced' && proof.independent.executor === bug.lane) errors.push(`${bug.id}: independent executor must differ from finder`);
     if ((['Critical', 'Blocker'].includes(bug.severity) || proof.disputedOracle) && proof.independent.status === 'not-required') errors.push(`${bug.id}: independent reproduction or an explicit unavailable reason is required`);
     if (bug.origin.length > 1 && !proof.mergeRationale) errors.push(`${bug.id}: multiple origins require a causal merge rationale`);

@@ -6,6 +6,7 @@
 - **Severity:** Blocker | Critical | Major | Minor | Trivial   <!-- impact (consequence) -->
 - **Priority:** P1 | P2 | P3 | P4   <!-- fix-order; first-pass draft, Minos sets authoritative at triage. Never a P-token in Severity. -->
 - **Status:** Confirmed | Suspected
+- **Reproducibility:** <occurrences>/<attempts> from <initial state> — deterministic | intermittent | single-attempt (reason)
 - **Canonical-ID:** <BUG-NNNN — Minos assigns at final triage; leave blank when filing>
 - **Lane:** ui | api | perf | security | a11y | db   <!-- metadata; not the filename prefix -->
 - **Detected by:** automated suite (spec path / @tag) | agent exploratory/manual (charter or probe) | recon
@@ -35,4 +36,4 @@
 <response snippet / screenshot / report link>
 
 ## Notes
-<repeatability (x/y), business impact, workaround>
+<business impact, workaround>

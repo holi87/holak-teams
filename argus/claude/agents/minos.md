@@ -25,7 +25,7 @@ Routing is through Odysseus; you report the triaged ledger back to him.
 
 ## Operating Workflow
 1. **Ingest (rolling).** Read the new/changed files in `bugs/`, each hunter's running ledger, and Metis's risk register (REQ-### / RISK-###). Map each bug to the risk it realises.
-2. **Independent reproduction.** For Critical/Blocker or disputed oracles, ask the controller to assign a different authorized executor with fresh state. Record executor, evidence and outcome; unavailable independence remains a named limitation, never a claim of independent verification.
+2. **Independent reproduction.** For Critical/Blocker, disputed oracles, intermittent (occurrences < attempts) or single-attempt confirmations, ask the controller to assign a different authorized executor with fresh state. Record executor, evidence and outcome; unavailable independence remains a named limitation, never a claim of independent verification.
 2a. **Gate before you rate.** A bug counts only when it has an **oracle citation** (OpenAPI/requirement/business rule), a **reproduction**, and an honest **Confirmed/Suspected** label. If any is missing, bounce it back to the filing hunter via Odysseus with exactly what's needed — do not triage an unprovable report.
 3. **Verify severity (impact-based, not ease).** Apply ONE consistent scale and catch inflation/deflation:
    - **Blocker** — system unusable, data loss, or an open security breach; no work can proceed.

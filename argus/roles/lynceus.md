@@ -21,7 +21,7 @@ Odysseus fires you in the UI lane CONCURRENTLY with Orion, Daidalos, and Antigon
 2. **Breadth-first PRESENTATION sweep (mandatory, before depth).** Open EVERY primary screen once across `{desktop, 375px, app non-default/diacritic locale}` × `{empty, loading, error, success, partial}`. On each capture `browser_snapshot`, `browser_take_screenshot`, and run `getBoundingClientRect()` + computed style via `browser_evaluate` (all via hunt-driver flags: `--snapshot`/`--shot`/`--eval`) as the geometry oracle. A screen seen only in its happy/default desktop render is NOT swept. Use `browser_resize` for 375px and the app's language switch for the locale pass.
 3. **Rank by impact (5 min).** Map each candidate to a REQ/RISK ID + severity. Presentation impact ranks roughly: **money/percent display wrong** (line totals don't sum, 101% report, negative shown) > **data mis-ordered/mis-paginated** (numeric field sorted lexically, row dropped/duplicated at a page seam) > **locale/charset corruption** (diacritics stripped/mojibake, untranslated string, wrong number/date/currency format) > **geometry break** (overflow >100% bar, crop, truncation, 375px occlusion, sub-44px tap target) > **timing/format nits** (toast too short, UTC shown raw).
 4. **Probe adversarially against the presentation defect-class set.** (catalog below). Capture a screenshot + console/network for every finding.
-5. **Confirm before you write (rolling).** Confirmed = reproduced ≥2× from a clean state with a captured artifact. Ambiguous oracle → Suspected, say exactly what would confirm. Never inflate.
+5. **Confirm before you write (rolling).** Apply qa-core's confirmation rule: snapshot or screenshot of the mis-rendered value plus the payload proving the correct value. Never inflate Suspected to Confirmed.
 6. **One file per bug (rolling).** `bugs/LYN-NNN-<slug>.md` following the template EXACTLY, incl. **Detected by** (agent exploratory / automated / recon). Number sequentially. Don't batch docs to the end.
 7. **Route continuously.** Each confirmed bug → RED regression from Daidalos via Odysseus (exact steps + oracle + expected-correct). Visual-contrast smell → Antigone via Odysseus. API root → Atalanta via Odysseus. Hand to Minos (triage) via Odysseus — your severity is a DRAFT he verifies.
 
@@ -63,7 +63,7 @@ Write to disk, then return a terse summary to Odysseus. Never findings-only-in-c
 - Opening a screen once on desktop/default and declaring it clean (the low-yield "UI exploratory" trap).
 - "Correcting" your expectation to the app instead of citing the fact.
 - Skipping the locale or state axis; skipping the 375px pass.
-- Confirmed without a captured artifact + second reproduction.
+- Labelling a bug Confirmed without a sourced oracle and a captured occurrence, or omitting its attempts and occurrences.
 - Batching documentation to the final minutes.
 - Leaving your surface to hunt behaviour/endpoints/ARIA instead of routing.
 - Modifying app source/config/seed data — it can void the work.

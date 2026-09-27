@@ -109,6 +109,10 @@ assert(playwrightEntries === budget.budgets.maxPlaywrightMcpEntries, `expected e
 assertPlaywrightBoundary(agents);
 assertProfileAssignments(matrix, profileCounts);
 
+const promptBodies = new Map([
+  ...[...agents].map(([slug, content]) => [`argus/claude/agents/${slug}.md`, content.replace(/^---[\s\S]*?---\s*/, '')]),
+  ...[...sourceSkills].map(([profile, content]) => [`argus/shared-skills/${profile}/SKILL.md`, content.replace(/^---[\s\S]*?---\s*/, '')]),
+]);
 let codexCharacters = 0;
 for (const file of codexFiles) {
   const slug = file.slice(0, -5);
@@ -116,6 +120,7 @@ for (const file of codexFiles) {
   codexCharacters += content.length;
   const instructions = content.match(/developer_instructions = '''\n([\s\S]*?)\n'''\s*$/)?.[1];
   assert(instructions, `${slug}: developer_instructions missing`);
+  promptBodies.set(`argus/codex/${file}`, instructions);
   const delta = instructions.match(/<!-- CODEX_CAPABILITY_DELTA_START -->\n([\s\S]*?)\n<!-- CODEX_CAPABILITY_DELTA_END -->/)?.[1];
   assert(delta, `${slug}: compact capability delta missing`);
   assert(words(delta) <= budget.budgets.maxCodexCapabilityDeltaWords, `${slug}: capability delta exceeds ${budget.budgets.maxCodexCapabilityDeltaWords} words`);
@@ -127,6 +132,7 @@ for (const file of codexFiles) {
 }
 const codexEstimatedTokens = Math.ceil(codexCharacters / 4);
 assert(codexEstimatedTokens <= budget.budgets.maxCodexEstimatedTokens, `Codex corpus ${codexEstimatedTokens} estimated tokens exceeds ${budget.budgets.maxCodexEstimatedTokens}`);
+const forbiddenPatternCount = assertForbiddenPromptPatterns(promptBodies, comparison.forbiddenPromptPatterns ?? []);
 
 const runWords = words(readFileSync(RUN, 'utf8'));
 assert(runWords >= budget.budgets.minRunSkillWords && runWords <= budget.budgets.maxRunSkillWords, `/argus:run has ${runWords} words; expected ${budget.budgets.minRunSkillWords}-${budget.budgets.maxRunSkillWords}`);
@@ -160,6 +166,7 @@ console.log(`PASS  Argus Codex prompts: ${codexCharacters} chars / ${codexEstima
 console.log(`PASS  Capability disclosure: profiles core/browser/framework/coverage/orchestration=${['qa-core','qa-browser','qa-framework-runner','qa-coverage-reporting','orchestration-core'].map((profile) => profileCounts.get(profile) ?? 0).join('/')}, /run ${runWords} words`);
 console.log(`PASS  Tool boundary: ${toolNameBytes} name bytes, ${playwrightEntries} Playwright MCP entries, Kalchas public recon only`);
 console.log(`PASS  Duplicate doctrine: ${duplicates.length} duplicated doctrine paragraphs`);
+console.log(`PASS  Forbidden prompt patterns: ${forbiddenPatternCount} patterns absent from ${promptBodies.size} agent, profile, and Codex prompt bodies`);
 if (approval) {
   if (approval.warning) console.log(approval.warning);
   console.log(`PASS  Prompt corpus approval: ${corpus.sha256.slice(0, 12)}, benchmark ${approval.status}`);
@@ -213,6 +220,31 @@ function assertPlaywrightBoundary(agentMap) {
       ]), 'kalchas: public recon MCP contract drifted');
     } else assert(playwright.length === 0, `${slug}: stateful lane exposes Playwright MCP tools`);
   }
+}
+
+// Retired doctrine stays retired: no prompt body (frontmatter stripped) may match a pattern
+// the engagement contract forbids, such as the old double-reproduction confirmation gate.
+function assertForbiddenPromptPatterns(bodies, patterns) {
+  assert(Array.isArray(patterns), 'forbiddenPromptPatterns must be an array');
+  const ids = new Set();
+  for (const item of patterns) {
+    assert(typeof item?.id === 'string' && item.id && !ids.has(item.id), `forbidden prompt pattern id is missing or duplicated: ${JSON.stringify(item?.id)}`);
+    ids.add(item.id);
+    const flags = item.flags ?? '';
+    assert(typeof item.pattern === 'string' && item.pattern, `${item.id}: forbidden prompt pattern is empty`);
+    assert(['', 'i'].includes(flags), `${item.id}: unsupported forbidden prompt pattern flags ${JSON.stringify(flags)}`);
+    let pattern;
+    try {
+      pattern = new RegExp(item.pattern, flags);
+    } catch (error) {
+      assert(false, `${item.id}: invalid forbidden prompt pattern: ${error.message}`);
+    }
+    for (const [label, body] of bodies) {
+      const match = body.match(pattern);
+      assert(!match, `${item.id}: forbidden prompt pattern matches ${label}: ${JSON.stringify(match?.[0])}`);
+    }
+  }
+  return patterns.length;
 }
 
 function assertProfileAssignments(capabilityMatrix, counts) {
