@@ -12,6 +12,13 @@ from .boundary import (
     money_reconciles,
     percentages_sum_to_100,
 )
+from .concurrency import (
+    START_GATE_TIMEOUT_SECONDS,
+    DoubleSubmitResult,
+    RaceResult,
+    concurrent_race,
+    double_submit,
+)
 from .http import (
     REDACTED,
     REST_STATUS,
@@ -83,11 +90,30 @@ from .replay import (
     next_idempotency_key,
     replay_with_idempotency_key,
 )
+from .scaling import (
+    ScalingAnalysis,
+    ScalingPoint,
+    ScalingSample,
+    analyze_scaling,
+    n1_scaling,
+)
 from .schema import (
     assert_schema,
     assert_schema_ref,
     assert_schema_strict,
     schema_violations,
+)
+from .state import (
+    SoftDeleteResult,
+    soft_delete_sweep,
+)
+from .visual import (
+    BoundsMeasurement,
+    BoundsRect,
+    BoundsVerdict,
+    Viewport,
+    evaluate_bounds,
+    visual_bounds,
 )
 
 __all__ = [
@@ -98,6 +124,12 @@ __all__ = [
     "boundary3",
     "money_reconciles",
     "percentages_sum_to_100",
+    # concurrency
+    "START_GATE_TIMEOUT_SECONDS",
+    "DoubleSubmitResult",
+    "RaceResult",
+    "concurrent_race",
+    "double_submit",
     # http
     "REDACTED",
     "REST_STATUS",
@@ -162,9 +194,25 @@ __all__ = [
     "idempotent_replay",
     "next_idempotency_key",
     "replay_with_idempotency_key",
+    # scaling
+    "ScalingAnalysis",
+    "ScalingPoint",
+    "ScalingSample",
+    "analyze_scaling",
+    "n1_scaling",
     # schema
     "assert_schema",
     "assert_schema_ref",
     "assert_schema_strict",
     "schema_violations",
+    # state
+    "SoftDeleteResult",
+    "soft_delete_sweep",
+    # visual
+    "BoundsMeasurement",
+    "BoundsRect",
+    "BoundsVerdict",
+    "Viewport",
+    "evaluate_bounds",
+    "visual_bounds",
 ]

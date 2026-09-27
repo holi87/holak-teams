@@ -1,31 +1,40 @@
-"""@perf lane — a GATE on a STATED budget (PERF_BUDGET_MS), never an invented one.
+"""@perf lane — a GATE, not a benchmark.
 
+- The p95 check asserts only a budget the strategy has STATED (PERF_BUDGET_MS); never invent a
+  threshold. A missing, non-numeric or non-positive budget is reported through
+  ArgusPrerequisiteError as ``prerequisite-missing``; the tests never skip themselves.
+- n1_scaling needs no budget: it compares the product with itself at growing collection sizes
+  and requires the read to grow sub-linearly, so an N+1 fan-out is RED.
 The lane runs only when solution/test-lanes.tsv enables it, with PERF_BUDGET_MS as its
-prerequisite. A missing, non-numeric or non-positive budget is reported through
-ArgusPrerequisiteError as ``prerequisite-missing``; the tests never skip themselves. With a
-real budget (from recon + the strategy) a light latency probe against a target endpoint
-asserts that p95 stays under it.
-
-ADAPT-ME: point PERF_TARGET at a meaningful endpoint; for serious load use a
-dedicated probe (e.g. a `locust`/`k6` job) and feed its result here.
+prerequisite. For serious load use a dedicated probe (e.g. a `locust`/`k6` job) and feed its
+result here.
 """
 from __future__ import annotations
 
 import math
-import os
-import statistics
 import time
+from collections.abc import Callable
 
 import httpx
 import pytest
 
-from qa.api_client import Endpoints
+from qa.api_client import Endpoints, ResourceClient
 from qa.argus.errors import ArgusPrerequisiteError, require_env
-from qa.config import ENV
-
-PERF_TARGET = os.environ.get("PERF_TARGET", Endpoints.HEALTH)
+from qa.data.factory import build_order
+from qa.oracles import assert_rest_status, expect_status, n1_scaling
 
 pytestmark = pytest.mark.perf
+
+# ADAPT-ME: the endpoint the stated budget covers, the sample counts, and the collection read
+# Hermes flagged for N+1. The read uses a fixed page size, so a correct read stays flat in
+# payload; the smallest size must fill that page, or the payload grows between the first two
+# sizes on a correct app.
+BUDGET_ENDPOINT = Endpoints.HEALTH
+WARMUP_REQUESTS = 3
+MEASURED_REQUESTS = 40
+COLLECTION_PATH = Endpoints.ORDERS
+COLLECTION_PAGE_SIZE = 10
+COLLECTION_SIZES = [10, 40, 160]
 
 
 def budget_ms() -> float:
@@ -39,32 +48,53 @@ def budget_ms() -> float:
     return budget
 
 
-def sample_count() -> int:
-    """PERF_SAMPLES (default 20); anything but a positive integer is a missing prerequisite."""
-    raw = os.environ.get("PERF_SAMPLES", "20")
-    if not raw.isdigit() or int(raw) < 1:
-        raise ArgusPrerequisiteError("PERF_SAMPLES must be a positive integer")
-    return int(raw)
+def timed(send: Callable[[], httpx.Response]) -> tuple[httpx.Response, float, int]:
+    """One request, timed from send to the last body byte: the response, the ms, and the body bytes."""
+    start = time.perf_counter()
+    res = send()
+    body = res.read()
+    return res, (time.perf_counter() - start) * 1000, len(body)
 
 
-def test_perf_budget_is_a_stated_positive_number():
-    # Guard against a typo'd / non-numeric budget silently weakening the gate.
-    assert budget_ms() > 0, "PERF_BUDGET_MS must parse to a positive number"
+def percentile(samples: list[float], p: float) -> float:
+    """Nearest-rank percentile: the smallest sample with at least p% of the samples at or below it."""
+    ordered = sorted(samples)
+    return ordered[max(0, math.ceil(p / 100 * len(ordered)) - 1)]
 
 
-def test_endpoint_p95_latency_within_budget():
+def test_endpoint_p95_latency_within_budget(anon_client):
     budget = budget_ms()
-    samples = sample_count()
-    samples_ms: list[float] = []
-    with httpx.Client(base_url=ENV.api_url, timeout=10.0) as client:
-        for _ in range(samples):
-            start = time.perf_counter()
-            client.get(PERF_TARGET)
-            samples_ms.append((time.perf_counter() - start) * 1000)
+    timings: list[float] = []
+    for call in range(WARMUP_REQUESTS + MEASURED_REQUESTS):
+        res, ms, _ = timed(lambda: anon_client.get(BUDGET_ENDPOINT))
+        expect_status(res, 200)
+        if call >= WARMUP_REQUESTS:
+            timings.append(ms)
+    p95 = percentile(timings, 95)
+    assert p95 <= budget, f"p95 of {MEASURED_REQUESTS} sequential GET {BUDGET_ENDPOINT} is {p95:.1f} ms; the stated budget is {budget:g} ms"
 
-    # p95 via the 20-quantile cut points (needs >= 2 samples).
-    p95 = statistics.quantiles(samples_ms, n=20)[-1] if len(samples_ms) >= 2 else samples_ms[0]
-    assert p95 <= budget, (
-        f"{PERF_TARGET} p95={p95:.1f}ms exceeds budget {budget:.0f}ms "
-        f"(n={len(samples_ms)}, min={min(samples_ms):.1f} max={max(samples_ms):.1f})"
-    )
+
+def test_collection_read_grows_sub_linearly_with_the_collection_size(api_as, created_resources):
+    user = api_as("user")
+    orders = ResourceClient(user, COLLECTION_PATH)
+    # ADAPT-ME: start from an empty or freshly reset collection (solution/environment.tsv) so
+    # each size is exact, or arrange through the app's seed command instead of the API.
+    arranged = 0
+
+    def arrange_to(size: int) -> None:
+        nonlocal arranged
+        while arranged < size:
+            res = orders.create(build_order())
+            location = res.headers.get("location")
+            if location:
+                created_resources.append((user, location))
+            assert_rest_status(res, "created")
+            arranged += 1
+
+    def measure(size: int) -> dict[str, float]:
+        arrange_to(size)
+        res, ms, payload = timed(lambda: orders.list({"pageSize": COLLECTION_PAGE_SIZE}))
+        expect_status(res, 200)
+        return {"ms": ms, "bytes": payload}
+
+    n1_scaling(sizes=COLLECTION_SIZES, measure=measure)
