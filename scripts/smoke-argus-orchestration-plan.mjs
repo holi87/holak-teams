@@ -69,6 +69,7 @@ for (const fragment of [
   'argus-assets model route', 'argus/model-escalation-request@1', 'argus-assets model telemetry',
   'product, automation,', 'infrastructure, skip, and policy outcomes', 'Never claim an agent ran',
   '`deferred` record with `downgradedFrom=blocked`', 'report it from `residualRisks`',
+  'proofLoop', 'deepHunt', 'engagement barrier skip', 'at most one thread per lane', 'maxRepairRounds', '--activity reproduce',
 ]) {
   assert(controllerContract.includes(fragment), `orchestration-core lost required controller semantic: ${fragment}`);
 }

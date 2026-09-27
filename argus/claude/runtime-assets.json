@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 13158,
-      "sha256": "6d750f55230781c78b8c0e00e82d4eb50e5cd761ecbee7e765af1b8f8c868f28"
+      "bytes": 14867,
+      "sha256": "8a13b135c145f88e53b6b75f78d7b1c77cb78211180581ec1e2507fc31a51b16"
     },
     {
       "id": "qa-core-skill",
@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 11351,
-      "sha256": "b80fb135376f3e79e167ed20868a43a1b3818d94ac85390e004545e980124260"
+      "bytes": 11485,
+      "sha256": "4e1b60e497e4f01730fd6b5c3117187801434beb313d42de4f025efc35fd98dd"
     },
     {
       "id": "qa-browser-skill",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 59767,
-    "sha256": "cb8d615c3ebc411ffc3aa3a3dca4a62bfb2a407bd4d10909febbd35670c52139"
+    "bytes": 59889,
+    "sha256": "09ac79e201770af466e5f3512e271f2ab605c6a0b09924b5ef7ebe2367bef18f"
   }
 }

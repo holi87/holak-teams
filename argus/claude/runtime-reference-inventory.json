@@ -594,6 +594,12 @@
       ]
     },
     {
+      "value": "solution/findings/triage/<phase>/<cluster>.md",
+      "consumers": [
+        "minos"
+      ]
+    },
+    {
       "value": "solution/IMPLEMENTATION-REPORT.md",
       "consumers": [
         "aristarchus",
