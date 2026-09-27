@@ -1849,7 +1849,7 @@ function raciCommand(args) {
   const [operation, ...rest] = args;
   const raci = readJson(RACI_PATH);
   if (operation === 'list') {
-    for (const route of raci.surfaceRoutes) console.log(`${route.surface}\tdiscover=${route.discover}\tbaseline=${route.baseline}\tautomate=${route.automate}\tvalidate=${route.validate}\treport=${route.report}${route.gate ? `\tgate=${route.gate}` : ''}`);
+    for (const route of raci.surfaceRoutes) console.log(`${route.surface}\tdiscover=${route.discover}\tbaseline=${route.baseline}\tautomate=${route.automate}\tvalidate=${route.validate}\treport=${route.report}\treproduce=${route.reproduce.join(',')}${route.gate ? `\tgate=${route.gate}` : ''}`);
     return 0;
   }
   if (operation !== 'route') fail('usage: argus-assets raci <list|route> [options]');
@@ -1872,8 +1872,10 @@ function raciCommand(args) {
     requireOptions(options, ['surface', 'activity'], 'raci route');
     const route = raci.surfaceRoutes.find((item) => item.surface === options.surface);
     if (!route) fail(`raci route: unknown surface ${options.surface}`);
-    if (!['discover', 'baseline', 'automate', 'validate', 'report'].includes(options.activity)) fail('raci route --activity must be discover, baseline, automate, validate, or report for a surface');
-    result = { selector: 'surface', surface: route.surface, activity: options.activity, accountable: route[options.activity], gate: route.gate ?? null };
+    if (!['discover', 'baseline', 'automate', 'validate', 'report', 'reproduce'].includes(options.activity)) fail('raci route --activity must be discover, baseline, automate, validate, report, or reproduce for a surface');
+    result = options.activity === 'reproduce'
+      ? raciReproduceRoute(raci, route)
+      : { selector: 'surface', surface: route.surface, activity: options.activity, accountable: route[options.activity], gate: route.gate ?? null };
   } else {
     const activity = raci.defectLifecycle.find((item) => item.activity === options.activity);
     if (!activity) fail(`raci route: unknown defect activity ${options.activity}`);
@@ -1881,6 +1883,15 @@ function raciCommand(args) {
   }
   console.log(JSON.stringify(result));
   return 0;
+}
+
+// Independent reproduction is a defect-lifecycle activity bound to a surface: the lifecycle
+// names the accountable owner, and the surface route lists the ordered reproducer candidates.
+// Odysseus applies the eligibility rule; an empty list means no independent reproducer.
+function raciReproduceRoute(raci, route) {
+  const activity = raci.defectLifecycle.find((item) => item.activity === 'reproduce');
+  if (!activity) fail('raci route: the defect lifecycle defines no reproduce activity');
+  return { selector: 'surface', surface: route.surface, activity: 'reproduce', accountable: activity.accountable, candidates: [...route.reproduce], gate: route.gate ?? null };
 }
 
 function coverageCommand(args) {

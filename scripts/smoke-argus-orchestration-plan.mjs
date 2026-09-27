@@ -214,6 +214,30 @@ assert(validateOrchestrationPlan(thinStandby, matrix).length === 0, 'RACI-derive
 assert(validateOrchestrationPlan(thinStandby, matrix, raci).includes('proof: standby must include antigone'),
   'proof standby did not require RACI candidate lanes');
 
+// RACI reproduce routes: independent reproduction runs in the proof phases, so a reproducer
+// must hold a lane before the first proof phase and can never discover the same surface.
+const reproduceErrors = (surface, candidates) => {
+  const routed = structuredClone(raci);
+  routed.surfaceRoutes.find((route) => route.surface === surface).reproduce = candidates;
+  return validateOrchestrationPlan(plan, matrix, routed);
+};
+assert(raci.surfaceRoutes.every((route) => Array.isArray(route.reproduce)), 'every RACI surface route must declare reproduce candidates');
+assert(reproduceErrors('api-rest', ['atalanta']).includes('raci reproduce candidate atalanta for api-rest is the surface discover owner'),
+  'a surface discover owner was accepted as its independent reproducer');
+assert(reproduceErrors('api-rest', ['aegis']).includes('raci reproduce candidate aegis for api-rest is not dispatched before the first proof phase'),
+  'a reproducer first dispatched after the first proof phase was accepted');
+for (const late of ['kleio', 'odysseus', 'hydra']) {
+  assert(reproduceErrors('journey-ui', ['orion', late]).includes(`raci reproduce candidate ${late} for journey-ui is not dispatched before the first proof phase`),
+    `reproducer ${late} (late, controller or unknown) was accepted`);
+}
+assert(reproduceErrors('resilience', ['kalchas']).length === 0, 'a discovery-phase reproducer was rejected');
+const routelessRaci = structuredClone(raci);
+delete routelessRaci.surfaceRoutes;
+assert(validateOrchestrationPlan(plan, matrix, routelessRaci).length === 0, 'a RACI contract without surface routes must add no reproduce errors');
+const lateReproducer = structuredClone(raci);
+lateReproducer.surfaceRoutes.find((route) => route.surface === 'security').reproduce = ['atalanta', 'mnemosyne'];
+assertThrows(() => derivePhasePlan(plan, matrix, 'A', undefined, lateReproducer), 'raci reproduce candidate mnemosyne for security is not dispatched before the first proof phase');
+
 for (const fixture of fixtures) {
   const mutated = structuredClone(plan);
   applyMutation(mutated, fixture);

@@ -2,6 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { derivePhasePlan } from '../argus/runtime/orchestration-plan.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const mode = process.argv[2] ?? '--check';
@@ -10,6 +11,8 @@ if (!['--check', '--write'].includes(mode)) fail('usage: sync-argus-raci.mjs [--
 const source = readJson('argus/raci.json');
 const capability = readJson('argus/capabilities/capability-matrix.json');
 const engagement = readJson('argus/policies/engagement.template.json');
+const orchestrationPlan = readJson('argus/orchestration-plan.json');
+const MODES = ['A', 'B', 'C', 'D'];
 const agents = new Map(source.agents.map((agent) => [agent.slug, agent]));
 const slugs = [...agents.keys()].sort();
 const canonicalOwners = new Map(source.artifacts.map((artifact) => [artifact.path, artifact.accountable]));
@@ -32,22 +35,24 @@ for (const contract of capability.agents) {
   }
 }
 
-const expectedActivities = ['automate', 'deduplicate', 'discover', 'judge', 'persist', 'report', 'validate'];
-assert(equal(source.defectLifecycle.map((item) => item.activity).sort(), expectedActivities), 'defect lifecycle must define seven unique activities');
+const expectedActivities = ['automate', 'deduplicate', 'discover', 'judge', 'persist', 'repair', 'report', 'reproduce', 'source-oracle', 'validate'];
+assert(equal(source.defectLifecycle.map((item) => item.activity).sort(), expectedActivities), 'defect lifecycle must define ten unique activities');
 unique(source.defectLifecycle, (item) => item.activity, 'defect activity');
 unique(source.surfaceRoutes, (item) => item.surface, 'surface route');
-unique(source.stateTransitions, (item) => `${item.stateMachine}:${item.from}:${item.to}`, 'state transition');
+unique(source.stateTransitions, transitionKey, 'state transition');
 unique(source.artifacts, (item) => item.path, 'canonical artifact');
 const requiredTransitions = [
-  'engagement:preflight:discovery', 'engagement:discovery:hunting', 'engagement:hunting:automation', 'engagement:automation:verification', 'engagement:verification:reporting', 'engagement:reporting:complete',
   'lane-plan:planned:running', 'lane-plan:planned:blocked', 'lane-plan:running:blocked', 'lane-plan:running:completed',
+  'defect:candidate:bounced', 'defect:candidate:suspected', 'defect:candidate:confirmed',
+  'defect:bounced:needs-oracle', 'defect:bounced:suspected', 'defect:bounced:confirmed', 'defect:needs-oracle:confirmed',
+  'defect:confirmed:quarantined', 'defect:quarantined:confirmed', 'defect:quarantined:suspected',
   'defect:needs-oracle:suspected', 'defect:suspected:confirmed', 'defect:confirmed:automated', 'defect:automated:fixed', 'defect:fixed:closed',
   'runner-lifecycle:discovered:reproduced', 'runner-lifecycle:reproduced:automated', 'runner-lifecycle:automated:fixed', 'runner-lifecycle:fixed:closed',
   'automation:planned:implemented', 'automation:implemented:passed', 'automation:implemented:failed', 'automation:implemented:skipped',
   'evidence:collected:immutable', 'coverage-observations:collected:merged', 'coverage-result:inputs-ready:calculated',
   'final-summary:reporting:completed', 'final-summary:reporting:degraded', 'final-summary:reporting:blocked',
 ];
-const transitionKeys = new Set(source.stateTransitions.map((item) => `${item.stateMachine}:${item.from}:${item.to}`));
+const transitionKeys = new Set(source.stateTransitions.map(transitionKey));
 for (const transition of requiredTransitions) assert(transitionKeys.has(transition), `missing canonical state transition: ${transition}`);
 
 const realSlugs = new Set(slugs);
@@ -57,6 +62,45 @@ for (const route of source.surfaceRoutes) {
   for (const field of ['discover', 'baseline', 'automate', 'validate', 'report']) {
     assert(realSlugs.has(route[field]), `${route.surface}: unknown ${field} owner ${route[field]}`);
   }
+  assert(Array.isArray(route.reproduce), `${route.surface}: reproduce must be an ordered list of candidates`);
+  unique(route.reproduce, (slug) => slug, `${route.surface} reproduce candidate`);
+  for (const slug of route.reproduce) {
+    assert(realSlugs.has(slug), `${route.surface}: unknown reproduce candidate ${slug}`);
+    assert(slug !== route.discover, `${route.surface}: reproduce candidate ${slug} is the surface discover owner`);
+  }
+}
+
+// Engagement transitions are exactly the phase edges the orchestration plan can produce:
+// consecutive phases of every mode, plus the skip exit (converged or controller-budget) from
+// each skippable deep-hunt pass to the first phase after that mode's last deep pass. Validating the plan against this
+// RACI also proves every reproduce candidate holds a lane before the first proof phase.
+const engagementTransitions = new Set();
+for (const mode of MODES) {
+  let phases;
+  try {
+    phases = derivePhasePlan(orchestrationPlan, capability, mode, undefined, source);
+  } catch (error) {
+    fail(`Mode ${mode}: ${error.message}`);
+  }
+  for (let index = 1; index < phases.length; index += 1) {
+    engagementTransitions.add(`engagement:${phases[index - 1].id}:${phases[index].id}`);
+  }
+  const lastDeep = phases.findLastIndex(isDeepPhase);
+  if (lastDeep === -1) continue;
+  const exit = phases[lastDeep + 1];
+  assert(exit, `Mode ${mode}: no phase follows the last deep pass`);
+  for (const phase of phases) {
+    if (phase.kind === 'deep-hunt' && phase.pass >= 2) engagementTransitions.add(`engagement:${phase.id}:${exit.id}`);
+  }
+}
+const transitionsByKey = new Map(source.stateTransitions.map((item) => [transitionKey(item), item]));
+for (const key of engagementTransitions) {
+  const transition = transitionsByKey.get(key);
+  assert(transition, `missing canonical state transition: ${key}`);
+  assert(transition.accountable === 'odysseus', `${key}: engagement transitions must be accountable to odysseus`);
+}
+for (const item of source.stateTransitions) {
+  if (item.stateMachine === 'engagement') assert(engagementTransitions.has(transitionKey(item)), `stale engagement transition: ${transitionKey(item)}`);
 }
 
 const policyArtifacts = engagement.writePolicy.canonicalArtifacts.map((item) => ({ path: item.path, accountable: item.owner })).sort(byPath);
@@ -85,11 +129,14 @@ function renderContract(data) {
     '| Activity | A | R | C | Handoff |', '|---|---|---|---|---|',
     ...data.defectLifecycle.map((item) => `| ${item.activity} | ${item.accountable} | ${(item.responsible ?? []).join(', ')} | ${(item.consulted ?? []).join(', ') || '—'} | ${item.handoff ?? '—'} |`), '',
     '## Surface routing', '',
-    '| Surface | Discover | Baseline | Automate | Validate | Report | Gate |', '|---|---|---|---|---|---|---|',
-    ...data.surfaceRoutes.map((item) => `| ${item.surface} | ${item.discover} | ${item.baseline} | ${item.automate} | ${item.validate} | ${item.report} | ${item.gate ?? '—'} |`), '',
+    'Reproduce lists independent reproducers in preference order. Odysseus assigns the first selected, dispatchable candidate that is not the finder, an origin lane, or the collector of the original reproduction evidence; every candidate holds a lane before the first proof phase and never discovers that surface. An empty list names no independent reproducer: the finding uses the route of its manifestation surface when that differs, and otherwise records independent reproduction as unavailable with its reason.', '',
+    '| Surface | Discover | Reproduce | Baseline | Automate | Validate | Report | Gate |', '|---|---|---|---|---|---|---|---|',
+    ...data.surfaceRoutes.map((item) => `| ${item.surface} | ${item.discover} | ${item.reproduce.join(', ') || '—'} | ${item.baseline} | ${item.automate} | ${item.validate} | ${item.report} | ${item.gate ?? '—'} |`), '',
     '## Canonical artifacts', '', 'The accountable owner is also the sole owner of that artifact\'s `fragment → canonical` merge transition.', '', '| Path | A / merge owner |', '|---|---|',
     ...data.artifacts.map((item) => `| \`${item.path}\` | ${item.accountable} |`), '',
-    '## State transitions', '', '| State machine | Transition | A |', '|---|---|---|',
+    '## State transitions', '',
+    'Engagement transitions are derived, not declared freely: they are exactly the consecutive phases that `derivePhasePlan` produces from `argus/orchestration-plan.json` in Modes A–D, plus the skip exit from each skippable deep-hunt pass to the first phase after that mode\'s last deep pass.', '',
+    '| State machine | Transition | A |', '|---|---|---|',
     ...data.stateTransitions.map((item) => `| ${item.stateMachine} | ${item.from} → ${item.to} | ${item.accountable} |`), '',
     '## Agent contracts', '', '| Agent | Role | Lane | Persistence | Accountable artifacts |', '|---|---|---|---|---|',
     ...data.agents.map((item) => `| ${item.slug} | ${item.role} | ${item.lane} | ${item.persistence} | ${item.accountableArtifacts.map((path) => `\`${path}\``).join(', ') || '—'} |`), '',
@@ -136,6 +183,8 @@ function unique(items, key, label) {
   const seen = new Set();
   for (const item of items) { const value = key(item); assert(!seen.has(value), `duplicate ${label}: ${value}`); seen.add(value); }
 }
+function transitionKey(item) { return `${item.stateMachine}:${item.from}:${item.to}`; }
+function isDeepPhase(phase) { return phase.kind === 'deep-hunt' || (phase.kind === 'proof' && phase.pass >= 1); }
 function readJson(path) { return JSON.parse(readFileSync(join(ROOT, path), 'utf8')); }
 function byPath(a, b) { return a.path.localeCompare(b.path); }
 function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }

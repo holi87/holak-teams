@@ -15,25 +15,30 @@ R = responsible, A = exactly one accountable owner, C = consulted, I = informed.
 | automate | atlas | surface-automation-owner | minos | — |
 | judge | aristarchus | aristarchus | asklepios | — |
 | report | kleio | kleio | minos, atlas, metis | — |
+| repair | odysseus | originating-specialist | minos | Re-dispatch the filing lane under its active allocation with the exact repair.missing items; the lane updates its own candidate file and evidence, then Minos re-judges. |
+| reproduce | minos | independent-reproducer | originating-specialist | Odysseus assigns the first eligible surface-route reproduce candidate; the reproducer arranges fresh state and records evidence collected under its own slug. |
+| source-oracle | metis | metis | minos | Metis answers needs-oracle requests with an ORC addendum, a justified-invariant class, both readings, or an explicit no-oracle residual. |
 
 ## Surface routing
 
-| Surface | Discover | Baseline | Automate | Validate | Report | Gate |
-|---|---|---|---|---|---|---|
-| ui-functional | orion | penelope | daidalos | minos | kleio | — |
-| ui-presentation | lynceus | penelope | daidalos | minos | kleio | — |
-| accessibility | antigone | penelope | daidalos | minos | kleio | — |
-| api-rest | atalanta | theseus | talos | minos | kleio | — |
-| event-protocol | proteus | pistis | talos | minos | kleio | — |
-| journey-ui | ariadne | penelope | daidalos | minos | kleio | — |
-| journey-api | ariadne | theseus | talos | minos | kleio | — |
-| performance | hermes | metis | nike | minos | kleio | — |
-| resilience | tyche | metis | nike | minos | kleio | — |
-| security | perseus | metis | aegis | minos | kleio | — |
-| data-direct | charon | kalchas | mnemosyne | minos | kleio | db-access |
-| data-public-api | atalanta | theseus | talos | minos | kleio | — |
-| source | tiresias | kalchas | atlas | minos | kleio | source-access |
-| existing-suite | asklepios | asklepios | asklepios | aristarchus | kleio | existing-suite |
+Reproduce lists independent reproducers in preference order. Odysseus assigns the first selected, dispatchable candidate that is not the finder, an origin lane, or the collector of the original reproduction evidence; every candidate holds a lane before the first proof phase and never discovers that surface. An empty list names no independent reproducer: the finding uses the route of its manifestation surface when that differs, and otherwise records independent reproduction as unavailable with its reason.
+
+| Surface | Discover | Reproduce | Baseline | Automate | Validate | Report | Gate |
+|---|---|---|---|---|---|---|---|
+| ui-functional | orion | ariadne, lynceus, daidalos | penelope | daidalos | minos | kleio | — |
+| ui-presentation | lynceus | orion, antigone, daidalos | penelope | daidalos | minos | kleio | — |
+| accessibility | antigone | lynceus, orion, daidalos | penelope | daidalos | minos | kleio | — |
+| api-rest | atalanta | ariadne, perseus, talos | theseus | talos | minos | kleio | — |
+| event-protocol | proteus | atalanta, talos | pistis | talos | minos | kleio | — |
+| journey-ui | ariadne | orion, daidalos | penelope | daidalos | minos | kleio | — |
+| journey-api | ariadne | atalanta, talos | theseus | talos | minos | kleio | — |
+| performance | hermes | atalanta | metis | nike | minos | kleio | — |
+| resilience | tyche | — | metis | nike | minos | kleio | — |
+| security | perseus | atalanta, ariadne | metis | aegis | minos | kleio | — |
+| data-direct | charon | atalanta | kalchas | mnemosyne | minos | kleio | db-access |
+| data-public-api | atalanta | ariadne, charon, talos | theseus | talos | minos | kleio | — |
+| source | tiresias | — | kalchas | atlas | minos | kleio | source-access |
+| existing-suite | asklepios | — | asklepios | asklepios | aristarchus | kleio | existing-suite |
 
 ## Canonical artifacts
 
@@ -67,21 +72,46 @@ The accountable owner is also the sole owner of that artifact's `fragment → ca
 
 ## State transitions
 
+Engagement transitions are derived, not declared freely: they are exactly the consecutive phases that `derivePhasePlan` produces from `argus/orchestration-plan.json` in Modes A–D, plus the skip exit from each skippable deep-hunt pass to the first phase after that mode's last deep pass.
+
 | State machine | Transition | A |
 |---|---|---|
 | engagement | preflight → discovery | odysseus |
 | engagement | discovery → hunting | odysseus |
-| engagement | hunting → automation | odysseus |
+| engagement | hunting → proof | odysseus |
+| engagement | proof → deep-hunt-1 | odysseus |
+| engagement | deep-hunt-1 → deep-proof-1 | odysseus |
+| engagement | deep-proof-1 → deep-hunt-2 | odysseus |
+| engagement | deep-hunt-2 → deep-proof-2 | odysseus |
+| engagement | deep-proof-2 → deep-hunt-3 | odysseus |
+| engagement | deep-hunt-3 → deep-proof-3 | odysseus |
+| engagement | deep-proof-3 → automation | odysseus |
+| engagement | deep-proof-3 → verification | odysseus |
+| engagement | proof → automation | odysseus |
 | engagement | automation → verification | odysseus |
 | engagement | verification → reporting | odysseus |
 | engagement | reporting → complete | odysseus |
+| engagement | deep-hunt-2 → automation | odysseus |
+| engagement | deep-hunt-3 → automation | odysseus |
+| engagement | deep-hunt-2 → verification | odysseus |
+| engagement | deep-hunt-3 → verification | odysseus |
 | lane-plan | planned → running | odysseus |
 | lane-plan | planned → blocked | odysseus |
 | lane-plan | running → blocked | odysseus |
 | lane-plan | running → completed | odysseus |
 | defect | candidate → needs-oracle | minos |
+| defect | candidate → bounced | minos |
+| defect | candidate → suspected | minos |
+| defect | candidate → confirmed | minos |
+| defect | bounced → needs-oracle | minos |
+| defect | bounced → suspected | minos |
+| defect | bounced → confirmed | minos |
 | defect | needs-oracle → suspected | minos |
+| defect | needs-oracle → confirmed | minos |
 | defect | suspected → confirmed | minos |
+| defect | confirmed → quarantined | minos |
+| defect | quarantined → confirmed | minos |
+| defect | quarantined → suspected | minos |
 | defect | confirmed → automated | atlas |
 | defect | automated → fixed | minos |
 | defect | fixed → closed | minos |
