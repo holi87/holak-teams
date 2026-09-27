@@ -73,6 +73,7 @@ try {
   testWorkPhaseMergeKeepsNewConfirmed();
   testConvergedSkip();
   testStandbyBlocksSuccessCleanup();
+  testClusterLaneStandbyDuringProof();
   testConditionalLaneProjection();
   testConditionalGateResolution();
   testIdempotentPreflightHeartbeat();
@@ -588,6 +589,30 @@ function testStandbyBlocksSuccessCleanup() {
   );
   cleanupWorker(manifest, 'minos', minos.token, 'failure');
   cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// A path-analyst lane files leads that Minos validates in a proofLoop cluster and may bounce
+// back for repair, so its lease survives the first proof phase and releases only after it.
+function testClusterLaneStandbyDuringProof() {
+  const fixture = createFixture('cluster-lane-standby', ['minos', 'odysseus', 'theseus']);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('cluster-standby-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('cluster-standby-minos') });
+  const theseus = allocateWorker(manifest, 'theseus', { controllerToken: controller.token, executionBinding: executionBinding('cluster-standby-theseus') });
+  assert(JSON.stringify(manifest.phasePlan.find((phase) => phase.id === 'proof').standby) === '["theseus"]', 'theseus is not on proof standby');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'theseus', theseus.token, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'theseus', theseus.token, 'success'),
+    'theseus success cleanup is not yet available: pending proof; the lease stays active and Odysseus performs terminal cleanup',
+    'path-analyst success cleanup before its proof repair',
+  );
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  mergeEmptyLedger(fixture, minos.token, 'cluster-standby-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(cleanupWorker(manifest, 'theseus', theseus.token, 'success').released === true, 'theseus did not release after the proof phase passed');
+  for (const [lane, token] of [['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
 }
 
 // The conditional map is sealed with the dispatchable projection: normalized, restricted to

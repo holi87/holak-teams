@@ -469,7 +469,9 @@ mint a late normal dispatch or replacement lease.
 Standby lanes never arrive at a barrier. They are the lanes a phase may re-dispatch on
 their active lease: filing lanes whose candidates need proof repair and Metis as the
 oracle desk. A phase-scoped re-dispatch reuses the lane's allocation and token, so a
-standby lane keeps its lease until the standby phase has passed (see Cleanup).
+standby lane keeps its lease until the standby phase has passed (see Cleanup). The plan
+validator keeps every `proofLoop` cluster lane reachable for repair during the first proof
+phase: in each mode it is on that phase's standby or holds a later phase.
 
 A proof phase whose projected participants include Minos cannot advance until Minos has
 merged `solution/bug-ledger.json` during that phase. Each bug-ledger merge records
