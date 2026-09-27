@@ -1300,11 +1300,13 @@ function isWithin(root, candidate) {
 
 // In a managed engagement the Playwright module is the one preflight or gate resolution
 // proved and recorded in browser-runtime.json. Both digests are recomputed immediately
-// before the import, so a module changed after the probe is refused instead of executed.
+// before the import, so a module changed after the probe is refused instead of executed,
+// and a module tree inside the worker-writable artifact root is never imported at all.
 // Without a record (unmanaged runs) the driver imports its own playwright dependency.
 async function loadPlaywright() {
   const recordPath = controlDir ? join(controlDir, 'browser-runtime.json') : null;
   if (!recordPath || !existsSync(recordPath)) return import('playwright');
+  const residual = 'stop and report a browser-runtime residual to Odysseus';
   let record;
   try {
     record = JSON.parse(readFileSync(recordPath, 'utf8'));
@@ -1317,6 +1319,12 @@ async function loadPlaywright() {
   }
   const modulePath = record.modulePath;
   if (typeof modulePath !== 'string' || !modulePath.startsWith('/')) fail(`${recordPath} has no absolute modulePath`);
+  const writableRoot = engagementArtifactRoot();
+  for (const root of [modulePath, ...(Array.isArray(record.moduleTreeRoots) ? record.moduleTreeRoots : [])]) {
+    if (typeof root === 'string' && isWithin(writableRoot, root)) {
+      fail(`browser runtime ${root} lies inside the worker-writable artifact root ${writableRoot}; ${residual}`);
+    }
+  }
   const changed = (detail) => fail(`browser runtime changed since preflight; ask Odysseus to rerun gate resolution (${detail})`);
   let tree;
   try {
@@ -1330,6 +1338,26 @@ async function loadPlaywright() {
     changed('module tree digest differs');
   }
   return import(pathToFileURL(join(modulePath, 'index.mjs')).href);
+}
+
+// The physical artifact root recorded in the engagement manifest. The manifest may sit deeper
+// than <artifact-root>/ai_agents_internal/, so its directory is never used as a stand-in.
+function engagementArtifactRoot() {
+  const manifestPath = resolve(process.env.ARGUS_ENGAGEMENT_MANIFEST);
+  let artifactRoot;
+  try {
+    artifactRoot = JSON.parse(readFileSync(manifestPath, 'utf8')).artifactRoot;
+  } catch (error) {
+    fail(`engagement manifest ${manifestPath} is unreadable: ${error.message}`);
+  }
+  if (typeof artifactRoot !== 'string' || !artifactRoot.startsWith('/')) fail(`${manifestPath} has no absolute artifactRoot`);
+  let physical;
+  try {
+    physical = realpathSync(artifactRoot);
+  } catch (error) {
+    fail(`engagement artifact root ${artifactRoot} cannot be resolved: ${error.message}`);
+  }
+  return physical;
 }
 
 function sha256(bytes) {

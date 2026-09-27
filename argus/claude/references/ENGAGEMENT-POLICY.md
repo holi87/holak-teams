@@ -257,8 +257,8 @@ candidates read-only, deduplicated by physical path, in this order: the profile'
 `browserRuntime.modulePath` (probed alone when set); host-provisioned
 `~/.cache/argus/browser-runtime/<x.y.z>/node_modules/playwright`, newest first
 (`argus-launch --provision-browser` installs there, outside the artifact root, so the
-sandbox can read but not modify it); `<artifact-root>/node_modules/playwright`;
-`<target>/node_modules/playwright` for path targets; `<cwd>/node_modules/playwright`;
+sandbox can read but not modify it); `<target>/node_modules/playwright` for path targets;
+`<cwd>/node_modules/playwright`;
 `$(npm root -g)/playwright`; the Homebrew and system global `node_modules`; and the five
 newest `~/.npm/_npx/*` caches. A valid candidate is a directory whose `package.json` names
 `playwright` and that has an `index.mjs`. Up to three valid candidates are proven by a real
@@ -277,8 +277,16 @@ separators, sorted by code unit, and hashed in order as `label NUL kind NUL payl
 where `file` entries carry the SHA-256 hex of their bytes and `symlink` entries their link
 text (links are never followed). Directories contribute only through their entries. A
 consumer recomputes the digest immediately before importing the module and refuses on any
-mismatch. A candidate inside the artifact root is only as trustworthy as that root was when
-it was probed, because the root becomes worker-writable once lanes run.
+mismatch.
+
+The artifact root is never a runtime location: the sandbox lets every lane write anywhere
+under it, so code there is worker-planted. Every candidate, the profile's included, whose
+physical path or any `moduleTreeRoots` entry lies inside the physical artifact root is
+recorded `invalid` and never imported, so no probe runs worker code beside the controller
+token. This covers a `<cwd>` or `<target>` equal to the artifact root and symbolic-link
+aliases; a winner whose bound tree reaches into the root after that check is `failed`. The
+managed hunt driver refuses such a record too. Do not restore
+`<artifact-root>/node_modules/playwright` as a candidate: host runtimes stay outside the root.
 
 ## Isolated resources and leases
 

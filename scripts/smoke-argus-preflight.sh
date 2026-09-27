@@ -376,7 +376,7 @@ browser_runtime_preflight() {
   local name="$1" filter="$2" root="$WORK/browser-runtime-$1"
   mkdir -p "$root/ai_agents_internal"
   cp "$AUTH_FIXTURES/full.json" "$root/ai_agents_internal/authorization.json"
-  jq --arg fixtures "$FIXTURES" "$filter" "$browser_profile" >"$WORK/browser-runtime-$name-profile.json"
+  jq --arg fixtures "$FIXTURES" --arg root "$root" "$filter" "$browser_profile" >"$WORK/browser-runtime-$name-profile.json"
   "$CLI" preflight \
     --target http://127.0.0.1:9/ \
     --artifact-root "$root" \
@@ -390,6 +390,16 @@ browser_runtime_preflight() {
 browser_runtime_preflight working '.browserRuntime = {modulePath: ($fixtures + "/fake-playwright")}'
 browser_runtime_preflight broken '.browserRuntime = {modulePath: ($fixtures + "/fake-playwright-broken")}'
 browser_runtime_preflight disabled '.browserRuntime = false'
+# A Playwright package planted inside the worker-writable artifact root is refused unprobed,
+# even when the profile names it: its import-time side effect must never run.
+mkdir -p "$WORK/browser-runtime-planted/node_modules"
+cp -R "$FIXTURES/fake-playwright" "$WORK/browser-runtime-planted/node_modules/playwright"
+{
+  printf 'import { writeFileSync } from "node:fs";\n'
+  printf 'writeFileSync(new URL("../../planted-module-ran", import.meta.url), "imported\\n");\n'
+  cat "$FIXTURES/fake-playwright/index.mjs"
+} >"$WORK/browser-runtime-planted/node_modules/playwright/index.mjs"
+browser_runtime_preflight planted '.browserRuntime = {modulePath: ($root + "/node_modules/playwright")}'
 DATABASE_URL=postgres://fixture browser_runtime_preflight database '.browserRuntime = false'
 [ -z "${DATABASE_URL:-}" ] || fail 'database coordinates leaked beyond their single preflight run'
 node - "$WORK" "$FIXTURES" <<'NODE'
@@ -445,6 +455,14 @@ assert(!capability(broken, 'browser-runtime').available && capability(broken, 'b
   'broken fixture capability does not carry the first failure');
 assert(lanes(broken).get('orion').status === 'conditional' && JSON.stringify(lanes(broken).get('orion').pendingGates) === '["browser-runtime"]',
   'orion must wait on the browser-runtime gate without a functional browser runtime');
+
+const planted = load('planted');
+const plantedModule = fs.realpathSync(path.join(work, 'browser-runtime-planted', 'node_modules', 'playwright'));
+assert(planted.browserRuntime.status === 'unavailable' && planted.browserRuntime.modulePath === null
+  && JSON.stringify(planted.browserRuntime.candidates) === JSON.stringify([{ source: 'profile', modulePath: plantedModule, result: 'invalid',
+    evidence: 'module lies inside the worker-writable artifact root' }]), `a module inside the artifact root was not refused: ${JSON.stringify(planted.browserRuntime)}`);
+assert(!fs.existsSync(path.join(work, 'browser-runtime-planted', 'planted-module-ran')), 'preflight imported a module planted inside the artifact root');
+assert(lanes(planted).get('orion').status === 'conditional', 'a refused planted runtime must leave orion waiting on its browser-runtime gate');
 
 const disabled = load('disabled');
 assert(disabled.browserRuntime.status === 'not-probed' && disabled.browserRuntime.evidence === 'profile disabled browser runtime resolution'

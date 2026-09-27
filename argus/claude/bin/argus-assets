@@ -4894,6 +4894,7 @@ function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, pro
     return browserRuntimeResult('not-probed', 'profile features are authoritative');
   }
   const { maxProbes } = browserRuntimePolicy();
+  const writableRoot = physicalBrowserRuntimeArtifactRoot(artifactRootPath);
   const candidates = [];
   const inspected = new Set();
   let scratchRoot = null;
@@ -4901,13 +4902,16 @@ function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, pro
   let attempts = 0;
   let winner = null;
   let firstFailure = null;
-  for (const location of browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profile })) {
+  for (const location of browserRuntimeCandidateLocations({ targetPath, profile })) {
     const candidate = inspectBrowserRuntimeCandidate(location);
     if (!candidate || inspected.has(candidate.modulePath)) continue;
     inspected.add(candidate.modulePath);
     const record = { source: candidate.source, modulePath: candidate.modulePath };
-    if (candidate.invalid) {
-      candidates.push({ ...record, result: 'invalid', evidence: limitBrowserRuntimeEvidence(candidate.invalid) });
+    // Lanes can write anywhere under the artifact root, so a module there (or one that resolves
+    // a dependency there) is worker-planted code: it is refused before the probe imports it.
+    const invalid = candidate.invalid ?? browserRuntimeWritableExposure(writableRoot, candidate.modulePath);
+    if (invalid) {
+      candidates.push({ ...record, result: 'invalid', evidence: limitBrowserRuntimeEvidence(invalid) });
       continue;
     }
     if (!winner && attempts < maxProbes && scratchRoot === null && scratchError === null) {
@@ -4931,6 +4935,8 @@ function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, pro
       try { tree = digestBrowserRuntimeTree(candidate.modulePath); }
       catch (error) { failure = `launched, but the module tree cannot be bound: ${error.message}`; }
     }
+    const exposure = failure ? null : browserRuntimeRootsExposure(writableRoot, tree.roots);
+    if (exposure) failure = `launched, but the ${exposure}`;
     if (failure) {
       candidates.push({ ...record, result: 'failed', evidence: limitBrowserRuntimeEvidence(failure) });
       firstFailure ??= `${candidate.source} ${candidate.modulePath}: ${failure}`;
@@ -4988,8 +4994,10 @@ function limitBrowserRuntimeEvidence(text) {
 
 // Candidate order is part of the contract: an explicit profile module is probed alone;
 // otherwise host-provisioned runtimes (argus-launch --provision-browser installs them
-// outside the artifact root) come first and user-wide installs last.
-function browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profile }) {
+// outside the artifact root) come first and user-wide installs last. The artifact root is
+// deliberately not a candidate location (R13): lanes can write there, so any candidate that
+// resolves into it, such as a workspace equal to the artifact root, is refused unprobed.
+function browserRuntimeCandidateLocations({ targetPath, profile }) {
   if (plainObject(profile.browserRuntime)) {
     return [{ source: 'profile', path: resolve(profile.browserRuntime.modulePath), explicit: true }];
   }
@@ -5003,7 +5011,6 @@ function browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profil
     .slice(0, cacheCandidateLimit)) {
     locations.push({ source: 'host-provisioned', path: join(provisionedRoot, version, 'node_modules', 'playwright') });
   }
-  locations.push({ source: 'artifact-root', path: join(artifactRootPath, 'node_modules', 'playwright') });
   if (targetPath) locations.push({ source: 'target', path: join(targetPath, 'node_modules', 'playwright') });
   locations.push({ source: 'workspace', path: join(process.cwd(), 'node_modules', 'playwright') });
   const npmRoot = npmGlobalRoot();
@@ -5142,29 +5149,8 @@ function browserProbeFailure(error) {
 // `${label}\0${kind}\0${kind === 'file' ? sha256(bytes) : linkTarget}\n`; symbolic links
 // are recorded, never followed, and directories contribute only through their entries.
 function digestBrowserRuntimeTree(modulePath) {
-  const { treeRootLimit, treeEntryLimit } = browserRuntimePolicy();
-  const roots = [modulePath];
-  const scanned = new Set();
-  const queue = [modulePath];
-  while (queue.length > 0) {
-    const packageRoot = queue.shift();
-    if (scanned.has(packageRoot)) continue;
-    scanned.add(packageRoot);
-    let manifest;
-    try { manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')); }
-    catch { manifest = null; }
-    const names = Object.keys({
-      ...(plainObject(manifest?.dependencies) ? manifest.dependencies : {}),
-      ...(plainObject(manifest?.optionalDependencies) ? manifest.optionalDependencies : {}),
-    }).sort();
-    for (const name of names) {
-      const dependency = resolveNodePackageDirectory(packageRoot, name);
-      if (!dependency) continue;
-      if (!roots.some((root) => isWithin(root, dependency))) roots.push(dependency);
-      if (roots.length > treeRootLimit) throw new Error(`module tree spans more than ${treeRootLimit} package roots`);
-      queue.push(dependency);
-    }
-  }
+  const { treeEntryLimit } = browserRuntimePolicy();
+  const roots = browserRuntimeTreeRoots(modulePath);
   const base = dirname(modulePath);
   const entries = [];
   for (const root of roots) {
@@ -5187,6 +5173,58 @@ function digestBrowserRuntimeTree(modulePath) {
   const digest = createHash('sha256');
   for (const [label, kind, payload] of entries) digest.update(`${label}\0${kind}\0${payload}\n`);
   return { sha256: digest.digest('hex'), roots };
+}
+
+// The package plus every runtime dependency Node's node_modules lookup resolves from each
+// package directory, as physical paths, excluding those inside an already covered root.
+function browserRuntimeTreeRoots(modulePath) {
+  const { treeRootLimit } = browserRuntimePolicy();
+  const roots = [modulePath];
+  const scanned = new Set();
+  const queue = [modulePath];
+  while (queue.length > 0) {
+    const packageRoot = queue.shift();
+    if (scanned.has(packageRoot)) continue;
+    scanned.add(packageRoot);
+    let manifest;
+    try { manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')); }
+    catch { manifest = null; }
+    const names = Object.keys({
+      ...(plainObject(manifest?.dependencies) ? manifest.dependencies : {}),
+      ...(plainObject(manifest?.optionalDependencies) ? manifest.optionalDependencies : {}),
+    }).sort();
+    for (const name of names) {
+      const dependency = resolveNodePackageDirectory(packageRoot, name);
+      if (!dependency) continue;
+      if (!roots.some((root) => isWithin(root, dependency))) roots.push(dependency);
+      if (roots.length > treeRootLimit) throw new Error(`module tree spans more than ${treeRootLimit} package roots`);
+      queue.push(dependency);
+    }
+  }
+  return roots;
+}
+
+// The launch sandbox lets every lane write anywhere under the artifact root (R13 keeps runtimes
+// outside it), so a module there, or one whose tree resolves a dependency there, is
+// worker-planted code. Resolution refuses it before the probe would import it, and refuses a
+// winner whose bound tree reached into the root between that check and the digest.
+function physicalBrowserRuntimeArtifactRoot(artifactRootPath) {
+  try { return realpathSync(artifactRootPath); }
+  catch { return resolve(artifactRootPath); }
+}
+
+function browserRuntimeWritableExposure(writableRoot, modulePath) {
+  if (isWithin(writableRoot, modulePath)) return 'module lies inside the worker-writable artifact root';
+  let roots;
+  try { roots = browserRuntimeTreeRoots(modulePath); }
+  catch (error) { return `the module tree cannot be bound: ${error.message}`; }
+  return browserRuntimeRootsExposure(writableRoot, roots);
+}
+
+function browserRuntimeRootsExposure(writableRoot, roots) {
+  return roots.some((root) => isWithin(writableRoot, root))
+    ? 'module resolves a runtime dependency inside the worker-writable artifact root'
+    : null;
 }
 
 function resolveNodePackageDirectory(fromDirectory, name) {
