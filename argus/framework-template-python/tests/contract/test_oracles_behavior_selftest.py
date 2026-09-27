@@ -326,6 +326,7 @@ def test_soft_delete_sweep_list_still_serving_the_deleted_id_is_red(http: httpx.
         ("login", r"login_attempt: expected HTTP 401 for the deleted account, got 200"),
         ("delete-200", r"deleted: expected HTTP 204, got 200"),
     ],
+    ids=["readable", "login", "delete-200"],
 )
 def test_soft_delete_sweep_readable_detail_accepted_login_and_wrong_delete_status_are_red(http: httpx.Client, fault: str, message: str) -> None:
     with running_stub(user_stub(fault)) as stub:
