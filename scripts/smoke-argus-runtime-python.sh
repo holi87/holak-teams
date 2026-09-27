@@ -547,6 +547,33 @@ expect_exit cf-unloaded 1
 expect_status "error 2" cf-unloaded
 [ "$(cut -f2 reports/argus-adapter-errors/*.txt | sort -u)" = counterfactual-variant-not-loaded ] || fail "cf-unloaded: the missing variant was not listed"
 
+# A ui-lane regression never logs in against the real target in a cf pass: the session
+# storage_state fixture yields no saved session, and a stand-in browser refuses any login.
+cat >tests/contract/test_cf_session_fixture.py <<'PY'
+import pytest
+
+pytestmark = pytest.mark.contract_smoke
+
+
+class _NoLoginBrowser:
+    def new_context(self, **_options):
+        raise AssertionError("the auth-once login reached for the real target")
+
+
+@pytest.fixture(scope="session")
+def browser():
+    return _NoLoginBrowser()
+
+
+@pytest.mark.regression
+@pytest.mark.bug("ATA-001")
+def test_ui_session_without_the_real_login(storage_state):
+    assert storage_state is None
+PY
+cf_pass cf-session cf-correct -- tests/contract/test_cf_session_fixture.py
+rm -f tests/contract/test_cf_session_fixture.py
+expect_only_event cf-session tests.contract.test_cf_session_fixture.py::test_ui_session_without_the_real_login.cf-correct product pass false reproduced BUG-0001 counterfactual-correct-pass
+
 # An exemption records one event in cf-correct and nothing in a tamper pass.
 jq '{"$schema": ."$schema", schemaVersion, bugId, exemption: {reason: "front-end-logic", justification: "The defect lives in client-side rendering."}}' \
   "$WORK/cf-fixture.json" >"$WORK/cf-exempt.json"

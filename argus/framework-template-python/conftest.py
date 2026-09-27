@@ -117,14 +117,20 @@ def fault_injector() -> Iterator[FaultInjector]:
 
 
 @pytest.fixture(scope="session")
-def storage_state(browser) -> str:  # noqa: ANN001 - `browser` is pytest-playwright's fixture
+def storage_state(browser) -> str | None:  # noqa: ANN001 - `browser` is pytest-playwright's fixture
     """UI auth once PER RUN: re-authenticate a single time each session and overwrite the
     saved storage_state, then reuse it for every UI test in that run.
 
     Matches the TS reference's `setup` project, which re-runs auth on every invocation and
     overwrites .auth/user.json — so a fresh run never silently reuses a stale/expired
     session cached by an earlier run. (`authenticate` overwrites the file in place.)
+
+    A cf-* evidence pass attempts no login, because it would reach the real target: every UI
+    context starts without a saved session (None), and a regression declares any login its
+    page performs as an exchange of the bug's counterfactual fixture.
     """
+    if os.environ.get("ARGUS_EVIDENCE_PASS", "").startswith("cf-"):
+        return None
     # Lazy import keeps tests/setup off the path for non-UI runs.
     sys.path.insert(0, str(_ROOT / "tests" / "setup"))
     from auth_setup import authenticate  # noqa: E402,PLC0415
@@ -135,7 +141,7 @@ def storage_state(browser) -> str:  # noqa: ANN001 - `browser` is pytest-playwri
 
 @pytest.fixture
 def browser_context_args(browser_context_args, storage_state):  # noqa: ANN001
-    """Every UI context starts at UI_URL and already authenticated (saved storage_state)."""
+    """Every UI context starts at UI_URL and already authenticated (saved storage_state; none in a cf-* pass)."""
     return {
         **browser_context_args,
         "base_url": ENV.ui_url,
