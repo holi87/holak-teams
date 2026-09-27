@@ -130,6 +130,16 @@ const SEMANTIC_MARKERS = Object.freeze({
   'ANG-T21': ['3.3.8 Accessible Authentication (Minimum)', 'cognitive function test'],
   'ANG-T22': ['1.4.10 Reflow', 'without scrolling in two dimensions'],
   'ANG-T23': ['1.4.12 Text Spacing', '0.12 times the font size'],
+  // Lynceus markers pin the presentation oracles past runs let escape: the cited-target
+  // caveat, code-point counting over three charset classes, the page seam, money at the
+  // smallest unit across views, the inclusive/exclusive boundary rule, and latest-result
+  // rendering. Removing the phrase fails the catalog validator.
+  'LYN-T02': ['below the cited target', 'guessed universal pixel threshold'],
+  'LYN-T03': ['three classes', 'code points, not bytes'],
+  'LYN-T05': ['dropped or duplicated at a page boundary', 'stale count'],
+  'LYN-T06': ['smallest currency unit', 'pre-change total'],
+  'LYN-T08': ['exact-boundary state', 'inclusive or exclusive rule'],
+  'LYN-T09': ['latest input', 'never overwrites a newer one'],
 });
 
 const TOP_LEVEL = Object.freeze([

@@ -176,6 +176,41 @@
       "runtimeIncludes": "/runtimeRead is not allowed"
     },
     {
+      "name": "lynceus-entry-count",
+      "catalog": "lynceus",
+      "operation": "remove",
+      "pointer": "/entries/9",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 10 entries"
+    },
+    {
+      "name": "lynceus-tap-target-guessed-threshold",
+      "catalog": "lynceus",
+      "operation": "replace",
+      "pointer": "/entries/1/oracles/1",
+      "value": "Any control smaller than 44 by 44 pixels is a confirmed defect",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "guessed universal pixel threshold"
+    },
+    {
+      "name": "lynceus-charset-byte-counting-drift",
+      "catalog": "lynceus",
+      "operation": "replace",
+      "pointer": "/entries/2/oracles/1",
+      "value": "The counter and the limit count each typed character toward the maximum",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "code points, not bytes"
+    },
+    {
+      "name": "lynceus-boundary-rule-drift",
+      "catalog": "lynceus",
+      "operation": "replace",
+      "pointer": "/entries/7/oracles/0",
+      "value": "The badge, label, or eligibility renders correctly near the boundary",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "inclusive or exclusive rule"
+    },
+    {
       "name": "antigone-entry-count",
       "catalog": "antigone",
       "operation": "remove",

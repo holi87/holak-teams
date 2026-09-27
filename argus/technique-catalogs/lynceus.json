@@ -1,0 +1,112 @@
+{
+  "$schema": "argus/technique-catalog@1",
+  "schemaVersion": 1,
+  "catalogId": "argus/technique-catalog/lynceus@1",
+  "role": "lynceus",
+  "catalogType": "hunter",
+  "valuePolicy": "discover-never-assume",
+  "executionRule": "each-applicable-entry-covered-or-gap",
+  "absentSurfaceDisposition": "not-applicable-with-evidence",
+  "entries": [
+    {
+      "id": "LYN-T01",
+      "title": "Rendered geometry stays inside its container",
+      "scope": ["layout-geometry", "responsive-layout"],
+      "techniques": ["equivalence partitioning", "checklist-based testing"],
+      "appliesWhen": "always",
+      "construct": ["Sweep every primary screen at desktop, at the narrowest declared mobile viewport (375px when none is declared), and in a non-default or diacritic locale, each across the empty, loading, error, success, and partial states", "In each cell read getBoundingClientRect() and computed style for containers, progress or level bars, text blocks, and interactive controls; capture a screenshot only when the visual itself is the evidence"],
+      "oracles": ["No element overflows its container: a progress or level bar clamps at its ceiling and never spills past 100%, and text that must show is neither clipped nor truncated", "No count, quantity, price, or remaining-amount label renders a negative value", "At the mobile viewport no interactive control is occluded by a sticky header, footer, or overlay, proven by the measured rectangles rather than a visual impression"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "LYN-T02",
+      "title": "Tap-target hit area measured against the cited target",
+      "scope": ["tap-target", "responsive-layout"],
+      "techniques": ["boundary value analysis", "checklist-based testing"],
+      "appliesWhen": "always",
+      "construct": ["At the mobile viewport measure the hit area of every interactive control and its spacing to adjacent targets with getBoundingClientRect()", "Record the accessibility or platform target the project cites and which of its exceptions (spacing, inline text, equivalent control, user-agent default, essential presentation) applies to each undersized control"],
+      "oracles": ["A control is a confirmed defect only when its measured hit area and spacing fall below the cited target and none of that target's exceptions applies", "Without a citation the measurement is a Suspected usability hypothesis that names the missing source; a guessed universal pixel threshold never confirms a defect", "The formal WCAG target-size verdict belongs to Antigone and routes via Odysseus instead of being filed as an LYN- bug"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "LYN-T03",
+      "title": "Locale text and three-class charset display round-trip",
+      "scope": ["charset-display", "text-input", "localization"],
+      "techniques": ["equivalence partitioning", "boundary value analysis"],
+      "appliesWhen": "always",
+      "construct": ["Partition input for every text, name, and length-limited field into three classes and drive all three: an ASCII baseline, the upper- and lower-case diacritic letters of the target locale discovered from the declared language, and multi-byte text with an astral-plane character, a combining-mark sequence, and a ZWJ emoji", "Follow each value through every view that renders it: form, list, detail, preview or credential, truncated cell tooltip, and re-edit", "Drive the character counter or length limit at {limit-1, limit, limit+1} with diacritic and multi-byte strings, then switch to each non-default locale and read every visible string"],
+      "oracles": ["Every class renders identically end to end, never trimmed, mojibake, renormalised into a different glyph, or replaced by a question mark or box, and native-language letters are accepted wherever the field accepts text", "The counter and the limit count code points, not bytes or UTF-16 code units: one precomposed diacritic letter or one astral-plane character counts as one toward the maximum, unless the product documents grapheme counting", "Diacritic, emoji, and long translated text cause no overflow or clipping that ASCII hides, and no visible string stays untranslated in a non-default locale; an ASCII-only pass leaves this row uncovered", "Only the display manifestation is filed here; suspected storage or API corruption routes via Odysseus to Atalanta, or to Charon when the database lane is open"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "LYN-T04",
+      "title": "Numeric columns sort by value, not lexically",
+      "scope": ["sortable-list"],
+      "techniques": ["equivalence partitioning", "boundary value analysis"],
+      "appliesWhen": "surface-present",
+      "construct": ["Sort every sortable list and table in both directions using values that straddle a digit-count boundary, negative values, and values formatted with a currency symbol, thousands separator, or decimal part", "Repeat under a non-default locale whose separators differ, and across pages when the list is paginated"],
+      "oracles": ["Numeric, money, percentage, and date columns order by value: 10 sorts after 2, negatives precede positives in ascending order, and a formatted value sorts by its number rather than its text", "The sort indicator matches the rendered order and the order holds across page boundaries"],
+      "routes": ["ui", "reporting"]
+    },
+    {
+      "id": "LYN-T05",
+      "title": "Pagination seam renders every row exactly once",
+      "scope": ["pagination"],
+      "techniques": ["boundary value analysis", "state transition"],
+      "appliesWhen": "surface-present",
+      "construct": ["On a dataset whose size is known, drive the first, last, empty, one-past-last, and overflow pages and walk every page boundary", "Change the page size, sort, and filter while a later page is open"],
+      "oracles": ["No row is dropped or duplicated at a page boundary, and the union of all pages holds each row of the dataset exactly once", "The count, range label, and page metadata match the rendered set; a page-size or filter change never leaves a blank grid with a stale count or an out-of-range page"],
+      "routes": ["ui", "reporting"]
+    },
+    {
+      "id": "LYN-T06",
+      "title": "Money and percent display precision and cross-view consistency",
+      "scope": ["money-display", "percentage-display"],
+      "techniques": ["decision table", "state transition"],
+      "appliesWhen": "surface-present",
+      "construct": ["Discover the minor unit and decimal places of the declared currency and every view a money value appears in: line item, cart or order summary, invoice or receipt, list badge, detail header, confirmation message, history row, admin mirror, and export", "Read every amount and percentage breakdown, then add and remove an item, apply and clear a discount, change a quantity, and cancel or refund, re-reading every view after each state change"],
+      "oracles": ["Displayed line amounts sum to the displayed total to the smallest currency unit, and a percentage breakdown totals exactly 100%, never 99% or 101%", "The same logical amount renders identically in every view, with no per-view rounding, currency symbol, or separator difference", "Every view updates and still reconciles after each state change; a view left on the pre-change total, or two views that disagree, is a defect", "This row is the display layer of shared money invariants whose primary owners are Atalanta and Charon; a suspected calculation root routes via Odysseus"],
+      "routes": ["ui", "reporting"]
+    },
+    {
+      "id": "LYN-T07",
+      "title": "Locale-correct date, time, and number format",
+      "scope": ["date-time-format", "number-format"],
+      "techniques": ["equivalence partitioning", "boundary value analysis"],
+      "appliesWhen": "surface-present",
+      "construct": ["Discover the declared locale and time zone, then render timestamps whose UTC date differs from the local date and instants just before and after the relative-label boundaries", "In each supported locale read the decimal separator, thousands separator, currency placement, and date order on every view that shows them"],
+      "oracles": ["Timestamps render in the user's local time, never as raw UTC or an unformatted ISO string, and a relative label never describes a past instant as future", "Number, decimal, currency, and date formats follow the active locale and stay consistent across views"],
+      "routes": ["ui", "reporting"]
+    },
+    {
+      "id": "LYN-T08",
+      "title": "Three-point BVA on UI-surfaced display boundaries",
+      "scope": ["display-threshold", "counter-stepper"],
+      "techniques": ["boundary value analysis", "decision table"],
+      "appliesWhen": "always",
+      "construct": ["Discover each UI-surfaced boundary B and its documented direction (from, after, at least, pass mark, eligibility trigger, minimum or maximum quantity, page limit, character limit) from the specification, the risk register, or visible copy", "Construct the exact-boundary state B, not a nearby point, and drive {B-1, B, B+1} at both edges at the smallest domain step for pagination, rating controls, quantity steppers, character counters, queue or position labels, threshold banners, and date-picker edges"],
+      "oracles": ["The render honours the documented inclusive or exclusive rule at exactly B: the badge, label, or eligibility flips on the correct side and is absent one smallest step below", "The rendered value is exact at every point: selecting the Nth rating shows N, a position label never reads 0th, and no count is off by one", "At the minimum nothing renders negative, NaN, undefined, Infinity, or an empty cell; at the maximum nothing overflows its container or logical ceiling and no counter wraps", "An undocumented direction is an open question with a Suspected finding, never a guess; a boundary whose three points were not driven is uncovered"],
+      "routes": ["ui", "reporting"]
+    },
+    {
+      "id": "LYN-T09",
+      "title": "Latest query result wins over stale responses",
+      "scope": ["async-query"],
+      "techniques": ["state transition", "error guessing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Type rapid successive keystrokes into every search-as-you-type, filter, and autocomplete input and toggle filters quickly with real browser input on the managed hunt driver", "Compare the settled rendered result, its count, and its empty-state message with the response to the latest query"],
+      "oracles": ["The rendered result always corresponds to the latest input: an older in-flight response never overwrites a newer one, and the count, highlight, and empty-state message agree with the latest query", "Only the rendered manifestation is filed here; cancellation and sequencing mechanism defects route to Orion via Odysseus"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "LYN-T10",
+      "title": "Empty, loading, and error state presentation",
+      "scope": ["ui-state"],
+      "techniques": ["state transition", "equivalence partitioning"],
+      "appliesWhen": "always",
+      "construct": ["Drive every primary screen and data region into its empty, loading, error, partial, and success states, through real data setup, or through Daidalos's failNext, delayNext, and abortNext hooks where they are available and no natural route reaches a state"],
+      "oracles": ["Each state renders a correct, non-broken UI: no spinner or skeleton remains after the response settles, no region is blank where an empty-state message is required, and no data from a previous state lingers", "An error state shows a usable message that names the cause, never a raw stack trace, a bare status code, or undefined"],
+      "routes": ["ui"]
+    }
+  ]
+}
