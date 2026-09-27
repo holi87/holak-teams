@@ -102,6 +102,17 @@
       "requiredAsset": "technique-catalogs-bundle",
       "selectionInput": "argus/surface-inventory@1",
       "fallback": "full-catalog"
+    },
+    "perseus": {
+      "catalogId": "argus/technique-catalog/perseus@1",
+      "catalogType": "hunter",
+      "idPrefix": "PER",
+      "entryCount": 22,
+      "sha256": "3875ec504a25a38f1c99af8a1003a31346a015ae5dd282360fb39627d5660a6f",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
     }
   },
   "orchestration": {
@@ -882,7 +893,9 @@
         "qa-core",
         "qa-browser"
       ],
-      "techniqueCatalogs": [],
+      "techniqueCatalogs": [
+        "perseus"
+      ],
       "requiredTools": [
         "Read",
         "Grep",

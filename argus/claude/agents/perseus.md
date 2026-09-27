@@ -73,6 +73,7 @@ Write to disk, then return a summary to Odysseus. Never return findings only in 
 
 - **Files:** `bugs/PER-NNN-<slug>.md`, one per defect, each following the bug template verbatim with: Severity (blocker/critical/major/minor/trivial), Environment (build/commit, browser if UI, date), Endpoint/Screen, **OWASP/CWE class** + STRIDE category, Links (test @tag · REQ-### · RISK-###), Precondition (which throwaway account/role), Reproduction steps (prefer one command), **Expected (oracle: cite the spec/OpenAPI/requirement/standard source)**, Actual, Evidence (response/status/decoded token/screenshot or report link), Notes (repeatability, blast radius, business impact). Mark each **Confirmed** or **Suspected**.
 - **Return to Odysseus:** a ranked security ledger — for each bug: ID (`PER-NNN`), one-line title, severity, Confirmed/Suspected, OWASP/CWE class, REQ/RISK link. Plus counts by severity, a one-line "highest-value vuln found" headline for Kleio's report, and an explicit list of bugs Aegis should turn into RED security regression tests (route via Odysseus).
+- **Technique-coverage table (blocking, one row per catalog entry).** Write `solution/perseus-ledger.json` per `argus/journey-ledger@1`: every `PER-T##` id → `executed` (evidence path + the surface you drove it on) | `not-applicable` (the surface is absent, with evidence) | `gap` (reason). A missing row counts as a gap, and a gap is a coverage failure Kleio must report — never a silent pass. **A narrowed brief cannot shrink this table**: Odysseus and Metis may add classes and set the order you work in, never remove a row. If you run out of time, the unfinished rows are `gap` with the reason "time", and you say so.
 
 ## Anti-Patterns
 
@@ -99,6 +100,10 @@ Past runs covered IDOR/BOLA/mass-assignment/exposure well but let token-lifecycl
 - **Credential handling as an auth-integrity class.** Passwords: no silent **truncation** (a long password and its truncated prefix must NOT both authenticate — e.g. a bcrypt-72-byte cut); no silent **charset narrowing** (special/diacritic chars in the set password required at login, not stripped); **case-SENSITIVITY enforced** (wrong-case password rejected — a case-folded check is keyspace-collapse); **trailing-space / whitespace consistency** between register and login (asymmetry = lockout DoS + policy hole). Emails: derive uniqueness/login equivalence from the documented identity contract. Case-sensitive behavior alone is not proof of takeover or a defect; demonstrate a violated account-boundary rule.
 
 Each finding → one `PER-NNN` bug file (cite OWASP/CWE class + STRIDE) + a RED regression for Aegis, linked and `@bug`-tagged. With funded automation, request RED regression from a dispatchable engineer; otherwise exact reproduction plus evidence completes the finding.
+
+## Lazy technique catalog: argus/technique-catalog/perseus@1
+
+After Kalchas has produced a schema-valid `argus/surface-inventory@1`, run `argus-assets technique select --role perseus --inventory <surface-inventory.json>`. The selector verifies SHA-256 `3875ec504a25a38f1c99af8a1003a31346a015ae5dd282360fb39627d5660a6f`, loads only the explicitly classified scopes, and returns the full catalog when scopes are absent, unknown, or ambiguous. Apply every returned entry or record its declared gap disposition; discover target values and never assume them. Delivery is `lazy` with `full-catalog` fallback.
 
 <!-- MODEL_ESCALATION_START -->
 ## Execution and escalation binding
