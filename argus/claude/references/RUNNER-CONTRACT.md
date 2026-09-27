@@ -304,10 +304,13 @@ The steps run in this order; a denial finishes the run through `scripts/runner-c
    no passing verify).
 8. The collect-only inventory pass: a failure or an empty inventory is `test-inventory
    automation fail test-inventory-failed`.
-9. `scripts/quarantine-contract.sh --inventory`.
-10. The evidence passes. This contract version runs one `live` pass per mode (`baseline`
-    selects baseline, `full-suite` full, `defect-evidence` and `candidate-regression`
-    regression). Each pass stores native artifacts in its own `reports/evidence/passes/<pass>/`
+9. `scripts/quarantine-contract.sh --inventory`, then `scripts/inventory-gate.sh static` (below).
+10. The evidence passes. `baseline`, `full-suite`, and `candidate-regression` run one `live`
+    pass (selecting baseline, full, and regression). `defect-evidence` runs `live`, `repeat`,
+    then `cf-correct` when any plan row is a fixture or an exemption, then `cf-tamper-1..N`
+    for the largest tamper count among the fixtures, all selecting regression; the pass list
+    comes from `scripts/evidence-gate.sh --list-passes`, and a missing or damaged plan runs no
+    counterfactual pass. Each pass stores native artifacts in its own `reports/evidence/passes/<pass>/`
     through `argus_native_collect` (`evidence-collect.<pass>` `evidence-collect-failed` on
     failure). A green native run without an adapter status is `adapter automation fail
     outcome-adapter-missing`; an `error` or malformed status is `outcome-adapter-failed`.
@@ -315,9 +318,43 @@ The steps run in this order; a denial finishes the run through `scripts/runner-c
 12. In `baseline` and `full-suite`, `scripts/lane-plan.sh verify`: an enabled lane executed
     when a product, automation, or infrastructure event's case id equals, or extends with
     `.<suffix>`, an inventory row of that lane (`lane.<lane> policy pass lane-executed`);
-    otherwise `lane.<lane> skip skipped lane-not-executed` (exit 15).
+    otherwise `lane.<lane> skip skipped lane-not-executed` (exit 15). Then, in every mode,
+    `scripts/inventory-gate.sh executed`, and in `defect-evidence` `scripts/evidence-gate.sh`
+    (below).
 13. `scripts/runner-contract.sh` with `--quarantine` and `--expected-bugs` when those files
     exist and `--contract-smoke` under a contract smoke.
+
+**Inventory and evidence gates.** `scripts/inventory-gate.sh static` checks the inventory
+(SD-3) against the confirmed-defect list (SD-4) and appends one event per violation; only an
+unusable inventory (missing, empty, malformed, or a duplicate case id: `test-inventory
+automation fail test-inventory-invalid`) stops the run. Automation failures (exit 11):
+`lane-undeclared` (lane `-` or unknown), `lane-ambiguous`, `multiple-bug-provenance`,
+`bug-provenance-without-regression`, `regression-without-provenance`, and
+`focus-scan focus-scan-failed`. Policy denials (exit 13): `bug-provenance-unresolved`,
+`regression-disabled.<kind>`, `regression-in-disabled-lane` (not under a contract smoke),
+`regression-for-unconfirmed-bug`, `expected-bugs expected-bugs-invalid`, `focus-scan
+focused-test-forbidden` for `test.only(`, `describe.only(`, or `it.only(` in a `*.ts`,
+`*.tsx`, `*.js`, `*.jsx`, `*.mjs`, or `*.cjs` file below `TEST_ROOT` (outside
+`node_modules`), and outside `baseline` `expected-bugs expected-bugs-missing` and
+`bug-coverage.<B> bug-uncovered` for a confirmed bug without a regression row that carries
+exactly `B`, runs in an enabled lane, and is neither quarantined nor disabled.
+`scripts/inventory-gate.sh executed` gives every selected row (an enabled product lane, or
+only `contract-smoke` under a contract smoke; not quarantined; only regressions in
+`defect-evidence` and `candidate-regression`, none in `baseline`) that has no event under its
+case id or that id extended with `.<suffix>` (the longest inventory id wins)
+`<case> skip skipped <B|-> selected-test-not-executed` (exit 15). `scripts/evidence-gate.sh`
+requires for every confirmed bug `B` an `expected-red` and an `expected-red-repeat` (one of
+the two for an intermittent defect, SD-6), else `evidence.<B> policy denied
+evidence-live-red-missing` or `evidence-repeat-red-missing`, and a usable plan row (SD-10),
+else `counterfactual.<B> policy denied counterfactual-plan-missing`; a plan with an
+unparseable row or two rows for one bug is unusable. A `missing` row gives
+`counterfactual-missing`, an `invalid` row `automation fail
+counterfactual-fixture-invalid.<reason>`. A `fixture` needs exactly one
+`counterfactual-correct-pass` and a `counterfactual-tamper-red` whose case id ends in
+`.cf-<t>` for every tamper `t`; an `exempt` row needs `counterfactual-exempt.<reason>` with
+the plan's reason; otherwise `counterfactual-incomplete`. A missing proof is not denied when
+the same pass (by SD-2 case-id suffix) already gave `B` a failing verdict such as `flaky-red`
+or `counterfactual-tamper-survived`, so that verdict keeps its own exit code.
 
 **Engagement opt-ins.** Inside an Argus engagement (`ARGUS_ENGAGEMENT_MANIFEST` set),
 `ARGUS_ENVIRONMENT_RESET=execute` and `ARGUS_FAULT_INJECTION=authorized` are requests, not

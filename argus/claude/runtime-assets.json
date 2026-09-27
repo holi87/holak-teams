@@ -74,8 +74,8 @@
       "source": "argus/RUNNER-CONTRACT.md",
       "destination": "references/RUNNER-CONTRACT.md",
       "files": 1,
-      "bytes": 22349,
-      "sha256": "dd7e2626c18c31439137cab9689093fd551263ca20a8a065696534b94e430a21"
+      "bytes": 25455,
+      "sha256": "f37e4eb2713e430585b317ddc260cf29f2c4e0a1439e1ee1bfe1b9e74d8dfbe9"
     },
     {
       "id": "template-contract",
