@@ -554,6 +554,22 @@ guard_shell 'argus-assets automation-review check' 'GUARD-SHELL-AMBIGUOUS: autom
 guard_shell "argus-assets automation-review digest --manifest $MANIFEST --json" 'GUARD-SHELL-AMBIGUOUS: automation-review digest accepts only its declared options'
 guard_shell "argus-assets automation-review check --manifest $MANIFEST --output reports/review.json" 'GUARD-SHELL-AMBIGUOUS: automation-review check accepts only its declared options'
 guard_shell "argus-assets automation-review approve --manifest $MANIFEST" 'GUARD-SHELL-AMBIGUOUS: unknown automation-review operation'
+# Kleio runs her report-facts and automation-review citations as written, so each one, with its
+# manifest placeholder bound to this engagement, must pass the guard for her lane.
+node -e '
+  const text = require("node:fs").readFileSync(process.argv[1], "utf8");
+  const citations = [...text.matchAll(/`(argus-assets (?:engagement report-facts|automation-review (?:digest|check))\b[^`]*)`/gu)]
+    .map(([, citation]) => citation.replace(/\s+/gu, " ").trim());
+  for (const kind of ["engagement report-facts", "automation-review check"]) {
+    if (!citations.some((citation) => citation.startsWith(`argus-assets ${kind}`))) throw new Error(`kleio.md no longer cites argus-assets ${kind}`);
+  }
+  process.stdout.write(citations.map((citation) => `${citation}\n`).join(""));
+' "$ROOT/argus/roles/kleio.md" >"$WORK/kleio-citations.txt" || fail 'could not extract Kleio report-facts and automation-review citations'
+while IFS= read -r citation; do
+  bound="${citation//<engagement.json>/$MANIFEST}"
+  case "$bound" in *'<'*'>'*) fail "Kleio cites an unbound placeholder: $citation" ;; esac
+  guard_as argus:kleio Bash "$bound" allow
+done <"$WORK/kleio-citations.txt"
 guard_shell "argus-assets engagement fragment --manifest $MANIFEST --lane aristarchus --token lease-token --canonical solution/automation-review.json --id review-r01 --json '{\"owner\":\"aristarchus\",\"reviews\":[]}'" allow
 guard_shell "argus-assets engagement fragment --manifest $MANIFEST --lane aristarchus --token lease-token --canonical solution/automation-review.json --id review-r01 --json @reports/review.json" 'GUARD-SHELL-AMBIGUOUS: batch --json input must be one inline single-line JSON object'
 # The guard refuses ; & | > backtick and $( anywhere in a packaged command, even inside the
