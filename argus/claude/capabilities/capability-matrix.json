@@ -105,6 +105,17 @@
       "selectionInput": "argus/surface-inventory@1",
       "fallback": "full-catalog"
     },
+    "lynceus": {
+      "catalogId": "argus/technique-catalog/lynceus@1",
+      "catalogType": "hunter",
+      "idPrefix": "LYN",
+      "entryCount": 10,
+      "sha256": "4dd2d412b873e7a126269169756310c6eccd9bafab9915c07ed68cf082629f82",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    },
     "metis": {
       "catalogId": "argus/technique-catalog/metis@1",
       "catalogType": "strategy",
@@ -645,7 +656,9 @@
         "qa-core",
         "qa-browser"
       ],
-      "techniqueCatalogs": [],
+      "techniqueCatalogs": [
+        "lynceus"
+      ],
       "requiredTools": [
         "Read",
         "Grep",

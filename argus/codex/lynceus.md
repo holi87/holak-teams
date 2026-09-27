@@ -3,15 +3,15 @@ schema: argus/codex-provenance@1
 slug: lynceus
 display_name: Lynceus
 runtime_config: argus/codex/lynceus.toml
-runtime_config_sha256: 7fc5985619919ea18889f7f5f4d1449bebbcac16b483a0d6c43c2c39f9bc3663
-developer_instructions_sha256: d50da5c966bad94d5353c37fcbe06cc4631db1855eb182632c3d235f248262e6
+runtime_config_sha256: 42a1db81a456179ec8fc8d022633d7ca71d9743a99375d875e562c32c645eb51
+developer_instructions_sha256: eb8e73ded2c1139607772a66cc447355bc3bcb038813736b97211f0dbb75b119
 canonical_source: argus/roles/lynceus.md
-canonical_source_sha256: f4807bbc721f3402a0bb4450667572cbac0e27380561dc8d9144e9cb12990c00
+canonical_source_sha256: 9d6c4a82391b73cd325a355b0352b3125c2e06dec0ab5f79694cde491f5f9415
 model: sol
 model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 doctrine_profiles: ["qa-core","qa-browser"]
-technique_catalogs: []
+technique_catalogs: ["lynceus"]
 generated_by: scripts/sync-argus-role-variants.mjs
 runtime_consumed: false
 ---

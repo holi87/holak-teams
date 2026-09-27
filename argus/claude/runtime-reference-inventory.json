@@ -589,6 +589,12 @@
       ]
     },
     {
+      "value": "solution/lynceus-ledger.json",
+      "consumers": [
+        "lynceus"
+      ]
+    },
+    {
       "value": "solution/ORACLES.md",
       "consumers": [
         "ariadne",
@@ -2039,6 +2045,12 @@
           "kind": "agent",
           "mechanism": "technique-catalog-assignment",
           "reference": "atalanta"
+        },
+        {
+          "consumer": "lynceus",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "lynceus"
         },
         {
           "consumer": "metis",
