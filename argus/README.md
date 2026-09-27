@@ -279,7 +279,7 @@ The selector verifies the reviewed catalog hash and uses explicit namespaced
 | **aegis** | Security automation engineer | `security-automation` | `tests-only` |
 | **antigone** | Accessibility hunter | `accessibility-hunt` | `candidate-file` |
 | **ariadne** | Journey and lifecycle hunter | `journey-hunt` | `candidate-file` |
-| **aristarchus** | Automation quality judge | `automation-review` | `result-envelope` |
+| **aristarchus** | Automation quality judge | `automation-review` | `owned-artifact` |
 | **asklepios** | Test-suite sanitation specialist | `suite-sanitation` | `candidate-file` |
 | **atalanta** | REST API and public-data hunter | `api-hunt` | `candidate-file` |
 | **atlas** | Automation architect | `automation-architecture` | `owned-artifact` |

@@ -597,7 +597,8 @@ counts as a non-dispatched predecessor, and its unmet gates remain a named resid
 The installed `schemas/` directory defines the versioned, machine-readable contracts:
 `argus/bug-ledger@2`, `argus/lane-plan@2`, `argus/evidence-reference@3`,
 `argus/automation-status@2`, `argus/runner-result@1`, `argus/surface-inventory@1`,
-`argus/coverage-observations@2`, `argus/coverage-result@2`, and the final-summary contract.
+`argus/coverage-observations@2`, `argus/coverage-result@2`, `argus/automation-review@1`, and
+the final-summary contract.
 Canonical solution JSON documents are single-owner
 `json-document` artifacts; the runner result is validated at its runner-owned report path.
 Lane-plan, evidence-reference, automation-status, and coverage-observations (keyed by
@@ -613,7 +614,7 @@ deterministic merged document again; malformed, incompatible, duplicate, or
 cross-engagement content cannot reach a canonical file.
 
 Single-document supersession: every other canonical JSON document (bug ledger, surface
-inventory, coverage result, final summary) is one complete document. Only its owner may
+inventory, coverage result, final summary, automation review) is one complete document. Only its owner may
 submit fragments; any other lane is refused at write time with `<path> is a single-document
 contract; only <owner> may submit fragments`, so a non-owner can neither block nor poison
 the merge. Every fragment record carries a `sequence` one above the highest sequence across
@@ -628,6 +629,15 @@ is never removed or re-pointed; the surface inventory keeps every earlier `SRF-*
 lowers `discovery.candidates`. Fragments are immutable and never deleted, so a fragment that
 breaks an invariant fails that merge and every later merge of the canonical, and the last
 published document stays in place. A single fragment merges exactly as before.
+
+Automation review: Aristarchus's `solution/automation-review.json` is append-only (a newer
+fragment repeats every earlier review round unchanged), and its merge also requires the
+latest round's `corpus.sha256` to equal the current test-corpus digest
+(`argus-assets automation-review digest`). Aristarchus has no Write tool and submits each
+cumulative document through `engagement fragment --json <single-line-object>`.
+`argus-assets automation-review check` exits 0 for APPROVED or NOT-APPLICABLE, 13 for
+BLOCKED, STALE, or ABSENT (a new round is required), and 14 for invalid input. See
+`CANONICAL-CONTRACTS.md` "Automation review in 5.0".
 
 `solution/final-summary.json` is the canonical final record. Its merge also renders
 `solution/FINAL-SUMMARY.md` with an explicit `Source schema:` line, so the human-facing

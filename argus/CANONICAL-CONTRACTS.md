@@ -23,6 +23,7 @@ match with the engagement manifest.
 | `argus/coverage-observations@2` | `solution/coverage-observations.json` | Kleio | Deterministically ordered per-lane observations keyed by `<lane>:<surfaceId>`: cited execution (runner-result evidence with a `caseId`, or a direct capture that names the surface), assertion and control, outcome, and case evidence plus ledger defect references; no `executed`, `meaningful`, or `defects` flag exists, so execution and assertion quality are derived, never declared. |
 | `argus/coverage-result@2` | `solution/coverage-result.json` | Kleio | Traceable discovery, evidence-derived per-surface flags (`executed`, `asserted`, `evidenced`, `automated`), risk-weighted execution, assertion, evidence, and automated-execution ratios, unexecuted critical surfaces, the automation-status runner-case mapping state (`verified`, `unverified`, `not-applicable`), scope, and ledger-derived defect outcomes that never score. See `COVERAGE-CONTRACT.md`. |
 | `argus/final-summary@1` | `solution/final-summary.json` | Kleio | Engagement outcome, counts, source contracts, final narrative. |
+| `argus/automation-review@1` | `solution/automation-review.json` | Aristarchus | Append-only APPROVE/BLOCK review rounds (`REV-NN`), each bound to the digest of the test corpus it judged, with blockers, warnings, resolved blockers, uncovered confirmed bugs, and evidence commands. |
 
 Every solution document has an exact `$schema` ID, its matching `schemaVersion`, and the
 active `engagementId`; the runner-owned report has its exact schema/version and is bound
@@ -35,13 +36,14 @@ the named owner merges them by stable key (`lane`, `id`, `testId`, or `observati
 Duplicate keys fail closed, and the canonical arrays are sorted by that key so fragment
 arrival order cannot change the resulting bytes.
 
-Bug-ledger, surface-inventory, coverage-result, and final-summary documents are single
-documents. Only the registry owner submits their fragments, and a newer fragment (a higher
+Bug-ledger, surface-inventory, coverage-result, final-summary, and automation-review
+documents are single documents. Only the registry owner submits their fragments, and a newer fragment (a higher
 write `sequence`) supersedes the earlier ones: the merge validates every fragment but
 publishes only the latest. Each fragment must keep its contract's stability invariants
 against the one it supersedes. The bug ledger keeps every earlier `BUG-NNNN` ID and each of
 its earlier origins, so IDs stay stable once assigned while their status changes; the surface
-inventory keeps every earlier `SRF-*` ID and never lowers `discovery.candidates`. Coverage
+inventory keeps every earlier `SRF-*` ID and never lowers `discovery.candidates`; the
+automation review repeats every earlier round unchanged and only appends new rounds. Coverage
 result and final summary carry no supersession invariant. See `ENGAGEMENT-POLICY.md`
 "Canonical machine contracts".
 
@@ -155,6 +157,7 @@ credentials. Keep credentials, tokens, and connection strings out of `summary` a
 | Coverage result | `discovery`, `overall`, `lanes`, `surfaces`, `criticalUnexecuted`, `runnerCaseMapping`, `scopedOutcomes`, `defectOutcomes` | Deterministically recalculated from canonical inputs, including the merged automation status | Exact input schema IDs (inventory, observations, and the evidence registry and bug ledger when present) and stable surface/evidence links; `runnerCaseMapping` is `verified` only when a merged automation status mapped every credited runner case; defect score contribution is always zero. |
 | Model escalation request | `engagementId`, `dispatchId`, `attempt`, `agent`, `signal`, `checkpointRef`, `resumable` | Worker stops; controller validates, routes, records prior-attempt telemetry, and rebinds the active allocation with `engagement start-attempt`; it replaces the consumed token with the returned token before opening the next thread | `argus/model-escalation-request@1`, current engagement state, the prior selected decision, and the referenced monotonic checkpoint. The signal is worker-declared only; `no-artifact` and `zero-candidates` are invalid here. Pre-spawn `model-unavailable` instead uses an availability binding, and a controller-observed outcome uses an outcome binding. |
 | Final summary | `status`, `counts`, `runner`, `sourceSchemas`, `summary`, `generatedAt` | Terminal `completed`, `degraded`, or `blocked` | All linked source schemas, runner categories, and final barrier/merge evidence. |
+| Automation review | `reviews[]`: `reviewId`, `round`, `supersedes`, `verdict`, `reviewedAt`, `corpus`, `reviewedCommit`, `blockers`, `warnings`, `resolved`, `uncoveredConfirmedBugs`, `evidenceCommands` | `pending → approved/blocked`, `blocked → approved`, and `approved → blocked` when a stale corpus is re-reviewed; a published round never changes | Contiguous `REV-NN` rounds, each superseding its predecessor; `corpus.sha256` equals `argus-assets automation-review digest` at merge time; each round's `resolved` accounts for every blocker of the round before it. |
 
 Only the controller changes coordination state: worker allocation, token generation,
 immutable dispatchable projection, barriers, recorded phase skips, exclusive locks,
@@ -289,3 +292,45 @@ registration and the audit binding, to the evidence each row cites; a failure th
 quarantines the citing rows. Kleio's coverage-result merge applies the digest, capture-time,
 and content checks to every evidence ID the coverage inputs cite, including the inventory's
 discovery evidence, and aborts on any failure.
+
+## Automation review in 5.0
+
+`argus/automation-review@1` at `solution/automation-review.json` persists Aristarchus's
+verdicts. Aristarchus stays read-only on tests and the target and has no Write tool: he
+submits each cumulative document as one inline single-line `engagement fragment --json`
+object (no apostrophes, newlines, or `;&|>` characters, which the write guard refuses) and
+merges it as the canonical owner. Every round in `reviews` carries:
+
+- `reviewId` `REV-NN` and `round` equal to its suffix; rounds run contiguously from 1 and
+  `supersedes` names the previous round (`null` only for round 1);
+- `verdict` `BLOCK` if and only if `blockers` is non-empty; blockers and warnings are
+  findings {`id` `ARB-NNN`, `file`, `line`, `category`, `pattern`, `consequence`,
+  `ownerLane`, `direction`} whose IDs are unique across the whole document;
+- `resolved`: for round 2 onward, exactly the previous round's blocker IDs, each with its
+  `previousReviewId` and a `resolution`; a blocker that persists gets a new ID in the new
+  round;
+- `uncoveredConfirmedBugs`: a non-empty list requires an `uncovered-confirmed-bug` blocker;
+- `reviewedAt` strictly later than the previous round, `reviewedCommit` (or `null`), and at
+  least one `evidenceCommands` entry {`command`, `exitCode`, `outputSha256`};
+- `corpus` {`sha256`, `fileCount`, `roots`} copied from `argus-assets automation-review
+  digest --manifest <engagement.json>`.
+
+The corpus roots are `testRoot` and `harnessRoot` from a valid
+`ai_agents_internal/template-selection.json`, otherwise the existing directories among
+`writePolicy.generatedTestRoots`, plus `run-tests.sh` and `scripts/`, resolved against the
+artifact root. Path segments `node_modules`, `.git`, `target`, `build`, `dist`, `.venv`,
+`venv`, `__pycache__`, `.pytest_cache`, `reports`, `test-results`, and `playwright-report`
+and the packaged hunt-driver files under `scripts/` are excluded; a symbolic link fails
+closed. `sha256` covers the sorted lines `<relative path>\0<file sha256>\n`, so any added,
+removed, or edited corpus file changes it.
+
+A newer fragment must repeat every earlier round unchanged, and the merge publishes only a
+document whose latest round judged the current corpus. `argus-assets automation-review check
+--manifest <engagement.json> [--emit-gate <path>] [--json]` reads the merged record, verified
+against its merge digest, and exits 0 for `APPROVED` (the latest round APPROVEs the current
+corpus) or `NOT-APPLICABLE` (Aristarchus is not dispatchable and nothing is merged). It exits
+13 for `BLOCKED`, for `STALE` (an APPROVE whose corpus has since changed), and for `ABSENT`
+(Aristarchus is dispatchable and nothing is merged), each requiring a new round. It exits 14
+for an invalid manifest, state, review record, or corpus. `--emit-gate` writes
+`verdict=<status>`, `reviewId=<id|->`, and `corpusSha256=<reviewed digest|->` lines through the
+active-engagement write guard; it never writes a lease token.

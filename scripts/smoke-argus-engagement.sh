@@ -449,6 +449,22 @@ guard_shell 'argus-assets coverage' 'GUARD-SHELL-AMBIGUOUS: unknown coverage ope
 guard_shell 'argus-assets frobnicate --output reports/frobnicated.json' 'GUARD-SHELL-AMBIGUOUS: unknown packaged command operation'
 guard_shell 'argus-assets launch verify --request reports/request.json' 'GUARD-SHELL-AMBIGUOUS: unknown packaged command operation'
 guard_shell 'argus-assets guard' 'GUARD-SHELL-AMBIGUOUS: unknown packaged command operation'
+# Automation review status binds to the active engagement and is read-only; only --emit-gate
+# writes, through the ordinary write roots. Aristarchus has no Write tool, so he submits his
+# review rounds as one inline single-line --json fragment.
+guard_shell "argus-assets automation-review digest --manifest $MANIFEST" allow
+guard_shell "argus-assets automation-review check --manifest $MANIFEST" allow
+guard_shell "argus-assets automation-review check --manifest $MANIFEST --json" allow
+guard_shell "argus-assets automation-review check --manifest $MANIFEST --emit-gate reports/automation-review.gate" allow
+guard_shell "argus-assets automation-review check --manifest $MANIFEST --emit-gate solution/automation-review.json" GUARD-CANONICAL-SINGLE-WRITER
+guard_shell "argus-assets automation-review check --manifest $MANIFEST --emit-gate app/automation-review.gate" GUARD-TARGET-IMMUTABLE
+guard_shell "argus-assets automation-review check --manifest $WORK/alternate-engagement.json" 'GUARD-SHELL-AMBIGUOUS: automation review must bind to the active engagement manifest'
+guard_shell 'argus-assets automation-review check' 'GUARD-SHELL-AMBIGUOUS: automation review must bind to the active engagement manifest'
+guard_shell "argus-assets automation-review digest --manifest $MANIFEST --json" 'GUARD-SHELL-AMBIGUOUS: automation-review digest accepts only its declared options'
+guard_shell "argus-assets automation-review check --manifest $MANIFEST --output reports/review.json" 'GUARD-SHELL-AMBIGUOUS: automation-review check accepts only its declared options'
+guard_shell "argus-assets automation-review approve --manifest $MANIFEST" 'GUARD-SHELL-AMBIGUOUS: unknown automation-review operation'
+guard_shell "argus-assets engagement fragment --manifest $MANIFEST --lane aristarchus --token lease-token --canonical solution/automation-review.json --id review-r01 --json '{\"owner\":\"aristarchus\",\"reviews\":[]}'" allow
+guard_shell "argus-assets engagement fragment --manifest $MANIFEST --lane aristarchus --token lease-token --canonical solution/automation-review.json --id review-r01 --json @reports/review.json" 'GUARD-SHELL-AMBIGUOUS: batch --json input must be one inline single-line JSON object'
 # Executed from inside the engagement, the allowed queries leave the artifact tree untouched.
 COVERAGE_FIXTURES="$ROOT/scripts/fixtures/argus-coverage"
 COVERAGE_EVIDENCE=(--evidence "$COVERAGE_FIXTURES/evidence-reference.json" --ledger "$COVERAGE_FIXTURES/bug-ledger.json" --root "$COVERAGE_FIXTURES")

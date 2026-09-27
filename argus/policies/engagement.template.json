@@ -76,6 +76,7 @@
       { "path": "solution/coverage-observations.json", "owner": "kleio", "format": "json-document", "schema": "coverage-observations" },
       { "path": "solution/coverage-result.json", "owner": "kleio", "format": "json-document", "schema": "coverage-result" },
       { "path": "solution/final-summary.json", "owner": "kleio", "format": "json-document", "schema": "final-summary" },
+      { "path": "solution/automation-review.json", "owner": "aristarchus", "format": "json-document", "schema": "automation-review" },
       { "path": "solution/FINDINGS.md", "owner": "kleio", "format": "markdown" },
       { "path": "solution/ACCESSIBILITY-REPORT.md", "owner": "kleio", "format": "markdown" },
       { "path": "solution/IMPLEMENTATION-REPORT.md", "owner": "kleio", "format": "markdown" },

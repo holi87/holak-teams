@@ -52,6 +52,8 @@ const requiredTransitions = [
   'automation:planned:implemented', 'automation:implemented:passed', 'automation:implemented:failed', 'automation:implemented:skipped',
   'evidence:collected:immutable', 'coverage-observations:collected:merged', 'coverage-result:inputs-ready:calculated',
   'final-summary:reporting:completed', 'final-summary:reporting:degraded', 'final-summary:reporting:blocked',
+  'automation-review:pending:approved', 'automation-review:pending:blocked', 'automation-review:blocked:approved',
+  'automation-review:approved:blocked',
 ];
 const transitionKeys = new Set(source.stateTransitions.map(transitionKey));
 for (const transition of requiredTransitions) assert(transitionKeys.has(transition), `missing canonical state transition: ${transition}`);
