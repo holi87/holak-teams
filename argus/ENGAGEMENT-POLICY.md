@@ -69,6 +69,9 @@ main thread is the controller). A non-owner, the controller when it is not an ow
 unidentified writer, and an owned root reached through a symbolic link are denied with
 `GUARD-OWNED-ARTIFACT`. A packaged command checks its own outputs without a lane identity,
 so it never writes an owned path: write to `reports/` and copy the result in place.
+Each catalog-owning hunter also owns its blocking technique-coverage ledger
+(`solution/<perseus|orion|lynceus|antigone|charon>-ledger.json`, and Ariadne's
+`solution/journey-ledger.json`), which Minos and Kleio read.
 `writePolicy.selectedTemplateRoots` adds the roots of the operator's explicit
 `ai_agents_internal/template-selection.json`, which no lane can write: its `testRoot` joins
 the generated test roots and its `harnessRoot` is owned by `harnessRootOwners` (Atlas, the
