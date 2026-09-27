@@ -18,7 +18,13 @@ const mean = values => {
 };
 const measured = value => (Number.isFinite(value) ? value : null);
 const byId = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
-const sortedObject = object => Object.fromEntries(Object.entries(object).sort(([left], [right]) => byId(left, right)));
+// Lane names come from the hunter's ledger, so every keyed tally is a Map (a lane named
+// `constructor` must not reach Object.prototype) and becomes an object, sorted by key, at the end.
+const sortedObject = map => Object.fromEntries([...map].sort(([left], [right]) => byId(left, right)));
+const tally = (map, key, create) => {
+  if (!map.has(key)) map.set(key, create());
+  return map.get(key);
+};
 
 // Checks every verdict against the run's extracted ledger rows and truth, and returns them by
 // finding ID. A verdict must name an extracted row with the same status, at most once; it may
@@ -71,16 +77,16 @@ export function scoreRun(run, verdicts, replaySummary = null) {
     .map(verdict => verdict.seedId));
   const critical = run.truth.filter(seed => CRITICAL_SEVERITIES.includes(seed.severity));
 
-  const perSurface = {};
+  const perSurface = new Map();
   for (const seed of run.truth) {
-    const entry = perSurface[seed.surface] ??= { seeded: 0, detected: 0 };
+    const entry = tally(perSurface, seed.surface, () => ({ seeded: 0, detected: 0 }));
     entry.seeded += 1;
     if (detected.has(seed.id)) entry.detected += 1;
   }
 
-  const lanes = {};
+  const lanes = new Map();
   for (const row of confirmed) {
-    const entry = lanes[row.lane] ??= { reported: 0, real: 0, falsePositive: 0, duplicate: 0, seeds: new Set() };
+    const entry = tally(lanes, row.lane, () => ({ reported: 0, real: 0, falsePositive: 0, duplicate: 0, seeds: new Set() }));
     entry.reported += 1;
     const outcome = outcomeOf(row);
     if (outcome === 'real') {
@@ -89,7 +95,7 @@ export function scoreRun(run, verdicts, replaySummary = null) {
     } else if (outcome === 'false-positive') entry.falsePositive += 1;
     else entry.duplicate += 1;
   }
-  const perLane = sortedObject(Object.fromEntries(Object.entries(lanes).map(([lane, { seeds, ...counts }]) => [lane, { ...counts, seedsDetected: seeds.size }])));
+  const perLane = sortedObject([...lanes].map(([lane, { seeds, ...counts }]) => [lane, { ...counts, seedsDetected: seeds.size }]));
 
   // A bug's regression is fail-to-pass when it failed on every faulty repeat, passed on every
   // corrected repeat, and never changed outcome between repeats of one case.
@@ -181,26 +187,24 @@ export function aggregateRuns(results, { mode, judgeReliability }) {
   const faulty = scored.filter(result => result.build === 'faulty').map(result => result.metrics);
   const corrected = scored.filter(result => result.build === 'corrected').map(result => result.metrics);
 
-  const surfaces = {};
+  const surfaces = new Map();
   for (const run of faulty) {
     for (const [surface, counts] of Object.entries(run.perSurface)) {
-      const entry = surfaces[surface] ??= { seeded: 0, detected: 0 };
+      const entry = tally(surfaces, surface, () => ({ seeded: 0, detected: 0 }));
       entry.seeded += counts.seeded;
       entry.detected += counts.detected;
     }
   }
-  const perSurfaceRecall = sortedObject(Object.fromEntries(Object.entries(surfaces)
-    .map(([surface, counts]) => [surface, { ...counts, recall: ratio(counts.detected, counts.seeded) }])));
+  const perSurfaceRecall = sortedObject([...surfaces].map(([surface, counts]) => [surface, { ...counts, recall: ratio(counts.detected, counts.seeded) }]));
 
-  const lanes = {};
+  const lanes = new Map();
   for (const run of metrics) {
     for (const [lane, counts] of Object.entries(run.perLane)) {
-      const entry = lanes[lane] ??= { reported: 0, real: 0, falsePositive: 0, duplicate: 0, seedsDetected: 0 };
+      const entry = tally(lanes, lane, () => ({ reported: 0, real: 0, falsePositive: 0, duplicate: 0, seedsDetected: 0 }));
       for (const key of Object.keys(entry)) entry[key] += counts[key];
     }
   }
-  const perLane = sortedObject(Object.fromEntries(Object.entries(lanes)
-    .map(([lane, counts]) => [lane, { ...counts, precision: ratio(counts.real, counts.reported) }])));
+  const perLane = sortedObject([...lanes].map(([lane, counts]) => [lane, { ...counts, precision: ratio(counts.real, counts.reported) }]));
 
   let regression = null;
   if (mode === 'A') {

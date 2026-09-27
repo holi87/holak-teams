@@ -250,6 +250,12 @@ try {
     });
     assert.deepEqual(m.usage, { tokens: 1000, cost: 2.5, numTurns: 40, controllerTurnCapHit: false, elapsedMs: 60_000, timedOut: false, overBudget: false });
     assert.deepEqual(m.deliveryDefects, { ledger: 'present', unledgeredReports: 0 });
+    const hostile = structuredClone(faulty);
+    hostile.extraction.findings[5].lane = 'constructor';
+    const hostileRun = { status: hostile.status, build: hostile.build, scoring: 'scored', metrics: scoreRun(hostile, verdictsFor(fx, faulty.runId), replay).metrics };
+    assert.deepEqual(hostileRun.metrics.perLane.constructor, { reported: 1, real: 0, falsePositive: 1, duplicate: 0, seedsDetected: 0 });
+    assert.equal(aggregateRuns([hostileRun], { mode: 'A', judgeReliability: fx.verdicts.reliability }).perLane.constructor.precision, 0);
+    assert.equal(Object.prototype.reported, undefined, 'a lane name from the ledger never reaches Object.prototype');
 
     const empty = scoreRun(runOf(fx, 'r1-A-faulty-baseline'), [], summarizeReplay(runOf(fx, 'r1-A-faulty-baseline').replay)).metrics;
     assert.deepEqual([empty.reported, empty.precision, empty.recall, empty.independentReproduction], [0, null, 0, null], 'a zero-report run has null precision');
