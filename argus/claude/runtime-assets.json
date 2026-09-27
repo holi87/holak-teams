@@ -92,8 +92,8 @@
       "source": "argus/COVERAGE-CONTRACT.md",
       "destination": "references/COVERAGE-CONTRACT.md",
       "files": 1,
-      "bytes": 10965,
-      "sha256": "17f3e99586dcc27943083dae06d36a532aaeb83b83820fdf1355a517154869ad"
+      "bytes": 11488,
+      "sha256": "b78c8a8b016e7105362442bb6616b33228c637dc8e670f2fba9f123658e29d91"
     },
     {
       "id": "raci-contract",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 40,
-      "bytes": 186804,
-      "sha256": "5c0bdc4b9530d65626d2f03a4cc26b067e5b9dc9ba3135d92bc72ec1adec7943"
+      "bytes": 189159,
+      "sha256": "81ef1285f5c0d5a43760148a05fe9a4296ba431dca51cb3d434370ee6ecba363"
     },
     {
       "id": "capability-matrix",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 351069,
-      "sha256": "124f0f6da579855a73d133ddac23bf21be3662aadd05bc191453af441ac52a42"
+      "bytes": 354403,
+      "sha256": "260fd13130628cd3fdfa3b9731a98030e1eed9beb1a180286edcf2474cd4af25"
     },
     {
       "id": "common-template",

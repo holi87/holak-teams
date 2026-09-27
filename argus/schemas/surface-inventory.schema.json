@@ -50,6 +50,12 @@
       "items": {
         "$ref": "#/$defs/item"
       }
+    },
+    "sideEffectChannels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sideEffectChannel"
+      }
     }
   },
   "$defs": {
@@ -118,6 +124,23 @@
           "items": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*:[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "features": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "file-upload",
+              "url-fetch-redirect",
+              "protected-download",
+              "export-generation",
+              "notification-channel",
+              "audit-trail",
+              "scheduled-job",
+              "background-job"
+            ]
           }
         },
         "denominators": {
@@ -202,6 +225,89 @@
           "then": {
             "required": [
               "scopeReason"
+            ]
+          }
+        }
+      ]
+    },
+    "sideEffectChannel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "observability"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^SFX-[A-Z0-9][A-Z0-9-]*$"
+        },
+        "kind": {
+          "enum": [
+            "notification-channel",
+            "audit-trail",
+            "export-generation",
+            "scheduled-job",
+            "background-job"
+          ]
+        },
+        "observability": {
+          "enum": [
+            "observable",
+            "unobservable"
+          ]
+        },
+        "observation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surfaceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^SRF-[A-Z0-9][A-Z0-9-]*$"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "observability"
+            ],
+            "properties": {
+              "observability": {
+                "const": "observable"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "observation"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "observability"
+            ],
+            "properties": {
+              "observability": {
+                "const": "unobservable"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reason"
             ]
           }
         }
