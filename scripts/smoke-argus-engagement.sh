@@ -439,6 +439,13 @@ guard_shell "printf '%s' '$TELEMETRY_BATCH' | argus-assets model telemetry --man
   'GUARD-SHELL-AMBIGUOUS: packaged command must be one exact standalone invocation'
 guard_shell "argus-assets model telemetry --manifest $MANIFEST --json '$TELEMETRY_BATCH' --controller-token $CONTROLLER_TOKEN <<< '$TELEMETRY_BATCH'" \
   'GUARD-SHELL-AMBIGUOUS: batch input is inline only'
+# The other controller-authority forms are bounded engagement mutations of the active manifest.
+guard_shell "argus-assets engagement barrier arrive --manifest $MANIFEST --phase discovery --json '{\"lanes\":[\"kalchas\"]}' --controller-token $CONTROLLER_TOKEN" allow
+guard_shell "argus-assets engagement cleanup --manifest $MANIFEST --json '{\"cleanups\":[{\"lane\":\"kalchas\",\"outcome\":\"interrupted\"}]}' --controller-token $CONTROLLER_TOKEN" allow
+guard_shell "argus-assets engagement start-attempt --manifest $MANIFEST --lane kalchas --decision $TELEMETRY_DECISION --controller-token $CONTROLLER_TOKEN" allow
+guard_shell "argus-assets model request --manifest $MANIFEST --agent aegis --runtime claude --signal safety --dispatch-id dispatch-aegis-001 --attempt 2 --checkpoint-ref ai_agents_internal/checkpoints/aegis/00000001.json --controller-token $CONTROLLER_TOKEN" allow
+guard_shell "argus-assets engagement cleanup --manifest $MANIFEST --json - --controller-token $CONTROLLER_TOKEN" \
+  'GUARD-SHELL-AMBIGUOUS: batch --json input must be one inline single-line JSON object'
 guard_shell "argus-assets model route --manifest $MANIFEST --manifest $WORK/alternate-engagement.json --agent aegis --runtime claude --signal normal --dispatch-id duplicate-manifest --attempt 1" GUARD-SHELL-AMBIGUOUS
 if "$CLI" model route --manifest "$MANIFEST" --manifest "$MANIFEST" --agent aegis --runtime claude --signal normal --dispatch-id duplicate-manifest --attempt 1 >/dev/null 2>&1; then
   fail 'model route accepted duplicate --manifest options'
