@@ -64,7 +64,7 @@ for rule in \
   fi
 done
 
-for retired in lane-plan:1 evidence-reference:1 evidence-reference:2 automation-status:1 bug-ledger:1 coverage-observations:1 coverage-result:1; do
+for retired in lane-plan:1 evidence-reference:1 evidence-reference:2 automation-status:1 bug-ledger:1 coverage-observations:1 coverage-result:1 final-summary:1; do
   kind="${retired%%:*}" version="${retired#*:}"
   jq --arg schema "argus/$kind@$version" --argjson version "$version" '."$schema"=$schema | .schemaVersion=$version' \
     "$FIXTURES/valid/$kind.json" >"$WORK/$kind-retired-v$version.json"
@@ -402,10 +402,82 @@ if "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO"
 fi
 cp "$WORK/original-control.txt" "$TARGET/reports/runner.log"
 
-jq '.engagementId = "schema-fixture"' "$FIXTURES/valid/final-summary.json" >"$WORK/final-summary.json"
-"$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/final-summary.json --id summary --input "$WORK/final-summary.json" >/dev/null
-"$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/final-summary.json >/dev/null
-grep -Fq 'Source schema: argus/final-summary@1' "$TARGET/solution/FINAL-SUMMARY.md" || fail "rendered summary has no source schema"
-grep -Fq 'Required-case depth: 50%' "$TARGET/solution/FINAL-SUMMARY.md" || fail "rendered summary has no surface-derived coverage"
+# Kleio's final summary: report-facts derives every fact from the merge-verified canonical inputs
+# and the runner result, and the merge re-derives and overwrites them; it never raises a status.
+SUMMARY_MD="$TARGET/solution/FINAL-SUMMARY.md"
+summary_fragment() {
+  "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/final-summary.json --id "$1" --input "$2" >/dev/null
+}
+summary_merge() { "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/final-summary.json; }
+cp "$FIXTURES/valid/runner-result.json" "$TARGET/reports/argus-runner-result.json"
+"$CLI" engagement report-facts --manifest "$MANIFEST" >"$WORK/report-facts.json"
+jq -e '.statusCeiling == "degraded" and .statusReasons == ["case-depth-gaps"]
+  and .counts.bugs == {confirmed: 1, suspected: 1, needsOracle: 1, duplicate: 1, rejected: 1, headline: 2}
+  and .counts.regression == {wired: 1, uncovered: []} and .counts.automated == 2 and .counts.evidence == 3
+  and (.unproven | map([.id, .status, .missing])) == [["BUG-0002", "suspected", ["independent-reproduction"]], ["BUG-0003", "needs-oracle", ["oracle"]]]
+  and .automationReview == {status: "approved", reviewId: "REV-02", round: 2, blockers: 0, warnings: 0}
+  and .runner.resultPath == "reports/argus-runner-result.json" and .runner.exitCode == 0 and .runner.deliveryGate == true
+  and .coverage.criticalUnexecuted == [] and .coverage.caseDepth.coverage == 0.5 and (.coverage.caseDepth.gaps | length) == 1
+  and .sourceSchemas == ["argus/bug-ledger@2", "argus/evidence-reference@3", "argus/automation-status@2", "argus/runner-result@1", "argus/coverage-result@2", "argus/automation-review@1"]' \
+  "$WORK/report-facts.json" >/dev/null || fail "report-facts did not derive the canonical facts: $(<"$WORK/report-facts.json")"
+(cd "$TARGET" && "$CLI" engagement report-facts --manifest "$MANIFEST" --output reports/report-facts.json) >/dev/null
+cmp -s "$WORK/report-facts.json" "$TARGET/reports/report-facts.json" || fail 'report-facts --output wrote different facts than stdout'
+jq --slurpfile facts "$WORK/report-facts.json" '.engagementId = "schema-fixture" | . + ($facts[0] | del(.statusCeiling)) | .status = $facts[0].statusCeiling' \
+  "$FIXTURES/valid/final-summary.json" >"$WORK/final-summary.json"
+summary_fragment summary "$WORK/final-summary.json"
+summary_merge >/dev/null
+grep -Fq 'Source schema: argus/final-summary@2' "$SUMMARY_MD" || fail "rendered summary has no source schema"
+grep -Fxq 'Status: degraded' "$SUMMARY_MD" && grep -Fxq 'Status reason: case-depth-gaps' "$SUMMARY_MD" || fail 'rendered summary does not name its status reason'
+grep -Fxq -- '- Defect headline (confirmed + suspected): 2' "$SUMMARY_MD" || fail 'rendered summary has no confirmed + suspected headline'
+grep -Fxq -- '- Confirmed with verified regression: 1 (uncovered: none)' "$SUMMARY_MD" || fail 'rendered summary has no regression coverage line'
+grep -Fxq '## Likely, unproven' "$SUMMARY_MD" || fail 'rendered summary has no Likely, unproven section'
+grep -Fxq -- '- BUG-0002 (Major, suspected): Cart total accepts a negative quantity — would be confirmed by: independent-reproduction — An independent reproduction from fresh synthetic accounts would confirm it.' "$SUMMARY_MD" || \
+  fail 'rendered summary dropped the suspected finding'
+grep -Fq -- '- BUG-0003 (Minor, needs-oracle): Order total rounds half-cent amounts down — would be confirmed by: oracle' "$SUMMARY_MD" || fail 'rendered summary dropped the needs-oracle finding'
+grep -Fq 'APPROVE (REV-02' "$SUMMARY_MD" || fail 'rendered summary has no automation review verdict'
+grep -Fq 'Required-case depth: 50%' "$SUMMARY_MD" || fail "rendered summary has no surface-derived coverage"
+grep -Fxq -- '- Automated re-execution: 0%' "$SUMMARY_MD" || fail 'rendered summary has no automated re-execution ratio'
+jq -e '.status == "degraded" and .statusReasons == ["case-depth-gaps"]' "$TARGET/solution/final-summary.json" >/dev/null || fail 'the merged summary is not degraded by case-depth gaps'
 
-printf 'PASS  Argus schemas: current fixtures, retired version rejection, deterministic collection merges, fragment rejection, per-bug ledger quarantine, latest-revision ledgers, append-only corpus-bound automation reviews, reviewer-registered audited binary evidence, stable IDs, runner results, and source-versioned summary\n'
+# An internally consistent but inflated, completed fragment supersedes the first one and merges
+# to the derived facts; only the narrative is Kleio's.
+jq -c '.counts.bugs = {confirmed: 9, suspected: 0, needsOracle: 2, duplicate: 0, rejected: 0, headline: 9} | .counts.regression = {wired: 9, uncovered: []}
+  | .counts.automated = 40 | .counts.evidence = 99 | .unproven |= map(.status = "needs-oracle") | .coverage.executionCoverage = 1
+  | .coverage.caseDepth = {plannedWeight: 10, executedWeight: 10, verifiedWeight: 10, coverage: 1, unplannedSurfaces: [], gaps: []}
+  | .automationReview = {status: "not-applicable", reviewId: null, round: null, blockers: 0, warnings: 0}
+  | .runner.categories.product = 0 | .status = "completed" | .statusReasons = [] | .summary = "A corrected narrative."' \
+  "$WORK/final-summary.json" >"$WORK/final-summary-inflated.json"
+"$CLI" schema validate --kind final-summary --input "$WORK/final-summary-inflated.json" >/dev/null || fail 'the inflated fixture is not a self-consistent final summary'
+summary_fragment summary-inflated "$WORK/final-summary-inflated.json"
+summary_merge >/dev/null
+jq -e --slurpfile facts "$WORK/report-facts.json" '.counts == $facts[0].counts and .unproven == $facts[0].unproven and .coverage == $facts[0].coverage
+  and .runner == $facts[0].runner and .automationReview == $facts[0].automationReview and .sourceSchemas == $facts[0].sourceSchemas
+  and .status == "degraded" and .statusReasons == ["case-depth-gaps"] and .summary == "A corrected narrative."' \
+  "$TARGET/solution/final-summary.json" >/dev/null || fail "an inflated fragment overstated the merged summary: $(<"$TARGET/solution/final-summary.json")"
+"$CLI" engagement status --manifest "$MANIFEST" | jq -e '.merges["solution/final-summary.json"].effectiveFragment == "summary-inflated"' >/dev/null || \
+  fail 'the final-summary merge did not publish the superseding narrative'
+
+# The runner outcome is read, never declared: a missing runner result or an unfunded claim in Mode A fails.
+mv "$TARGET/reports/argus-runner-result.json" "$WORK/runner-result.moved.json"
+if summary_merge >"$WORK/summary-no-runner.out" 2>&1; then fail 'the final summary merged without its runner result'; fi
+grep -Fq 'final summary runner outcome requires reports/argus-runner-result.json' "$WORK/summary-no-runner.out" || fail "missing runner result failed for another reason: $(<"$WORK/summary-no-runner.out")"
+"$CLI" engagement report-facts --manifest "$MANIFEST" | jq -e '.runner == null' >/dev/null || fail 'report-facts invented a runner outcome without a runner result'
+mv "$WORK/runner-result.moved.json" "$TARGET/reports/argus-runner-result.json"
+jq -c '.runner = null' "$WORK/final-summary.json" >"$WORK/final-summary-unfunded.json"
+summary_fragment summary-unfunded "$WORK/final-summary-unfunded.json"
+if summary_merge >"$WORK/summary-unfunded.out" 2>&1; then fail 'a Mode A final summary merged without a runner outcome'; fi
+grep -Fq 'runner=null is only valid for Mode B without automation' "$WORK/summary-unfunded.out" || fail "unfunded Mode A summary failed for another reason: $(<"$WORK/summary-unfunded.out")"
+summary_fragment summary-restored "$WORK/final-summary.json"
+
+# A test-corpus edit after the approval makes the review STALE, and re-merging caps the summary at blocked.
+cp "$TARGET/tests/a.spec.ts" "$WORK/a.spec.ts.summary"
+printf "test('late edit', async () => { expect(await total()).toBe(42); });\n" >>"$TARGET/tests/a.spec.ts"
+summary_merge >/dev/null
+jq -e '.status == "blocked" and .statusReasons == ["automation-review-stale", "case-depth-gaps"] and .automationReview.status == "stale"' \
+  "$TARGET/solution/final-summary.json" >/dev/null || fail "a stale automation review did not block the final summary: $(<"$TARGET/solution/final-summary.json")"
+grep -Fxq 'Status reason: automation-review-stale' "$SUMMARY_MD" && grep -Fq 'STALE (REV-02' "$SUMMARY_MD" || fail 'the rendered summary does not report the stale review'
+cp "$WORK/a.spec.ts.summary" "$TARGET/tests/a.spec.ts"
+summary_merge >/dev/null
+jq -e '.status == "degraded" and .statusReasons == ["case-depth-gaps"]' "$TARGET/solution/final-summary.json" >/dev/null || fail 'restoring the approved corpus did not re-derive the degraded summary'
+
+printf 'PASS  Argus schemas: current fixtures, retired version rejection, deterministic collection merges, fragment rejection, per-bug ledger quarantine, latest-revision ledgers, append-only corpus-bound automation reviews, reviewer-registered audited binary evidence, stable IDs, runner results, and a source-versioned final summary whose facts and status ceiling are derived at merge\n'

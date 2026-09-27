@@ -461,8 +461,9 @@ deep hunt early. Only Odysseus may skip, only from the untouched start (no arriv
 skippable deep-hunt pass, which is pass 2 or later. The skip covers that pass and every
 later deep-hunt and deep-proof pass, and the phase cursor moves to the next unskipped phase.
 `converged` requires the previous proof pass to have a ledger snapshot with zero new
-confirmed defects. `controller-budget` is always accepted but is a named residual: the
-final-summary merge downgrades a `completed` summary to `degraded` while such a skip exists.
+confirmed defects. `controller-budget` is always accepted but is a named residual: while
+such a skip exists, the final-summary merge records the status reason
+`deep-hunt-skipped:controller-budget` and caps the summary at `degraded`.
 Every skipped phase is recorded in `skippedPhases` with its reason, `skippedAt`, and
 `basis` (the proof phase that proved convergence, or `null`). A skipped phase needs no
 arrivals, rejects arrivals, and is never recorded as completed.
@@ -598,7 +599,7 @@ The installed `schemas/` directory defines the versioned, machine-readable contr
 `argus/bug-ledger@2`, `argus/lane-plan@2`, `argus/evidence-reference@3`,
 `argus/automation-status@2`, `argus/runner-result@1`, `argus/surface-inventory@1`,
 `argus/coverage-observations@2`, `argus/coverage-result@2`, `argus/automation-review@1`, and
-the final-summary contract.
+`argus/final-summary@2`.
 Canonical solution JSON documents are single-owner
 `json-document` artifacts; the runner result is validated at its runner-owned report path.
 Lane-plan, evidence-reference, automation-status, and coverage-observations (keyed by
@@ -639,11 +640,19 @@ cumulative document through `engagement fragment --json <single-line-object>`.
 BLOCKED, STALE, or ABSENT (a new round is required), and 14 for invalid input. See
 `CANONICAL-CONTRACTS.md` "Automation review in 5.0".
 
-`solution/final-summary.json` is the canonical final record. Its merge also renders
-`solution/FINAL-SUMMARY.md` with an explicit `Source schema:` line, so the human-facing
+`solution/final-summary.json` is the canonical final record. Kleio supplies the narrative
+and a proposed status from `argus-assets engagement report-facts` (read-only, no token); the
+merge re-derives the counts (headline = confirmed + suspected), the likely-but-unproven
+findings, the automation-review verdict, the runner outcome, the required coverage, and the
+source schemas from the merge-verified canonical inputs and `reports/argus-runner-result.json`,
+overwrites them, and caps the status by the derived `statusReasons`: a BLOCK, STALE, or ABSENT
+review or a confirmed bug without regression blocks; an unexecuted critical surface, case-depth
+gaps, a non-delivery-gate runner, runner exit codes 11 to 15, or a non-converged deep-hunt skip
+degrade. It never raises a status. The merge also renders `solution/FINAL-SUMMARY.md` with an
+explicit `Source schema:` line and one `Status reason:` line per reason, so the human-facing
 summary is traceable to the machine contract. The lane-plan `lanes`, evidence-reference
 `references`, and automation-status `tests` arrays contain unique records sorted by
-`lane`, `id`, and `testId`; the final summary lists its source schemas and counts.
+`lane`, `id`, and `testId`. See `CANONICAL-CONTRACTS.md` "Final summary in 5.0".
 
 The per-contract version policy is `policies/schema-compatibility.json`. Unchanged
 contracts remain v1-only. The three collection contracts and the bug ledger accept only

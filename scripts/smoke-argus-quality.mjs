@@ -181,9 +181,41 @@ assert.deepEqual(reconcileCoverageEvidence(inventory, { ...observations, engagem
 obs.cases.push({ ...obs.cases[0], obligationId: 'CASE-OTHER', outcome: 'failed' });
 assert.equal(depthOf(observations).coverage, 1);
 obs.cases[1].oracleId = 'invented'; assert(validateCasePlan(inventory, observations).length);
-const summary = read('./fixtures/argus-schemas/valid/final-summary.json'); summary.runner = null; summary.counts.automated = 0;
-assert(renderFinalSummary(summary).includes('no framework runner was executed'));
+const finalSummary = read('./fixtures/argus-schemas/valid/final-summary.json');
+const rendered = renderFinalSummary(finalSummary).split('\n');
+const statusAt = rendered.indexOf('Status: degraded');
+assert.deepEqual(rendered.slice(statusAt, statusAt + 3), ['Status: degraded', 'Status reason: case-depth-gaps', 'Status reason: critical-surface-unexecuted']);
+for (const line of ['- Defect headline (confirmed + suspected): 2', '- Needs oracle: 1', '- Confirmed with verified regression: 1 (uncovered: none)', '- Automated tests: 2', '## Likely, unproven',
+  '- BUG-0003 (Minor, needs-oracle): Order total rounds half-cent amounts down — would be confirmed by: oracle — A cited rounding rule for order totals would decide whether this is a defect.',
+  '- Verdict: APPROVE (REV-02, round 2, blockers 0, warnings 0)', '- Delivery gate: yes', '- Automated re-execution: 100%', '- Critical surface not executed: SRF-UI-HOME', '- Required-case depth: unknown (not fully planned)']) {
+  assert(rendered.includes(line), `rendered final summary lacks: ${line}`);
+}
+const unprovenFree = copy(finalSummary);
+Object.assign(unprovenFree.counts.bugs, { suspected: 0, needsOracle: 0, headline: 1 }); unprovenFree.unproven = [];
+Object.assign(unprovenFree.counts.regression, { wired: 0, uncovered: ['BUG-0001'] });
+unprovenFree.automationReview = { status: 'absent', reviewId: null, round: null, blockers: 0, warnings: 0 };
+const unprovenFreeLines = renderFinalSummary(unprovenFree).split('\n');
+assert.equal(unprovenFreeLines[unprovenFreeLines.indexOf('## Likely, unproven') + 2], 'None.');
+assert(unprovenFreeLines.includes('- Confirmed with verified regression: 0 (uncovered: BUG-0001)'));
+assert(unprovenFreeLines.includes('- Verdict: ABSENT (no review round, blockers 0, warnings 0)'));
+const unfunded = copy(finalSummary); unfunded.runner = null; unfunded.counts.automated = 0;
+const unfundedText = renderFinalSummary(unfunded);
+assert(unfundedText.includes('no framework runner was executed') && unfundedText.includes('- Automated re-execution: n/a (automation unfunded)'));
+assert(!unfundedText.includes('- Delivery gate:'));
+for (const mutate of [
+  (document) => { document.counts.bugs.headline = 1; },
+  (document) => { document.unproven = document.unproven.slice(1); },
+  (document) => { document.unproven.reverse(); },
+  (document) => { document.status = 'completed'; },
+  (document) => { document.counts.regression.wired = 0; },
+  (document) => { document.automationReview.reviewId = null; },
+  (document) => { delete document.coverage; },
+]) {
+  const document = copy(finalSummary); mutate(document);
+  assert(validateCanonicalDocument('final-summary', document).length > 0, `final summary accepted ${mutate}`);
+  assert.throws(() => renderFinalSummary(document), /invalid final summary/);
+}
 const plan = read('../argus/orchestration-plan.json');
 assert(!plan.roles.find(role => role.slug === 'perseus').gates.includes('browser-runtime'));
 assert(!plan.roles.find(role => role.slug === 'daidalos').modes.includes('B'));
-console.log('PASS  Finding proof, conditional oracles, intermittent and single-attempt independence, ledger@2 status blocks, causal merges, per-bug quarantine, evidence@3 content and review binding, dedup evidence, case depth, and unfunded runner regressions');
+console.log('PASS  Finding proof, conditional oracles, intermittent and single-attempt independence, ledger@2 status blocks, causal merges, per-bug quarantine, evidence@3 content and review binding, dedup evidence, case depth, final-summary@2 rendering and semantics, and unfunded runner regressions');

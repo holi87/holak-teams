@@ -382,6 +382,16 @@ guard_shell "argus-assets engagement barrier skip --manifest $WORK/alternate-eng
 guard_shell "argus-assets engagement resolve-gates --manifest $MANIFEST --controller-token $(token_for odysseus)" allow
 guard_shell "argus-assets engagement resolve-gates --manifest $MANIFEST --controller-token $(token_for odysseus) --evidence solution/discovery/capability-evidence.json" allow
 guard_shell "argus-assets engagement resolve-gates --manifest $WORK/alternate-engagement.json --controller-token $(token_for odysseus)" GUARD-SHELL-AMBIGUOUS
+# report-facts only reads the merge-verified canonicals; a file output keeps the write-root checks.
+guard_shell "argus-assets engagement report-facts --manifest $MANIFEST" allow
+guard_shell "argus-assets engagement report-facts --manifest $MANIFEST --output -" allow
+guard_shell "argus-assets engagement report-facts --manifest $MANIFEST --output reports/report-facts.json" allow
+guard_shell "argus-assets engagement report-facts --manifest $MANIFEST --output solution/final-summary.json" GUARD-CANONICAL-SINGLE-WRITER
+guard_shell "argus-assets engagement report-facts --manifest $MANIFEST --output app/report-facts.json" GUARD-TARGET-IMMUTABLE
+guard_shell "argus-assets engagement report-facts --manifest $WORK/alternate-engagement.json" 'GUARD-SHELL-AMBIGUOUS: engagement report-facts must bind to the active engagement manifest'
+guard_shell 'argus-assets engagement report-facts' 'GUARD-SHELL-AMBIGUOUS: engagement report-facts must bind to the active engagement manifest'
+guard_shell "argus-assets engagement report-facts --manifest $MANIFEST --token $(token_for kleio)" 'GUARD-SHELL-AMBIGUOUS: engagement report-facts accepts only --manifest <path> and --output <json|->'
+guard_shell "argus-assets engagement report-facts --manifest $MANIFEST --output" 'GUARD-SHELL-AMBIGUOUS: engagement report-facts accepts only'
 # No arrow function here: its ">" alone would already look like a redirection.
 guard_shell "node -e \"import('./runtime/engagement.mjs').then(function (m) { m.resolveConditionalGates({}, 'token', {}) })\"" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets redact --input reports/result.txt --output app/redacted.txt" GUARD-TARGET-IMMUTABLE

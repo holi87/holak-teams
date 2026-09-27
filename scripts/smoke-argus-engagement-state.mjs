@@ -47,6 +47,8 @@ const orchestrationPlan = readRepoJson('argus/orchestration-plan.json');
 const capabilityMatrix = readRepoJson('argus/capabilities/capability-matrix.json');
 const raci = readRepoJson('argus/raci.json');
 const finalSummaryFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/final-summary.json');
+const coverageResultFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/coverage-result.json');
+const runnerResultFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/runner-result.json');
 const bugLedgerFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/bug-ledger.json');
 const evidenceFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/evidence-reference.json');
 const stateSchemaAjv = new Ajv2020({ allErrors: true, strict: false, validateFormats: true });
@@ -472,7 +474,8 @@ function testConvergedSkip() {
   expectThrowMessage(() => arriveBarrier(manifest, 'hermes', hermes, 'deep-hunt-2'), 'phase deep-hunt-2 was skipped (converged)', 'arrival at a skipped phase');
   assert(JSON.stringify(state.barriers['deep-hunt-2']) === '[]', 'skipped phase recorded arrivals');
   mergeFinalSummary(converged.fixture, kleio);
-  assert(readSolutionJson(converged.fixture, 'final-summary.json').status === 'completed', 'converged skip degraded the final summary');
+  const convergedSummary = readSolutionJson(converged.fixture, 'final-summary.json');
+  assert(convergedSummary.status === 'completed' && convergedSummary.statusReasons.length === 0, `converged skip degraded the final summary: ${JSON.stringify(convergedSummary.statusReasons)}`);
   assert(cleanupWorker(manifest, 'hermes', hermes, 'success').released, 'hermes success cleanup was refused after a converged skip');
 
   const budget = runToSecondDeepHunt('controller-budget-skip');
@@ -488,7 +491,9 @@ function testConvergedSkip() {
   const budgetSkip = skipPhases(budget.fixture.manifest, 'odysseus', budget.tokens.controller, 'controller-budget');
   assert(budgetSkip.currentPhase === 'automation' && budgetSkip.skipped.length === 4, 'controller-budget skip did not cascade to automation');
   mergeFinalSummary(budget.fixture, budget.tokens.kleio);
-  assert(readSolutionJson(budget.fixture, 'final-summary.json').status === 'degraded', 'controller-budget skip did not degrade a completed final summary');
+  const budgetSummary = readSolutionJson(budget.fixture, 'final-summary.json');
+  assert(budgetSummary.status === 'degraded' && JSON.stringify(budgetSummary.statusReasons) === '["deep-hunt-skipped:controller-budget"]',
+    `controller-budget skip did not degrade a completed final summary through its status reason: ${JSON.stringify(budgetSummary)}`);
 }
 
 function testStandbyBlocksSuccessCleanup() {
@@ -742,9 +747,30 @@ function mergeEmptyLedger(fixture, token, fragmentId) {
   mergeCanonical(fixture.manifest, 'minos', token, 'solution/bug-ledger.json');
 }
 
+// The final-summary merge derives its facts from a merged coverage result and the runner result.
+// These fixtures have no Kalchas to publish the coverage inputs, so the helper seeds a complete,
+// merge-recorded coverage result and a delivery-gate runner result; with the empty ledger every
+// fact is clean, and the only status reasons left are the recorded phase skips.
 function mergeFinalSummary(fixture, token) {
-  const { coverage, ...summary } = structuredClone(finalSummaryFixture);
+  const coverage = structuredClone(coverageResultFixture);
+  coverage.engagementId = fixture.manifest.engagementId;
+  coverage.surfaces.find((surface) => surface.surfaceId === 'SRF-UI-HOME').executed = true;
+  coverage.criticalUnexecuted = [];
+  coverage.overall.caseDepth = { plannedWeight: 5, executedWeight: 5, verifiedWeight: 5, coverage: 1, unplannedSurfaces: [], gaps: [] };
+  const coverageContent = `${JSON.stringify(coverage, null, 2)}\n`;
+  mkdirSync(join(fixture.root, 'solution'), { recursive: true });
+  mkdirSync(join(fixture.root, 'reports'), { recursive: true });
+  writeFileSync(join(fixture.root, 'solution', 'coverage-result.json'), coverageContent);
+  writeFileSync(join(fixture.root, 'reports', 'argus-runner-result.json'), `${JSON.stringify(runnerResultFixture)}\n`);
+  const state = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
+  state.merges['solution/coverage-result.json'] = { owner: 'kleio', fragments: 1, sha256: createHash('sha256').update(coverageContent).digest('hex'), mergedAt: new Date().toISOString() };
+  writeFileSync(fixture.statePath, `${JSON.stringify(state, null, 2)}\n`);
+
+  const summary = structuredClone(finalSummaryFixture);
   summary.engagementId = fixture.manifest.engagementId;
+  Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [] });
+  summary.counts = { bugs: { confirmed: 0, suspected: 0, needsOracle: 0, duplicate: 0, rejected: 0, headline: 0 }, regression: { wired: 0, uncovered: [] }, automated: 0, evidence: 0 };
+  summary.automationReview = { status: 'not-applicable', reviewId: null, round: null, blockers: 0, warnings: 0 };
   writeFragment(fixture.manifest, 'kleio', token, 'solution/final-summary.json', 'final-summary', `${JSON.stringify(summary)}\n`);
   mergeCanonical(fixture.manifest, 'kleio', token, 'solution/final-summary.json');
 }

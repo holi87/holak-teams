@@ -64,6 +64,7 @@ const EXPECTED_CONTRACT_VERSIONS = Object.freeze({
   'bug-ledger': 2,
   'coverage-observations': 2,
   'coverage-result': 2,
+  'final-summary': 2,
 });
 for (const [kind, version] of Object.entries(EXPECTED_CONTRACT_VERSIONS)) {
   const policy = compatibility.contracts?.[kind];
@@ -173,12 +174,16 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
   // final-summary document, so an unattested run cannot omit this disclosure by
   // writing a fragment that leaves it out. Attested runs render exactly as before.
   const unattested = launchAssurance === 'unattested';
+  const { bugs, regression } = document.counts;
+  const review = document.automationReview;
+  const coverage = document.coverage;
   const lines = [
     '# Argus Final Summary',
     '',
     `Source schema: ${document.$schema}`,
     `Engagement: ${document.engagementId}`,
     `Status: ${document.status}`,
+    ...document.statusReasons.map((reason) => `Status reason: ${reason}`),
     ...(unattested ? [`Attestation: UNATTESTED (launchAssurance=unattested)`] : []),
     '',
     ...(unattested ? [
@@ -195,9 +200,24 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
     ] : []),
     '## Counts',
     '',
-    `- Bugs: ${document.counts.bugs}`,
-    `- Automated: ${document.counts.automated}`,
+    `- Defect headline (confirmed + suspected): ${bugs.headline}`,
+    `- Confirmed: ${bugs.confirmed}`,
+    `- Suspected: ${bugs.suspected}`,
+    `- Needs oracle: ${bugs.needsOracle}`,
+    `- Duplicate: ${bugs.duplicate}`,
+    `- Rejected: ${bugs.rejected}`,
+    `- Confirmed with verified regression: ${regression.wired} (uncovered: ${regression.uncovered.length ? regression.uncovered.join(', ') : 'none'})`,
+    `- Automated tests: ${document.counts.automated}`,
     `- Evidence references: ${document.counts.evidence}`,
+    '',
+    '## Likely, unproven',
+    '',
+    ...(document.unproven.length ? document.unproven.map((entry) =>
+      `- ${entry.id} (${entry.severity}, ${entry.status}): ${entry.title} — would be confirmed by: ${entry.missing.join(', ')} — ${entry.detail}`) : ['None.']),
+    '',
+    '## Automation review',
+    '',
+    `- Verdict: ${REVIEW_VERDICT_TOKENS[review.status]} (${review.reviewId ? `${review.reviewId}, round ${review.round}` : 'no review round'}, blockers ${review.blockers}, warnings ${review.warnings})`,
     '',
     '## Runner outcome',
     '',
@@ -205,6 +225,7 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
     `- Mode: ${document.runner.mode}`,
     `- Status: ${document.runner.status}`,
     `- Exit code: ${document.runner.exitCode}`,
+    `- Delivery gate: ${document.runner.deliveryGate ? 'yes' : 'no'}`,
     `- Result: ${document.runner.resultPath}`,
     `- Product: ${document.runner.categories.product}`,
     `- Automation: ${document.runner.categories.automation}`,
@@ -213,20 +234,20 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
     `- Policy: ${document.runner.categories.policy}`,
     ] : ['Automation: unfunded; no framework runner was executed.']),
     '',
-    ...(document.coverage ? [
-      '## Surface-derived coverage',
-      '',
-      `- Result: ${document.coverage.resultPath}`,
-      `- Discovery completeness: ${formatRatio(document.coverage.discoveryCompleteness)}`,
-      `- Execution coverage: ${formatRatio(document.coverage.executionCoverage)} (surface breadth)`,
-      `- Assertion quality: ${formatRatio(document.coverage.assertionQuality)}`,
-      `- Evidence quality: ${formatRatio(document.coverage.evidenceQuality)}`,
-      `- Scoped outcomes: ${document.coverage.scopedOutcomes}`,
-      `- Required-case depth: ${(document.coverage.caseDepth?.coverage == null ? 'unknown (not fully planned)' : formatRatio(document.coverage.caseDepth.coverage))}`,
-      ...(document.coverage.caseDepth?.unplannedSurfaces ?? []).map(id => `- Unplanned depth: ${id}`),
-      ...(document.coverage.caseDepth?.gaps ?? []).map(gap => `- Case gap: ${gap.obligationId}: ${gap.reason}`),
-      '',
-    ] : []),
+    '## Surface-derived coverage',
+    '',
+    `- Result: ${coverage.resultPath}`,
+    `- Discovery completeness: ${formatRatio(coverage.discoveryCompleteness)}`,
+    `- Execution coverage: ${formatRatio(coverage.executionCoverage)} (surface breadth)`,
+    `- Assertion quality: ${formatRatio(coverage.assertionQuality)}`,
+    `- Evidence quality: ${formatRatio(coverage.evidenceQuality)}`,
+    `- Automated re-execution: ${document.runner ? formatRatio(coverage.automatedExecution) : 'n/a (automation unfunded)'}`,
+    `- Scoped outcomes: ${coverage.scopedOutcomes}`,
+    ...coverage.criticalUnexecuted.map((id) => `- Critical surface not executed: ${id}`),
+    `- Required-case depth: ${(coverage.caseDepth?.coverage == null ? 'unknown (not fully planned)' : formatRatio(coverage.caseDepth.coverage))}`,
+    ...(coverage.caseDepth?.unplannedSurfaces ?? []).map(id => `- Unplanned depth: ${id}`),
+    ...(coverage.caseDepth?.gaps ?? []).map(gap => `- Case gap: ${gap.obligationId}: ${gap.reason}`),
+    '',
     '## Source contracts',
     '',
     ...document.sourceSchemas.map((source) => `- ${source}`),
@@ -238,6 +259,16 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
   ];
   return lines.join('\n');
 }
+
+// The rendered verdict names Aristarchus's persisted outcome; a STALE approval or an ABSENT
+// review is never printed as APPROVE.
+const REVIEW_VERDICT_TOKENS = Object.freeze({
+  approved: 'APPROVE',
+  blocked: 'BLOCK',
+  stale: 'STALE',
+  absent: 'ABSENT',
+  'not-applicable': 'NOT-APPLICABLE',
+});
 
 function formatRatio(value) {
   return value === null ? 'n/a' : `${Math.round(value * 10000) / 100}%`;
@@ -273,6 +304,7 @@ function semanticErrors(kind, document) {
   if (kind === 'runner-result') return validateRunnerResultSemantics(document);
   if (kind === 'capability-evidence') return validateCapabilityEvidence(document);
   if (kind === 'automation-review') return validateAutomationReview(document);
+  if (kind === 'final-summary') return validateFinalSummary(document);
   return [];
 }
 
@@ -449,6 +481,41 @@ function validateAutomationReview(document) {
     previous = review;
   });
   return errors;
+}
+
+// The final-summary facts are derived from the canonical ledger, automation status, coverage
+// result, and review record at merge; these rules keep a submitted document self-consistent, so
+// no summary can headline fewer defects than it counts or drop a likely, unproven finding.
+function validateFinalSummary(document) {
+  const errors = [];
+  const { bugs, regression } = document.counts;
+  if (bugs.headline !== bugs.confirmed + bugs.suspected) errors.push('counts.bugs.headline must equal confirmed + suspected');
+  const unprovenIds = document.unproven.map((entry) => entry.id);
+  if (!isSortedUnique(unprovenIds)) errors.push('unproven entries must be sorted by unique id');
+  if (document.unproven.length !== bugs.suspected + bugs.needsOracle) errors.push('unproven must list exactly the suspected and needs-oracle bugs');
+  const unprovenWith = (status) => document.unproven.filter((entry) => entry.status === status).length;
+  if (unprovenWith('suspected') !== bugs.suspected || unprovenWith('needs-oracle') !== bugs.needsOracle) {
+    errors.push('unproven statuses must match counts.bugs.suspected and counts.bugs.needsOracle');
+  }
+  if (!isSortedUnique(regression.uncovered)) errors.push('counts.regression.uncovered must be sorted and unique');
+  if (regression.wired + regression.uncovered.length !== bugs.confirmed) errors.push('counts.regression wired and uncovered must partition the confirmed bugs');
+  if (!isSortedUnique(document.statusReasons)) errors.push('statusReasons must be sorted and unique');
+  if (document.status === 'completed' && document.statusReasons.length > 0) errors.push('a completed final summary cannot carry status reasons');
+  if (!isSortedUnique(document.coverage.criticalUnexecuted)) errors.push('coverage.criticalUnexecuted must be sorted and unique');
+  const review = document.automationReview;
+  const reviewed = ['approved', 'blocked', 'stale'].includes(review.status);
+  if ((review.reviewId !== null) !== reviewed || (review.round !== null) !== reviewed) {
+    errors.push(`automationReview ${review.status} must ${reviewed ? 'name' : 'not name'} a review round`);
+  } else if (reviewed && review.round !== Number(review.reviewId.slice(4))) {
+    errors.push('automationReview round must equal its reviewId suffix');
+  }
+  if ((review.status === 'blocked') !== (review.blockers > 0)) errors.push('automationReview blockers are non-zero exactly when the latest round BLOCKs');
+  if (!reviewed && review.warnings > 0) errors.push(`automationReview ${review.status} cannot carry warnings`);
+  return errors;
+}
+
+function isSortedUnique(values) {
+  return values.every((value, index) => index === 0 || compareAscii(values[index - 1], value) < 0);
 }
 
 // Lexical containment only; the gate resolver re-checks the physical paths itself.

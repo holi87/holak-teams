@@ -11,6 +11,7 @@
     "preflight-report": { "current": 3, "readCompatible": [3] },
     "bug-ledger": { "current": 2, "readCompatible": [2] },
     "coverage-observations": { "current": 2, "readCompatible": [2] },
-    "coverage-result": { "current": 2, "readCompatible": [2] }
+    "coverage-result": { "current": 2, "readCompatible": [2] },
+    "final-summary": { "current": 2, "readCompatible": [2] }
   }
 }
