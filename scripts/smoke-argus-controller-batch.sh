@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Exercise the controller batch verbs end to end through the packaged CLI: one batch route
 # selects the whole initial model-control set before the first allocation, and one batch
-# allocate starts a wave of worker lanes against their sealed decisions. Refusals must be
-# non-mutating, the write guard must accept both argv shapes only for the active manifest,
-# and no issued lease or controller token may ever be persisted in the artifact root.
+# allocate starts a wave of worker lanes against their sealed decisions. Batched telemetry,
+# barrier arrival, and cleanup then run on controller authority with inline single-line
+# --json input, and a worker retry and escalation request need only the controller token.
+# Refusals must be non-mutating, the write guard must accept every batch argv shape only for
+# the active manifest and only with inline input, and no issued lease or controller token may
+# ever be persisted in the artifact root.
 
 set -euo pipefail
 
@@ -62,6 +65,18 @@ guard_shell "argus-assets model route --manifest $MANIFEST --agents dispatchable
 guard_shell "argus-assets engagement allocate --manifest $MANIFEST --lanes kalchas,metis --controller-token 0000" allow
 guard_shell "argus-assets model route --manifest $WORK/alternate-engagement.json --agents dispatchable --runtime claude --signal normal --dispatch-prefix $PREFIX --attempt 1" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets engagement allocate --manifest $WORK/alternate-engagement.json --lanes kalchas --controller-token 0000" GUARD-SHELL-AMBIGUOUS
+# Controller-authorized batch arrival and cleanup take one inline single-line JSON object;
+# file, stdin, and here-string input is refused before the command runs.
+ARRIVE_GUARD_JSON='{"lanes":["kalchas","metis"]}'
+CLEANUP_GUARD_JSON='{"cleanups":[{"lane":"kalchas","outcome":"interrupted"}]}'
+guard_shell "argus-assets engagement barrier arrive --manifest $MANIFEST --phase discovery --json '$ARRIVE_GUARD_JSON' --controller-token 0000" allow
+guard_shell "argus-assets engagement cleanup --manifest $MANIFEST --json '$CLEANUP_GUARD_JSON' --controller-token 0000" allow
+guard_shell "argus-assets engagement cleanup --manifest $WORK/alternate-engagement.json --json '$CLEANUP_GUARD_JSON' --controller-token 0000" GUARD-SHELL-AMBIGUOUS
+guard_shell "argus-assets engagement cleanup --manifest $MANIFEST --json - --controller-token 0000" 'GUARD-SHELL-AMBIGUOUS: batch --json input must be one inline single-line JSON object'
+guard_shell "argus-assets engagement cleanup --manifest $MANIFEST --json @reports/cleanups.json --controller-token 0000" 'GUARD-SHELL-AMBIGUOUS: batch --json input must be one inline single-line JSON object'
+guard_shell "argus-assets engagement barrier arrive --manifest $MANIFEST --phase discovery --json '$ARRIVE_GUARD_JSON' --controller-token 0000 <<< ignored" 'GUARD-SHELL-AMBIGUOUS: batch input is inline only'
+guard_shell "argus-assets engagement barrier arrive --manifest $MANIFEST --phase discovery --json '$ARRIVE_GUARD_JSON' --controller-token 0000 < reports/lanes.json" 'GUARD-SHELL-AMBIGUOUS: batch input is inline only'
+guard_shell "printf '%s' '$CLEANUP_GUARD_JSON' | argus-assets engagement cleanup --manifest $MANIFEST --json - --controller-token 0000" GUARD-SHELL-AMBIGUOUS
 
 # The expected initial set is Odysseus plus every selected lane the preflight report makes
 # dispatchable. `conditional` is listed for the conditional-lane disposition, whose
@@ -214,10 +229,191 @@ for pair in "kalchas:$KALCHAS" "metis:$METIS" "atlas:$ATLAS"; do
     --phase hunting --completed 1 --total 4 --status running >/dev/null || fail "${pair%%:*} rejected its batch-issued token"
 done
 
-"$CLI" engagement cleanup --manifest "$MANIFEST" --lane kalchas --token "$KALCHAS" --outcome interrupted >/dev/null
-"$CLI" engagement cleanup --manifest "$MANIFEST" --lane metis --token "$METIS" --outcome interrupted >/dev/null
-"$CLI" engagement cleanup --manifest "$MANIFEST" --lane atlas --token "$ATLAS" --outcome interrupted >/dev/null
+# refuse <label> <expected stderr> <command...>: the command must fail with the expected message.
+refuse() {
+  local label="$1" expected="$2"
+  shift 2
+  if "$@" >"$WORK/refused.out" 2>"$WORK/refused.err"; then
+    fail "$label was accepted"
+  fi
+  grep -Fq -- "$expected" "$WORK/refused.err" || fail "$label was not refused with '$expected': $(cat "$WORK/refused.err")"
+}
+
+TELEMETRY="$TARGET/ai_agents_internal/model-telemetry.jsonl"
+telemetry_count() {
+  if [ -f "$TELEMETRY" ]; then wc -l <"$TELEMETRY" | tr -d ' '
+  else printf '0'
+  fi
+}
+decision_id() { jq -r .decisionId "$(decision_for "$1")"; }
+# telemetry_json <decision-id...>: one inline events object with fixed sanitized metrics.
+telemetry_json() {
+  jq -nc '{events: [$ARGS.positional[] | {decisionId: ., inputTokens: 1200, outputTokens: 300, durationMs: 4500, success: true}]}' --args "$@"
+}
+batch_telemetry() {
+  "$CLI" model telemetry --manifest "$MANIFEST" --json "$1" --controller-token "$2"
+}
+
+# Batch telemetry is validated whole before anything is appended: closed keys with no token,
+# unique decisions, the argv controller token, and inline single-line input.
+K1="$(decision_id kalchas)"
+M1="$(decision_id metis)"
+A1="$(decision_id atlas)"
+O1="$(decision_id odysseus)"
+refuse 'batch telemetry with a token key' "batch model telemetry events[0] may not carry a token key" \
+  batch_telemetry "{\"events\":[{\"decisionId\":\"$K1\",\"inputTokens\":1,\"outputTokens\":1,\"durationMs\":1,\"success\":true,\"token\":\"$KALCHAS\"}]}" "$ODYSSEUS"
+refuse 'batch telemetry with a duplicate decision' "batch model telemetry decisionIds contains duplicate $K1" \
+  batch_telemetry "$(telemetry_json "$K1" "$M1" "$K1")" "$ODYSSEUS"
+refuse 'batch telemetry without a controller token' 'batch model telemetry requires --controller-token' \
+  "$CLI" model telemetry --manifest "$MANIFEST" --json "$(telemetry_json "$K1")"
+refuse 'batch telemetry with a worker token as controller token' 'batch model telemetry requires the active Odysseus controller token' \
+  batch_telemetry "$(telemetry_json "$K1")" "$METIS"
+refuse 'batch telemetry with --decision' 'model telemetry accepts exactly one of --decision or --json' \
+  "$CLI" model telemetry --manifest "$MANIFEST" --decision "$(decision_for kalchas)" --json "$(telemetry_json "$K1")" --controller-token "$ODYSSEUS"
+refuse 'batch telemetry with a multi-line object' 'batch model telemetry --json must be one inline single-line JSON object' \
+  batch_telemetry "$(jq -n --arg id "$K1" '{events: [{decisionId: $id, inputTokens: 1, outputTokens: 1, durationMs: 1, success: true}]}')" "$ODYSSEUS"
+refuse 'batch telemetry with an unknown key' 'batch model telemetry events[0] has unknown keys: prompt' \
+  batch_telemetry "{\"events\":[{\"decisionId\":\"$K1\",\"inputTokens\":1,\"outputTokens\":1,\"durationMs\":1,\"success\":true,\"prompt\":\"x\"}]}" "$ODYSSEUS"
+refuse 'batch telemetry above its bound' 'batch model telemetry --json events must list 1 to 64 entries' \
+  batch_telemetry "$(jq -nc --arg id "$K1" '{events: [range(65) | {decisionId: $id, inputTokens: 1, outputTokens: 1, durationMs: 1, success: true}]}')" "$ODYSSEUS"
+refuse 'batch telemetry with an unknown decision' 'model telemetry decision is missing' \
+  batch_telemetry "$(telemetry_json "$K1" MDR-000000000000000000000000)" "$ODYSSEUS"
+[ "$(telemetry_count)" = 0 ] || fail 'a refused telemetry batch appended an event'
+
+# One batch records the three attempt-1 worker decisions; a replay or any overlap is refused
+# whole, so the log keeps exactly one event per decision.
+batch_telemetry "$(telemetry_json "$K1" "$M1" "$A1")" "$ODYSSEUS" >"$WORK/telemetry.out" || fail 'the telemetry batch was refused'
+grep -Eq '^MODEL_TELEMETRY_BATCH  recorded output=[^ ]+ count=3 events=MDL-[a-f0-9]{24},MDL-[a-f0-9]{24},MDL-[a-f0-9]{24}$' "$WORK/telemetry.out" || \
+  fail "the telemetry batch did not report three events: $(cat "$WORK/telemetry.out")"
+[ "$(telemetry_count)" = 3 ] || fail 'the telemetry batch did not append exactly three lines'
+jq -s -e --arg k "$K1" --arg m "$M1" --arg a "$A1" \
+  'map(.decisionId) == [$k, $m, $a] and all(.[]; .schema == "argus/model-telemetry-event@3" and .attempt == 1 and .success == true and .totalTokens == 1500)' \
+  "$TELEMETRY" >/dev/null || fail 'the telemetry batch appended inexact events'
+refuse 'a replayed telemetry batch' "model telemetry already contains events for" \
+  batch_telemetry "$(telemetry_json "$K1" "$M1" "$A1")" "$ODYSSEUS"
+refuse 'a telemetry batch overlapping recorded decisions' "model telemetry already contains events for $K1" \
+  batch_telemetry "$(telemetry_json "$O1" "$K1")" "$ODYSSEUS"
+[ "$(telemetry_count)" = 3 ] || fail 'a refused telemetry replay changed the event count'
+
+# Batch arrival records kalchas at the discovery barrier on controller authority; every lane
+# is attempted, so an unallocated lane fails alone.
+ARRIVE_JSON='{"lanes":["kalchas"]}'
+refuse 'batch arrival with a worker token as controller token' 'batch engagement barrier arrive requires the active Odysseus controller token' \
+  "$CLI" engagement barrier arrive --manifest "$MANIFEST" --phase discovery --json "$ARRIVE_JSON" --controller-token "$METIS"
+refuse 'batch arrival with --lane' 'batch engagement barrier arrive does not accept --lane' \
+  "$CLI" engagement barrier arrive --manifest "$MANIFEST" --lane kalchas --phase discovery --json "$ARRIVE_JSON" --controller-token "$ODYSSEUS"
+refuse 'batch arrival with duplicate lanes' 'batch engagement barrier arrive lanes contains duplicate kalchas' \
+  "$CLI" engagement barrier arrive --manifest "$MANIFEST" --phase discovery --json '{"lanes":["kalchas","kalchas"]}' --controller-token "$ODYSSEUS"
+"$CLI" engagement barrier status --manifest "$MANIFEST" --phase discovery | jq -e '.arrived == []' >/dev/null || \
+  fail 'a refused batch arrival recorded an arrival'
+"$CLI" engagement barrier arrive --manifest "$MANIFEST" --phase discovery --json "$ARRIVE_JSON" --controller-token "$ODYSSEUS" >"$WORK/arrive.json" || \
+  fail "the batch arrival was refused: $(cat "$WORK/arrive.json")"
+jq -e '.schema == "argus/engagement-barrier-batch@1" and .phase == "discovery" and .failed == [] and
+  .results == [{lane: "kalchas", authority: "controller", arrived: true}] and (.barrier.arrived | index("kalchas") != null)' \
+  "$WORK/arrive.json" >/dev/null || fail "the batch arrival did not record kalchas: $(cat "$WORK/arrive.json")"
+"$CLI" engagement barrier status --manifest "$MANIFEST" --phase discovery | jq -e '.arrived == ["kalchas"] and (.missing | index("kalchas") == null)' >/dev/null || \
+  fail 'barrier status does not reflect the batch arrival of kalchas'
+status=0
+"$CLI" engagement barrier arrive --manifest "$MANIFEST" --phase discovery --json '{"lanes":["tiresias","metis","odysseus"]}' --controller-token "$ODYSSEUS" >"$WORK/arrive-partial.json" || status=$?
+[ "$status" -eq 1 ] || fail "a partially failed batch arrival exited $status instead of 1"
+# Odysseus is authenticated on its own lease (the controller token), so its refusal is the
+# participant rule, never a missing lane token.
+jq -e '.results == [{lane: "metis", authority: "controller", arrived: true}] and
+  ([.failed[].lane] == ["tiresias", "odysseus"]) and (.failed[0].error | contains("no active allocation exists for tiresias")) and
+  (.failed[1].error | contains("odysseus is not a participant in discovery")) and
+  .barrier.arrived == ["kalchas", "metis"]' \
+  "$WORK/arrive-partial.json" >/dev/null || fail "a batch arrival did not attempt every lane independently: $(cat "$WORK/arrive-partial.json")"
+
+# The controller routes a checkpoint-less kalchas restart and starts it without ever holding
+# the kalchas token: start-attempt returns the rotated lane token to the controller.
+"$CLI" model route --manifest "$MANIFEST" --agent kalchas --runtime claude --signal no-artifact \
+  --dispatch-id "$PREFIX-kalchas" --attempt 2 --controller-token "$ODYSSEUS" >"$WORK/k2.json" || fail 'the controller no-artifact route did not select'
+jq -e '.status == "selected" and .reasonCode == "AUTO_CONTINUE_SELECTED" and .continuation.kind == "fresh-restart"' "$WORK/k2.json" >/dev/null || \
+  fail 'the controller no-artifact route was not an automatic fresh restart'
+K2="$TARGET/$(jq -r .relativePath "$WORK/k2.json")"
+refuse 'start-attempt without any token' 'engagement start-attempt requires --token or, for a worker lane, --controller-token' \
+  "$CLI" engagement start-attempt --manifest "$MANIFEST" --lane kalchas --decision "$K2"
+refuse 'start-attempt with a worker token as controller token' 'kalchas controller authority requires the active Odysseus controller token' \
+  "$CLI" engagement start-attempt --manifest "$MANIFEST" --lane kalchas --decision "$K2" --controller-token "$METIS"
+refuse 'start-attempt for odysseus without its own token' 'engagement start-attempt for odysseus requires --token' \
+  "$CLI" engagement start-attempt --manifest "$MANIFEST" --lane odysseus --decision "$K2" --controller-token "$ODYSSEUS"
+"$CLI" engagement start-attempt --manifest "$MANIFEST" --lane kalchas --decision "$K2" --controller-token "$ODYSSEUS" >"$WORK/k2-start.json" || \
+  fail 'a controller-authorized start-attempt without --token was refused'
+jq -e --arg decision "$(jq -r .decisionId "$WORK/k2.json")" \
+  '.attemptStarted == true and .attempt == 2 and .previousAttempt == 1 and .authority == "controller" and .modelDecisionId == $decision' \
+  "$WORK/k2-start.json" >/dev/null || fail 'start-attempt on controller authority did not rebind kalchas'
+KALCHAS_NEXT="$(jq -r .token "$WORK/k2-start.json")"
+[[ "$KALCHAS_NEXT" =~ ^[a-f0-9]{64}$ && "$KALCHAS_NEXT" != "$KALCHAS" ]] || fail 'start-attempt on controller authority did not return a new kalchas token'
+ISSUED_TOKENS+=("$KALCHAS_NEXT")
+if "$CLI" engagement heartbeat --manifest "$MANIFEST" --lane kalchas --token "$KALCHAS" --phase hunting --completed 2 --total 4 --status running >/dev/null 2>&1; then
+  fail 'the consumed kalchas token still authenticated after the controller rebind'
+fi
+"$CLI" engagement heartbeat --manifest "$MANIFEST" --lane kalchas --token "$KALCHAS_NEXT" --phase hunting --completed 2 --total 4 --status running >/dev/null || \
+  fail 'the rotated kalchas token was rejected'
+
+# The controller may persist a worker's escalation envelope in place of the lane token.
+printf '{"completedUnits":["SRF-API-ORDERS"],"nextUnit":"SRF-API-USERS"}\n' >"$WORK/metis-checkpoint.json"
+METIS_CHECKPOINT="$("$CLI" engagement checkpoint --manifest "$MANIFEST" --lane metis --token "$METIS" --phase discovery \
+  --sequence 0 --dispatch-id "$PREFIX-metis" --attempt 1 --input "$WORK/metis-checkpoint.json" | jq -r .path)"
+request_metis() {
+  "$CLI" model request --manifest "$MANIFEST" --agent "$1" --runtime claude --signal turn-limit \
+    --dispatch-id "$PREFIX-$1" --attempt 2 --checkpoint-ref "$METIS_CHECKPOINT" "${@:2}"
+}
+refuse 'model request with both tokens' 'model request accepts --token or --controller-token, not both' \
+  request_metis metis --token "$METIS" --controller-token "$ODYSSEUS"
+refuse 'model request with a worker token as controller token' 'model request requires the active Odysseus controller token' \
+  request_metis metis --controller-token "$ATLAS"
+refuse 'model request for odysseus on the controller token' 'model request for odysseus requires its own --token' \
+  request_metis odysseus --controller-token "$ODYSSEUS"
+request_metis metis --controller-token "$ODYSSEUS" >"$WORK/metis-request.out" || fail 'a controller-authorized model request was refused'
+grep -Eq '^MODEL_REQUEST  persisted path=[^ ]+/ai_agents_internal/model-requests/MER-[a-f0-9]{24}\.json sha256=[a-f0-9]{64}$' "$WORK/metis-request.out" || \
+  fail "a controller-authorized model request did not persist its envelope: $(cat "$WORK/metis-request.out")"
+
+# Terminal telemetry for the last attempts precedes cleanup; Odysseus's own decision may ride
+# in the same batch because the controller token is its lane token.
+batch_telemetry "$(telemetry_json "$O1" "$(jq -r .decisionId "$WORK/k2.json")")" "$ODYSSEUS" >/dev/null || fail 'the terminal telemetry batch was refused'
+[ "$(telemetry_count)" = 5 ] || fail 'the terminal telemetry batch did not append exactly two more lines'
+
+# Batch cleanup releases every worker on controller authority; Odysseus stays a single-lane
+# cleanup on its own token, and a replay is idempotent.
+cleanup_json() {
+  jq -nc '{cleanups: [$ARGS.positional[] | {lane: ., outcome: "interrupted"}]}' --args "$@"
+}
+batch_cleanup() {
+  "$CLI" engagement cleanup --manifest "$MANIFEST" --json "$1" --controller-token "$2"
+}
+refuse 'batch cleanup of odysseus' 'batch engagement cleanup cannot clean odysseus' \
+  batch_cleanup "$(cleanup_json kalchas odysseus)" "$ODYSSEUS"
+refuse 'batch cleanup with a worker token as controller token' 'batch engagement cleanup requires the active Odysseus controller token' \
+  batch_cleanup "$(cleanup_json kalchas)" "$KALCHAS_NEXT"
+refuse 'batch cleanup without a controller token' 'batch engagement cleanup requires --controller-token' \
+  "$CLI" engagement cleanup --manifest "$MANIFEST" --json "$(cleanup_json kalchas)"
+refuse 'batch cleanup with a token key' 'batch engagement cleanup cleanups[0] may not carry a leaseToken key' \
+  batch_cleanup "{\"cleanups\":[{\"lane\":\"kalchas\",\"outcome\":\"interrupted\",\"leaseToken\":\"$KALCHAS_NEXT\"}]}" "$ODYSSEUS"
+refuse 'batch cleanup with duplicate lanes' 'batch engagement cleanup lanes contains duplicate metis' \
+  batch_cleanup "$(cleanup_json metis metis)" "$ODYSSEUS"
+refuse 'batch cleanup with an unknown outcome' 'batch engagement cleanup cleanups[0].outcome must be success, failure, or interrupted' \
+  batch_cleanup '{"cleanups":[{"lane":"kalchas","outcome":"abandoned"}]}' "$ODYSSEUS"
+for lane in kalchas metis atlas; do
+  [ "$(lane_status "$lane")" = active ] || fail "a refused batch cleanup released $lane"
+done
+batch_cleanup "$(cleanup_json kalchas metis atlas)" "$ODYSSEUS" >"$WORK/cleanup.json" || fail "the batch cleanup failed: $(cat "$WORK/cleanup.json")"
+jq -e '.schema == "argus/engagement-cleanup-batch@1" and .failed == [] and ([.results[].lane] == ["kalchas", "metis", "atlas"]) and
+  all(.results[]; .released == true and .outcome == "interrupted" and .authority == "controller" and .idempotent == null)' \
+  "$WORK/cleanup.json" >/dev/null || fail "the batch cleanup did not release all three lanes: $(cat "$WORK/cleanup.json")"
+batch_cleanup "$(cleanup_json kalchas metis atlas)" "$ODYSSEUS" >"$WORK/cleanup-replay.json" || fail 'a batch cleanup replay was refused'
+jq -e '.failed == [] and all(.results[]; .released == true and .idempotent == true and .authority == "controller")' \
+  "$WORK/cleanup-replay.json" >/dev/null || fail "a batch cleanup replay was not idempotent: $(cat "$WORK/cleanup-replay.json")"
+status=0
+batch_cleanup "$(cleanup_json tiresias kalchas)" "$ODYSSEUS" >"$WORK/cleanup-partial.json" || status=$?
+[ "$status" -eq 1 ] || fail "a partially failed batch cleanup exited $status instead of 1"
+jq -e '([.results[].lane] == ["kalchas"]) and .results[0].idempotent == true and
+  .failed == [{lane: "tiresias", outcome: "interrupted", error: "no allocation exists for tiresias"}]' \
+  "$WORK/cleanup-partial.json" >/dev/null || fail "a batch cleanup did not continue past a failed lane: $(cat "$WORK/cleanup-partial.json")"
+
 "$CLI" engagement cleanup --manifest "$MANIFEST" --lane odysseus --token "$ODYSSEUS" --outcome interrupted >/dev/null
+refuse 'batch cleanup after the controller was released' 'batch engagement cleanup requires the active Odysseus controller token' \
+  batch_cleanup "$(cleanup_json kalchas)" "$ODYSSEUS"
 "$CLI" engagement status --manifest "$MANIFEST" >"$WORK/status.json"
 jq -e '[.allocations.odysseus, .allocations.kalchas, .allocations.metis, .allocations.atlas] | all(.status == "released" and .outcome == "interrupted")' \
   "$WORK/status.json" >/dev/null || fail 'cleanup did not release every batch-allocated lane'
@@ -229,4 +425,4 @@ for token in "${ISSUED_TOKENS[@]}"; do
   fi
 done
 
-printf 'PASS  Argus controller batch: one-call initial routing (odysseus first, idempotent, validated before persist), sealed per-wave batch allocation, non-mutating refusals, guard classification, and no persisted token\n'
+printf 'PASS  Argus controller batch: one-call initial routing (odysseus first, idempotent, validated before persist), sealed per-wave batch allocation, atomic inline telemetry batches, controller-authorized arrival, retry, escalation request, and cleanup batches, non-mutating refusals, guard classification, and no persisted token\n'
