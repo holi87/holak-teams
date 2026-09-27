@@ -65,7 +65,7 @@ argus_smoke_prepare_model_control "$CLI" "$MANIFEST" "$TARGET" "$TARGET" A \
   "$ROOT/scripts/fixtures/argus-preflight/full.json" "$HOST/main"
 
 # Parallel allocation is atomic and every resource coordinate is unique.
-lanes=(odysseus kalchas metis tiresias minos tyche hermes atlas)
+lanes=(odysseus kalchas metis tiresias minos tyche hermes atlas kleio)
 argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST/main" odysseus >"$ALLOCATIONS/odysseus.json"
 CONTROLLER_TOKEN="$(token_for odysseus)"
 for lane in "${lanes[@]:1}"; do
@@ -207,6 +207,86 @@ printf '%s\n' '{"$schema":"argus/bug-ledger@2","schemaVersion":2,"engagementId":
 "$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$(token_for minos)" \
   --canonical solution/bug-ledger.json >/dev/null
 jq -e '."$schema" == "argus/bug-ledger@2" and .schemaVersion == 2 and .bugs == []' "$TARGET/solution/bug-ledger.json" >/dev/null || fail "canonical JSON document merge is invalid"
+
+# Only the owner submits fragments to a single-document contract. A newer fragment supersedes
+# the earlier one, keeps every earlier bug ID and origin, and alone reaches the canonical file.
+jq -c '.bugs = [{id:"BUG-0001",origin:["HER-001"],title:"Order search echoes an unescaped query",severity:"Minor",priority:"P3",
+  lane:"hermes",oracleId:"ORC-API-001",status:"suspected",wired:false,testId:null,evidenceIds:[],
+  missingProof:{elements:["evidence","reproduction"],detail:"A captured response and an ordered reproduction would decide it.",owner:"hermes"}}]' \
+  "$WORK/ledger.json" >"$WORK/ledger-r002.json"
+ledger_r002="$("$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$(token_for minos)" \
+  --canonical solution/bug-ledger.json --id ledger-r002 --input "$WORK/ledger-r002.json")"
+jq -e --argjson first "$("$CLI" engagement status --manifest "$MANIFEST" | jq '.fragments["solution/bug-ledger.json"][] | select(.id == "complete-ledger") | .sequence')" \
+  '.sequence > $first' <<<"$ledger_r002" >/dev/null || fail "a newer single-document fragment did not receive a higher sequence: $ledger_r002"
+"$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$(token_for minos)" \
+  --canonical solution/bug-ledger.json >/dev/null
+jq -e '.bugs | length == 1 and .[0].id == "BUG-0001" and .[0].status == "suspected"' "$TARGET/solution/bug-ledger.json" >/dev/null \
+  || fail "single-document merge did not publish the latest ledger fragment"
+"$CLI" engagement status --manifest "$MANIFEST" | jq -e '.merges["solution/bug-ledger.json"] | .effectiveFragment == "ledger-r002" and .supersededFragments == 1 and .fragments == 2' >/dev/null \
+  || fail "single-document merge record does not name its effective fragment"
+superseded_digest="$(digest_file "$TARGET/solution/bug-ledger.json")"
+"$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$(token_for minos)" \
+  --canonical solution/bug-ledger.json >/dev/null
+[ "$superseded_digest" = "$(digest_file "$TARGET/solution/bug-ledger.json")" ] || fail "repeated single-document merge is not byte-stable"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$(token_for minos)" \
+  --canonical solution/bug-ledger.json --id ledger-r002 --input "$WORK/ledger-r002.json" | jq -e --argjson original "$ledger_r002" '. == $original' >/dev/null \
+  || fail "an identical single-document replay did not keep its original record"
+if "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$(token_for kleio)" \
+  --canonical solution/bug-ledger.json --id foreign-ledger --input "$WORK/ledger.json" >"$WORK/foreign-ledger.out" 2>&1; then
+  fail "a non-owner submitted a single-document fragment"
+fi
+grep -Fq 'solution/bug-ledger.json is a single-document contract; only minos may submit fragments' "$WORK/foreign-ledger.out" \
+  || fail "non-owner single-document fragment failed for the wrong reason: $(<"$WORK/foreign-ledger.out")"
+"$CLI" engagement status --manifest "$MANIFEST" | jq -e '.fragments["solution/bug-ledger.json"] | length == 2' >/dev/null \
+  || fail "a refused non-owner fragment reached engagement state"
+jq -c '.bugs = []' "$WORK/ledger.json" >"$WORK/ledger-r003.json"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$(token_for minos)" \
+  --canonical solution/bug-ledger.json --id ledger-r003 --input "$WORK/ledger-r003.json" >/dev/null
+if "$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$(token_for minos)" \
+  --canonical solution/bug-ledger.json >"$WORK/unstable-ledger.out" 2>&1; then
+  fail "a superseding ledger that dropped a bug ID was merged"
+fi
+grep -Fq 'bug-ledger supersession removed or re-pointed BUG-0001' "$WORK/unstable-ledger.out" \
+  || fail "unstable ledger merge failed for the wrong reason: $(<"$WORK/unstable-ledger.out")"
+[ "$superseded_digest" = "$(digest_file "$TARGET/solution/bug-ledger.json")" ] || fail "a refused supersession changed the canonical ledger"
+
+# The per-contract stability invariants, exercised directly on packaged contract semantics.
+node --input-type=module - "$ROOT" <<'NODE'
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const [root] = process.argv.slice(2);
+const { assertSupersession, isCollectionContract } = await import(pathToFileURL(join(root, 'argus/claude/lib/contracts.mjs')).href);
+const fixture = (name) => JSON.parse(readFileSync(join(root, 'scripts/fixtures/argus-schemas/valid', name), 'utf8'));
+const refused = (label, expected, kind, previous, next) => {
+  try { assertSupersession(kind, previous, next); }
+  catch (error) {
+    if (!error.message.includes(expected)) throw new Error(`${label} failed for the wrong reason: ${error.message}`);
+    return;
+  }
+  throw new Error(`${label} was accepted`);
+};
+const ledger = fixture('bug-ledger.json');
+const grown = structuredClone(ledger);
+grown.bugs[2].status = 'suspected';
+grown.bugs[2].origin.push('MIN-003');
+grown.bugs.push({ ...structuredClone(ledger.bugs[5]), id: 'BUG-0008', origin: ['ATA-008'] });
+assertSupersession('bug-ledger', ledger, grown);
+const repointed = structuredClone(ledger);
+repointed.bugs[1].origin = ['ATA-002'];
+refused('re-pointed bug origin', 'bug-ledger supersession removed or re-pointed BUG-0002', 'bug-ledger', ledger, repointed);
+refused('removed bug', 'bug-ledger supersession removed or re-pointed BUG-0007', 'bug-ledger', ledger, { ...ledger, bugs: ledger.bugs.slice(0, 6) });
+const inventory = fixture('surface-inventory.json');
+const expanded = structuredClone(inventory);
+expanded.discovery.candidates += 1;
+expanded.items.push({ ...structuredClone(inventory.items[0]), id: 'SRF-API-SUPERSESSION-NEW' });
+assertSupersession('surface-inventory', inventory, expanded);
+refused('removed surface', `surface-inventory supersession removed ${inventory.items[0].id}`, 'surface-inventory', inventory, { ...inventory, items: inventory.items.slice(1) });
+refused('shrunk discovery', 'surface-inventory supersession decreased discovery.candidates', 'surface-inventory', expanded, inventory);
+assertSupersession('final-summary', fixture('final-summary.json'), { ...fixture('final-summary.json'), summary: 'A corrected narrative.' });
+if (!isCollectionContract('lane-plan') || isCollectionContract('bug-ledger')) throw new Error('collection contract classification drifted');
+refused('collection supersession', 'lane-plan is a collection contract', 'lane-plan', fixture('lane-plan.json'), fixture('lane-plan.json'));
+NODE
 
 parallel_merge_digest() {
   local run="$1" target="$WORK/repeat-$1" manifest controller allocation controller_token token index host="$HOST/repeat-$1"

@@ -73,6 +73,26 @@ for (const kind of Object.keys(compatibility.contracts ?? {})) {
   if (!Object.hasOwn(EXPECTED_CONTRACT_VERSIONS, kind)) throw new Error(`schema compatibility policy overrides unexpected contract ${kind}`);
 }
 
+// Every other contract is a single complete document: its owner may supersede it with a
+// newer fragment, but a merge publishes exactly one document.
+export function isCollectionContract(kind) {
+  return Object.hasOwn(COLLECTION_CONTRACTS, kind);
+}
+
+// Stability invariants a newer single-document fragment must keep relative to the fragment
+// it supersedes. A kind without an entry may be replaced freely by its owner.
+const SUPERSESSION_INVARIANTS = Object.freeze({
+  'bug-ledger': bugLedgerSupersessionErrors,
+  'surface-inventory': surfaceInventorySupersessionErrors,
+});
+
+export function assertSupersession(kind, previous, next) {
+  if (!CONTRACT_KINDS.includes(kind)) throw new Error(`unknown canonical contract: ${kind}`);
+  if (isCollectionContract(kind)) throw new Error(`${kind} is a collection contract; its fragments merge and never supersede`);
+  const errors = SUPERSESSION_INVARIANTS[kind]?.(previous, next) ?? [];
+  if (errors.length) throw new Error(errors.join('; '));
+}
+
 export function schemaId(kind, version = contractPolicy(kind).current) {
   if (!CONTRACT_KINDS.includes(kind)) throw new Error(`unknown canonical contract: ${kind}`);
   return `argus/${kind}@${version}`;
@@ -353,6 +373,31 @@ function validateCapabilityEvidence(document) {
   }
   for (const capability of Object.keys(CAPABILITY_PROOF_KINDS)) {
     if (!seen.has(capability)) errors.push(`missing capability gate: ${capability}`);
+  }
+  return errors;
+}
+
+// Bug IDs are stable once assigned: a newer ledger keeps every earlier ID and never drops an
+// origin from it, so an ID can change status but never disappear or point at another filing.
+function bugLedgerSupersessionErrors(previous, next) {
+  const current = new Map(next.bugs.map((bug) => [bug.id, new Set(bug.origin)]));
+  const errors = [];
+  for (const bug of previous.bugs) {
+    const origins = current.get(bug.id);
+    if (!origins || !bug.origin.every((origin) => origins.has(origin))) errors.push(`bug-ledger supersession removed or re-pointed ${bug.id}`);
+  }
+  return errors;
+}
+
+// Discovery expands monotonically: every earlier surface ID survives, and the discovered
+// candidate count never shrinks.
+function surfaceInventorySupersessionErrors(previous, next) {
+  const current = new Set(next.items.map((item) => item.id));
+  const errors = previous.items
+    .filter((item) => !current.has(item.id))
+    .map((item) => `surface-inventory supersession removed ${item.id}`);
+  if (next.discovery.candidates < previous.discovery.candidates) {
+    errors.push(`surface-inventory supersession decreased discovery.candidates from ${previous.discovery.candidates} to ${next.discovery.candidates}`);
   }
   return errors;
 }
