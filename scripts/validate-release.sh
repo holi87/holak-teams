@@ -14,6 +14,7 @@ npm ci --ignore-scripts >/dev/null
 node scripts/smoke-argus-quality.mjs
 node scripts/smoke-argus-hunt-driver-live.mjs
 node scripts/eval/run-smokes.mjs
+node scripts/eval/discovery/gate.mjs --check
 scripts/smoke-marketplace-contracts.sh
 scripts/smoke-prompt-regression.sh
 node scripts/validate-argus-technique-catalogs.mjs
