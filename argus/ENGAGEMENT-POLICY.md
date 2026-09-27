@@ -549,7 +549,9 @@ with none or with more than one.
 A `BACKOFF_RETRY_SELECTED` decision carries `continuation.backoffSeconds`; its retry may not
 rebind before the decision's `createdAt` plus that backoff. Earlier, `start-attempt` fails
 with `retry backoff has not elapsed; retry at <ISO> or pass --wait true` and changes nothing.
-With `--wait true` it sleeps out a remaining wait of at most 300 seconds and then rebinds.
+With `--wait true` it sleeps out a remaining wait of at most 300 seconds and then rebinds, so
+the controller runs that call with a Bash `timeout` of `(backoffSeconds + 60) * 1000` ms
+instead of the 120 s default.
 The runtime re-checks the same rule inside its state lock for every caller. Emit the active
 decision's telemetry before `start-attempt`, because the rebind supersedes that decision.
 

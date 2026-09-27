@@ -110,6 +110,8 @@ require_controller_text 'AUTO_CONTINUE_SELECTED' "controller does not follow aut
 require_controller_text 'no-artifact' "controller does not route controller-observed no-artifact outcomes"
 require_controller_text 'zero-candidates' "controller does not route controller-observed zero-candidates outcomes"
 require_controller_text 'start-attempt --wait true' "controller does not wait out a backoff retry before rebinding"
+# shellcheck disable=SC2016 # The marker quotes a literal Markdown code span.
+require_controller_text '`(continuation.backoffSeconds + 60) * 1000` ms' "controller runs a backoff wait under the 120 s default Bash timeout"
 require_controller_text 'never write tokens or batch input to a file' "controller can persist tokens or batch input to a file"
 require_controller_text 'engagement barrier skip' "controller cannot skip converged deep-hunt passes through the runtime"
 require_controller_text 'at most one thread per lane' "controller can run concurrent threads on one lane lease"

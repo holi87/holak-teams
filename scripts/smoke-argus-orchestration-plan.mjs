@@ -75,6 +75,14 @@ for (const fragment of [
 ]) {
   assert(controllerContract.includes(fragment), `orchestration-core lost required controller semantic: ${fragment}`);
 }
+// A backoff retry blocks inside one Bash call, so the doctrine must size that call's timeout
+// from the decision's backoff, and the policy's longest backoff must fit within the Bash
+// tool's 600000 ms maximum; the 120 s default would kill the 180 s and 300 s waits.
+assert(controllerContract.includes('`start-attempt --wait true`; run it with the Bash `timeout` set to `(continuation.backoffSeconds + 60) * 1000` ms'),
+  'orchestration-core does not size the Bash timeout of a start-attempt backoff wait');
+const longestBackoffSeconds = Math.max(...modelPolicy.fallbackPolicies['frontier-fail-closed'].autoContinue.unavailableBackoffSeconds);
+assert((longestBackoffSeconds + 60) * 1000 <= 600000,
+  `the longest unavailability backoff (${longestBackoffSeconds} s) plus 60 s exceeds the Bash tool's 600000 ms timeout maximum`);
 assert(!controllerSkill.includes('qa-doctrine'), 'orchestration-core references legacy qa-doctrine instead of modular skills');
 assert(!controllerContract.includes('Rerun after provisioning'), 'orchestration-core still reruns preflight after provisioning instead of resolving gates');
 assert(plan.roles.length === 27, `expected 27 roles, found ${plan.roles.length}`);
