@@ -2,8 +2,8 @@
 # Clean-room validation of the TypeScript outcome adapter (RUNNER-CONTRACT.md SD-1 to SD-7):
 # collection inventory, ledger join for ledger v1 and v2, expected bugs, SD-4 ledger events,
 # SD-5 classification, SD-6 pass mapping including declared repetition, the adapter status,
-# inertness without ARGUS_RUNNER_MODE, the contract and data oracle self-tests, counterfactual
-# evidence (SD-10 plan, cf-correct and cf-tamper passes against the in-worker stub), bug
+# inertness without ARGUS_RUNNER_MODE, the contract, data, and behaviour oracle self-tests,
+# counterfactual evidence (SD-10 plan, cf-correct and cf-tamper passes against the in-worker stub), bug
 # provenance through Playwright's own collection plus the portable inventory and quarantine
 # gates, and an end-to-end run of run-tests.sh (runner-lib.sh, lane plan, environment
 # baseline, evidence passes) against scripts/fixtures/argus-runtime/faulty-target.mjs.
@@ -292,6 +292,24 @@ awk -F'\t' -v prefix='contract-smoke:contract-oracles-data.selftest.spec.ts:' \
   'index($1, prefix) != 1 || $2 != "product" || $3 != "pass" { print "not a data oracle product pass: " $0; bad = 1 } END { exit bad }' \
   "$EV" >&2 || fail "a data oracle self-test event is not product pass"
 expect_status "ok $data_oracle_cases" "data oracle self-tests"
+
+# --- Behaviour oracle self-tests ---------------------------------------------------------
+# Soft-delete sweep, double submit, concurrent race, layout bounds, and growth scaling: each
+# passes on a correct 127.0.0.1 stub or pure input and fails on a faulty one (a list that
+# still serves a deleted id, two orders from one double submit, an overbooked last seat, an
+# occluded element, an N+1 fan-out). No browser starts. A healthy run is `product pass` for
+# every case.
+BEHAVIOR_ORACLE_SPEC=tests/contract/oracles-behavior.selftest.spec.ts
+pw oracles-behavior-list npx playwright test --list --project=contract-smoke "$BEHAVIOR_ORACLE_SPEC"
+behavior_oracle_cases="$(sed -n 's/^Total: \([0-9][0-9]*\) tests\{0,1\} in .*/\1/p' "$WORK/oracles-behavior-list.log")"
+[ -n "$behavior_oracle_cases" ] && [ "$behavior_oracle_cases" -gt 0 ] || { tail -20 "$WORK/oracles-behavior-list.log" >&2; fail "the behaviour oracle self-tests were not collected"; }
+pw oracles-behavior ARGUS_RUNNER_MODE=baseline npx playwright test --project=contract-smoke "--reporter=list,$REPORTER" "$BEHAVIOR_ORACLE_SPEC"
+[ "$PW_CODE" -eq 0 ] || { tail -80 "$WORK/oracles-behavior.log" >&2; fail "the behaviour oracle self-tests exited $PW_CODE"; }
+expect_count "$EV" "$behavior_oracle_cases" "one event per behaviour oracle self-test"
+awk -F'\t' -v prefix='contract-smoke:contract-oracles-behavior.selftest.spec.ts:' \
+  'index($1, prefix) != 1 || $2 != "product" || $3 != "pass" { print "not a behaviour oracle product pass: " $0; bad = 1 } END { exit bad }' \
+  "$EV" >&2 || fail "a behaviour oracle self-test event is not product pass"
+expect_status "ok $behavior_oracle_cases" "behaviour oracle self-tests"
 
 # --- Counterfactual evidence (SD-6, SD-10) -----------------------------------------------
 # Each cf pass serves solution/counterfactual/BUG-0001.json from the in-worker 127.0.0.1
@@ -616,4 +634,4 @@ cp "$WORK/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
 expect_line "$E2E_EV" "e2e failing verify" environment infrastructure fail false n/a - environment-not-at-baseline
 stop_target
 
-printf 'PASS  Argus TypeScript runtime: full-collection inventory, v1/v2 ledger join, ledger policy events, SD-5 classification, SD-6 live/repeat/strict/intermittent/counterfactual mapping, SD-10 counterfactual plan, adapter status, inert default, contract and data oracle self-tests, collection-based provenance through the inventory and quarantine gates, and an end-to-end runner against a faulty target\n'
+printf 'PASS  Argus TypeScript runtime: full-collection inventory, v1/v2 ledger join, ledger policy events, SD-5 classification, SD-6 live/repeat/strict/intermittent/counterfactual mapping, SD-10 counterfactual plan, adapter status, inert default, contract, data, and behaviour oracle self-tests, collection-based provenance through the inventory and quarantine gates, and an end-to-end runner against a faulty target\n'
