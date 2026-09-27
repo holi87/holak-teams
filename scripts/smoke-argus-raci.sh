@@ -101,9 +101,18 @@ grep -Fq 'Minos persists' "$ROOT/argus/claude/agents/tiresias.md" || fail 'Tires
 grep -Fq 'Execute the engagement unless the user explicitly requests planning only.' "$ROOT/argus/shared-skills/orchestration-core/SKILL.md" || fail 'controller plan-versus-execute behavior is ambiguous'
 grep -Fq '<!-- RACI_ROSTER_START -->' "$ROOT/argus/README.md" || fail 'README roster is not generated from RACI'
 
+legacy_path_present() {
+  local legacy="$1"
+  shift
+  grep -rFq -- "$legacy" "$@"
+}
+# Positive control: a missing search tool must not read as "no legacy path found".
+mkdir "$RACI_CASE/legacy-probe"
+printf 'Write solution/CODE-REVIEW.md\n' >"$RACI_CASE/legacy-probe/role.md"
+legacy_path_present 'solution/CODE-REVIEW.md' "$RACI_CASE/legacy-probe" || fail 'legacy-path check cannot detect an injected legacy path'
 role_corpus=("$ROOT/argus/roles" "$ROOT/argus/claude/agents" "$ROOT/argus/codex")
 for legacy in 'solution/discovery/system-map.md' 'solution/CODE-REVIEW.md'; do
-  if rg -Fq "$legacy" "${role_corpus[@]}" "$ROOT/argus/claude/runtime-reference-inventory.json"; then
+  if legacy_path_present "$legacy" "${role_corpus[@]}" "$ROOT/argus/claude/runtime-reference-inventory.json"; then
     fail "legacy non-RACI artifact path remains: $legacy"
   fi
 done

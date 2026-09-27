@@ -479,7 +479,10 @@ for runtime in typescript java python; do
 done
 jq -e '.tagAdapter.regression == "@regression" and .tagAdapter["bug-provenance"] == "@bug:<canonical-or-origin>"' "$WORK/typescript/argus-template.json" >/dev/null || fail "TypeScript regression selection still depends on the bug provenance tag"
 grep -Fq 'funded, risk-derived UI lane' "$WORK/typescript/solution/ARCHITECTURE.md" || fail 'TypeScript architecture still underfunds the UI lane'
-if rg -qi 'thin (UI |e2e )?smoke' "$WORK/typescript/solution/ARCHITECTURE.md"; then
+thin_smoke_pattern='thin (UI |e2e )?smoke'
+# Positive control: a missing search tool must not read as "no thin smoke lane".
+grep -Eqi "$thin_smoke_pattern" <<<'Keep a thin UI smoke lane' || fail 'thin-smoke check cannot detect the prescribed phrase'
+if grep -Eqi "$thin_smoke_pattern" "$WORK/typescript/solution/ARCHITECTURE.md"; then
   fail 'TypeScript architecture still prescribes a thin UI smoke lane'
 fi
 cmp "$WORK/typescript/solution/bug-ledger.example.json" "$WORK/java/solution/bug-ledger.example.json" >/dev/null || fail "Java bug-ledger example drifted from TypeScript"
