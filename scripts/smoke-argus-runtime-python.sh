@@ -205,6 +205,9 @@ LIVE_EVENTS=(
   "$(tab "${CASE}test_intermittent_unreproduced" product pass false n/a BUG-0003 intermittent-unreproduced)"
   "$(tab "${CASE}test_intermittent_reproduces" product fail true reproduced BUG-0003 expected-red)"
   "$(tab "${CASE}test_intermittent_below_bound" policy denied false n/a BUG-0003 repetition-invalid)"
+  "$(tab "${CASE}test_invalid_repetition_unreachable_target" infrastructure fail false n/a BUG-0001 target-unreachable)"
+  "$(tab "${CASE}test_invalid_repetition_runtime_skip" policy denied false n/a BUG-0001 regression-skipped)"
+  "$(tab "${CASE}test_non_regression_with_repetition" product pass false n/a - passed)"
   "$(tab "${CASE}test_plain_pass" product pass false n/a - passed)"
   "$(tab "${CASE}test_pytest_raises_not_raised" product fail false n/a - assertion-failed)"
   "$(tab "${CASE}test_uncaught_type_error" automation fail false n/a - uncaught-error)"
@@ -264,6 +267,8 @@ for line in \
   "$(tab "${CASE}test_regression_runtime_skip" policy denied false n/a BUG-0001 regression-skipped)" \
   "$(tab "${CASE}test_intermittent_unreproduced" product pass false fixed BUG-0003 regression-green)" \
   "$(tab "${CASE}test_intermittent_below_bound" policy denied false n/a BUG-0003 repetition-invalid)" \
+  "$(tab "${CASE}test_invalid_repetition_unreachable_target" infrastructure fail false n/a BUG-0001 target-unreachable)" \
+  "$(tab "${CASE}test_non_regression_with_repetition" product pass false n/a - passed)" \
   "$(tab "${CASE}test_regression_unknown_provenance" product fail false n/a - assertion-failed)"; do
   grep -Fxq "$line" "$WORK/candidate.tsv" || fail "candidate-regression is missing: $line"
 done
@@ -488,6 +493,23 @@ PY
 cf_pass cf-claimed-exemption cf-correct -- tests/contract/test_claimed_exemption_fixture.py
 rm -f tests/contract/test_claimed_exemption_fixture.py
 expect_only_event cf-claimed-exemption tests.contract.test_claimed_exemption_fixture.py::test_claims_an_exemption.cf-correct policy denied false n/a BUG-0001 regression-skipped
+
+# The stub is deterministic: an invalid repetition never replaces a counterfactual verdict.
+cat >tests/contract/test_cf_repetition_fixture.py <<'PY'
+import pytest
+
+pytestmark = pytest.mark.contract_smoke
+
+
+@pytest.mark.regression
+@pytest.mark.bug("ATA-001")
+@pytest.mark.repetition(3)
+def test_verdict_ignores_repetition(anon_client):
+    assert anon_client.get("/widgets/1").status_code == 200
+PY
+cf_pass cf-repetition cf-correct -- tests/contract/test_cf_repetition_fixture.py
+rm -f tests/contract/test_cf_repetition_fixture.py
+expect_only_event cf-repetition tests.contract.test_cf_repetition_fixture.py::test_verdict_ignores_repetition.cf-correct product pass false reproduced BUG-0001 counterfactual-correct-pass
 
 # An exemption records one event in cf-correct and nothing in a tamper pass.
 jq '{"$schema": ."$schema", schemaVersion, bugId, exemption: {reason: "front-end-logic", justification: "The defect lives in client-side rendering."}}' \

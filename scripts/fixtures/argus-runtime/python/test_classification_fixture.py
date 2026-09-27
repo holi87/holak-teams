@@ -98,6 +98,30 @@ def test_intermittent_below_bound():
     assert True
 
 
+# repetition-invalid replaces only a regression's product event (SD-6): BUG-0001 is
+# deterministic, so repetition(3) is invalid, yet its infrastructure failure and runtime skip
+# are reported unchanged, and a non-regression test has no defect entry to judge n against.
+
+
+@pytest.mark.regression
+@pytest.mark.bug("ATA-001")
+@pytest.mark.repetition(3)
+def test_invalid_repetition_unreachable_target():
+    httpx.get("http://127.0.0.1:9/", timeout=5)
+
+
+@pytest.mark.regression
+@pytest.mark.bug("ATA-001")
+@pytest.mark.repetition(3)
+def test_invalid_repetition_runtime_skip():
+    pytest.skip("a regression test must never skip")
+
+
+@pytest.mark.repetition(3)
+def test_non_regression_with_repetition():
+    assert True
+
+
 # SD-5 primary classification.
 
 

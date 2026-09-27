@@ -370,7 +370,9 @@ def compose(state: AdapterState, item: pytest.Item, phases: dict[str, Phase]) ->
     if cleanup and primary == PASSED:
         # The body passed but the test did not: the teardown failure is the outcome.
         primary, cleanup = classify_teardown(teardown.error), False
-    if not meta.repetition_valid:
+    if primary in (PRODUCT, PASSED) and meta.bug != "-" and not state.counterfactual and not meta.repetition_valid:
+        # SD-6: repetition-invalid takes the place of a regression's product event only; other
+        # outcomes are reported unchanged, and counterfactual verdicts do not depend on n.
         primary = REPETITION_INVALID
     emit_outcome(state, item, meta, primary)
     if cleanup:
