@@ -123,6 +123,9 @@ done
 grep -Fq 'engagement merge --canonical solution/ARCHITECTURE.md' "$ROOT/argus/roles/atlas.md" || fail 'Atlas lacks deterministic Architecture owner merge'
 grep -Fq 'engagement merge --canonical solution/TRACEABILITY.md' "$ROOT/argus/roles/kleio.md" || fail 'Kleio lacks deterministic Traceability owner merge'
 grep -Fq 'solution/surface-inventory.json' "$ROOT/argus/roles/orion.md" || fail 'Orion does not consume Kalchas surface inventory'
-grep -Fq 'result envelope' "$ROOT/argus/roles/aristarchus.md" || fail 'Aristarchus review is not a result envelope'
+for file in "$ROOT/argus/claude/agents/aristarchus.md" "$ROOT/argus/codex/aristarchus.toml"; do
+  grep -Fq -- '- Accountable artifacts: `solution/automation-review.json`.' "$file" || fail "Aristarchus contract block does not own the review record in $file"
+  grep -Fq -- '- Persistence: `owned-artifact`.' "$file" || fail "Aristarchus contract block does not persist its review record in $file"
+done
 
 printf 'PASS  Argus RACI: runtime routing, single-owner artifacts/transitions, 27 descriptions, roster, and known contradiction regressions\n'
