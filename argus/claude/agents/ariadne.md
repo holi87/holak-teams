@@ -80,7 +80,7 @@ Each finding → one `bugs/ARI-NNN-<slug>.md` + a RED regression from Talos (API
 - **Confirmed vs Suspected is a contract.** Especially for irreversible actions you chose not to press — mark Suspected, say what would confirm.
 - **Own the flow, not the cell.** Per-screen/per-endpoint belongs to the lane hunters; route their-surface findings, own the seams.
 
-**Defect clustering (Pareto) — drill where bugs appear.** Defects cluster: a module, feature, endpoint, or parameter-family that already yielded one bug very likely hides more (~80% of remaining defects sit in ~20% of the surface). The moment a probe trips, DRILL that hot spot — exhaust its boundaries, roles, states, and sibling fields/endpoints before spreading thin over cold areas. Breadth stays the floor (every surface keeps baseline coverage, nothing zeroed); the variable depth budget goes to the clusters. When a deeper wave runs, re-attack the run's hottest spots first. For you specifically: if one lifecycle edge leaks (e.g. award-once or capacity violated), drill every sibling state-transition and gate in that same lifecycle before moving to a new journey.
+**Cluster drill (qa-core exploration loop, step 4).** If one lifecycle edge leaks (e.g. award-once or capacity violated), drill every sibling state-transition and gate in that same lifecycle before moving to a new journey.
 
 - **Never modify the app.** Arrange state via legitimate features only; never reset, never alter any test/evaluation configuration (e.g. on a resource app, the assessment difficulty profile), never read any protected solution/solution data (e.g. a assessment protected solution).
 

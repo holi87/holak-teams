@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 9674,
-      "sha256": "6ac2b7f4650dd74c6acb9ec57db4f9f93b8754458a6ad2f96feb3f51dc85e690"
+      "bytes": 11351,
+      "sha256": "b80fb135376f3e79e167ed20868a43a1b3818d94ac85390e004545e980124260"
     },
     {
       "id": "qa-browser-skill",
@@ -263,8 +263,8 @@
       "source": "argus/framework-template-common",
       "destination": "templates/common",
       "files": 25,
-      "bytes": 82471,
-      "sha256": "9f06a6c0a052af6579cf9ce164ee4d7ba20dcd0b204bedcf72f22cf3d016c5fd"
+      "bytes": 83632,
+      "sha256": "5dfdf2314965a9050edde79178e5eb1f39e0ce4bea54b12963b61c7270474c68"
     },
     {
       "id": "typescript-template",

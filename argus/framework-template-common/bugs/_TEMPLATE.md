@@ -13,7 +13,7 @@
 - **Divergence side:** implementation | documentation | undecidable   <!-- required whenever two sources disagree; `undecidable` states both hypotheses in Expected -->
 - **Component / Endpoint:** <path or screen>
 - **Environment:** <build/commit, browser if UI, date>
-- **Oracle-id:** <ORC-### from solution/ORACLES.md — the source of truth this violates; required for ACCEPTED. If none exists yet, request it from Metis, do not invent the rule.>
+- **Oracle-id:** <ORC-### from solution/ORACLES.md — the source of truth this violates, or a consistency-class ORC for a Suspected divergence (both observations cited); required for ACCEPTED. If none exists yet, request it from Metis, do not invent the rule.>
 - **Links:** test native `regression` marker + `@bug:<canonical-or-origin>` provenance · REQ-### · RISK-###
 
 ## Preconditions

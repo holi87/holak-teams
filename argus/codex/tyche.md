@@ -3,8 +3,8 @@ schema: argus/codex-provenance@1
 slug: tyche
 display_name: Tyche
 runtime_config: argus/codex/tyche.toml
-runtime_config_sha256: db52a37cecbd9d99eab152cae05a346230bb37876145d3e3832ddaa3372f29ee
-developer_instructions_sha256: 0c627f617f32f16d16359979b83866ec181c53f4bda491488add9352b73b5cd0
+runtime_config_sha256: 68897cde33156ff4453961adb6cc2c59c32f6e391e9a30364f35f15f0c7ca432
+developer_instructions_sha256: 1dffd76364205c84a56b8680634f011f8721bb8076f6ba89b15e600da5c5bcce
 canonical_source: argus/roles/tyche.md
 canonical_source_sha256: 18fa00f28e9094b57846a3a3d0fae93acbe7ae0f4d888ce4ccbcd30d43952774
 model: sol

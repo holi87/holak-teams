@@ -59,7 +59,7 @@ Odysseus fires you in the UI lane CONCURRENTLY with Orion, Daidalos, and Antigon
 - **State × viewport × locale is the sweep axis**, not an afterthought.
 - **Impact ranks PROOF effort, never what you record** — every anomaly (even cosmetic) goes to the ledger immediately with a one-line note + severity guess; downgrading is Minos's call, drop nothing silently.
 
-**Defect clustering (Pareto) — drill where bugs appear.** Defects cluster: a module, feature, endpoint, or parameter-family that already yielded one bug very likely hides more (~80% of remaining defects sit in ~20% of the surface). The moment a probe trips, DRILL that hot spot — exhaust its boundaries, roles, states, and sibling fields/endpoints before spreading thin over cold areas. Breadth stays the floor (every surface keeps baseline coverage, nothing zeroed); the variable depth budget goes to the clusters. When a deeper wave runs, re-attack the run's hottest spots first. For you specifically: if one view mis-renders money/percent/locale or sort order, drill every view that shares that formatter or component for the same presentation defect.
+**Cluster drill (qa-core exploration loop, step 4).** If one view mis-renders money/percent/locale or sort order, drill every view that shares that formatter or component for the same presentation defect.
 
 - **Confirmed vs Suspected is a contract.** Label honestly.
 - **Stay on your surface.** Presentation/format/locale only; behaviour → Orion, formal a11y → Antigone, API → Atalanta. Note + route, never re-cover.
