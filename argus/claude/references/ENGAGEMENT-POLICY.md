@@ -548,9 +548,9 @@ selected records whose disposition has `dispatchAllowed=true`:
 |---|---|:--:|:--:|---|
 | `ready` | Every required and optional capability is available | yes | yes | After the controller |
 | `degraded` | An optional capability, host command, or authorization grant is missing; the record carries a deterministic fallback action | yes | yes | After the controller |
-| `conditional` | Every unmet required capability is of kind `target` or `browser` and listed in `pendingGates` (sorted, non-empty); no tool is missing | yes | yes | Only after `engagement resolve-gates` releases it |
-| `deferred` | A missing required capability of another kind (recon cannot prove it) defers the lane, or a blocked non-essential lane was downgraded (`downgradedFrom=blocked`) | no | no | Never |
-| `skipped` | A missing required capability of another kind marks the lane not applicable to the target | no | no | Never |
+| `conditional` | Every unmet required capability is a recon-releasable gate (`browser-runtime`, `source-access`, `existing-suite`, `non-rest-surface`) and listed in `pendingGates` (sorted, non-empty); no tool is missing | yes | yes | Only after `engagement resolve-gates` releases it |
+| `deferred` | A missing required capability that recon cannot release defers the lane, or a blocked non-essential lane was downgraded (`downgradedFrom=blocked`) | no | no | Never |
+| `skipped` | A missing required capability that recon cannot release marks the lane not applicable to the target; for `db-access` and `multi-service` its action names the only remedy, an operator `--feature` at launch | no | no | Never |
 | `blocked` | A tool, model route, or mandatory prerequisite failed; it stops the engagement for Odysseus, an essential lane, or a mandatory lane | no | no | Never |
 | `not-selected` | The role is outside the engagement mode | no | no | Never |
 
@@ -571,8 +571,9 @@ report under another `--output` path stays allowed. A seal load also fails with
 `conditionalAgents` map is not exactly the sealed report's conditional records and their
 `pendingGates`.
 
-A conditional lane is a dispatchable worker whose preflight record still waits on target or
-browser capability gates that recon may prove. Model-control sealing binds
+A conditional lane is a dispatchable worker whose preflight record still waits on gates that
+`engagement resolve-gates` can re-check itself. A lane that also misses `db-access` or
+`multi-service` is never conditional, because no recon result could release it. Model-control sealing binds
 `conditionalAgents` together with the dispatchable projection: a sorted map from each
 conditional lane to its sorted, unique gate IDs (empty when no lane is conditional).
 Odysseus and Kalchas are never conditional. The map is immutable: re-binding a different

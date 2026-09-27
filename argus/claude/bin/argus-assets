@@ -4561,13 +4561,16 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
 
   let status = 'ready';
   const requiredFallbacks = [];
+  const releasable = reconReleasableGates();
   for (const id of missingRequired) {
     const capability = matrix.capabilities[id];
-    requiredFallbacks.push(`${id}: ${capability.fallback}`);
+    requiredFallbacks.push(capability.kind === 'target' && !releasable.has(id)
+      ? `${id}: ${capability.fallback} Recon never releases ${id}; only an operator \`--feature ${id}\` at launch makes the lane ready.`
+      : `${id}: ${capability.fallback}`);
     if (capability.missingDisposition === 'skipped') status = 'skipped';
     else if (status !== 'skipped') status = 'deferred';
   }
-  const pendingGates = conditionalPendingGates(status, missingRequired, matrix);
+  const pendingGates = conditionalPendingGates(status, missingRequired);
   if (pendingGates.length > 0) {
     status = 'conditional';
     actions.push(conditionalLaneAction(pendingGates, requiredFallbacks));
@@ -4606,13 +4609,24 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
   );
 }
 
-// A lane whose only unmet requirements are target or browser capabilities is recon-provable:
-// it becomes `conditional` instead of deferred/skipped, is sealed with its model decision,
-// and allocates only after `engagement resolve-gates` proves every pending gate.
-function conditionalPendingGates(status, missingRequired, matrix) {
+// A lane whose only unmet requirements are gates `engagement resolve-gates` can re-check itself
+// is recon-provable: it becomes `conditional` instead of deferred/skipped, is sealed with its
+// model decision, and allocates only after resolution proves every pending gate. A lane that
+// also misses an operator-declared capability stays deferred/skipped with its fallback, because
+// no recon result could ever release it.
+function conditionalPendingGates(status, missingRequired) {
   if (status !== 'deferred' && status !== 'skipped') return [];
-  if (!missingRequired.every((id) => ['target', 'browser'].includes(matrix.capabilities[id]?.kind))) return [];
+  const releasable = reconReleasableGates();
+  if (!missingRequired.every((id) => releasable.has(id))) return [];
   return [...missingRequired].sort();
+}
+
+// The gates resolveCapabilityGate can prove from its own probe or path and inventory checks.
+// db-access and multi-service are never among them: the runtime cannot re-verify credentials
+// or a service topology, so only an operator --feature at launch declares them. Hoisted
+// because preflight runs before later top-level constants in this file are initialized.
+function reconReleasableGates() {
+  return new Set(['browser-runtime', 'existing-suite', 'non-rest-surface', 'source-access']);
 }
 
 function conditionalLaneAction(pendingGates, requiredFallbacks) {
