@@ -152,6 +152,12 @@
       ]
     },
     {
+      "value": "ai_agents_internal/browser-runtime.json",
+      "consumers": [
+        "kalchas"
+      ]
+    },
+    {
       "value": "ai_agents_internal/heartbeat/",
       "consumers": [
         "skill:orchestration-core"
@@ -172,6 +178,12 @@
     },
     {
       "value": "ai_agents_internal/recon/",
+      "consumers": [
+        "kalchas"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/recon/driver.config.json",
       "consumers": [
         "kalchas"
       ]
@@ -511,6 +523,12 @@
         "kleio",
         "minos",
         "skill:orchestration-core"
+      ]
+    },
+    {
+      "value": "solution/discovery/capability-evidence.json",
+      "consumers": [
+        "kalchas"
       ]
     },
     {
@@ -987,6 +1005,7 @@
         "atalanta",
         "charon",
         "hermes",
+        "kalchas",
         "orion",
         "penelope",
         "perseus",
@@ -1988,6 +2007,12 @@
           "reference": "runtime-schemas"
         },
         {
+          "consumer": "kalchas",
+          "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "runtime-schemas"
+        },
+        {
           "consumer": "minos",
           "kind": "agent",
           "mechanism": "plugin-path",
@@ -2430,6 +2455,12 @@
           "kind": "command",
           "mechanism": "validated-template-composition",
           "reference": "typescript:runtime"
+        },
+        {
+          "consumer": "kalchas",
+          "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "typescript-template"
         },
         {
           "consumer": "runtime:copyBrowserDriver",

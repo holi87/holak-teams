@@ -36,6 +36,7 @@
     "requirements": [
       { "id": "preflight-and-dispatch", "source": "odysseus", "markers": ["preflight", "machine orchestration plan", "solution/lane-plan.json"] },
       { "id": "surface-discovery", "source": "kalchas", "markers": ["solution/surface-inventory.json", "role × operation matrix", "DB-access verdict"] },
+      { "id": "authenticated-recon-and-gates", "source": "kalchas", "markers": ["capability-evidence.json", "hunt-driver.mjs --agent kalchas --role"] },
       { "id": "risk-strategy", "source": "metis", "markers": ["solution/TEST-STRATEGY.md", "solution/ORACLES.md", "risk register"] },
       { "id": "shared-runner", "source": "atlas", "markers": ["run-tests.sh", "reports/results.json", "solution/ARCHITECTURE.md"] },
       { "id": "ui-hunt", "source": "orion", "markers": ["bugs/ORI-", "screenshot", "--console", "--net", "--fail-next"] },
