@@ -1,17 +1,9 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { scoreRun } from './score.mjs';
 import { seedIds } from './corpus/index.mjs';
-// Live corpus fixtures (seeded defects, correct lookalikes, seed independence) are covered by smoke-corpus.mjs.
-const input = { truth: [{ id: 'hidden', severity: 'Critical' }], findings: [{ id: 'F1' }, { id: 'F2' }, { id: 'F3' }],
-  verdicts: [{ findingId: 'F1', outcome: 'real', seedId: 'hidden', reason: 'Criterion independently reproduced', evidenceRef: 'probe-1.txt', independentlyReproduced: true, confirmedAtMs: 30 },
-    { findingId: 'F2', outcome: 'real', reason: 'Legitimate unseeded defect', evidenceRef: 'probe-2.txt', independentlyReproduced: false, confirmedAtMs: 50 },
-    { findingId: 'F3', outcome: 'false-positive', reason: 'Contract allows separate creates', evidenceRef: 'probe-3.txt', independentlyReproduced: false }], elapsedMs: 100, tokens: 20, cost: 0.01 };
-const result = scoreRun(input); assert.equal(result.recall, 1); assert.equal(result.precision, 2 / 3); assert.equal(result.independentReproduction, 0.5); assert.equal(result.firstConfirmedMs, 30);
-assert.equal(scoreRun({ ...input, verdicts: [] }).status, 'unscored');
-assert.throws(() => scoreRun({ ...input, verdicts: [...input.verdicts, input.verdicts[0]] }));
-assert.throws(() => scoreRun({ ...input, tokens: null }));
-console.log('PASS  evidence-adjudicated metrics: false positives, unseeded findings, missing verdicts, and reproduction. Scripted harness validation only; no Argus model score claimed.');
+// Live corpus fixtures (seeded defects, correct lookalikes, seed independence) are covered by
+// smoke-corpus.mjs, and scoring metrics and the adjudicate.mjs contract by smoke-adjudicate.mjs.
+// Scripted harness validation only; no Argus model score is claimed.
 
 // Exercise the comparison CLI protocol (argus-eval/comparison-config@2) without pretending the
 // stub is an agent: public request only, evaluator-side extraction, sealing, contamination.
@@ -218,15 +210,36 @@ try {
     const order = repeat => runs.filter(run => run.repeat === repeat && run.mode === 'A' && run.build === 'faulty').map(run => run.variant);
     assert.deepEqual([order(0), order(1)], [['baseline', 'candidate'], ['candidate', 'baseline']], 'execution order alternates per repeat');
 
-    const verdictFile = join(work, 'verdicts.json');
-    writeFileSync(verdictFile, JSON.stringify(runs.map(() => [])));
-    const adjudicated = spawnSync(process.execPath, [ADJUDICATE, summary.privateResults, verdictFile], { encoding: 'utf8', timeout: 10000 });
+    // The stub reports no findings, so final verdicts bound to these private runs are empty.
+    const digest = value => createHash('sha256').update(value).digest('hex');
+    const verdictFile = join(work, 'final-verdicts.json');
+    const finalVerdicts = {
+      schema: 'argus-eval/final-verdicts@1', status: 'final', createdAt: new Date().toISOString(), runsSha256: digest(readFileSync(summary.privateResults)),
+      judgeSha256: digest('protocol judge verdicts'), sheetSha256: digest('protocol spot-check sheet'),
+      judge: { model: 'opus', effort: 'max', passes: 2, claudeVersion: '2.1.283', systemPromptSha256: digest('judge system prompt'), includeSuspected: false },
+      spotCheck: { all: true, samplingSeed: null, rate: null, minimum: null, items: 0, reviewed: 0, pending: 0 },
+      reliability: { randomSampled: 0, randomReviewed: 0, randomOverturned: 0, overturnRate: null, maxOverturnRate: 0.1 },
+      runs: runs.map(run => ({ runId: run.runId, verdicts: [] })),
+    };
+    assert.deepEqual(validateEval('final-verdicts', finalVerdicts), []);
+    writeFileSync(verdictFile, JSON.stringify(finalVerdicts));
+    const summaryFile = join(work, 'discovery-summary.json');
+    const adjudicated = spawnSync(process.execPath, [ADJUDICATE, '--runs', summary.privateResults, '--verdicts', verdictFile, '--output', summaryFile], { encoding: 'utf8', timeout: 10000 });
     assert.equal(adjudicated.status, 0, adjudicated.stderr);
-    const comparison = JSON.parse(adjudicated.stdout);
-    assert.equal(comparison.status, 'scored');
-    assert.equal(comparison.comparison.length, 2);
-    assert(comparison.comparison.every(row => row.meanRecall === 0 && row.runs === 8));
-    console.log('PASS  16 paired comparison protocol runs (modes A and B, faulty and corrected, pinned seeds): public request only, physical 0700 layout, evaluator-side extraction; an empty stub earns zero recall');
+    const scored = JSON.parse(readFileSync(summaryFile, 'utf8'));
+    assert.deepEqual(validateEval('discovery-summary', scored), []);
+    assert.deepEqual([scored.status, scored.protocol.seeds, scored.runs.length], ['scored', [11, 22], 16]);
+    assert.deepEqual(scored.variants.map(row => row.name), ['baseline', 'candidate']);
+    for (const row of scored.variants) {
+      for (const runMode of ['A', 'B']) {
+        const aggregate = row.perMode[runMode];
+        assert.deepEqual([aggregate.runs, aggregate.faultyRuns, aggregate.correctedRuns, aggregate.seedsPerFaultyRun], [4, 2, 2, seedIds.length]);
+        assert.deepEqual([aggregate.meanDetectedSeeds, aggregate.meanRecall, aggregate.reported, aggregate.pooledPrecision], [0, 0, 0, null]);
+      }
+      assert.deepEqual([row.perMode.A.regression.faultyRuns, row.perMode.A.regression.replayedRuns, row.perMode.A.regression.failToPassRate], [2, 0, null]);
+      assert.equal(row.perMode.B.regression, null);
+    }
+    console.log('PASS  16 paired comparison protocol runs (modes A and B, faulty and corrected, pinned seeds): public request only, physical 0700 layout, evaluator-side extraction; an empty stub earns zero recall and null pooled precision');
   }
 
   // 2. A result.json forged inside artifacts/ has no effect: usage and findings come only from
