@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { redactText, redactValue } from '../argus/runtime/authorization.mjs';
+import { redactText, redactValue, validateRedactionPatterns } from '../argus/runtime/authorization.mjs';
 import { validateCanonicalDocument, renderFinalSummary } from '../argus/runtime/contracts.mjs';
 import { calculateCoverage, validateCasePlan } from '../argus/runtime/coverage.mjs';
 import { binaryRegistrationErrors, binaryReviewAuditErrors, isBinaryReference, loadRedactionPatterns, parseAuditLog, validateEvidenceContent } from '../argus/runtime/evidence.mjs';
@@ -134,6 +134,35 @@ const formPost = secret => ({ mimeType: 'application/x-www-form-urlencoded', tex
 const formErrors = content(textRef('har', 'application/json'), JSON.stringify(bodyHar({ postData: formPost('hunter2'), queryString: [{ name: 'Password', value: 'hunter2' }] })));
 for (const pattern of [/request form parameter password is not masked/, /request query parameter Password is not masked/]) assert(formErrors.some(error => pattern.test(error)), `raw HAR pair was not rejected for ${pattern}: ${formErrors.join('; ')}`);
 assert.deepEqual(content(textRef('har', 'application/json'), JSON.stringify(bodyHar({ postData: formPost('[REDACTED]'), queryString: [{ name: 'page', value: '2' }] }))), []);
+// The numbers that prove a defect (totals, IDs, epoch timestamps, log times) stay visible:
+// a card is a Luhn-valid run with a card-network leading digit, and a phone number needs a
+// leading +, a (555) 123-4567 layout, a phone label in text, or a phone JSON key.
+// 1759000000000 passes Luhn, so only the leading digit keeps it; 5234567890123 has one and
+// fails Luhn.
+const numericProof = [
+  ['http', 'text/plain', 'HTTP/1.1 200 OK\n\n{"orderId":"1234567890","total":"123456.78","expected":"123457.00","createdAt":"1759000000000"}\n'],
+  ['http', 'application/json', JSON.stringify({ orderId: '1234567890', total: '123456.78', createdAt: '2026-09-27 16:33:13', id: '5234567890123', seq: '1234567890123456789' })],
+  ['log', 'text/plain', '2026-09-27 16:33:13 ERROR order 1234567890 total 123456.78 != 123457.00 at 1759000000000 offset +02:00 delta +1234.56\n'],
+];
+for (const [kind, mediaType, capture] of numericProof) assert.deepEqual(content(textRef(kind, mediaType), capture), [], `numeric proof was masked in ${mediaType} ${kind}: ${redactOnce(capture)}`);
+for (const [raw, leaked] of [
+  ['card 4111 1111 1111 1111 exp', '4111'], ['card 4242-4242-4242-4242', '4242'], ['amex 378282246310005', '378282'],
+  ['call +48 600 700 800', '600 700'], ['call +1 (555) 123-4567', '123-4567'], ['office (555) 123-4567', '123-4567'], ['desk 555.123.4567', '123.4567'],
+  ['Phone: 600 700 800', '700 800'], ['<a href="tel:600700800">', '600700800'], ['{"mobile":"600 700 800"}', '700 800'],
+]) {
+  const safe = redactOnce(raw);
+  assert(!safe.includes(leaked), `the redactor kept ${leaked}: ${safe}`);
+  assert.equal(redactOnce(safe), safe, `PII redaction is not a fixed point: ${safe}`);
+  assert(content(textRef('text', 'text/plain'), raw).some(error => /redactor would change/.test(error)), `unmasked PII passed: ${raw}`);
+}
+// A phone key masks the number in its value, not a flag or an invalid input the defect needs.
+assert.deepEqual(redactValue({ phone: '600 700 800', phoneNumber: 'ext 600700800', contact: { telephone: ['600 700 800'] }, mobile: true, fax: 'not-a-number', total: '123456.78', note: '600 700 800' }, patterns).value,
+  { phone: '[REDACTED:PHONE]', phoneNumber: 'ext [REDACTED:PHONE]', contact: { telephone: ['[REDACTED:PHONE]'] }, mobile: true, fax: 'not-a-number', total: '123456.78', note: '600 700 800' });
+const checkedPattern = extra => ({ ...patterns, patterns: [{ id: 'card', expression: '\\d{13}', flags: 'g', replacement: '[REDACTED:CARD]', check: 'luhn', ...extra }] });
+assert.deepEqual(validateRedactionPatterns(checkedPattern({})), []);
+assert(validateRedactionPatterns(checkedPattern({ check: 'mod97' })).some(error => /check must be one of luhn/.test(error)), 'an unknown match check was accepted');
+assert(validateRedactionPatterns(checkedPattern({ replacement: '$1' })).some(error => /literal replacement/.test(error)), 'a checked pattern accepted a group reference');
+assert(validateRedactionPatterns(checkedPattern({ keys: [] })).some(error => /keys must be a non-empty array/.test(error)), 'a keyed pattern accepted an empty key list');
 assert(content(textRef('har', 'application/json'), '{"log":{}}').some(error => /log\.entries/.test(error)), 'a HAR without entries passed');
 assert(content(textRef('dom-snapshot', 'text/html'), '<form><input name="p" type="password" value="hunter2"></form>').some(error => /password input with a value/.test(error)), 'a DOM snapshot with a password value passed');
 assert(content(textRef('dom-snapshot', 'text/html'), "<input value='x>y' TYPE=Password>").some(error => /password input with a value/.test(error)), 'a quoted > hid a password value');

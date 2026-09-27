@@ -65,15 +65,44 @@
     },
     {
       "id": "payment-card",
-      "expression": "\\b(?:\\d[ -]*?){13,19}\\b",
+      "expression": "(?<![A-Za-z0-9.])[2-6](?:[ -]?\\d){12,18}(?![A-Za-z0-9]|[.,]\\d)",
       "flags": "g",
-      "replacement": "[REDACTED:PAYMENT_CARD]"
+      "replacement": "[REDACTED:PAYMENT_CARD]",
+      "check": "luhn"
     },
     {
       "id": "phone",
-      "expression": "(?<![A-Za-z0-9])\\+?\\d[\\d .()-]{7,}\\d(?![A-Za-z0-9])",
+      "expression": "(?<![A-Za-z0-9+])\\+\\d(?:[ ()-]{0,2}\\d){6,14}(?![A-Za-z0-9]|[.,]\\d)|(?<![A-Za-z0-9.])(?:\\(\\d{3}\\)\\s?|\\d{3}[ .-])\\d{3}[ .-]\\d{4}(?![A-Za-z0-9]|[.,]\\d)",
       "flags": "g",
       "replacement": "[REDACTED:PHONE]"
+    },
+    {
+      "id": "labeled-phone",
+      "expression": "(?<=\\b(?:phone|telephone|tel|mobile|cell[ _-]?phone|fax|msisdn)(?:[ _-]?(?:number|no))?\\\\?[\"']?\\s*[:=]\\s*\\\\?[\"']?)\\+?\\(?\\d(?:[ .()-]{0,2}\\d){5,14}(?![A-Za-z0-9])",
+      "flags": "gi",
+      "replacement": "[REDACTED:PHONE]"
+    },
+    {
+      "id": "phone-field",
+      "expression": "\\+?\\(?\\d(?:[ .()-]{0,2}\\d){5,14}",
+      "flags": "g",
+      "replacement": "[REDACTED:PHONE]",
+      "keys": [
+        "cellphone",
+        "cell-phone",
+        "fax",
+        "mobile",
+        "mobile-number",
+        "mobile-phone",
+        "mobilenumber",
+        "mobilephone",
+        "msisdn",
+        "phone",
+        "phone-number",
+        "phonenumber",
+        "tel",
+        "telephone"
+      ]
     }
   ]
 }

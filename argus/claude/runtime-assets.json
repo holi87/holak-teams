@@ -47,8 +47,8 @@
       "source": "argus/AUTHORIZATION-POLICY.md",
       "destination": "references/AUTHORIZATION-POLICY.md",
       "files": 1,
-      "bytes": 11807,
-      "sha256": "95fa2f768d2fe8f176021ce553d8ce28dcbd531890a41770849c472e6129c6db"
+      "bytes": 12289,
+      "sha256": "08db21d194c44c4657e2547b458a6f1128da06b1375f9a69916a58f65bb18a72"
     },
     {
       "id": "engagement-policy",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 42,
-      "bytes": 202274,
-      "sha256": "41d5adb04eecbfaa8bb49a8cc4589812a704295e0d1e727f452e9f2fdc360a2d"
+      "bytes": 202495,
+      "sha256": "b2dac80d705133d2261c6a471c5ea5eeb5491598a17c093277135e86d65a4972"
     },
     {
       "id": "capability-matrix",
@@ -245,8 +245,8 @@
       "source": "argus/policies",
       "destination": "policies",
       "files": 4,
-      "bytes": 13106,
-      "sha256": "a21762ce39a856835284f839fe763e6deb987346fe446f2dc972d0c7e28f6d35"
+      "bytes": 14047,
+      "sha256": "bdc9dc7c09df9ca8025afe252861ed1a2688feaa4f79024296b44594b55c4df0"
     },
     {
       "id": "runtime-library",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 406286,
-      "sha256": "f690d72ad17f131fcc4ea7483c349f275d2ff7c7ad08ab0f1d297ea047d14041"
+      "bytes": 408097,
+      "sha256": "9c8c79ccc4c69562ffaf2f9a4835cc5a50d385e235572177dff8ddc5c9da8ac3"
     },
     {
       "id": "common-template",

@@ -225,6 +225,21 @@ export function buildAuditEvent({ manifest, request, decision, timestamp, patter
   return redactValue(event, patterns).value;
 }
 
+// Checks a pattern may require of each match before it is replaced. `luhn` keeps a
+// card-shaped run that fails the payment-card checksum (an ID, a total, a timestamp) visible.
+const MATCH_CHECKS = Object.freeze({
+  luhn(match) {
+    const digits = match.replace(/\D/g, '');
+    let sum = 0;
+    for (let index = 0; index < digits.length; index += 1) {
+      let digit = Number(digits[digits.length - 1 - index]);
+      if (index % 2 === 1) digit = digit * 2 > 9 ? digit * 2 - 9 : digit * 2;
+      sum += digit;
+    }
+    return digits.length > 0 && sum % 10 === 0;
+  },
+});
+
 export function validateRedactionPatterns(patterns) {
   const errors = [];
   if (!patterns || patterns.schemaVersion !== 1) errors.push('redaction patterns schemaVersion must be 1');
@@ -236,22 +251,40 @@ export function validateRedactionPatterns(patterns) {
     } catch (error) {
       errors.push(`patterns[${index}] is invalid: ${error.message}`);
     }
+    if (pattern?.keys !== undefined && (!Array.isArray(pattern.keys) || pattern.keys.length === 0 || !pattern.keys.every(nonEmptyString))) {
+      errors.push(`patterns[${index}].keys must be a non-empty array of strings`);
+    }
+    if (pattern?.check === undefined) continue;
+    if (!Object.hasOwn(MATCH_CHECKS, pattern.check)) errors.push(`patterns[${index}].check must be one of ${Object.keys(MATCH_CHECKS).join(', ')}`);
+    // A checked match is replaced by a callback, which does not expand group references.
+    if (String(pattern.replacement).includes('$')) errors.push(`patterns[${index}] with a check must use a literal replacement`);
   }
   return errors;
 }
 
-export function redactText(text, patterns) {
+// `key` is the JSON key of a string value, or null for free text. A pattern that lists
+// `keys` applies only to the values of those keys, as a label does in free text.
+export function redactText(text, patterns, key = null) {
   const errors = validateRedactionPatterns(patterns);
   if (errors.length > 0) throw new Error(errors.join('; '));
   let value = String(text);
   const findings = new Set();
+  const field = key === null ? null : normalizeKey(key);
   for (const pattern of patterns.patterns) {
+    if (pattern.keys && !pattern.keys.some((name) => normalizeKey(name) === field)) continue;
     const regex = new RegExp(pattern.expression, pattern.flags);
-    if (regex.test(value)) {
+    if (!regex.test(value)) continue;
+    regex.lastIndex = 0;
+    if (pattern.check === undefined) {
       findings.add(pattern.id);
-      regex.lastIndex = 0;
       value = value.replace(regex, pattern.replacement);
+      continue;
     }
+    value = value.replace(regex, (match) => {
+      if (!MATCH_CHECKS[pattern.check](match)) return match;
+      findings.add(pattern.id);
+      return pattern.replacement;
+    });
   }
   // A key matches bare (`password=x`, `password: x`) and quoted, as in a JSON body or an
   // escaped JSON string (`"password":"x"`, `\"password\":\"x\"`). A quoted value keeps its
@@ -280,11 +313,11 @@ export function redactValue(input, patterns) {
       return '[REDACTED]';
     }
     if (typeof value === 'string') {
-      const result = redactText(value, patterns);
+      const result = redactText(value, patterns, key);
       for (const finding of result.findings) findings.add(finding);
       return result.text;
     }
-    if (Array.isArray(value)) return value.map((item) => walk(item));
+    if (Array.isArray(value)) return value.map((item) => walk(item, key));
     if (plainObject(value)) return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, walk(child, childKey)]));
     return value;
   }
