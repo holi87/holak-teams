@@ -14,17 +14,24 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLI="${ARGUS_ASSETS:-$ROOT/argus/claude/bin/argus-assets}"
 FIXTURES="$ROOT/scripts/fixtures/argus-runtime/java"
 WORK="$(mktemp -d)"
-TARGET_PID="" TARGET_URL=""
+TARGET_PID="" TARGET_PORT="" TARGET_URL="" NODE_BIN=""
+# Exits 0 when 127.0.0.1:<argv[1]> accepts a connection.
+PORT_OPEN='const s = require("net").connect(Number(process.argv[1]), "127.0.0.1"); s.on("connect", () => process.exit(0)); s.on("error", () => process.exit(1));'
 
-# stop_target: stops the end-to-end target started by start_target, if any.
+# stop_target: stops the end-to-end target started by start_target, if any, and returns
+# non-zero unless its port is closed afterwards. The target runs as the resolved node binary
+# (NODE_BIN): under a version-manager shim $! is the shim, and killing it would orphan the
+# listening server.
 stop_target() {
+  local port="$TARGET_PORT"
   if [ -n "$TARGET_PID" ]; then
     kill "$TARGET_PID" 2>/dev/null || true
     wait "$TARGET_PID" 2>/dev/null || true
-    TARGET_PID=""
   fi
+  TARGET_PID="" TARGET_PORT=""
+  [ -z "$port" ] || ! "$NODE_BIN" -e "$PORT_OPEN" "$port"
 }
-trap 'stop_target; rm -rf "$WORK"' EXIT
+trap 'stop_target || printf "FAIL  the faulty target outlived the smoke\n" >&2; rm -rf "$WORK"' EXIT
 # The adapter reads these; a caller's environment must not leak into the clean room. The
 # same holds for the runner library's inputs in the end-to-end section.
 unset ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY ARGUS_OUTCOME_FILE ARGUS_CONTRACT_SMOKE \
@@ -34,6 +41,7 @@ unset ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY ARGUS_OUTCOME_F
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 for tool in java mvn jq node; do command -v "$tool" >/dev/null 2>&1 || fail "$tool is required"; done
+NODE_BIN="$(node -p process.execPath)"
 
 APP="$WORK/java"
 C=qa.contract.ClassificationFixtureTest
@@ -512,9 +520,9 @@ cp "$ROOT/scripts/fixtures/argus-runtime/typescript/e2e/verify-baseline.sh" "$E/
 # start_target <buggy|fixed>: (re)starts the faulty target on an ephemeral 127.0.0.1 port.
 start_target() {
   local port="" attempt
-  stop_target
+  stop_target || fail "the previous faulty target still listens after stop_target"
   : >"$WORK/target.log"
-  FAULTY_MODE="$1" PORT=0 node "$ROOT/scripts/fixtures/argus-runtime/faulty-target.mjs" >"$WORK/target.log" 2>&1 &
+  FAULTY_MODE="$1" PORT=0 "$NODE_BIN" "$ROOT/scripts/fixtures/argus-runtime/faulty-target.mjs" >"$WORK/target.log" 2>&1 &
   TARGET_PID=$!
   for attempt in $(seq 1 100); do
     port="$(sed -n 's/^listening \([0-9][0-9]*\)$/\1/p' "$WORK/target.log")"
@@ -522,7 +530,7 @@ start_target() {
     sleep 0.1
   done
   [ -n "$port" ] || { cat "$WORK/target.log" >&2; fail "the faulty target did not start after $attempt checks"; }
-  TARGET_URL="http://127.0.0.1:$port"
+  TARGET_PORT="$port" TARGET_URL="http://127.0.0.1:$port"
 }
 
 # e2e <log> <expected-exit> <mode> [VAR=value ...] [-- passthrough...]
@@ -613,6 +621,6 @@ printf '#!/usr/bin/env bash\nexit 1\n' >"$E/scripts/verify-baseline.sh"
 e2e not-at-baseline 12 full-suite
 cp "$WORK/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
 expect_event "$E2E_EV" environment infrastructure fail false n/a - environment-not-at-baseline
-stop_target
+stop_target || fail "the faulty target still listens after stop_target"
 
 printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, inert activation, contract, data and behaviour oracle self-tests, exact-oracle examples, the SD-10 counterfactual plan, passes and evidence, and an end-to-end runner against a faulty target\n'
