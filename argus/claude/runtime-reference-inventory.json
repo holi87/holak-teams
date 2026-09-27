@@ -601,7 +601,8 @@
       "value": "solution/coverage-observations.json",
       "consumers": [
         "atlas",
-        "kleio"
+        "kleio",
+        "skill:qa-core"
       ]
     },
     {
@@ -1341,6 +1342,12 @@
         {
           "consumer": "metis",
           "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "coverage-contract"
+        },
+        {
+          "consumer": "skill:qa-core",
+          "kind": "skill",
           "mechanism": "argus-assets-path",
           "reference": "coverage-contract"
         }

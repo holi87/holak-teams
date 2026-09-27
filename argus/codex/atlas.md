@@ -3,8 +3,8 @@ schema: argus/codex-provenance@1
 slug: atlas
 display_name: Atlas
 runtime_config: argus/codex/atlas.toml
-runtime_config_sha256: c927869923f15f44386d0c6f7a1f9e0d016fedd6b203a9b436161f19dc1bb73a
-developer_instructions_sha256: d0868930dce136c5a3bfa40601fb5398092a9588924efb6640d8ef0a0b65d2a3
+runtime_config_sha256: 0e2715a0e104228b4a1a73610e81ac3c9fa2ccb6521e2bce5db2fe124b8fd955
+developer_instructions_sha256: 51690a4d64e60ffdcdf8f9b076c5d5cd369ce545a77f267353308d1a29b01b9f
 canonical_source: argus/roles/atlas.md
 canonical_source_sha256: 57efabbea91de2155a7fc8229110a2aaca24d2986a7212244688fc23c8f6e97b
 model: sol

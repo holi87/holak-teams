@@ -3,8 +3,8 @@ schema: argus/codex-provenance@1
 slug: metis
 display_name: Metis
 runtime_config: argus/codex/metis.toml
-runtime_config_sha256: ae68f85501a6c4351d734e1a57eb6f6da489c14df1459e4d1a13dca002c21d6c
-developer_instructions_sha256: 6f7aca0b98199f1b71c1b42ceb04a26327c902b5c0ba2c2cb71ddb1445d80b65
+runtime_config_sha256: ea613f2200af1a86ee4f6c3322f2d720aa59fbc01c9dfd19944d55d9ce8f12c0
+developer_instructions_sha256: 191064584a99cd2c5bb1427e04b616e50c724bb497abf530026f6cc11317f3f4
 canonical_source: argus/roles/metis.md
 canonical_source_sha256: 3aaba7ac4727caec7db32d679dab3238a54d9c585a3be7f0ab777b283c57d58b
 model: sol
