@@ -9,7 +9,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 
-for schema in surface-inventory coverage-observations coverage-result; do
+for schema in surface-inventory coverage-observations coverage-result automation-status; do
   jq empty "$ROOT/argus/schemas/$schema.schema.json"
 done
 
@@ -29,15 +29,16 @@ const inventory = read('surface-inventory.json');
 const observations = read('coverage-observations.json');
 const evidence = read('evidence-reference.json');
 const ledger = read('bug-ledger.json');
+const automationStatus = read('automation-status.json');
 const readArtifact = (source) => readFileSync(join(fixtures, source));
-const context = { evidence, ledger, readArtifact };
+const context = { evidence, ledger, automationStatus, readArtifact };
 const errorsOf = (inv, obs, ctx = context) => resolveCoverage(inv, obs, ctx).errors;
 const expectError = (errors, pattern, label) => assert(errors.some((error) => pattern.test(error)), `${label}: expected ${pattern} in ${JSON.stringify(errors)}`);
 const row = (obs, id) => obs.observations.find((item) => item.observationId === id);
 const surfaceOf = (result, id) => result.surfaces.find((item) => item.surfaceId === id);
 
 // The fixtures are canonical and fully reconciled against the retained evidence bytes.
-for (const [kind, document] of [['surface-inventory', inventory], ['coverage-observations', observations], ['evidence-reference', evidence], ['bug-ledger', ledger]]) {
+for (const [kind, document] of [['surface-inventory', inventory], ['coverage-observations', observations], ['evidence-reference', evidence], ['bug-ledger', ledger], ['automation-status', automationStatus]]) {
   assert.deepEqual(validateCanonicalDocument(kind, document), [], `${kind} fixture is not canonical`);
 }
 assert.deepEqual(validateSurfaceInventory(inventory), [], 'valid UI/API/event/data inventory rejected');
@@ -65,7 +66,41 @@ assert.deepEqual(surfaceOf(result, 'SRF-UI-CHECKOUT'), { surfaceId: 'SRF-UI-CHEC
 assert.equal(surfaceOf(result, 'SRF-EVENT-ORDER-CREATED').executed, false, 'an observation without executions counted as executed');
 assert.deepEqual(result.scopedOutcomes.map((item) => item.surfaceId), ['SRF-DATA-AUDIT'], 'inaccessible data surface was hidden');
 assert.deepEqual(result.defectOutcomes, { confirmed: 1, suspected: 1, needsOracle: 1, duplicate: 1, rejected: 1, headline: 2, linked: 1, unlinked: ['BUG-0002'], scoreContribution: 0 }, 'defect outcomes do not follow the ledger statuses');
+assert.equal(result.runnerCaseMapping, 'verified', 'a runner case mapped by automation-status was not verified');
 writeFileSync(`${tmp}/result.json`, `${JSON.stringify(result, null, 2)}\n`);
+
+// With an automation status, a runner case is credited only to a surface that one of its
+// implemented, passed, or failed tests maps it to; without one the mapping is unverified.
+const mapping = (mutate) => { const next = copy(automationStatus); mutate(next.tests.find((test) => test.testId === 'TST-0001')); return next; };
+const withMapping = (automation) => ({ ...context, automationStatus: automation });
+const unmappedRun = /atlas:SRF-API-ORDERS-POST: execution EVD-0104: runner case api:orders\.spec\.ts:creates-a-charged-order is not mapped to SRF-API-ORDERS-POST by automation-status/;
+const unmapped = mapping((test) => { delete test.caseIds; delete test.surfaceIds; });
+assert.deepEqual(validateCanonicalDocument('automation-status', unmapped), [], 'an automation test without caseIds and surfaceIds is not canonical');
+expectError(errorsOf(inventory, observations, withMapping(unmapped)), unmappedRun, 'deleted runner-case mapping');
+assert.throws(() => calculateCoverage(inventory, observations, withMapping(unmapped)), /is not mapped to SRF-API-ORDERS-POST by automation-status/, 'an unmapped runner case was credited');
+expectError(errorsOf(inventory, observations, withMapping(mapping((test) => { test.surfaceIds = ['SRF-UI-CHECKOUT']; }))), unmappedRun, 'runner case mapped to another surface');
+expectError(errorsOf(inventory, observations, withMapping(mapping((test) => { test.caseIds = ['api:orders.spec.ts:lists-orders']; }))), unmappedRun, 'surface mapped to another runner case');
+for (const status of ['planned', 'skipped']) {
+  expectError(errorsOf(inventory, observations, withMapping(mapping((test) => { test.status = status; }))), unmappedRun, `${status} automation test`);
+}
+for (const status of ['implemented', 'failed']) {
+  assert.deepEqual(errorsOf(inventory, observations, withMapping(mapping((test) => { test.status = status; }))), [], `an ${status} automation test did not map its runner case`);
+}
+const caseRun = copy(observations); row(caseRun, 'atlas:SRF-API-ORDERS-POST').executions = [];
+assert.equal(calculateCoverage(inventory, caseRun, context).runnerCaseMapping, 'verified', 'a mapped case-level runner execution was not verified');
+expectError(errorsOf(inventory, caseRun, withMapping(unmapped)),
+  /atlas:SRF-API-ORDERS-POST: case CASE-API-ORDER-CREATE execution EVD-0104: runner case api:orders\.spec\.ts:creates-a-charged-order is not mapped to SRF-API-ORDERS-POST by automation-status/, 'unmapped case execution');
+const unverified = calculateCoverage(inventory, observations, withMapping(null));
+assert.equal(unverified.runnerCaseMapping, 'unverified', 'a runner case without an automation status was reported as verified');
+assert.deepEqual([unverified.overall, unverified.surfaces], [result.overall, result.surfaces], 'the automation status changed a coverage metric');
+writeFileSync(`${tmp}/unverified-result.json`, `${JSON.stringify(unverified, null, 2)}\n`);
+const runnerless = copy(observations);
+runnerless.observations = runnerless.observations.filter((item) => item.observationId !== 'atlas:SRF-API-ORDERS-POST');
+for (const automation of [automationStatus, null]) {
+  assert.equal(calculateCoverage(inventory, runnerless, withMapping(automation)).runnerCaseMapping, 'not-applicable', 'observations without runner-result executions need no mapping');
+}
+const foreignAutomation = copy(automationStatus); foreignAutomation.engagementId = 'other-engagement';
+expectError(errorsOf(inventory, observations, withMapping(foreignAutomation)), /automation status engagementId does not match/, 'foreign automation status');
 
 // Execution and assertion quality cannot be self-declared.
 const declared = copy(observations);
@@ -173,19 +208,59 @@ assert(validateSurfaceInventory(invalid).some((error) => error.includes('duplica
 const drifted = (source) => (source.endsWith('discovery-crawl.txt') ? Buffer.from('changed') : readArtifact(source));
 expectError(reconcileCoverageEvidence(inventory, observations, evidence, drifted), /SRF-UI-CHECKOUT: discovery evidence: evidence digest drift EVD-0001/, 'discovery evidence drift');
 expectError(reconcileCoverageEvidence(inventory, withExecution({ evidenceId: 'EVD-0999' }), evidence, readArtifact), /orion:SRF-UI-CHECKOUT: execution: unresolved evidence EVD-0999/, 'unresolved execution evidence');
-const tuned = copy(result); tuned.criticalUnexecuted = []; tuned.defectOutcomes.headline = 3;
+const tuned = copy(result); tuned.criticalUnexecuted = []; tuned.defectOutcomes.headline = 3; tuned.runnerCaseMapping = 'not-applicable';
 expectError(validateCoverageResult(tuned), /criticalUnexecuted must list exactly/, 'hidden critical surface');
 expectError(validateCoverageResult(tuned), /headline must equal confirmed \+ suspected/, 'inflated headline');
+expectError(validateCoverageResult(tuned), /runnerCaseMapping cannot be not-applicable when a surface has automated execution/, 'hidden runner-case mapping');
 NODE
 
 node "$ROOT/scripts/sync-argus-runtime-assets.mjs" --write >/dev/null
 COVERAGE_ARGS=(--inventory "$FIXTURES/surface-inventory.json" --observations "$FIXTURES/coverage-observations.json"
   --evidence "$FIXTURES/evidence-reference.json" --ledger "$FIXTURES/bug-ledger.json" --root "$FIXTURES")
-"$CLI" coverage validate "${COVERAGE_ARGS[@]}" >/dev/null
-"$CLI" coverage calculate "${COVERAGE_ARGS[@]}" --output "$TMP/cli-result.json" >/dev/null
-jq -S 'del(.generatedAt)' "$TMP/result.json" >"$TMP/runtime-normalized.json"
-jq -S 'del(.generatedAt)' "$TMP/cli-result.json" >"$TMP/cli-normalized.json"
-cmp "$TMP/runtime-normalized.json" "$TMP/cli-normalized.json" >/dev/null || fail 'runtime and CLI coverage results differ'
+MAPPING_ARGS=(--automation-status "$FIXTURES/automation-status.json")
+"$CLI" coverage validate "${COVERAGE_ARGS[@]}" "${MAPPING_ARGS[@]}" >"$TMP/validate.out"
+grep -Fq 'runner-case-mapping=verified' "$TMP/validate.out" || fail "coverage validate did not verify the runner-case mapping: $(<"$TMP/validate.out")"
+"$CLI" coverage calculate "${COVERAGE_ARGS[@]}" "${MAPPING_ARGS[@]}" --output "$TMP/cli-result.json" >/dev/null
+"$CLI" coverage calculate "${COVERAGE_ARGS[@]}" --output "$TMP/cli-unverified-result.json" >/dev/null
+for result in result unverified-result; do
+  jq -S 'del(.generatedAt)' "$TMP/$result.json" >"$TMP/runtime-normalized.json"
+  jq -S 'del(.generatedAt)' "$TMP/cli-$result.json" >"$TMP/cli-normalized.json"
+  cmp "$TMP/runtime-normalized.json" "$TMP/cli-normalized.json" >/dev/null || fail "runtime and CLI coverage results differ ($result)"
+done
+jq -e '.runnerCaseMapping == "verified"' "$TMP/cli-result.json" >/dev/null || fail 'the CLI did not verify the mapped runner case'
+jq -e '.runnerCaseMapping == "unverified"' "$TMP/cli-unverified-result.json" >/dev/null || fail 'the CLI verified a runner case without an automation status'
+
+# A deleted mapping or a non-canonical automation status fails the CLI.
+jq '(.tests[] | select(.testId == "TST-0001")) |= del(.caseIds, .surfaceIds)' "$FIXTURES/automation-status.json" >"$TMP/unmapped-automation.json"
+if "$CLI" coverage validate "${COVERAGE_ARGS[@]}" --automation-status "$TMP/unmapped-automation.json" >/dev/null 2>"$TMP/unmapped.err"; then
+  fail 'coverage validate credited a runner case that automation-status does not map'
+fi
+grep -Fq 'runner case api:orders.spec.ts:creates-a-charged-order is not mapped to SRF-API-ORDERS-POST by automation-status' "$TMP/unmapped.err" || fail "unmapped runner case failed for another reason: $(<"$TMP/unmapped.err")"
+jq '.schemaVersion = 1' "$FIXTURES/automation-status.json" >"$TMP/retired-automation.json"
+if "$CLI" coverage calculate "${COVERAGE_ARGS[@]}" --automation-status "$TMP/retired-automation.json" >/dev/null 2>"$TMP/retired-automation.err"; then
+  fail 'coverage calculate accepted a non-canonical automation status'
+fi
+grep -Fq 'automation-status: ' "$TMP/retired-automation.err" || fail "non-canonical automation status failed for another reason: $(<"$TMP/retired-automation.err")"
+
+# The template's surface-coverage gate passes the automation status whenever the project has one.
+PROJECT="$TMP/project"
+mkdir -p "$PROJECT/scripts" "$PROJECT/solution" "$PROJECT/reports"
+cp "$ROOT/argus/claude/templates/typescript/scripts/baseline-coverage.mjs" "$PROJECT/scripts/"
+for input in surface-inventory coverage-observations evidence-reference bug-ledger; do
+  cp "$FIXTURES/$input.json" "$PROJECT/solution/$input.json"
+done
+cp -R "$FIXTURES/reports/evidence" "$PROJECT/reports/evidence"
+ARGUS_ASSETS="$CLI" node "$PROJECT/scripts/baseline-coverage.mjs" >"$TMP/baseline-unverified.out"
+jq -e '.runnerCaseMapping == "unverified"' "$PROJECT/solution/coverage-result.json" >/dev/null || fail 'baseline coverage without an automation status was not unverified'
+grep -Fq 'runner-cases=unverified' "$TMP/baseline-unverified.out" || fail "baseline coverage summary omitted the runner-case mapping: $(<"$TMP/baseline-unverified.out")"
+cp "$FIXTURES/automation-status.json" "$PROJECT/solution/automation-status.json"
+ARGUS_ASSETS="$CLI" node "$PROJECT/scripts/baseline-coverage.mjs" >/dev/null
+jq -e '.runnerCaseMapping == "verified"' "$PROJECT/solution/coverage-result.json" >/dev/null || fail 'baseline coverage did not pass the project automation status'
+cp "$TMP/unmapped-automation.json" "$PROJECT/solution/automation-status.json"
+if ARGUS_ASSETS="$CLI" node "$PROJECT/scripts/baseline-coverage.mjs" >/dev/null 2>"$TMP/baseline-unmapped.err"; then
+  fail 'baseline coverage credited a runner case that the project automation status does not map'
+fi
+grep -Fq 'is not mapped to SRF-API-ORDERS-POST by automation-status' "$TMP/baseline-unmapped.err" || fail "baseline coverage failed for another reason: $(<"$TMP/baseline-unmapped.err")"
 
 # Without a registry the CLI refuses to credit any cited execution.
 if "$CLI" coverage validate --inventory "$FIXTURES/surface-inventory.json" --observations "$FIXTURES/coverage-observations.json" \
@@ -210,4 +285,4 @@ if "$CLI" coverage validate --inventory "$FIXTURES/surface-inventory.json" --obs
 fi
 grep -Fq 'missing or unsafe evidence EVD-0103' "$TMP/dotdot.err" || fail "'..' evidence source failed for another reason: $(<"$TMP/dotdot.err")"
 
-printf 'PASS  evidence-derived UI/API/event/data coverage: resolved executions, controlled assertions, delivery-gate automation, critical unexecuted surfaces, ledger-derived defect outcomes, proportional denominators, and CLI parity\n'
+printf 'PASS  evidence-derived UI/API/event/data coverage: resolved executions, automation-status runner-case mapping, controlled assertions, delivery-gate automation, critical unexecuted surfaces, ledger-derived defect outcomes, proportional denominators, and CLI parity\n'

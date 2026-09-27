@@ -256,7 +256,7 @@ Usage:
   argus-assets engagement allocate --manifest <engagement.json> --lanes <slug,slug> --controller-token <odysseus-token>
   argus-assets engagement start-attempt --manifest <engagement.json> --lane <slug> --decision <model-decision.json> --token <lane-token> [--controller-token <odysseus-token>] [--dispatch-authorization <MDA-file>] [--wait <true|false>]
   argus-assets schema <list|validate> [options]
-  argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--evidence <json>] [--ledger <json>] [--root <dir>] [--output <json|->]
+  argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--evidence <json>] [--ledger <json>] [--automation-status <json>] [--root <dir>] [--output <json|->]
   argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
   argus-assets model list
   argus-assets model benchmark
@@ -2250,20 +2250,22 @@ function raciReproduceRoute(raci, route) {
 
 function coverageCommand(args) {
   const [operation, ...rest] = args;
-  const usage = 'usage: argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--evidence <json>] [--ledger <json>] [--root <dir>] [--output <json|->]';
+  const usage = 'usage: argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--evidence <json>] [--ledger <json>] [--automation-status <json>] [--root <dir>] [--output <json|->]';
   if (!['validate', 'calculate'].includes(operation)) fail(usage);
-  const inputs = ['--inventory', '--observations', '--evidence', '--ledger', '--root'];
+  const inputs = ['--inventory', '--observations', '--evidence', '--ledger', '--automation-status', '--root'];
   const options = parseNamedOptions(rest, new Set(operation === 'calculate' ? [...inputs, '--output'] : inputs));
   requireOptions(options, ['inventory', 'observations'], `coverage ${operation}`);
   let inventory;
   let observations;
   let evidence = null;
   let ledger = null;
+  let automationStatus = null;
   try {
     inventory = JSON.parse(readTextInput(options.inventory));
     observations = JSON.parse(readTextInput(options.observations));
     if (options.evidence) evidence = JSON.parse(readTextInput(options.evidence));
     if (options.ledger) ledger = JSON.parse(readTextInput(options.ledger));
+    if (options.automationStatus) automationStatus = JSON.parse(readTextInput(options.automationStatus));
   } catch (error) {
     fail(`coverage ${operation}: input is not valid JSON: ${error.message}`);
   }
@@ -2272,19 +2274,22 @@ function coverageCommand(args) {
     ...validateCanonicalDocument('coverage-observations', observations),
     ...(evidence ? validateCanonicalDocument('evidence-reference', evidence).map((error) => `evidence: ${error}`) : []),
     ...(ledger ? validateCanonicalDocument('bug-ledger', ledger).map((error) => `ledger: ${error}`) : []),
+    ...(automationStatus ? validateCanonicalDocument('automation-status', automationStatus).map((error) => `automation-status: ${error}`) : []),
   ];
   if (!errors.length) errors.push(...validateCoverageObservations(observations, inventory), ...validateCasePlan(inventory, observations));
   if (errors.length) fail(`coverage ${operation}: ${errors.join('; ')}`);
   const readArtifact = coverageArtifactReader(options.root ?? '.');
   if (evidence) errors.push(...reconcileCoverageEvidence(inventory, observations, evidence, readArtifact));
-  errors.push(...resolveCoverage(inventory, observations, { evidence, ledger, readArtifact }).errors);
+  const context = { evidence, ledger, automationStatus, readArtifact };
+  const resolution = resolveCoverage(inventory, observations, context);
+  errors.push(...resolution.errors);
   if (errors.length) fail(`coverage ${operation}: ${[...new Set(errors)].join('; ')}`);
   if (operation === 'validate') {
-    console.log(`PASS  coverage inventory=${options.inventory} observations=${options.observations}${evidence ? ` evidence=${options.evidence}` : ''}${ledger ? ` ledger=${options.ledger}` : ''}`);
+    console.log(`PASS  coverage inventory=${options.inventory} observations=${options.observations}${evidence ? ` evidence=${options.evidence}` : ''}${ledger ? ` ledger=${options.ledger}` : ''}${automationStatus ? ` automation-status=${options.automationStatus}` : ''} runner-case-mapping=${resolution.runnerCaseMapping}`);
     return 0;
   }
   const output = options.output ?? '-';
-  const content = `${JSON.stringify(calculateCoverage(inventory, observations, { evidence, ledger, readArtifact }), null, 2)}\n`;
+  const content = `${JSON.stringify(calculateCoverage(inventory, observations, context), null, 2)}\n`;
   if (output === '-') process.stdout.write(content);
   else {
     const outputPath = resolve(output);

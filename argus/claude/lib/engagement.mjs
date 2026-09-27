@@ -483,12 +483,15 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
         let ledger = null;
         if (state.merges['solution/bug-ledger.json']) ledger = readDocument('bug-ledger', 'solution/bug-ledger.json');
         else if ((state.dispatchableAgents ?? manifest.selectedAgents).includes('minos')) throw new Error('coverage defect outcomes require the canonical bug ledger');
+        // Once Atlas has merged the automation status, every credited runner case must map to its surface.
+        const automationStatus = state.merges['solution/automation-status.json']
+          ? readDocument('automation-status', 'solution/automation-status.json') : null;
         const readArtifact = source => readManagedFile(engagementPath(manifest, source), 'coverage evidence');
         if (evidence && coverageEvidenceReferences(inventory, observations).length) {
           const errors = reconcileCoverageEvidence(inventory, observations, evidence, readArtifact);
           if (errors.length) throw new Error(errors.join('; '));
         }
-        const calculated = calculateCoverage(inventory, observations, { evidence, ledger, readArtifact });
+        const calculated = calculateCoverage(inventory, observations, { evidence, ledger, automationStatus, readArtifact });
         const canonicalJson = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
           ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
         if (canonicalJson({ ...document, generatedAt: null }) !== canonicalJson({ ...calculated, generatedAt: null })) throw new Error('coverage result does not match canonical inputs');
@@ -2002,8 +2005,8 @@ const PACKAGED_QUERY_OPTIONS = Object.freeze({
   technique: Object.freeze({ scopes: ['--role'], select: ['--role', '--inventory'] }),
   raci: Object.freeze({ list: [], route: ['--surface', '--activity', '--artifact', '--transition'] }),
   coverage: Object.freeze({
-    validate: ['--inventory', '--observations', '--evidence', '--ledger', '--root'],
-    calculate: ['--inventory', '--observations', '--evidence', '--ledger', '--root', '--output'],
+    validate: ['--inventory', '--observations', '--evidence', '--ledger', '--automation-status', '--root'],
+    calculate: ['--inventory', '--observations', '--evidence', '--ledger', '--automation-status', '--root', '--output'],
   }),
 });
 

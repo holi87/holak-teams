@@ -11,6 +11,9 @@ const DEFECT_REF = /^(?:BUG-[0-9]{4}|[A-Z]{3}-[0-9]{3,4})$/;
 const INPUT_VERSIONS = Object.freeze({ 'surface-inventory': 1, 'coverage-observations': 2 });
 const EVIDENCE_SCHEMA = 'argus/evidence-reference@3';
 const LEDGER_SCHEMA = 'argus/bug-ledger@2';
+const AUTOMATION_SCHEMA = 'argus/automation-status@2';
+// Automation-status tests that may vouch for a runner case; planned and skipped tests never do.
+const MAPPING_TEST_STATUSES = new Set(['implemented', 'passed', 'failed']);
 // coverage-result sourceSchemas, in emission order; inventory and observations always lead.
 const SOURCE_SCHEMAS = Object.freeze(['argus/surface-inventory@1', 'argus/coverage-observations@2', EVIDENCE_SCHEMA, LEDGER_SCHEMA]);
 // Captures that prove a surface was exercised when their reference names it. A runner result
@@ -108,15 +111,21 @@ export function coverageEvidenceReferences(inventory, observations) {
 // surface's flags from evidence alone. Returns every violation instead of throwing, so a
 // validator can report them all; calculateCoverage fails closed on any. readArtifact(source)
 // returns the bytes of a registered capture and must enforce the caller's path boundary.
-export function resolveCoverage(inventory, observations, { evidence = null, ledger = null, readArtifact = null } = {}) {
+// With an automation status, a runner case is credited to a surface only when an
+// implemented, passed, or failed test maps that case to that surface.
+export function resolveCoverage(inventory, observations, { evidence = null, ledger = null, automationStatus = null, readArtifact = null } = {}) {
   const errors = [];
   if (evidence && evidence.$schema !== EVIDENCE_SCHEMA) errors.push(`coverage evidence registry must be ${EVIDENCE_SCHEMA}`);
   if (evidence && evidence.engagementId !== inventory.engagementId) errors.push('coverage evidence engagementId does not match the surface inventory');
   if (ledger && ledger.$schema !== LEDGER_SCHEMA) errors.push(`coverage bug ledger must be ${LEDGER_SCHEMA}`);
   if (ledger && ledger.engagementId !== inventory.engagementId) errors.push('coverage bug ledger engagementId does not match the surface inventory');
+  if (automationStatus && automationStatus.$schema !== AUTOMATION_SCHEMA) errors.push(`coverage automation status must be ${AUTOMATION_SCHEMA}`);
+  if (automationStatus && automationStatus.engagementId !== inventory.engagementId) errors.push('coverage automation status engagementId does not match the surface inventory');
   const refs = evidence ? new Map(arrayOf(evidence.references).map((ref) => [ref.id, ref])) : null;
   if (!refs && coverageEvidenceReferences(inventory, observations).length) errors.push('coverage evidence registry required');
   const defects = ledger ? ledgerIndex(ledger) : null;
+  const mappedCases = automationStatus ? runnerCaseIndex(automationStatus) : null;
+  let runnerExecutions = 0;
   const runnerResults = new Map();
   const loadRunnerResult = (ref) => {
     if (!runnerResults.has(ref.id)) runnerResults.set(ref.id, parseRunnerResult(ref, readArtifact));
@@ -140,6 +149,11 @@ export function resolveCoverage(inventory, observations, { evidence = null, ledg
       if (loaded.error) { errors.push(`${cited}: ${loaded.error}`); return undefined; }
       const event = loaded.document.events.find((item) => item?.caseId === execution.caseId && RUNNER_CATEGORIES.has(item.category) && Object.hasOwn(RUNNER_OUTCOMES, item.status));
       if (!event) { errors.push(`${cited} has no executed product or automation case ${execution.caseId}`); return undefined; }
+      runnerExecutions += 1;
+      if (mappedCases && !mappedCases.get(surface.id)?.has(execution.caseId)) {
+        errors.push(`${cited}: runner case ${execution.caseId} is not mapped to ${surface.id} by automation-status`);
+        return undefined;
+      }
       return { runner: loaded.document, event };
     }
     if (execution.caseId !== undefined) { errors.push(`${cited} is ${ref.kind} evidence and must not carry a caseId`); return undefined; }
@@ -213,7 +227,10 @@ export function resolveCoverage(inventory, observations, { evidence = null, ledg
       defectIds: [...defectIds].sort(compareAscii), cases,
     };
   }
-  return { errors: unique(errors), perSurface };
+  // A mapping is verified only when runner cases were credited and an automation status vouched
+  // for every one of them; without runner-result executions there is nothing to map.
+  const runnerCaseMapping = runnerExecutions === 0 ? 'not-applicable' : mappedCases ? 'verified' : 'unverified';
+  return { errors: unique(errors), perSurface, runnerCaseMapping };
 }
 
 // Fails closed: schema-subset, case-plan, and resolution errors all throw.
@@ -221,7 +238,7 @@ export function calculateCoverage(inventory, observations, context = {}) {
   const errors = [...validateSurfaceInventory(inventory), ...validateCoverageObservations(observations, inventory), ...validateCasePlan(inventory, observations)];
   if (errors.length) throw new Error(errors.join('; '));
   const { evidence = null, ledger = null } = context;
-  const { errors: resolutionErrors, perSurface } = resolveCoverage(inventory, observations, context);
+  const { errors: resolutionErrors, perSurface, runnerCaseMapping } = resolveCoverage(inventory, observations, context);
   if (resolutionErrors.length) throw new Error(resolutionErrors.join('; '));
   const lanes = [...new Set(inventory.items.map((item) => item.lane))].sort();
   const calculations = Object.fromEntries(lanes.map((lane) => [lane, summarize(inventory.items.filter((item) => item.lane === lane), perSurface)]));
@@ -233,6 +250,7 @@ export function calculateCoverage(inventory, observations, context = {}) {
     overall: summarize(inventory.items, perSurface), lanes: calculations,
     surfaces: surfaces.map(({ cases, ...surface }) => surface),
     criticalUnexecuted: surfaces.filter(isCriticalUnexecuted).map((surface) => surface.surfaceId),
+    runnerCaseMapping,
     scopedOutcomes: inventory.items.filter((item) => item.accessibility !== 'testable').map((item) => ({ surfaceId: item.id, accessibility: item.accessibility, reason: item.scopeReason, evidenceIds: item.discoveryEvidenceIds })),
     defectOutcomes: defectOutcomes(ledger, new Set(surfaces.flatMap((surface) => surface.defectIds))),
     generatedAt: new Date().toISOString(),
@@ -262,6 +280,8 @@ export function validateCoverageResult(document) {
   }
   const critical = surfaces.filter(isCriticalUnexecuted).map((surface) => surface.surfaceId);
   if (JSON.stringify(arrayOf(document?.criticalUnexecuted)) !== JSON.stringify(critical)) errors.push('criticalUnexecuted must list exactly the unexecuted testable critical surfaces, sorted');
+  // Automated execution is only ever credited through a runner case, so there was one to map.
+  if (document?.runnerCaseMapping === 'not-applicable' && surfaces.some((surface) => surface.automated)) errors.push('runnerCaseMapping cannot be not-applicable when a surface has automated execution');
   const outcomes = document?.defectOutcomes;
   if (outcomes) {
     if (outcomes.headline !== outcomes.confirmed + outcomes.suspected) errors.push('defectOutcomes.headline must equal confirmed + suspected');
@@ -305,6 +325,20 @@ function ledgerIndex(ledger) {
   for (const bug of arrayOf(ledger.bugs)) {
     index.set(bug.id, bug.id);
     for (const origin of arrayOf(bug.origin)) index.set(origin, bug.id);
+  }
+  return index;
+}
+
+// Surface ID -> runner case IDs that an implemented, passed, or failed automation test maps to
+// it. A test maps the cross product of its caseIds and surfaceIds.
+function runnerCaseIndex(automationStatus) {
+  const index = new Map();
+  for (const test of arrayOf(automationStatus.tests)) {
+    if (!MAPPING_TEST_STATUSES.has(test?.status)) continue;
+    for (const surfaceId of arrayOf(test.surfaceIds)) {
+      if (!index.has(surfaceId)) index.set(surfaceId, new Set());
+      for (const caseId of arrayOf(test.caseIds)) index.get(surfaceId).add(caseId);
+    }
   }
   return index;
 }

@@ -356,6 +356,9 @@ guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS --output app/cover
 guard_shell "argus-assets coverage validate $COVERAGE_INPUTS $COVERAGE_SOURCES" allow
 guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS $COVERAGE_SOURCES --output reports/coverage-result.json" allow
 guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS $COVERAGE_SOURCES --output solution/coverage-result.json" GUARD-CANONICAL-SINGLE-WRITER
+guard_shell "argus-assets coverage validate $COVERAGE_INPUTS $COVERAGE_SOURCES --automation-status solution/automation-status.json" allow
+guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS --automation-status solution/automation-status.json --output reports/coverage-result.json" allow
+guard_shell "argus-assets coverage calculate $COVERAGE_INPUTS --automation-status" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets coverage validate $COVERAGE_INPUTS --root" GUARD-SHELL-AMBIGUOUS
 guard_shell 'argus-assets technique select --role metis --inventory - --output app/selection.json' GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets coverage validate $COVERAGE_INPUTS --output app/coverage-result.json" GUARD-SHELL-AMBIGUOUS
