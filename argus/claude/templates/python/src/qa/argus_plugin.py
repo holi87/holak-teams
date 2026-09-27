@@ -6,11 +6,15 @@ only ``scripts/runner-lib.sh`` exports.
 
 * ``ARGUS_INVENTORY_ONLY=1`` is a collect-only pass (forced to ``--collect-only``, so no test
   body runs). From the full collection, before any deselection, it writes
-  ``reports/test-inventory.tsv`` (SD-3) and ``reports/expected-bugs.txt`` (SD-4) and emits
-  the ledger events.
+  ``reports/test-inventory.tsv`` (SD-3), ``reports/expected-bugs.txt`` (SD-4) and
+  ``reports/counterfactual-plan.tsv`` (SD-10), and emits the ledger events.
 * Otherwise every test that runs gets one primary event composed from its setup, call and
   teardown reports (SD-5, SD-6), plus a ``.cleanup`` event when teardown fails next to a
-  non-pass primary. ``ARGUS_EVIDENCE_PASS`` selects ``live`` (default) or ``repeat``.
+  non-pass primary. ``ARGUS_EVIDENCE_PASS`` selects ``live`` (default) or ``repeat`` and, in
+  defect-evidence only, ``cf-correct`` or ``cf-tamper-<k>``. In those counterfactual passes
+  the case suffix is ``.cf-correct`` or ``.cf-<tamperId>`` (recomputed from the bug's
+  fixture), and a skip with a counterfactual sentinel reason reports nothing, or in
+  cf-correct the ``.cf`` exemption event (qa.argus.counterfactual, imported lazily).
 
 Events go only through ``bash <root>/scripts/outcome-event.sh`` (atomic, so safe under
 pytest-xdist workers) and carry sanitized case ids and closed-vocabulary reasons — never
@@ -41,7 +45,9 @@ except ImportError:  # pragma: no cover - httpx is a template dependency
     httpx = None  # type: ignore[assignment]
 
 MODES = ("baseline", "defect-evidence", "candidate-regression", "full-suite")
-PASSES = {"live": "", "repeat": ".repeat"}  # cf-correct and cf-tamper-<k> are not supported yet
+PASSES = {"live": "", "repeat": ".repeat"}
+# Counterfactual passes (SD-10) exist only in defect-evidence; their suffix depends on the fixture.
+COUNTERFACTUAL_PASS = re.compile(r"cf-(correct|tamper-[1-9][0-9]*)")
 LANE_MARKERS = {
     "api": "api", "ui": "ui", "perf": "perf", "security": "security", "db": "db",
     "resilience": "resilience", "contract_smoke": "contract-smoke",
@@ -125,10 +131,20 @@ class AdapterState:
     failures: int = 0
     collection_errors: int = 0
     workers: dict[str, dict[str, int] | None] = field(default_factory=dict)
+    fixtures: dict[str, Any] = field(default_factory=dict)
 
     @property
     def reports(self) -> Path:
         return self.root / "reports"
+
+    @property
+    def counterfactual(self) -> bool:
+        return COUNTERFACTUAL_PASS.fullmatch(self.evidence_pass) is not None
+
+    @property
+    def pass_supported(self) -> bool:
+        """live and repeat; cf-correct and cf-tamper-<k> only in defect-evidence."""
+        return self.evidence_pass in PASSES or (self.counterfactual and self.mode == "defect-evidence")
 
     def emit(self, case_id: str, outcome: tuple[str, str, str], expected: str, lifecycle: str, bug: str) -> None:
         category, status, reason = outcome
@@ -201,7 +217,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     # inventory can never describe this run. Workers start later (xdist's trylast sessionstart).
     stale_files = ["argus-adapter-status.txt"]
     if state.inventory_only:
-        stale_files += ["test-inventory.tsv", "expected-bugs.txt"]
+        stale_files += ["test-inventory.tsv", "expected-bugs.txt", "counterfactual-plan.tsv"]
     try:
         for name in stale_files:
             (state.reports / name).unlink(missing_ok=True)
@@ -211,7 +227,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
                 stale.unlink(missing_ok=True)
     except OSError:
         state.record_failure("-", "adapter-reset-failed", "OSError")
-    if not state.inventory_only and state.evidence_pass not in PASSES:
+    if not state.inventory_only and not state.pass_supported:
         state.record_failure("-", "unsupported-evidence-pass", "no-events")
 
 
@@ -230,6 +246,7 @@ def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config
         state.record_failure("-", "adapter-describe-failed", type(exc).__name__)
         if state.inventory_only:
             (state.reports / "test-inventory.tsv").unlink(missing_ok=True)
+            (state.reports / "counterfactual-plan.tsv").unlink(missing_ok=True)
         return
     for item, meta in zip(items, metas):
         item.stash[META_KEY] = meta
@@ -323,6 +340,7 @@ def compose(state: AdapterState, item: pytest.Item, phases: dict[str, Phase]) ->
     """Turn the three phase reports of one test into its primary and optional cleanup event."""
     meta = meta_for(item, state)
     setup, call, teardown = phases.get("setup"), phases.get("call"), phases.get("teardown")
+    cleanup = teardown is not None and teardown.outcome == "failed"
     if any(phase.expected_failure for phase in phases.values()):
         primary = EXPECTED_FAILURE
     elif setup is None:
@@ -330,16 +348,25 @@ def compose(state: AdapterState, item: pytest.Item, phases: dict[str, Phase]) ->
     elif setup.outcome == "failed":
         primary = classify_setup(setup.error)
     elif setup.outcome == "skipped":
+        if state.counterfactual and counterfactual_skip(state, meta, setup.error):
+            return
         primary = skip_outcome(meta)
     elif call is None:
         return  # --setup-only / --setup-plan: no test body ran
+    elif state.counterfactual and cleanup and unmatched_request(teardown.error):
+        # An undeclared request got the stub's 501, so the body observed neither the correct
+        # response nor the tamper: its verdict proves nothing either way (SD-10). Only an
+        # exception group (another finalizer failed as well) still adds the cleanup event.
+        primary = ARGUS_ERRORS["ArgusCounterfactualError"]
+        cleanup = isinstance(teardown.error, BaseExceptionGroup)
     elif call.outcome == "passed":
         primary = PASSED
     elif call.outcome == "skipped":
+        if state.counterfactual and counterfactual_skip(state, meta, call.error):
+            return
         primary = skip_outcome(meta)
     else:
         primary = classify_call(call.error)
-    cleanup = teardown is not None and teardown.outcome == "failed"
     if cleanup and primary == PASSED:
         # The body passed but the test did not: the teardown failure is the outcome.
         primary, cleanup = classify_teardown(teardown.error), False
@@ -351,9 +378,9 @@ def compose(state: AdapterState, item: pytest.Item, phases: dict[str, Phase]) ->
 
 
 def emit_outcome(state: AdapterState, item: pytest.Item, meta: CaseMeta, outcome: tuple[str, str, str], suffix: str = "") -> None:
-    if state.evidence_pass not in PASSES:
+    if not state.pass_supported:
         return  # counted once at session start; emitting live-pass semantics would lie
-    case_id = meta.case_id + PASSES[state.evidence_pass] + suffix
+    case_id = meta.case_id + pass_suffix(state, meta) + suffix
     if outcome in (PRODUCT, PASSED):
         category, status, expected, lifecycle, bug, reason = product_event(state, meta, outcome == PASSED)
         state.emit(case_id, (category, status, reason), expected, lifecycle, bug)
@@ -368,6 +395,15 @@ def product_event(state: AdapterState, meta: CaseMeta, passed: bool) -> tuple[st
         # Not a regression, or its provenance does not join exactly one ledger entry (the
         # inventory gate reports that): no defect lifecycle can be claimed.
         return ("product", "pass", "false", "n/a", "-", "passed") if passed else ("product", "fail", "false", "n/a", "-", "assertion-failed")
+    if state.counterfactual:
+        # The stub is deterministic, so the declared repetition plays no part here.
+        if state.evidence_pass == "cf-correct":
+            if passed:
+                return ("product", "pass", "false", "reproduced", bug, "counterfactual-correct-pass")
+            return ("automation", "fail", "false", "n/a", bug, "counterfactual-correct-red")
+        if passed:
+            return ("automation", "fail", "false", "n/a", bug, "counterfactual-tamper-survived")
+        return ("product", "fail", "true", "reproduced", bug, "counterfactual-tamper-red")
     if state.mode == "defect-evidence":
         repeat = state.evidence_pass == "repeat"
         if not passed:
@@ -463,6 +499,78 @@ def strict_xpass(report: pytest.TestReport) -> bool:
     return report.when == "call" and report.failed and isinstance(report.longrepr, str) and report.longrepr.startswith("[XPASS(strict)]")
 
 
+# ------------------------------------------------------------------- counterfactual
+
+
+def counterfactual_module() -> Any:
+    """qa.argus.counterfactual, imported on first use: only cf-* passes and inventories with
+    expected bugs need it. An import failure propagates and is recorded as an adapter failure."""
+    from qa.argus import counterfactual  # noqa: PLC0415
+
+    return counterfactual
+
+
+def pass_suffix(state: AdapterState, meta: CaseMeta) -> str:
+    """SD-2 pass suffix. A tamper pass names the tamper, recomputed from the bug's fixture; a
+    case without an applicable tamper keeps the pass name."""
+    if state.evidence_pass in PASSES:
+        return PASSES[state.evidence_pass]
+    if state.evidence_pass != "cf-correct":
+        cf = counterfactual_module()
+        fixture = fixture_for(state, meta.bug)
+        if isinstance(fixture, cf.CounterfactualFixture):
+            variant = cf.variant_for(fixture, state.evidence_pass)
+            if isinstance(variant, cf.CounterfactualVariant):
+                return f".cf-{variant.id}"
+    return f".{state.evidence_pass}"
+
+
+def fixture_for(state: AdapterState, bug: str) -> Any:
+    """The structural read of the bug's fixture (tamper ids and exemption reason), cached; None
+    for '-'. The conftest fixture already skipped a fixture whose contract check fails."""
+    if bug == "-":
+        return None
+    if bug not in state.fixtures:
+        state.fixtures[bug] = counterfactual_module().read_fixture(state.root, bug)
+    return state.fixtures[bug]
+
+
+def counterfactual_skip(state: AdapterState, meta: CaseMeta, error: BaseException | None) -> bool:
+    """SD-6 sentinel skips of the counterfactual fixture; True when handled here.
+
+    The not-applicable sentinel reports nothing, and so does an exemption claim in a tamper
+    pass. In cf-correct an exemption claim reports ``<case>.cf policy pass ...
+    counterfactual-exempt.<reason>`` when the bug's fixture declares exactly that exemption;
+    otherwise it is an ordinary skip (False).
+    """
+    cf = counterfactual_module()
+    reason = getattr(error, "msg", None)
+    if not isinstance(reason, str):
+        return False
+    if reason == cf.NOT_APPLICABLE:
+        return True
+    if not reason.startswith(cf.EXEMPT_PREFIX):
+        return False
+    if state.evidence_pass != "cf-correct":
+        return True
+    claimed = reason[len(cf.EXEMPT_PREFIX):]
+    fixture = fixture_for(state, meta.bug)
+    if not isinstance(fixture, cf.Exempt) or fixture.reason != claimed or claimed not in cf.EXEMPTION_REASONS:
+        return False
+    if state.pass_supported:  # an unsupported pass was counted at session start and emits nothing
+        state.emit(f"{meta.case_id}.cf", ("policy", "pass", f"counterfactual-exempt.{claimed}"), "false", "n/a", meta.bug)
+    return True
+
+
+def unmatched_request(error: BaseException | None) -> bool:
+    """An ArgusCounterfactualError, alone or inside the group pytest raises for several failing finalizers."""
+    if error is None:
+        return False
+    if argus_outcome(error) == ARGUS_ERRORS["ArgusCounterfactualError"]:
+        return True
+    return isinstance(error, BaseExceptionGroup) and any(unmatched_request(member) for member in error.exceptions)
+
+
 # -------------------------------------------------------------- inventory and ledger
 
 
@@ -546,20 +654,44 @@ def repetition_allowed(meta: CaseMeta, ledger: Ledger) -> bool:
 
 def write_inventory(state: AdapterState, metas: list[CaseMeta]) -> None:
     inventory = state.reports / "test-inventory.tsv"
+    expected_bugs = state.reports / "expected-bugs.txt"
+    plan = state.reports / "counterfactual-plan.tsv"
     try:
-        atomic_write(state.reports / "expected-bugs.txt", "".join(f"{bug}\n" for bug in state.ledger.confirmed))
-        if state.collection_errors:
-            # A partial collection must never pass for the full one (SD-3).
-            inventory.unlink(missing_ok=True)
-            state.record_failure("-", "collection-error", f"errors-{state.collection_errors}")
-        else:
-            atomic_write(inventory, "".join(inventory_row(meta) for meta in metas))
-    except OSError as exc:
-        state.record_failure("-", "inventory-write-failed", type(exc).__name__)
+        # SD-10: the plan is judged before anything is written, so a fixture that cannot be
+        # judged (a declared contract without its OpenAPI document) publishes nothing at all.
+        plan_rows = None if state.collection_errors else counterfactual_plan(state)
+    except Exception as exc:  # noqa: BLE001 - a plan with a guessed status is never published
+        state.record_failure("-", "counterfactual-plan-failed", type(exc).__name__)
+        try:
+            for path in (inventory, expected_bugs, plan):
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass  # the failure is already counted; the status file reports it
+    else:
+        try:
+            atomic_write(expected_bugs, "".join(f"{bug}\n" for bug in state.ledger.confirmed))
+            if plan_rows is None:
+                # A partial collection must never pass for the full one (SD-3).
+                inventory.unlink(missing_ok=True)
+                plan.unlink(missing_ok=True)
+                state.record_failure("-", "collection-error", f"errors-{state.collection_errors}")
+            else:
+                atomic_write(inventory, "".join(inventory_row(meta) for meta in metas))
+                atomic_write(plan, plan_rows)
+        except OSError as exc:
+            state.record_failure("-", "inventory-write-failed", type(exc).__name__)
     if state.ledger.status == "invalid":
         state.emit("bug-ledger", ("policy", "denied", "bug-ledger-invalid"), "false", "n/a", "-")
     elif state.ledger.status == "missing" and state.mode != "baseline":
         state.emit("bug-ledger", ("policy", "denied", "bug-ledger-missing"), "false", "n/a", "-")
+
+
+def counterfactual_plan(state: AdapterState) -> str:
+    """reports/counterfactual-plan.tsv content: one SD-10 row per expected bug; empty without any."""
+    if not state.ledger.confirmed:
+        return ""
+    cf = counterfactual_module()
+    return "".join(f"{cf.plan_line(row)}\n" for row in cf.plan(state.root, state.ledger.confirmed))
 
 
 def inventory_row(meta: CaseMeta) -> str:
