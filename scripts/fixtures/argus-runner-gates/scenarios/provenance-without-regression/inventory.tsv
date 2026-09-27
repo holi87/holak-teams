@@ -1,0 +1,3 @@
+api.health	api	false	false	BUG-0001	-	-	tests/api/health.spec.ts:3
+ui.login	ui	false	false	-	-	-	tests/ui/login.spec.ts:5
+api.widget-regression	api	true	false	BUG-0001	-	-	tests/api/widget.spec.ts:8

@@ -2,7 +2,9 @@
 # Replay runtime for scripts/smoke-argus-runner-gates.sh. It implements the runner-lib hook
 # interface from recorded scenario files instead of a framework, so every gate in
 # scripts/runner-lib.sh runs without a target. ARGUS_FAKE_SCENARIO names the scenario
-# directory; every hook call is recorded in reports/fake-calls.log.
+# directory; every hook call is recorded in reports/fake-calls.log. A pass replays
+# events.<selection>.<pass>.tsv and returns exit.<selection>.<pass> (default 0); the
+# inventory pass publishes inventory.tsv, expected-bugs.txt, and counterfactual-plan.tsv.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -33,6 +35,9 @@ argus_native_inventory() {
   fi
   if [ -f "$SCENARIO/expected-bugs.txt" ]; then
     cp "$SCENARIO/expected-bugs.txt" reports/expected-bugs.txt || return 1
+  fi
+  if [ -f "$SCENARIO/counterfactual-plan.tsv" ]; then
+    cp "$SCENARIO/counterfactual-plan.tsv" reports/counterfactual-plan.tsv || return 1
   fi
   return 0
 }
