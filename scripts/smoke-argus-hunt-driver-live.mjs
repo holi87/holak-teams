@@ -284,12 +284,19 @@ try {
   const j = await driveCase('j', ['--agent', 'live-j', '--goto', '/', '--snapshot']);
   assert(j.stdout.includes('button "Buy"'), `(j) the aria snapshot does not list the Buy button:\n${j.output}`);
 
-  // Every decision above came from the real evaluator: reads for read-only runs, the extra
-  // actor account, and the browser:client-fault mutation for each fault run.
+  // (l) A read-only run with a second actor still logs in both accounts (checked below).
+  const l = await driveCase('l', [
+    '--agent', 'live-l', '--role', PRIMARY, '--actor', `b=${SECONDARY}`, '--goto', '/', '--as', 'b', '--goto', '/', '--snapshot',
+  ], { ARGUS_BROWSER_ARTIFACTS: join(WORK, 'lanes', 'live-l', 'browser-artifacts') });
+  assert(l.stdout.includes('button "Buy"'), `(l) the actor's aria snapshot does not list the Buy button:\n${l.output}`);
+
+  // Every decision above came from the real evaluator: reads for read-only runs (naming the
+  // authenticated account), the extra actor account, and the browser:client-fault mutation
+  // for each fault run.
   const audit = readFileSync(join(AUTHORIZATION_DIR, 'authorization-audit.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
   assert(audit.every((event) => event.decision === 'allow'), `an authorization check was denied: ${JSON.stringify(audit.filter((event) => event.decision !== 'allow'))}`);
   const decisions = (lane) => audit.filter((event) => event.lane === lane).map(({ action, account, mutation }) => [action, account, mutation]);
-  assert.deepEqual(decisions('live-a'), [['browser-read', null, null]]);
+  assert.deepEqual(decisions('live-a'), [['browser-read', PRIMARY, null]], 'the authenticated read did not name its account');
   for (const lane of ['live-b', 'live-c', 'live-d', 'live-e']) {
     assert.deepEqual(decisions(lane), [
       ['browser-state-change', PRIMARY, 'browser:state-change'],
@@ -300,6 +307,10 @@ try {
     ['browser-state-change', PRIMARY, 'browser:state-change'],
     ['browser-state-change', SECONDARY, 'browser:state-change'],
   ], 'the second actor account was not authorized separately');
+  assert.deepEqual(decisions('live-l'), [
+    ['browser-read', PRIMARY, null],
+    ['browser-read', SECONDARY, null],
+  ], 'a read-only run did not authorize each authenticated account');
 } finally {
   if (server) {
     server.closeAllConnections();

@@ -38,8 +38,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 17887,
-      "sha256": "e7e9e4c9e34fd56c8c2822ca413ecd6f8ba6d2e47af73312b46eb4d7f244a381"
+      "bytes": 18116,
+      "sha256": "c8b7c48efb1f5446db6519028e63fd6dff02ad2433e4c692daa6ee7f7b5ff6df"
     },
     {
       "id": "authorization-policy",
@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 63,
-      "bytes": 455118,
-      "sha256": "d2cf5cc1c37dbddf72fc627824e02cefcbec93478c45dc90d1fe001f7899f728"
+      "bytes": 455772,
+      "sha256": "03e2918c978b4722c66eb1541301381753afc9ca8d58dae539232923519f48b7"
     },
     {
       "id": "java-template",
