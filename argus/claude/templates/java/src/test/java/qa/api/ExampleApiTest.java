@@ -4,20 +4,21 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import qa.support.ApiClient;
 import qa.support.SchemaOracle;
+import qa.support.argus.ArgusPrerequisiteError;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static qa.support.DataFactory.order;
 
 /**
  * ADAPT-ME: example API/contract tests. Replace endpoints/shapes with the real OpenAPI
  * surface. Put each resource/tag in its own class (e.g. {@code OrdersApiTest}) so parallel
- * writers don't collide. The {@code @Tag("api")} lane is selected by
- * {@code -Dgroups=api} / {@code -Papi}; with no selection it runs as part of the full suite.
+ * writers don't collide. The {@code @Tag("api")} lane runs when {@code solution/test-lanes.tsv}
+ * enables it ({@code run-tests.sh} selects it by tag); a plain {@code mvn test -Papi} runs it
+ * alone.
  */
 @Tag("api")
 class ExampleApiTest {
@@ -55,13 +56,18 @@ class ExampleApiTest {
     }
 
     /**
-     * Contract oracle: the response must conform to the OpenAPI component schema. Self-skips
-     * when no OpenAPI doc is present (set OPENAPI_PATH / drop ./openapi.json to enable).
+     * Contract oracle: the response must conform to the OpenAPI component schema. It requires
+     * {@code OPENAPI_PATH}; an unset variable or a missing document is reported as
+     * {@code prerequisite-missing}, never skipped.
+     * ADAPT-ME: if the target publishes no OpenAPI document, delete this test and record the
+     * missing contract oracle as a residual risk in {@code solution/TEST-STRATEGY.md}.
      */
     @Test
     void response_conforms_to_the_openapi_schema() {
-        assumeTrue(SchemaOracle.specAvailable(),
-                "no OpenAPI doc at " + SchemaOracle.openApiPath() + " — set OPENAPI_PATH to enable the schema oracle");
+        ArgusPrerequisiteError.requireEnv("OPENAPI_PATH");
+        if (!SchemaOracle.specAvailable()) {
+            throw new ArgusPrerequisiteError("OPENAPI_PATH does not name a readable OpenAPI document");
+        }
         given().spec(api.apiAs("user"))
                 .when().get(ApiClient.ORDERS + "/1") // <-- adapt
                 .then().statusCode(200)

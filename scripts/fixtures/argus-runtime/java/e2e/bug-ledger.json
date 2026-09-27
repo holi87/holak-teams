@@ -1,0 +1,20 @@
+{
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
+  "engagementId": "java-runner-e2e",
+  "bugs": [
+    {
+      "id": "BUG-0001",
+      "origin": ["ATA-001"],
+      "title": "Widget read answers 500 instead of the specified widget",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-001",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0001",
+      "evidenceIds": []
+    }
+  ]
+}

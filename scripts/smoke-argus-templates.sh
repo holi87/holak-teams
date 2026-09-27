@@ -337,7 +337,7 @@ if grep -Eq '^[[:space:]]*"pytest-rerunfailures|^[[:space:]]*--reruns' "$WORK/py
 
 run_logged typescript-install bash -c "cd '$WORK/typescript' && npm ci --ignore-scripts"
 run_logged typescript-run bash -c "cd '$WORK/typescript' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline"
-run_logged java-run bash -c "cd '$WORK/java' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline -- -Dtest=TemplateContractTest"
+run_logged java-run bash -c "cd '$WORK/java' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline"
 run_logged python-run bash -c "cd '$WORK/python' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline -- quality/python-tests/contract/test_template_contract.py"
 for runtime in typescript java python; do
   jq -e '."$schema" == "argus/runner-result@1" and .mode == "baseline" and .status == "pass" and .exitCode == 0' "$WORK/$runtime/reports/argus-runner-result.json" >/dev/null || fail "$runtime clean-room runner result is invalid"

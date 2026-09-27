@@ -28,8 +28,9 @@
     <compiler.plugin.version>3.13.0</compiler.plugin.version>
     <exec.plugin.version>3.1.1</exec.plugin.version>
 
-    <!-- Lane selection (@Tag). Empty by default → ALL lanes run. Override on the CLI
-         (-Dgroups=api) or activate a -P<lane> profile below. -->
+    <!-- Lane selection (@Tag). run-tests.sh sets both from solution/test-lanes.tsv and the
+         runner mode. A plain `mvn test` leaves them empty, so every tag runs; narrow it
+         with -Dgroups=api or a -P<lane> profile below. -->
     <groups></groups>
     <excludedGroups></excludedGroups>
   </properties>
@@ -141,8 +142,9 @@
           <trimStackTrace>false</trimStackTrace>
           <!-- Lane selection by @Tag. Bound to the ${groups}/${excludedGroups}
                properties so an unset build runs every lane and -Dgroups=api (or a
-               -P<lane> profile) narrows it. Gated lanes still self-skip via
-               @EnabledIfEnvironmentVariable regardless of selection. -->
+               -P<lane> profile) narrows it. Lanes never self-skip: a disabled lane is
+               left out of the selection by solution/test-lanes.tsv, and an enabled lane
+               whose prerequisite is missing fails as ArgusPrerequisiteError. -->
           <groups>${groups}</groups>
           <excludedGroups>${excludedGroups}</excludedGroups>
           <!-- XML aggregated report lands in target/surefire-reports/ (default). -->
@@ -158,10 +160,11 @@
     <profile><id>perf</id><properties><groups>perf</groups></properties></profile>
     <profile><id>security</id><properties><groups>security</groups></properties></profile>
     <profile><id>db</id><properties><groups>db</groups></properties></profile>
+    <profile><id>resilience</id><properties><groups>resilience</groups></properties></profile>
     <profile><id>regression</id><properties><groups>regression</groups></properties></profile>
 
     <!-- Add your app's JDBC driver here to enable the @db lane's real read-only
-         check (otherwise it self-skips with a "no driver" message). Example:
+         check (otherwise it fails as a missing prerequisite, never a skip). Example:
     <profile>
       <id>postgres</id>
       <dependencies>

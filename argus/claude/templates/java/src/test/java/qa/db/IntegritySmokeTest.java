@@ -2,7 +2,7 @@ package qa.db;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import qa.support.argus.ArgusPrerequisiteError;
 
 import java.sql.Connection;
 import java.sql.Driver;
@@ -12,38 +12,40 @@ import java.sql.Statement;
 import java.util.Enumeration;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * @db lane — GATED on {@code DB_URL}, READ-ONLY only.
+ * @db lane — prerequisite {@code DB_URL}, READ-ONLY only.
  *
  * <p>Direct-DB checks (state integrity, orphan rows, constraint enforcement) need a
- * connection the target may not expose. With no {@code DB_URL} the lane skips (the common
- * black-box case); with one set it verifies the prerequisite is usable. The connection is
- * forced {@link Connection#setReadOnly(boolean) read-only} — this lane never mutates the app.
+ * connection the target may not expose, so {@code solution/test-lanes.tsv} enables this lane
+ * only with {@code DB_URL} (the common black-box case keeps it disabled with a named residual).
+ * When it is enabled, an unset {@code DB_URL} or a missing JDBC driver is reported through
+ * {@link ArgusPrerequisiteError} as {@code prerequisite-missing}; the test never skips itself.
+ * The connection is forced {@link Connection#setReadOnly(boolean) read-only} — this lane never
+ * mutates the app. Messages never echo {@code DB_URL}, which may carry credentials.
  *
- * <p>No JDBC driver is bundled (drivers are app-specific). Add yours in {@code pom.xml}
- * (see the commented {@code postgres} profile); until then the live check self-skips with a
- * clear message rather than failing — consistent with the "gated, not broken" doctrine.
- * ADAPT-ME: add the real integrity queries once DB access is confirmed.
+ * <p>No JDBC driver is bundled (drivers are app-specific). Add yours in {@code pom.xml} (see
+ * the commented {@code postgres} profile). ADAPT-ME: add the real integrity queries once DB
+ * access is confirmed.
  */
 @Tag("db")
-@EnabledIfEnvironmentVariable(named = "DB_URL", matches = ".+")
 class IntegritySmokeTest {
-
-    private static final String DB_URL = System.getenv("DB_URL");
 
     @Test
     void db_url_is_a_jdbc_connection_string() {
-        assertTrue(DB_URL != null && DB_URL.startsWith("jdbc:") && DB_URL.length() > "jdbc:".length(),
-                "DB_URL must be a JDBC URL like 'jdbc:postgresql://host:5432/db', got: '" + DB_URL + "'");
+        String dbUrl = ArgusPrerequisiteError.requireEnv("DB_URL");
+        assertTrue(dbUrl.startsWith("jdbc:") && dbUrl.length() > "jdbc:".length(),
+                "DB_URL must be a JDBC URL like 'jdbc:postgresql://host:5432/db'");
     }
 
     @Test
     void read_only_connection_runs_a_trivial_select() throws Exception {
-        assumeTrue(hasDriverFor(DB_URL),
-                "no JDBC driver on the classpath for " + DB_URL + " — add the driver dependency to pom.xml to enable this check");
-        try (Connection c = DriverManager.getConnection(DB_URL)) {
+        String dbUrl = ArgusPrerequisiteError.requireEnv("DB_URL");
+        if (!hasDriverFor(dbUrl)) {
+            throw new ArgusPrerequisiteError("no JDBC driver on the classpath for the DB_URL scheme"
+                    + " — add the driver dependency to pom.xml");
+        }
+        try (Connection c = DriverManager.getConnection(dbUrl)) {
             c.setReadOnly(true); // this lane NEVER mutates the app under test
             try (Statement s = c.createStatement();
                  ResultSet rs = s.executeQuery("SELECT 1")) { // <-- adapt to a real integrity query
