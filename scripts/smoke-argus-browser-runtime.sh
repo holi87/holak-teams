@@ -139,7 +139,7 @@ jq -e --arg home "$WORK/plant-reuse-home" --arg alias "$WORK/plant-reuse-artifac
   .runtime.modulePath == ($home + "/.cache/argus/browser-runtime/1.0.0/node_modules/playwright") and
   ([.runtime.candidates[].source] | index("artifact-root") == null and index("target") == null and index("workspace") == null) and
   .runtime.candidates[0] == {source:"host-provisioned",modulePath:$alias,result:"invalid",evidence:.runtime.candidates[0].evidence} and
-  (.runtime.candidates[0].evidence | contains("inside the artifact root"))
+  (.runtime.candidates[0].evidence | contains("inside the worker-writable artifact root"))
 ' "$WORK/provision-plant-reuse.json" >/dev/null || { cat "$WORK/provision-plant-reuse.json" >&2; fail 'provision reuse considered a non-host candidate or probed one inside the artifact root'; }
 # (2) Without a launching host runtime ahead of them the planted packages still never run.
 # Whatever the host's global installs do, the outcome is a host reuse or a failed install.
