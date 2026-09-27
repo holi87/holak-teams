@@ -101,8 +101,8 @@
       "source": "argus/RACI-CONTRACT.md",
       "destination": "references/RACI-CONTRACT.md",
       "files": 1,
-      "bytes": 8322,
-      "sha256": "2e49e67c4f39ea5eac6ec9ff85a6c13f6afd804524b03d84d8fec38ef305292e"
+      "bytes": 11198,
+      "sha256": "b223cb47d1098bf87d0c28e23713d7f6809bc10e47b64278dac7d1ffd08c6c39"
     },
     {
       "id": "raci-matrix",
@@ -110,8 +110,8 @@
       "source": "argus/raci.json",
       "destination": "references/raci.json",
       "files": 1,
-      "bytes": 20886,
-      "sha256": "7a780fc9b267b125c5e3698c73576e6e5b6267e9c1e590e6572fcb508e656286"
+      "bytes": 24644,
+      "sha256": "4b1006ee0c3492e62842ac5bd591f71816c21d2309aeb5f535a4dc710f8c5c66"
     },
     {
       "id": "orchestration-core-skill",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 9,
-      "bytes": 269198,
-      "sha256": "34977992cdabc37700590aa4507a93bf9cb443a5159c52ddcbe20df6b9e495ff"
+      "bytes": 270502,
+      "sha256": "b0f5ab6f2cf299db1eef3c4e64318cba7bb4ac4a8dcf5a89027dcb60d6997bce"
     },
     {
       "id": "common-template",
