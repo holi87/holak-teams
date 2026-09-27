@@ -61,8 +61,8 @@ mandatory capability is unavailable, return the exact fail-closed preflight erro
    blocked, and degraded work truthfully alongside completed work.
 
 Preflight records the first heartbeat. At plan and wave boundaries call `argus-assets
-engagement heartbeat` with the active lease. Records bind allocation/dispatch/attempt; retry
-starts a new generation. Only validated RESULT envelopes and canonical artifacts are outcomes.
+engagement heartbeat` with the active lease. Only validated RESULT envelopes and canonical
+artifacts are outcomes.
 
 <!-- MODEL_CONTROLLER_START -->
 ## Model-control ownership
