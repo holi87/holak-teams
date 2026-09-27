@@ -63,6 +63,25 @@
       "scripts/driver.config.example.json",
       "scripts/driver-config.schema.json"
     ],
+    "ownedArtifactRoots": [
+      { "path": "solution/test-lanes.tsv", "owners": ["atlas"] },
+      { "path": "solution/environment.tsv", "owners": ["atlas"] },
+      { "path": "solution/quarantine.tsv", "owners": ["atlas", "asklepios"] },
+      { "path": "solution/counterfactual", "owners": ["atlas", "talos", "daidalos", "nike", "aegis", "mnemosyne"] },
+      { "path": "scripts/runner-lib.sh", "owners": ["atlas"] },
+      { "path": "scripts/runner-contract.sh", "owners": ["atlas"] },
+      { "path": "scripts/outcome-event.sh", "owners": ["atlas"] },
+      { "path": "scripts/quarantine-contract.sh", "owners": ["atlas"] },
+      { "path": "scripts/lane-plan.sh", "owners": ["atlas"] },
+      { "path": "scripts/environment-gate.sh", "owners": ["atlas"] },
+      { "path": "scripts/inventory-gate.sh", "owners": ["atlas"] },
+      { "path": "scripts/evidence-gate.sh", "owners": ["atlas"] },
+      { "path": "scripts/argus-playwright-reporter.mjs", "owners": ["atlas"] },
+      { "path": "scripts/baseline-coverage.mjs", "owners": ["atlas"] }
+    ],
+    "selectedTemplateRoots": {
+      "harnessRootOwners": ["atlas", "talos", "daidalos", "nike", "aegis", "mnemosyne", "asklepios"]
+    },
     "canonicalArtifacts": [
       { "path": "README.md", "owner": "kleio", "format": "markdown" },
       { "path": "run-tests.sh", "owner": "atlas", "format": "text" },
