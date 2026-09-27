@@ -54,8 +54,8 @@ Write a host-local `argus-eval/comparison-config@2` configuration (`schemas/comp
 {
   "schema": "argus-eval/comparison-config@2",
   "variants": [
-    {"name":"baseline","revision":"<full-baseline-commit>","command":["/secure/argus-eval-baseline-adapter"]},
-    {"name":"candidate","revision":"<full-candidate-commit>","command":["/secure/argus-eval-candidate-adapter"]}
+    {"name":"baseline","revision":"<full-baseline-commit>","command":["/secure/argus-eval-adapters/<full-baseline-commit>"]},
+    {"name":"candidate","revision":"<full-candidate-commit>","command":["/secure/argus-eval-adapters/<full-candidate-commit>"]}
   ],
   "modes": ["B"],
   "builds": ["faulty", "corrected"],
@@ -81,7 +81,7 @@ Write a host-local `argus-eval/comparison-config@2` configuration (`schemas/comp
 - `corpusModule`: an optional private corpus (above), resolved relative to the configuration file.
 - `testMode`: smoke tests only; allowed only with `ARGUS_EVAL_SMOKE=1`, and lowers the `secondsByMode` and `secondsPerRunner` minimums to 1.
 
-For every repeat, mode, and build, each variant runs once, in alternating order on odd repeats, against a fresh application started with the repeat seed. Its private run ID is `r<repeat>-<mode>-<build>-<variant>`: it names the run in `sealed/` and in every evaluator document (private runs, judge verdicts, spot-check sheets, final verdicts, and summaries). A hunter never sees it. Each run also draws an opaque public ID, 16 random hex digits, recorded as `publicId` in the private results; it is the only run identity in hunter-visible places: the `active/<publicId>/` directory and every path under it, the `runId` of the hunt and replay requests, and the engagement ID `eval-<publicId>`, which `argus-launch` writes into the controller prompt. So neither the build (`faulty` or `corrected`) nor the variant name nor a seed ID reaches the hunter through a run ID or an evaluator-created path. Paths the operator chooses (`workRoot`, the output directory, and adapter checkouts, whose plugin root `argus-launch` passes to Claude) must not name them either.
+For every repeat, mode, and build, each variant runs once, in alternating order on odd repeats, against a fresh application started with the repeat seed. Its private run ID is `r<repeat>-<mode>-<build>-<variant>`: it names the run in `sealed/` and in every evaluator document (private runs, judge verdicts, spot-check sheets, final verdicts, and summaries). A hunter never sees it. Each run also draws an opaque public ID, 16 random hex digits, recorded as `publicId` in the private results; it is the only run identity in hunter-visible places: the `active/<publicId>/` directory and every path under it, the `runId` of the hunt and replay requests, and the engagement ID `eval-<publicId>`, which `argus-launch` writes into the controller prompt. So neither the build (`faulty` or `corrected`) nor the variant name nor a seed ID reaches the hunter through a run ID or an evaluator-created path. Paths the operator chooses must not name them either: `workRoot`, the output directory, adapter commands (the OS sandbox confines writes, not reads, so a hunter may see process argument lists), and adapter checkouts, whose plugin root `argus-launch` passes to Claude.
 
 ### Host adapter contract
 
