@@ -1215,7 +1215,7 @@ function batchNonNegativeNumber(value, label) {
 }
 
 // Batch telemetry: the controller records up to 64 events for immutable decisions in one call.
-// The controller token is authenticated before any entry is read; every decision must be the
+// The controller token is authenticated before any entry is parsed; every decision must be the
 // active, live binding of its lane, and all events are appended in one atomic write that is
 // refused whole if any decision already has telemetry.
 function modelTelemetryBatch(args) {
@@ -1229,6 +1229,10 @@ function modelTelemetryBatch(args) {
   }
   requireOptions(options, ['manifest', 'json'], 'batch model telemetry');
   if (!nonEmptyString(options.controllerToken)) fail('batch model telemetry requires --controller-token');
+  assertTrustedModelRoutingAssets();
+  const context = loadModelEngagement(options.manifest);
+  requirePinnedModelTrust(context);
+  requireControllerCapability(context, options.controllerToken, 'batch model telemetry');
   const entries = parseBatchJson(options.json, {
     label: 'batch model telemetry',
     root: 'events',
@@ -1248,10 +1252,6 @@ function modelTelemetryBatch(args) {
     },
   });
   uniqueBatchValues(entries.map((entry) => entry.decisionId), 'batch model telemetry decisionIds');
-  assertTrustedModelRoutingAssets();
-  const context = loadModelEngagement(options.manifest);
-  requirePinnedModelTrust(context);
-  requireControllerCapability(context, options.controllerToken, 'batch model telemetry');
   const state = getEngagementStatus(context.engagement);
   const decisionDirectory = resolve(context.artifactRoot, modelPolicy.routing.decisionDirectory);
   const events = entries.map(({ decisionId, ...metrics }) => {
@@ -2944,8 +2944,8 @@ function engagementCleanup(args) {
 }
 
 // Controller batch verbs authenticate the argv controller token against the active Odysseus
-// allocation before any entry is attempted, so a worker token is refused outright instead of
-// producing one failure per entry. The runtime re-checks it, with the live lease marker, for
+// allocation before any entry is parsed or attempted, so a worker token is refused outright
+// instead of producing one failure per entry. The runtime re-checks it, with the live lease marker, for
 // every entry under the state lock.
 function requireEngagementControllerToken(engagement, token, label) {
   if (!nonEmptyString(token)) fail(`${label} requires --controller-token`);
@@ -2965,16 +2965,15 @@ function engagementBarrierArriveBatch(args) {
     if (options[forbidden] !== undefined) fail(`batch engagement barrier arrive does not accept --${forbidden}; --json lists the lanes`);
   }
   requireOptions(options, ['manifest', 'phase', 'json'], 'batch engagement barrier arrive');
-  if (!nonEmptyString(options.controllerToken)) fail('batch engagement barrier arrive requires --controller-token');
+  const { manifest: engagement } = loadEngagement(options);
+  requireEngagementControllerToken(engagement, options.controllerToken, 'batch engagement barrier arrive');
+  if (!engagement.phasePlan.some((phase) => phase.id === options.phase)) fail(`batch engagement barrier arrive: unknown phase ${options.phase}`);
   const lanes = uniqueBatchValues(parseBatchJson(options.json, {
     label: 'batch engagement barrier arrive',
     root: 'lanes',
     max: 32,
     validateEntry: batchLane,
   }), 'batch engagement barrier arrive lanes');
-  const { manifest: engagement } = loadEngagement(options);
-  if (!engagement.phasePlan.some((phase) => phase.id === options.phase)) fail(`batch engagement barrier arrive: unknown phase ${options.phase}`);
-  requireEngagementControllerToken(engagement, options.controllerToken, 'batch engagement barrier arrive');
   const results = [];
   const failed = [];
   for (const lane of lanes) {
@@ -3007,7 +3006,8 @@ function engagementCleanupBatch(args) {
     if (options[forbidden] !== undefined) fail(`batch engagement cleanup does not accept --${forbidden}; each --json entry names its lane and outcome`);
   }
   requireOptions(options, ['manifest', 'json'], 'batch engagement cleanup');
-  if (!nonEmptyString(options.controllerToken)) fail('batch engagement cleanup requires --controller-token');
+  const { manifest: engagement } = loadEngagement(options);
+  requireEngagementControllerToken(engagement, options.controllerToken, 'batch engagement cleanup');
   const cleanups = parseBatchJson(options.json, {
     label: 'batch engagement cleanup',
     root: 'cleanups',
@@ -3021,8 +3021,6 @@ function engagementCleanupBatch(args) {
     },
   });
   uniqueBatchValues(cleanups.map((cleanup) => cleanup.lane), 'batch engagement cleanup lanes');
-  const { manifest: engagement } = loadEngagement(options);
-  requireEngagementControllerToken(engagement, options.controllerToken, 'batch engagement cleanup');
   const results = [];
   const failed = [];
   for (const { lane, outcome } of cleanups) {

@@ -314,10 +314,13 @@ jq -e '.schema == "argus/engagement-barrier-batch@1" and .phase == "discovery" a
 "$CLI" engagement barrier status --manifest "$MANIFEST" --phase discovery | jq -e '.arrived == ["kalchas"] and (.missing | index("kalchas") == null)' >/dev/null || \
   fail 'barrier status does not reflect the batch arrival of kalchas'
 status=0
-"$CLI" engagement barrier arrive --manifest "$MANIFEST" --phase discovery --json '{"lanes":["tiresias","metis"]}' --controller-token "$ODYSSEUS" >"$WORK/arrive-partial.json" || status=$?
+"$CLI" engagement barrier arrive --manifest "$MANIFEST" --phase discovery --json '{"lanes":["tiresias","metis","odysseus"]}' --controller-token "$ODYSSEUS" >"$WORK/arrive-partial.json" || status=$?
 [ "$status" -eq 1 ] || fail "a partially failed batch arrival exited $status instead of 1"
+# Odysseus is authenticated on its own lease (the controller token), so its refusal is the
+# participant rule, never a missing lane token.
 jq -e '.results == [{lane: "metis", authority: "controller", arrived: true}] and
-  (.failed | length) == 1 and .failed[0].lane == "tiresias" and (.failed[0].error | contains("no active allocation exists for tiresias")) and
+  ([.failed[].lane] == ["tiresias", "odysseus"]) and (.failed[0].error | contains("no active allocation exists for tiresias")) and
+  (.failed[1].error | contains("odysseus is not a participant in discovery")) and
   .barrier.arrived == ["kalchas", "metis"]' \
   "$WORK/arrive-partial.json" >/dev/null || fail "a batch arrival did not attempt every lane independently: $(cat "$WORK/arrive-partial.json")"
 
