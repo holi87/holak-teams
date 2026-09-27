@@ -194,7 +194,7 @@ assert(gatedA.deepHunt.roles.length === 0
 assert(gatedA.proofLoop.validatorSelected === false && gatedA.proofLoop.oracleDeskSelected === true && gatedA.proofLoop.clusters.length === 0,
   'gated projection must report an unselected validator and project no validator clusters');
 const gatedProof = gatedA.phases.find((phase) => phase.id === 'proof');
-assert(gatedProof.participants.length === 0 && sameSet(gatedProof.standby, ['metis']),
+assert(gatedProof.participants.length === 0 && sameSet(gatedProof.standby, ['metis', 'theseus']),
   'gated projection kept an unselected validator or standby lane in the proof phase');
 assert(gatedA.phases.filter((phase) => phase.kind === 'deep-hunt').every((phase) => phase.participants.length === 0),
   'gated projection kept unselected deep-hunt participants');
@@ -214,12 +214,35 @@ assert(validateOrchestrationPlan(plan, matrix).length === 0 && derivePhasePlan(p
   'phase derivation must not require a RACI contract');
 
 // Without a RACI contract only the plan-internal standby rules apply; the candidate-lane
-// standby and cluster-coverage rules come from RACI persistence.
+// standby and cluster-coverage rules come from RACI persistence. The plan-internal rule keeps
+// every proofLoop cluster lane reachable for proof repair: on standby, or holding a later phase.
 const thinStandby = structuredClone(plan);
-thinStandby.phases.find((phase) => phase.id === 'proof').standby = ['metis'];
+thinStandby.phases.find((phase) => phase.id === 'proof').standby = ['asklepios', 'metis', 'penelope', 'pistis', 'theseus'];
 assert(validateOrchestrationPlan(thinStandby, matrix).length === 0, 'RACI-derived standby rule ran without a RACI contract');
 assert(validateOrchestrationPlan(thinStandby, matrix, raci).includes('proof: standby must include antigone'),
   'proof standby did not require RACI candidate lanes');
+for (const slug of ['penelope', 'pistis', 'theseus']) {
+  const unreachable = structuredClone(plan);
+  const proofPhase = unreachable.phases.find((phase) => phase.id === 'proof');
+  proofPhase.standby = proofPhase.standby.filter((lane) => lane !== slug);
+  assert(validateOrchestrationPlan(unreachable, matrix).includes(`proof: standby must include ${slug}`),
+    `proof standby accepted cluster lane ${slug} released before its proof repair`);
+}
+const lateParticipant = structuredClone(plan);
+const automationPhase = lateParticipant.phases.find((phase) => phase.id === 'automation');
+automationPhase.participants = automationPhase.participants.filter((lane) => lane !== 'daidalos');
+assert(validateOrchestrationPlan(lateParticipant, matrix).includes('proof: standby must include daidalos'),
+  'a cluster lane with no later phase stayed reachable for proof repair');
+
+// Proof-loop exhaustion is one rule: after maxRepairRounds a finding keeps its non-confirmed
+// status, so Minos's routing contract may not close an exhausted bounce as another status.
+const minosRouting = readFileSync(join(ROOT, 'argus/roles/minos.md'), 'utf8').split('\n');
+const bouncedRouting = minosRouting.find((line) => line.startsWith('- bounced:'));
+const quarantinedRouting = minosRouting.find((line) => line.startsWith('- quarantined:'));
+assert(plan.proofLoop.exhaustion.includes('keeps its non-confirmed status'), 'proofLoop.exhaustion no longer keeps the non-confirmed status');
+assert(bouncedRouting?.includes('stays `bounced` as a named residual') && !/\b(rejected|suspected|needs-oracle)\b/u.test(bouncedRouting),
+  `Minos bounced routing contradicts proofLoop.exhaustion: ${bouncedRouting}`);
+assert(quarantinedRouting?.includes('stays `quarantined` as a named residual'), `Minos quarantined routing has no end state: ${quarantinedRouting}`);
 
 // RACI reproduce routes: independent reproduction runs in the proof phases, so a reproducer
 // must hold a lane before the first proof phase and can never discover the same surface.

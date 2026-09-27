@@ -74,9 +74,9 @@ Counts: headline <c + s> = confirmed c + suspected s | needs-oracle x · bounced
 | Rank | BUG-NNNN | Title | Severity | Priority | Origin (lane id) | REQ/RISK | Dedup | Triage note (rationale / change from hunter) |
 
 ### Proof routing (machine)
-- bounced: BUG-NNNN — <filing lane> — repair.missing <items> — round <n> (after the last round it becomes needs-oracle, suspected, or rejected; never dropped)
+- bounced: BUG-NNNN — <filing lane> — repair.missing <items> — round <n> (moves only when a repair supplies the missing items; after `maxRepairRounds` it stays `bounced` as a named residual, never dropped)
 - needs-oracle: BUG-NNNN — <behaviour, evidence, candidate readings>
-- quarantined: BUG-NNNN — <filing lane> — quarantine.reasons <reasons>
+- quarantined: BUG-NNNN — <filing lane> — quarantine.reasons <reasons> (without fresh evidence it stays `quarantined` as a named residual)
 - reproductionRequests: {id, surface, steps, oracleId} per row
 - newConfirmed: [BUG-NNNN, …] merged in this pass
 

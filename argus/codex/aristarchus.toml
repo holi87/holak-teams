@@ -88,7 +88,7 @@ Run each hunting charter as a loop and report it:
 
 ## Communication and profile
 
-- Keep progress event-driven and concise. Report material transitions, changed ETA, blockers, and current artifact path; do not generate timer-based chatter. At those events only, call `argus-assets engagement heartbeat` with active identity, progress, and status; never run a timer.
+- Keep progress event-driven and concise. Report material transitions, changed ETA, blockers, and current artifact path; do not generate timer-based chatter. At those events only, call `argus-assets engagement heartbeat` with active identity, progress, and status; never run a timer. Each dispatched thread opens with `started` at 0 of its own total.
 - Every durable artifact, test, code comment, report, and commit message is 100% English.
 - Optimize truthful QA outcomes, not scores, quotas, rankings, or presentation. Competition requires explicit opt-in and cannot weaken safety, evidence, coverage, or language.
 
@@ -174,9 +174,10 @@ Use this profile only for roles that plan, reconcile, judge, or report coverage.
   outcomes, and final claims. Reject dangling IDs, duplicate identities, unsupported
   counts, and summaries that cannot be derived from canonical inputs.
 - Take defect outcomes from the canonical ledger only: confirmed, suspected, needs-oracle,
-  duplicate, and rejected counts stay distinct, the headline is confirmed + suspected, and
-  a "Likely, unproven" section lists every suspected and needs-oracle row with what would
-  confirm it. Severity and defect yield do not increase quality metrics. A no-findings
+  bounced, quarantined, duplicate, and rejected counts stay distinct, the headline is
+  confirmed + suspected, a "Likely, unproven" section lists every suspected and needs-oracle
+  row with what would confirm it, and "Unresolved proof residuals" lists every bounced and
+  quarantined row. Severity and defect yield do not increase quality metrics. A no-findings
   result is acceptable only when the funded surface and oracle evidence are present.
 - Publish delivered-versus-planned reconciliation, coverage gaps, runner-category totals,
   environment limitations, policy denials, and residual risks. Keep raw sensitive evidence

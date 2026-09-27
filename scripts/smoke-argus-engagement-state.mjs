@@ -70,12 +70,16 @@ try {
   testDerivedPhasePlan();
   testProofPhaseRequiresLedgerMerge();
   testLedgerSnapshotNewConfirmed();
+  testWorkPhaseMergeKeepsNewConfirmed();
   testConvergedSkip();
+  testProofResidualsReachFinalSummary();
   testStandbyBlocksSuccessCleanup();
+  testClusterLaneStandbyDuringProof();
   testConditionalLaneProjection();
   testConditionalGateResolution();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
+  testRedispatchedHeartbeatWorkUnits();
   console.log('PASS  Argus engagement state: derived phases, standby, proof ledger gate, recorded skips, conditional lanes, one-shot gate resolution, decision-bound leases, authenticated heartbeat, and link defenses');
 } finally {
   rmSync(work, { recursive: true, force: true });
@@ -457,6 +461,51 @@ function testLedgerSnapshotNewConfirmed() {
   for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
 }
 
+// A ledger merge outside a proof phase (rolling triage during a deep hunt) records its own
+// snapshot, but convergence compares only against earlier proof phases: a defect first
+// confirmed during deep-hunt-1 is still new at deep-proof-1 and blocks the converged skip.
+function testWorkPhaseMergeKeepsNewConfirmed() {
+  const fixture = createFixture('ledger-work-phase-merge', ['hermes', 'minos', 'odysseus']);
+  const { manifest, root } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('work-merge-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('work-merge-minos') });
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: controller.token, executionBinding: executionBinding('work-merge-hermes') });
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  mergeEmptyLedger(fixture, minos.token, 'work-merge-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'deep-hunt-1', 'phase did not reach deep-hunt-1');
+  const evidenceBytes = 'synthetic reproduction request\n';
+  mkdirSync(join(root, 'reports'), { recursive: true });
+  writeFileSync(join(root, 'reports/request-1.txt'), evidenceBytes);
+  const evidence = structuredClone(evidenceFixture);
+  evidence.engagementId = manifest.engagementId;
+  evidence.references = [{ ...evidence.references[0], sha256: createHash('sha256').update(evidenceBytes).digest('hex') }];
+  writeFragment(manifest, 'hermes', hermes.token, 'solution/evidence-reference.json', 'hermes-evidence', `${JSON.stringify(evidence)}\n`);
+  const ledger = { ...structuredClone(bugLedgerFixture), engagementId: manifest.engagementId };
+  writeFragment(manifest, 'minos', minos.token, 'solution/bug-ledger.json', 'work-merge-confirmed', `${JSON.stringify(ledger)}\n`);
+  mergeCanonical(manifest, 'minos', minos.token, 'solution/bug-ledger.json');
+  const hunt = getEngagementStatus(manifest).ledgerSnapshots['deep-hunt-1'];
+  assert(JSON.stringify(hunt?.newConfirmed) === '["BUG-0001"]', `deep-hunt-1 merge did not record BUG-0001 as newly confirmed: ${JSON.stringify(hunt)}`);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'deep-hunt-1');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'deep-proof-1');
+  mergeCanonical(manifest, 'minos', minos.token, 'solution/bug-ledger.json');
+  const deepProof = getEngagementStatus(manifest).ledgerSnapshots['deep-proof-1'];
+  assert(JSON.stringify(deepProof.confirmed) === '["BUG-0001"]' && JSON.stringify(deepProof.newConfirmed) === '["BUG-0001"]',
+    `a deep-hunt merge masked a defect first confirmed in pass 1: ${JSON.stringify(deepProof)}`);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => skipPhases(manifest, 'odysseus', controller.token, 'converged'),
+    'converged skip requires deep-proof-1 to record zero new confirmed defects',
+    'converged skip after a pass whose defect was merged during the deep hunt',
+  );
+  assert(getEngagementStatus(manifest).currentPhase === 'deep-hunt-2', 'refused converged skip moved the phase cursor');
+  for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
 function testConvergedSkip() {
   const converged = runToSecondDeepHunt('converged-skip');
   const { manifest } = converged.fixture;
@@ -494,6 +543,39 @@ function testConvergedSkip() {
   const budgetSummary = readSolutionJson(budget.fixture, 'final-summary.json');
   assert(budgetSummary.status === 'degraded' && JSON.stringify(budgetSummary.statusReasons) === '["deep-hunt-skipped:controller-budget"]',
     `controller-budget skip did not degrade a completed final summary through its status reason: ${JSON.stringify(budgetSummary)}`);
+}
+
+// proofLoop.exhaustion: a finding the proof loop left bounced or quarantined is a named residual
+// of the final report. The merge counts and lists it and caps the summary at degraded.
+function testProofResidualsReachFinalSummary() {
+  const run = runToSecondDeepHunt('proof-residuals');
+  const { manifest, root } = run.fixture;
+  skipPhases(manifest, 'odysseus', run.tokens.controller, 'converged');
+  const bounced = {
+    ...structuredClone(bugLedgerFixture.bugs.find((bug) => bug.status === 'bounced')),
+    id: 'BUG-0001', origin: ['HER-001'], lane: 'hermes', repair: { round: 2, missing: ['reproduction'], assignedTo: 'hermes' },
+  };
+  const quarantined = {
+    id: 'BUG-0002', origin: ['HER-002'], title: 'Refund posts twice after a gateway timeout', severity: 'Blocker', priority: 'P1', lane: 'hermes',
+    oracleId: 'ORC-API-001', status: 'quarantined', wired: false, testId: null, evidenceIds: [], quarantine: { reasons: ['evidence digest drift EVD-0009'] },
+  };
+  const ledger = { $schema: 'argus/bug-ledger@2', schemaVersion: 2, engagementId: manifest.engagementId, bugs: [bounced, quarantined] };
+  writeFragment(manifest, 'minos', run.tokens.minos, 'solution/bug-ledger.json', 'proof-residuals-ledger', `${JSON.stringify(ledger)}\n`);
+  mergeCanonical(manifest, 'minos', run.tokens.minos, 'solution/bug-ledger.json');
+  mergeFinalSummary(run.fixture, run.tokens.kleio);
+  const summary = readSolutionJson(run.fixture, 'final-summary.json');
+  assert(summary.status === 'degraded' && JSON.stringify(summary.statusReasons) === '["unresolved-proof-residuals"]',
+    `unresolved proof residuals did not degrade the final summary: ${JSON.stringify(summary.statusReasons)}`);
+  assert(summary.counts.bugs.bounced === 1 && summary.counts.bugs.quarantined === 1 && summary.counts.bugs.headline === 0,
+    `final summary does not count the proof residuals: ${JSON.stringify(summary.counts.bugs)}`);
+  assert(JSON.stringify(summary.residuals.map((entry) => [entry.id, entry.status, entry.repairRound, entry.missing, entry.reasons])) ===
+    JSON.stringify([['BUG-0001', 'bounced', 2, ['reproduction'], []], ['BUG-0002', 'quarantined', null, [], ['evidence digest drift EVD-0009']]]),
+  `final summary dropped or misreported a proof residual: ${JSON.stringify(summary.residuals)}`);
+  const markdown = readFileSync(join(root, 'solution/FINAL-SUMMARY.md'), 'utf8');
+  assert(markdown.includes('\n- BUG-0001 (Major, bounced): ') && markdown.includes('\n- BUG-0002 (Blocker, quarantined): '),
+    'FINAL-SUMMARY.md does not name every proof residual');
+  for (const lane of ['hermes', 'kleio', 'minos']) cleanupWorker(manifest, lane, run.tokens[lane], 'interrupted');
+  cleanupWorker(manifest, 'odysseus', run.tokens.controller, 'interrupted');
 }
 
 function testStandbyBlocksSuccessCleanup() {
@@ -541,6 +623,30 @@ function testStandbyBlocksSuccessCleanup() {
   );
   cleanupWorker(manifest, 'minos', minos.token, 'failure');
   cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// A path-analyst lane files leads that Minos validates in a proofLoop cluster and may bounce
+// back for repair, so its lease survives the first proof phase and releases only after it.
+function testClusterLaneStandbyDuringProof() {
+  const fixture = createFixture('cluster-lane-standby', ['minos', 'odysseus', 'theseus']);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('cluster-standby-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('cluster-standby-minos') });
+  const theseus = allocateWorker(manifest, 'theseus', { controllerToken: controller.token, executionBinding: executionBinding('cluster-standby-theseus') });
+  assert(JSON.stringify(manifest.phasePlan.find((phase) => phase.id === 'proof').standby) === '["theseus"]', 'theseus is not on proof standby');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'theseus', theseus.token, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'theseus', theseus.token, 'success'),
+    'theseus success cleanup is not yet available: pending proof; the lease stays active and Odysseus performs terminal cleanup',
+    'path-analyst success cleanup before its proof repair',
+  );
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  mergeEmptyLedger(fixture, minos.token, 'cluster-standby-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(cleanupWorker(manifest, 'theseus', theseus.token, 'success').released === true, 'theseus did not release after the proof phase passed');
+  for (const [lane, token] of [['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
 }
 
 // The conditional map is sealed with the dispatchable projection: normalized, restricted to
@@ -768,8 +874,8 @@ function mergeFinalSummary(fixture, token) {
 
   const summary = structuredClone(finalSummaryFixture);
   summary.engagementId = fixture.manifest.engagementId;
-  Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [] });
-  summary.counts = { bugs: { confirmed: 0, suspected: 0, needsOracle: 0, duplicate: 0, rejected: 0, headline: 0 }, regression: { wired: 0, uncovered: [] }, automated: 0, evidence: 0 };
+  Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [], residuals: [] });
+  summary.counts = { bugs: { confirmed: 0, suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, headline: 0 }, regression: { wired: 0, uncovered: [] }, automated: 0, evidence: 0 };
   summary.automationReview = { status: 'not-applicable', reviewId: null, round: null, blockers: 0, warnings: 0 };
   writeFragment(fixture.manifest, 'kleio', token, 'solution/final-summary.json', 'final-summary', `${JSON.stringify(summary)}\n`);
   mergeCanonical(fixture.manifest, 'kleio', token, 'solution/final-summary.json');
@@ -933,6 +1039,37 @@ function testAuthenticatedMonotonicHeartbeats() {
   );
   assert(readFileSync(statePeer, 'utf8') === stateBefore, 'hard-linked state peer was modified');
   unlinkSync(statePeer);
+}
+
+// A phase-scoped re-dispatch (Minos cluster threads, the consolidator, a repair round) reuses
+// the lane's allocation, so it cannot open a new execution generation. A `started` record at
+// completed 0 opens a new work unit instead; every monotonic rule still holds inside a unit.
+function testRedispatchedHeartbeatWorkUnits() {
+  const { manifest } = createFixture('heartbeat-work-units', ['hermes', 'minos', 'odysseus']);
+  const odysseus = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('work-unit-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: odysseus.token, executionBinding: executionBinding('work-unit-minos') });
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: odysseus.token, executionBinding: executionBinding('work-unit-hermes') });
+  let second = 0;
+  const at = () => `2026-07-12T09:00:${String(second++).padStart(2, '0')}.000Z`;
+  const beat = (lane, token, completed, total, status) => appendHeartbeat(manifest, lane, token, 'proof', completed, total, status, at());
+  // Two cluster threads, each a complete work unit, then the consolidator.
+  for (let cluster = 0; cluster < 2; cluster += 1) {
+    beat('minos', minos.token, 0, 1, 'started');
+    beat('minos', minos.token, 1, 1, 'complete');
+  }
+  beat('minos', minos.token, 0, 3, 'started');
+  beat('minos', minos.token, 1, 3, 'running');
+  expectThrowMessage(() => beat('minos', minos.token, 0, 3, 'running'), 'heartbeat progress regressed from 1 to 0', 'progress regression inside a consolidator work unit');
+  expectThrowMessage(() => beat('minos', minos.token, 1, 4, 'running'), 'heartbeat total changed within proof', 'total drift inside a consolidator work unit');
+  beat('minos', minos.token, 3, 3, 'complete');
+  expectThrowMessage(() => beat('minos', minos.token, 3, 3, 'running'), 'heartbeat status regressed from complete to running', 'resume after completion inside one work unit');
+  expectThrowMessage(() => beat('minos', minos.token, 1, 2, 'started'), 'heartbeat total changed within proof', 'a started record with progress opened a work unit');
+  // Repair round 2 reopens the filing lane on its lease, also after a thread that ended at running.
+  beat('hermes', hermes.token, 0, 2, 'running');
+  beat('hermes', hermes.token, 1, 2, 'running');
+  beat('hermes', hermes.token, 0, 1, 'started');
+  beat('hermes', hermes.token, 1, 1, 'complete');
+  for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', odysseus.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
 }
 
 function executionBinding(seed, overrides = {}) {

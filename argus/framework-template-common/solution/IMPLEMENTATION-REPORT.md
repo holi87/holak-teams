@@ -24,11 +24,14 @@ Copy every count from `argus-assets engagement report-facts`; never hand-count.
 
 - Filed: `<n>` origin files in `bugs/`; canonical rows: `<n>` in Minos's ledger.
 - Defect headline (confirmed + suspected): `<n>` = confirmed `<n>` + suspected `<n>`
-- Needs oracle: `<n>` · duplicate: `<n>` · rejected: `<n>`
+- Needs oracle: `<n>` · bounced: `<n>` · quarantined: `<n>` · duplicate: `<n>` · rejected: `<n>`
 - Every confirmed bug has native `regression` selection plus `@bug:<canonical-or-origin>` provenance: `<wired n; uncovered: none / BUG-IDs>`.
 
 ### Likely, unproven
 <one line per suspected or needs-oracle row: BUG-NNNN (severity, status): title — would be confirmed by: missing proof — detail; `None.` when empty>
+
+### Unresolved proof residuals
+<one line per bounced or quarantined row left after the proof-repair rounds: BUG-NNNN (severity, status): title — repair round — missing items or quarantine reasons; `None.` when empty>
 
 ## 5. Automation review
 - Aristarchus verdict (`argus-assets automation-review check`): `<APPROVE / BLOCK / STALE / ABSENT / NOT-APPLICABLE>` · review `<REV-NN>` · round `<n>` · blockers `<n>` · warnings `<n>`

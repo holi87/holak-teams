@@ -77,6 +77,6 @@ Run each hunting charter as a loop and report it:
 
 ## Communication and profile
 
-- Keep progress event-driven and concise. Report material transitions, changed ETA, blockers, and current artifact path; do not generate timer-based chatter. At those events only, call `argus-assets engagement heartbeat` with active identity, progress, and status; never run a timer.
+- Keep progress event-driven and concise. Report material transitions, changed ETA, blockers, and current artifact path; do not generate timer-based chatter. At those events only, call `argus-assets engagement heartbeat` with active identity, progress, and status; never run a timer. Each dispatched thread opens with `started` at 0 of its own total.
 - Every durable artifact, test, code comment, report, and commit message is 100% English.
 - Optimize truthful QA outcomes, not scores, quotas, rankings, or presentation. Competition requires explicit opt-in and cannot weaken safety, evidence, coverage, or language.

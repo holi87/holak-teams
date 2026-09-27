@@ -402,6 +402,8 @@ function validatePhases(plan, phases, planBySlug, proofCandidates, errors) {
     }
   }
 
+  validateClusterReachability(phases, planBySlug, proofLoop, errors);
+
   const maxPasses = Number.isInteger(deepHunt.maxPasses) ? deepHunt.maxPasses : 0;
   const deepModes = stringList(deepHunt.modes);
   const automation = phases.find((phase) => phase.id === 'automation');
@@ -429,6 +431,25 @@ function validatePhases(plan, phases, planBySlug, proofCandidates, errors) {
     if (first && WAVE_ORDER.includes(first.wave) && role.wave !== first.wave) {
       errors.push(`${slug}: wave ${String(role.wave)} differs from its first phase ${first.id} (${first.wave})`);
     }
+  }
+}
+
+// Minos bounces or quarantines a cluster lane's filing back to that lane for repair inside the
+// first proof phase, so the lane must still hold its allocation then. Mirroring the runtime's
+// success-cleanup rule, a lane keeps it while it is a participant or standby of that phase or
+// of any later phase active in the same mode; otherwise it must be on the proof standby.
+function validateClusterReachability(phases, planBySlug, proofLoop, errors) {
+  const first = phases.findIndex((phase) => phase.kind === 'proof' && phase.pass === 0);
+  if (first === -1) return;
+  const proofId = String(phases[first].id);
+  const clusters = Array.isArray(proofLoop.validatorPasses?.clusters) ? proofLoop.validatorPasses.clusters.filter(isObject) : [];
+  const lanes = new Set(clusters.flatMap((cluster) => stringList(cluster.lanes)));
+  for (const slug of [...lanes].sort()) {
+    const unreachable = stringList(planBySlug.get(slug)?.modes).some((mode) => stringList(phases[first].modes).includes(mode) &&
+      !phases.slice(first).some((phase) => stringList(phase.modes).includes(mode) &&
+        (stringList(phase.participants).includes(slug) || stringList(phase.standby).includes(slug))));
+    const message = `${proofId}: standby must include ${slug}`;
+    if (unreachable && !errors.includes(message)) errors.push(message);
   }
 }
 

@@ -155,7 +155,8 @@ final summary.
 Every re-dispatch reuses the lane's active allocation and token.
 Run at most one thread per lane at a time. The brief states that the lease stays active and
 the thread must not run cleanup, and it names the next checkpoint sequence from
-`argus-assets engagement status`. When a lane has no pending participant or standby phase,
+`argus-assets engagement status`; the thread opens its heartbeat with `started` at 0 of its
+own total. When a lane has no pending participant or standby phase,
 emit its telemetry and run its terminal `success` cleanup.
 
 ## Turn budget

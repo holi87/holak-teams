@@ -420,7 +420,10 @@ inspection is in scope.
 record carries the active allocation ID, dispatch ID, and attempt; `start-attempt` begins a
 new heartbeat generation on the same allocation/dispatch, and a generation may advance only
 by one attempt. Progress within one generation is event-driven and monotonic by timestamp,
-phase, completed units, and terminal status;
+phase, completed units, and terminal status. Within a phase, a `started` record at
+completed 0 opens a new work unit with its own total, so a phase-scoped re-dispatch on the
+same allocation (a Minos cluster thread, the consolidator, a repair round) reports its own
+progress; the other rules apply within each work unit;
 cross-lane tokens, missing allocations, regressions, malformed logs, symlinks, and
 multi-link files fail closed. Preflight alone may create the initial Odysseus record before
 the controller lease exists, and a resumed preflight never rewrites it. Heartbeat paths are
@@ -466,13 +469,17 @@ mint a late normal dispatch or replacement lease.
 Standby lanes never arrive at a barrier. They are the lanes a phase may re-dispatch on
 their active lease: filing lanes whose candidates need proof repair and Metis as the
 oracle desk. A phase-scoped re-dispatch reuses the lane's allocation and token, so a
-standby lane keeps its lease until the standby phase has passed (see Cleanup).
+standby lane keeps its lease until the standby phase has passed (see Cleanup). The plan
+validator keeps every `proofLoop` cluster lane reachable for repair during the first proof
+phase: in each mode it is on that phase's standby or holds a later phase.
 
 A proof phase whose projected participants include Minos cannot advance until Minos has
 merged `solution/bug-ledger.json` during that phase. Each bug-ledger merge records
 `ledgerSnapshots[<current phase>]`: the merged fragment ids, the sorted bug ids per status
 (`confirmed`, `suspected`, `needsOracle`, `bounced`, `quarantined`), `newConfirmed` (the
-confirmed ids that no earlier phase's snapshot had confirmed), and `mergedAt`. The snapshot
+confirmed ids that no earlier proof-kind phase's snapshot had confirmed), and `mergedAt`. A
+merge in a work or deep-hunt phase keeps its own snapshot but never counts as earlier, so
+rolling triage cannot hide a proof pass's new confirmations from the converged check. The snapshot
 is taken from the merged ledger after reconciliation, so a row the merge quarantined for an
 evidence failure counts as `quarantined`, never as confirmed.
 
@@ -663,12 +670,13 @@ BLOCKED, STALE, or ABSENT (a new round is required), and 14 for invalid input. S
 `solution/final-summary.json` is the canonical final record. Kleio supplies the narrative
 and a proposed status from `argus-assets engagement report-facts` (read-only, no token); the
 merge re-derives the counts (headline = confirmed + suspected), the likely-but-unproven
-findings, the automation-review verdict, the runner outcome, the required coverage, and the
+findings, the unresolved bounced and quarantined proof residuals, the automation-review
+verdict, the runner outcome, the required coverage, and the
 source schemas from the merge-verified canonical inputs and `reports/argus-runner-result.json`,
 overwrites them, and caps the status by the derived `statusReasons`: a BLOCK, STALE, or ABSENT
 review or a confirmed bug without regression blocks; an unexecuted critical surface, case-depth
-gaps, a non-delivery-gate runner, runner exit codes 11 to 15, or a non-converged deep-hunt skip
-degrade. It never raises a status. The merge also renders `solution/FINAL-SUMMARY.md` with an
+gaps, an unresolved proof residual, a non-delivery-gate runner, runner exit codes 11 to 15, or
+a non-converged deep-hunt skip degrade. It never raises a status. The merge also renders `solution/FINAL-SUMMARY.md` with an
 explicit `Source schema:` line and one `Status reason:` line per reason, so the human-facing
 summary is traceable to the machine contract. The lane-plan `lanes`, evidence-reference
 `references`, and automation-status `tests` arrays contain unique records sorted by
