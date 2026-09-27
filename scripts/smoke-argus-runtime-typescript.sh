@@ -377,6 +377,16 @@ expect_only_event "unmatched request" "$CF_ID.cf-correct" automation fail false 
 cf_pass cf-unmatched-tamper cf-tamper-1 ARGUS_SMOKE_EXTRA_REQUEST=1
 expect_only_event "unmatched request in a tamper pass" "$CF_ID.cf-observed-defect" automation fail false n/a BUG-0001 counterfactual-unmatched-request
 
+# Exchange paths are the paths the target sees: the stub keeps API_URL's path, so a relative
+# request resolves to the same /api/v1/... path against the stub as against the target.
+cp "$T/$CF_SPEC" "$WORK/counterfactual.spec.ts"
+sed "s#request.get('/widgets/1')#request.get('widgets/1')#" "$WORK/counterfactual.spec.ts" >"$T/$CF_SPEC"
+jq '.exchanges[0].request.path = "/api/v1/widgets/1"' "$WORK/cf-fixture.json" >"$CF_FIXTURE"
+cf_pass cf-base-path cf-correct API_URL=http://127.0.0.1:9/api/v1/
+cp "$WORK/counterfactual.spec.ts" "$T/$CF_SPEC"
+cp "$WORK/cf-fixture.json" "$CF_FIXTURE"
+expect_only_event "base-path API_URL" "$CF_ID.cf-correct" product pass false reproduced BUG-0001 counterfactual-correct-pass
+
 # An exemption records one event in cf-correct and nothing in a tamper pass.
 jq '{"$schema": ."$schema", schemaVersion, bugId, exemption: {reason: "front-end-logic", justification: "The defect lives in client-side rendering."}}' \
   "$WORK/cf-fixture.json" >"$CF_FIXTURE"

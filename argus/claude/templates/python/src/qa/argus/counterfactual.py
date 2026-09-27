@@ -103,11 +103,15 @@ class CounterfactualVariant:
 
 @dataclass(frozen=True)
 class CounterfactualContext:
-    """What ``_argus_counterfactual`` yields to a test whose variant is loaded into the stub."""
+    """What ``_argus_counterfactual`` yields to a test whose variant is loaded into the stub.
+
+    ``api_url`` is the stub origin plus the real API_URL's path: the base URL every client
+    uses in the pass (ARGUS_COUNTERFACTUAL_API_URL)."""
 
     bug_id: str
     variant: str
     stub: StubServer
+    api_url: str
 
 
 @dataclass(frozen=True)

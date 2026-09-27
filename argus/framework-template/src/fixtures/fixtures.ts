@@ -19,8 +19,10 @@ import { LoginPage } from '../pages/login.page';
 // ui lane routes the browser's API pattern to it. No request reaches the target API; an
 // undeclared request fails the test with ArgusCounterfactualError. Every other test skips
 // with a sentinel the adapter recognises.
+// The stub URL keeps the real API_URL's path verbatim, so a client resolves every request path
+// as it would against the target: exchange paths are the paths the target sees.
 type CounterfactualWorkerFixtures = { argusStub: StubServer | null };
-type CounterfactualFixtures = { argusCounterfactual: { bugId: string; variant: string; stub: StubServer } | null };
+type CounterfactualFixtures = { argusCounterfactual: { bugId: string; variant: string; stub: StubServer; apiURL: string } | null };
 
 export const counterfactualTest = base.extend<CounterfactualFixtures, CounterfactualWorkerFixtures>({
   argusStub: [
@@ -65,9 +67,10 @@ export const counterfactualTest = base.extend<CounterfactualFixtures, Counterfac
       }
       argusStub.load(variantExchanges(fixture, variant));
       const previous = process.env.ARGUS_COUNTERFACTUAL_API_URL;
-      process.env.ARGUS_COUNTERFACTUAL_API_URL = argusStub.url;
+      const apiURL = stubApiURL(argusStub);
+      process.env.ARGUS_COUNTERFACTUAL_API_URL = apiURL;
       try {
-        await use({ bugId, variant: variant.id, stub: argusStub });
+        await use({ bugId, variant: variant.id, stub: argusStub, apiURL });
       } finally {
         if (previous === undefined) delete process.env.ARGUS_COUNTERFACTUAL_API_URL;
         else process.env.ARGUS_COUNTERFACTUAL_API_URL = previous;
@@ -82,7 +85,7 @@ export const counterfactualTest = base.extend<CounterfactualFixtures, Counterfac
     { auto: true },
   ],
   baseURL: async ({ baseURL, argusStub }, use, testInfo) => {
-    await use(argusStub && !isUiLane(testInfo.project.name) ? argusStub.url : baseURL);
+    await use(argusStub && !isUiLane(testInfo.project.name) ? stubApiURL(argusStub) : baseURL);
   },
   context: async ({ context, argusCounterfactual }, use, testInfo) => {
     if (argusCounterfactual && isUiLane(testInfo.project.name)) {
@@ -97,6 +100,16 @@ export const counterfactualTest = base.extend<CounterfactualFixtures, Counterfac
 // playwright.config.ts lives at the template root whatever the selected harness layout.
 function templateRoot(testInfo: TestInfo): string {
   return testInfo.config.configFile ? dirname(testInfo.config.configFile) : process.cwd();
+}
+
+function stubApiURL(stub: StubServer): string {
+  let path = '';
+  try {
+    path = new URL(ENV.targetApiURL).pathname;
+  } catch {
+    path = '';
+  }
+  return path === '' || path === '/' ? stub.url : `${stub.url}${path}`;
 }
 
 // The Playwright project is the lane; `ui-<variant>` projects belong to the ui lane.

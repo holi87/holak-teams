@@ -41,6 +41,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -612,6 +613,16 @@ def counterfactual_pass() -> str | None:
     return evidence_pass if evidence_pass.startswith("cf-") else None
 
 
+def stub_api_url(origin: str) -> str:
+    """The stub origin plus the path of the real API_URL: a client then builds every request
+    path as it would against the target, so exchange paths are the paths the target sees."""
+    try:
+        path = urlsplit(os.environ.get("API_URL", "")).path
+    except ValueError:
+        path = ""
+    return origin + path if path not in ("", "/") else origin
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _argus_stub() -> Iterator[Any]:
     """One loopback counterfactual stub per session in a cf-* pass; None otherwise."""
@@ -653,9 +664,10 @@ def _argus_counterfactual(request: pytest.FixtureRequest, monkeypatch: pytest.Mo
     if bug_id is None or not isinstance(fixture, cf.CounterfactualFixture) or not isinstance(variant, cf.CounterfactualVariant):
         pytest.skip(cf.NOT_APPLICABLE)
     _argus_stub.load(cf.variant_exchanges(fixture, variant))
-    monkeypatch.setenv("ARGUS_COUNTERFACTUAL_API_URL", _argus_stub.url)
+    api_url = stub_api_url(_argus_stub.url)
+    monkeypatch.setenv("ARGUS_COUNTERFACTUAL_API_URL", api_url)
     request.node.stash[VARIANT_KEY] = variant.id
-    yield cf.CounterfactualContext(bug_id=bug_id, variant=variant.id, stub=_argus_stub)
+    yield cf.CounterfactualContext(bug_id=bug_id, variant=variant.id, stub=_argus_stub, api_url=api_url)
     unmatched = _argus_stub.unmatched()
     _argus_stub.load([])
     if unmatched:

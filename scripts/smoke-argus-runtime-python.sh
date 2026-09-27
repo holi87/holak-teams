@@ -478,6 +478,13 @@ cf_pass cf-correct-red cf-correct
 expect_only_event cf-correct-red "$CF_ID.cf-correct" automation fail false n/a BUG-0001 counterfactual-correct-red
 cp "$WORK/cf-fixture.json" "$CF_FIXTURE"
 
+# Exchange paths are the paths the target sees: with a base path in API_URL the clients reach
+# the stub under that path, exactly as they would reach the target (and as the ui lane routes).
+jq '.exchanges[0].request.path = "/api/v1/widgets/1"' "$WORK/cf-fixture.json" >"$CF_FIXTURE"
+cf_pass cf-base-path cf-correct API_URL=http://127.0.0.1:9/api/v1
+cp "$WORK/cf-fixture.json" "$CF_FIXTURE"
+expect_only_event cf-base-path "$CF_ID.cf-correct" product pass false reproduced BUG-0001 counterfactual-correct-pass
+
 # A test cannot claim an exemption its bug's fixture does not declare: that is an ordinary skip.
 cat >tests/contract/test_claimed_exemption_fixture.py <<'PY'
 import pytest
