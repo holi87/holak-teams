@@ -18,12 +18,15 @@ evidence gate fails a missing, invalid, or incomplete one.
 - Redact before commit: run each observed response through
   `argus-assets redact --input <file> --output <safe-file>` and keep no tokens, personal
   data, or real hosts.
-- Declare every request the regression makes, login included. Matching is exact on method
-  and path (as the client sends it) plus the listed query parameters. An undeclared request
-  gets `501 {"argusStub": "unmatched"}` and fails as `counterfactual-unmatched-request`.
-- The harness API URL points at the stub in every lane (TypeScript non-ui lanes also get it
-  as Playwright's `baseURL`), and ui-lane tests route browser requests matching
-  `ARGUS_API_ROUTE_PATTERN` (default `<API_URL>/**`) to it.
+- Declare every request the regression makes, login included: a ui-lane test starts without
+  a saved session, so declare the login its page performs. Matching is exact on method and
+  path (as the client sends it) plus the listed query parameters. An undeclared request gets
+  `501 {"argusStub": "unmatched"}` and fails as `counterfactual-unmatched-request`.
+- Exchange paths are the paths the target sees, so author them from observed traffic: the
+  harness API URL points at the stub in every lane with the path of `API_URL` kept
+  (TypeScript non-ui lanes also get it as Playwright's `baseURL`), and ui-lane tests route
+  browser requests matching `ARGUS_API_ROUTE_PATTERN` (default `<API_URL>/**`) to it with
+  their full path.
 - A regression reaches the API only through that URL, read at call time. In TypeScript a
   per-test `baseURL` override fails before its first request, and a test whose subject
   exchange the stub never served (a URL captured at module load, a hand-built client) fails

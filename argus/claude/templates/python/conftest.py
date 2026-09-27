@@ -13,9 +13,10 @@ What this provides:
   * storage_state       session-scoped UI auth (once per run) -> .auth/user.json
   * browser_context_args overridden so UI contexts use UI_URL + the saved auth state
   * console_guard        fails a UI test on console errors / 5xx responses (UI lane only)
-  * _argus_stub, _argus_counterfactual  autouse, inert unless ARGUS_EVIDENCE_PASS is cf-*:
-                         then every client reaches a 127.0.0.1 stub serving the bug's
-                         counterfactual fixture instead of the target (SD-10)
+
+The Argus plugin (qa.argus_plugin) adds the autouse _argus_stub and _argus_counterfactual
+fixtures, inert unless ARGUS_EVIDENCE_PASS is cf-*: then every client reaches a 127.0.0.1
+stub serving the bug's counterfactual fixture instead of the target (SD-10).
 
 Determinism: NO retries, NO rerun plugin. Flakiness is fixed at the source.
 """
@@ -34,14 +35,12 @@ _ROOT = Path(__file__).parent
 sys.path.insert(0, str(_ROOT / "src"))
 
 from qa.api_client import login, make_client  # noqa: E402
-from qa.argus import counterfactual  # noqa: E402
 from qa.argus.cleanup import cleanup_created_resources  # noqa: E402
-from qa.argus.errors import ArgusCounterfactualError  # noqa: E402
 from qa.argus.fault_injector import FaultInjector, fault_active  # noqa: E402
-from qa.argus.stub_server import StubServer  # noqa: E402
 from qa.config import ENV  # noqa: E402
 
-# Argus outcome adapter: inert unless scripts/runner-lib.sh exports ARGUS_RUNNER_MODE.
+# Argus outcome adapter (inert unless scripts/runner-lib.sh exports ARGUS_RUNNER_MODE) and the
+# counterfactual fixtures (inert unless ARGUS_EVIDENCE_PASS is cf-*).
 pytest_plugins = ["qa.argus_plugin"]
 
 AUTH_DIR = Path(os.environ.get("ARGUS_AUTH_DIRECTORY", _ROOT / ".auth"))
@@ -51,75 +50,6 @@ USER_STATE = AUTH_DIR / "user.json"
 def pytest_configure(config: pytest.Config) -> None:
     # Ensure the aggregated-report destinations exist even on a direct `pytest` run.
     (_ROOT / "reports" / "html").mkdir(parents=True, exist_ok=True)
-
-
-# ------------------------------------------------------------------ counterfactual
-# Counterfactual evidence (TEMPLATE-CONTRACT.md SD-10). Inert unless ARGUS_EVIDENCE_PASS
-# starts with cf-. Then each session (each xdist worker) runs one 127.0.0.1 stub, and each
-# test bound to a bug with a fixture runs against the pass's variant of
-# solution/counterfactual/<bug>.json: current_api_url(), and with it make_client, login,
-# api_as and anon_client, points at the stub, and tests/ui/conftest.py routes the browser's
-# API requests to it. No request reaches the target API; an undeclared one fails the test
-# with ArgusCounterfactualError. Every other test skips with a sentinel reason the outcome
-# adapter recognises.
-
-
-def _counterfactual_pass() -> str | None:
-    evidence_pass = os.environ.get("ARGUS_EVIDENCE_PASS", "")
-    return evidence_pass if evidence_pass.startswith("cf-") else None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _argus_stub() -> Iterator[StubServer | None]:
-    """One loopback counterfactual stub per session in a cf-* pass; None otherwise."""
-    if _counterfactual_pass() is None:
-        yield None
-        return
-    stub = StubServer.start()
-    try:
-        yield stub
-    finally:
-        stub.stop()
-
-
-@pytest.fixture(autouse=True)
-def _argus_counterfactual(
-    request: pytest.FixtureRequest,
-    monkeypatch: pytest.MonkeyPatch,
-    _argus_stub: StubServer | None,
-) -> Iterator[counterfactual.CounterfactualContext | None]:
-    """Load this test's counterfactual variant into the stub, or skip with a sentinel reason."""
-    evidence_pass = _counterfactual_pass()
-    if _argus_stub is None or evidence_pass is None:
-        yield None
-        return
-    # The stub outlives the test: drop the previous test's exchanges and request log.
-    _argus_stub.load([])
-    root = Path(request.config.rootpath)
-    bug_id = counterfactual.bound_bug(root, request.node)
-    # The same validation as the inventory plan, contract check included, so a fixture the
-    # plan lists as invalid never runs.
-    fixture = counterfactual.load_fixture(root, bug_id) if bug_id else None
-    if isinstance(fixture, counterfactual.Exempt) and evidence_pass == "cf-correct":
-        pytest.skip(f"{counterfactual.EXEMPT_PREFIX}{fixture.reason}")
-    # Unbound tests, missing or invalid fixtures, exempt bugs in tamper passes, tamper passes
-    # beyond the fixture's tampers, and malformed pass names have no variant; the evidence
-    # gate reports missing and invalid fixtures.
-    variant = counterfactual.NO_VARIANT
-    if isinstance(fixture, counterfactual.CounterfactualFixture) and counterfactual.is_counterfactual_pass(evidence_pass):
-        variant = counterfactual.variant_for(fixture, evidence_pass)
-    if bug_id is None or not isinstance(fixture, counterfactual.CounterfactualFixture) or not isinstance(variant, counterfactual.CounterfactualVariant):
-        pytest.skip(counterfactual.NOT_APPLICABLE)
-    _argus_stub.load(counterfactual.variant_exchanges(fixture, variant))
-    monkeypatch.setenv("ARGUS_COUNTERFACTUAL_API_URL", _argus_stub.url)
-    yield counterfactual.CounterfactualContext(bug_id=bug_id, variant=variant.id, stub=_argus_stub)
-    unmatched = _argus_stub.unmatched()
-    _argus_stub.load([])
-    if unmatched:
-        listed = ", ".join(f"{record['method']} {record['path']}" for record in unmatched[:5])
-        raise ArgusCounterfactualError(
-            f"the counterfactual stub received {len(unmatched)} request(s) the fixture does not declare: {listed}"
-        )
 
 
 # --------------------------------------------------------------------------- API
@@ -187,14 +117,20 @@ def fault_injector() -> Iterator[FaultInjector]:
 
 
 @pytest.fixture(scope="session")
-def storage_state(browser) -> str:  # noqa: ANN001 - `browser` is pytest-playwright's fixture
+def storage_state(browser) -> str | None:  # noqa: ANN001 - `browser` is pytest-playwright's fixture
     """UI auth once PER RUN: re-authenticate a single time each session and overwrite the
     saved storage_state, then reuse it for every UI test in that run.
 
     Matches the TS reference's `setup` project, which re-runs auth on every invocation and
     overwrites .auth/user.json — so a fresh run never silently reuses a stale/expired
     session cached by an earlier run. (`authenticate` overwrites the file in place.)
+
+    A cf-* evidence pass attempts no login, because it would reach the real target: every UI
+    context starts without a saved session (None), and a regression declares any login its
+    page performs as an exchange of the bug's counterfactual fixture.
     """
+    if os.environ.get("ARGUS_EVIDENCE_PASS", "").startswith("cf-"):
+        return None
     # Lazy import keeps tests/setup off the path for non-UI runs.
     sys.path.insert(0, str(_ROOT / "tests" / "setup"))
     from auth_setup import authenticate  # noqa: E402,PLC0415
@@ -205,7 +141,7 @@ def storage_state(browser) -> str:  # noqa: ANN001 - `browser` is pytest-playwri
 
 @pytest.fixture
 def browser_context_args(browser_context_args, storage_state):  # noqa: ANN001
-    """Every UI context starts at UI_URL and already authenticated (saved storage_state)."""
+    """Every UI context starts at UI_URL and already authenticated (saved storage_state; none in a cf-* pass)."""
     return {
         **browser_context_args,
         "base_url": ENV.ui_url,

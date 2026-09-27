@@ -129,6 +129,26 @@ def test_a_server_fault_needs_argus_fault_injection_authorized_before_anything_i
             run(recorded_fault(calls, scope="server"), lambda: None)
         assert calls == []
     monkeypatch.setenv("ARGUS_FAULT_INJECTION", "authorized")
+    # The runner's grant as well, so the case holds inside and outside an engagement alike.
+    monkeypatch.setenv("ARGUS_FAULT_INJECTION_GRANT", "tyche")
+    calls = []
+    run(recorded_fault(calls, scope="server"), lambda: None)
+    assert calls == ["inject", "restore", "verify"]
+
+
+def test_inside_an_engagement_a_server_fault_also_needs_the_runner_grant(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    monkeypatch.setenv("ARGUS_FAULT_INJECTION", "authorized")
+    monkeypatch.setenv("ARGUS_ENGAGEMENT_MANIFEST", str(tmp_path / "ai_agents_internal" / "engagement.json"))
+    for grant in (None, "", "Not-A-Lane"):
+        if grant is None:
+            monkeypatch.delenv("ARGUS_FAULT_INJECTION_GRANT", raising=False)
+        else:
+            monkeypatch.setenv("ARGUS_FAULT_INJECTION_GRANT", grant)
+        calls: list[str] = []
+        with pytest.raises(ArgusPrerequisiteError, match="runner-lib"):
+            run(recorded_fault(calls, scope="server"), lambda: None)
+        assert calls == [] and not fault_active()
+    monkeypatch.setenv("ARGUS_FAULT_INJECTION_GRANT", "tyche")
     calls = []
     run(recorded_fault(calls, scope="server"), lambda: None)
     assert calls == ["inject", "restore", "verify"]

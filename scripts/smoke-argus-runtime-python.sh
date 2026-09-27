@@ -41,7 +41,7 @@ trap 'stop_target || printf "FAIL  the faulty target outlived the smoke\n" >&2; 
 # same holds for the runner library's inputs in the end-to-end section.
 unset ARGUS_RUNNER_MODE ARGUS_INVENTORY_ONLY ARGUS_EVIDENCE_PASS ARGUS_OUTCOME_FILE ARGUS_CONTRACT_SMOKE \
   ARGUS_COUNTERFACTUAL_API_URL ARGUS_API_ROUTE_PATTERN ARGUS_SMOKE_EXTRA_REQUEST OPENAPI_PATH \
-  ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET ARGUS_FAULT_INJECTION ARGUS_READINESS_URLS \
+  ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET ARGUS_FAULT_INJECTION ARGUS_FAULT_INJECTION_GRANT ARGUS_READINESS_URLS \
   ARGUS_TEST_ROOT ARGUS_AUTH_DIRECTORY ARGUS_BROWSER_ARTIFACTS ARGUS_RESET_TIMEOUT_SECONDS ARGUS_VERIFY_TIMEOUT_SECONDS \
   UI_URL PERF_BUDGET_MS SECURITY_ENABLED DB_URL WORKERS
 
@@ -213,6 +213,9 @@ LIVE_EVENTS=(
   "$(tab "${CASE}test_intermittent_unreproduced" product pass false n/a BUG-0003 intermittent-unreproduced)"
   "$(tab "${CASE}test_intermittent_reproduces" product fail true reproduced BUG-0003 expected-red)"
   "$(tab "${CASE}test_intermittent_below_bound" policy denied false n/a BUG-0003 repetition-invalid)"
+  "$(tab "${CASE}test_invalid_repetition_unreachable_target" infrastructure fail false n/a BUG-0001 target-unreachable)"
+  "$(tab "${CASE}test_invalid_repetition_runtime_skip" policy denied false n/a BUG-0001 regression-skipped)"
+  "$(tab "${CASE}test_non_regression_with_repetition" product pass false n/a - passed)"
   "$(tab "${CASE}test_plain_pass" product pass false n/a - passed)"
   "$(tab "${CASE}test_pytest_raises_not_raised" product fail false n/a - assertion-failed)"
   "$(tab "${CASE}test_uncaught_type_error" automation fail false n/a - uncaught-error)"
@@ -272,6 +275,8 @@ for line in \
   "$(tab "${CASE}test_regression_runtime_skip" policy denied false n/a BUG-0001 regression-skipped)" \
   "$(tab "${CASE}test_intermittent_unreproduced" product pass false fixed BUG-0003 regression-green)" \
   "$(tab "${CASE}test_intermittent_below_bound" policy denied false n/a BUG-0003 repetition-invalid)" \
+  "$(tab "${CASE}test_invalid_repetition_unreachable_target" infrastructure fail false n/a BUG-0001 target-unreachable)" \
+  "$(tab "${CASE}test_non_regression_with_repetition" product pass false n/a - passed)" \
   "$(tab "${CASE}test_regression_unknown_provenance" product fail false n/a - assertion-failed)"; do
   grep -Fxq "$line" "$WORK/candidate.tsv" || fail "candidate-regression is missing: $line"
 done
@@ -481,6 +486,13 @@ cf_pass cf-correct-red cf-correct
 expect_only_event cf-correct-red "$CF_ID.cf-correct" automation fail false n/a BUG-0001 counterfactual-correct-red
 cp "$WORK/cf-fixture.json" "$CF_FIXTURE"
 
+# Exchange paths are the paths the target sees: with a base path in API_URL the clients reach
+# the stub under that path, exactly as they would reach the target (and as the ui lane routes).
+jq '.exchanges[0].request.path = "/api/v1/widgets/1"' "$WORK/cf-fixture.json" >"$CF_FIXTURE"
+cf_pass cf-base-path cf-correct API_URL=http://127.0.0.1:9/api/v1
+cp "$WORK/cf-fixture.json" "$CF_FIXTURE"
+expect_only_event cf-base-path "$CF_ID.cf-correct" product pass false reproduced BUG-0001 counterfactual-correct-pass
+
 # A test cannot claim an exemption its bug's fixture does not declare: that is an ordinary skip.
 cat >tests/contract/test_claimed_exemption_fixture.py <<'PY'
 import pytest
@@ -496,6 +508,79 @@ PY
 cf_pass cf-claimed-exemption cf-correct -- tests/contract/test_claimed_exemption_fixture.py
 rm -f tests/contract/test_claimed_exemption_fixture.py
 expect_only_event cf-claimed-exemption tests.contract.test_claimed_exemption_fixture.py::test_claims_an_exemption.cf-correct policy denied false n/a BUG-0001 regression-skipped
+
+# The stub is deterministic: an invalid repetition never replaces a counterfactual verdict.
+cat >tests/contract/test_cf_repetition_fixture.py <<'PY'
+import pytest
+
+pytestmark = pytest.mark.contract_smoke
+
+
+@pytest.mark.regression
+@pytest.mark.bug("ATA-001")
+@pytest.mark.repetition(3)
+def test_verdict_ignores_repetition(anon_client):
+    assert anon_client.get("/widgets/1").status_code == 200
+PY
+cf_pass cf-repetition cf-correct -- tests/contract/test_cf_repetition_fixture.py
+rm -f tests/contract/test_cf_repetition_fixture.py
+expect_only_event cf-repetition tests.contract.test_cf_repetition_fixture.py::test_verdict_ignores_repetition.cf-correct product pass false reproduced BUG-0001 counterfactual-correct-pass
+
+# A suite without the plugin's counterfactual fixture (here overridden by a no-op, as after a
+# port that dropped it) runs its tests against the real target: no verdict, adapter failures.
+cat >tests/contract/test_cf_unloaded_fixture.py <<'PY'
+import pytest
+
+pytestmark = pytest.mark.contract_smoke
+
+
+@pytest.fixture
+def _argus_counterfactual():
+    yield None
+
+
+@pytest.mark.regression
+@pytest.mark.bug("ATA-001")
+def test_regression_without_its_variant():
+    assert True
+
+
+def test_unbound_test_without_the_fixture():
+    assert True
+PY
+cf_pass cf-unloaded cf-correct -- tests/contract/test_cf_unloaded_fixture.py
+rm -f tests/contract/test_cf_unloaded_fixture.py
+expect_exit cf-unloaded 1
+[ ! -s "$WORK/cf-unloaded.tsv" ] || { cat "$WORK/cf-unloaded.tsv" >&2; fail "cf-unloaded: a verdict without a loaded variant was credited"; }
+expect_status "error 2" cf-unloaded
+[ "$(cut -f2 reports/argus-adapter-errors/*.txt | sort -u)" = counterfactual-variant-not-loaded ] || fail "cf-unloaded: the missing variant was not listed"
+
+# A ui-lane regression never logs in against the real target in a cf pass: the session
+# storage_state fixture yields no saved session, and a stand-in browser refuses any login.
+cat >tests/contract/test_cf_session_fixture.py <<'PY'
+import pytest
+
+pytestmark = pytest.mark.contract_smoke
+
+
+class _NoLoginBrowser:
+    def new_context(self, **_options):
+        raise AssertionError("the auth-once login reached for the real target")
+
+
+@pytest.fixture(scope="session")
+def browser():
+    return _NoLoginBrowser()
+
+
+@pytest.mark.regression
+@pytest.mark.bug("ATA-001")
+def test_ui_session_without_the_real_login(storage_state):
+    assert storage_state is None
+PY
+cf_pass cf-session cf-correct -- tests/contract/test_cf_session_fixture.py
+rm -f tests/contract/test_cf_session_fixture.py
+expect_only_event cf-session tests.contract.test_cf_session_fixture.py::test_ui_session_without_the_real_login.cf-correct product pass false reproduced BUG-0001 counterfactual-correct-pass
 
 # An exemption records one event in cf-correct and nothing in a tamper pass.
 jq '{"$schema": ."$schema", schemaVersion, bugId, exemption: {reason: "front-end-logic", justification: "The defect lives in client-side rendering."}}' \
@@ -660,6 +745,37 @@ expect_events "$WORK/runner-kit.tsv" runner-kit \
 expect_status "ok 4" runner-kit
 grep -Fq 'ArgusCleanupError: cleanup failed for 1 resource(s)' "$WORK/runner-kit.log" || fail "the cleanup failure does not report its count"
 if grep -Fq 'argus-never-print-me' "$WORK/runner-kit.log"; then fail "the cleanup failure printed a response body"; fi
+
+# Inside an engagement the opt-in alone never injects a server fault: the injector also needs
+# the grant runner-lib.sh issues after the chaos authorization, whether ARGUS_ENGAGEMENT_MANIFEST
+# names the engagement or its manifest sits above the harness.
+cat >tests/contract/test_server_fault_fixture.py <<'PY'
+import pytest
+
+from qa.argus.fault_injector import Fault, run
+
+pytestmark = pytest.mark.contract_smoke
+
+
+def test_a_server_fault():
+    run(Fault(name="probe-fault", scope="server", inject=lambda: None, restore=lambda: None, verify_restored=lambda: None), lambda: None)
+PY
+SF_ID='tests.contract.test_server_fault_fixture.py::test_a_server_fault'
+server_fault() {  # server_fault <label> [VAR=value ...]: one baseline run of the probe with the opt-in
+  local label="$1"
+  shift
+  pytest_run "$label" ARGUS_RUNNER_MODE=baseline ARGUS_OUTCOME_FILE="$WORK/$label.tsv" ARGUS_FAULT_INJECTION=authorized "$@" -- tests/contract/test_server_fault_fixture.py
+}
+server_fault server-fault-outside
+expect_events "$WORK/server-fault-outside.tsv" server-fault-outside "$(tab "$SF_ID" product pass false n/a - passed)"
+server_fault server-fault-named "ARGUS_ENGAGEMENT_MANIFEST=$WORK/engagement/ai_agents_internal/engagement.json"
+expect_events "$WORK/server-fault-named.tsv" server-fault-named "$(tab "$SF_ID" infrastructure fail false n/a - prerequisite-missing)"
+server_fault server-fault-granted "ARGUS_ENGAGEMENT_MANIFEST=$WORK/engagement/ai_agents_internal/engagement.json" ARGUS_FAULT_INJECTION_GRANT=tyche
+expect_events "$WORK/server-fault-granted.tsv" server-fault-granted "$(tab "$SF_ID" product pass false n/a - passed)"
+: >ai_agents_internal/engagement.json
+server_fault server-fault-detected
+rm -f ai_agents_internal/engagement.json tests/contract/test_server_fault_fixture.py
+expect_events "$WORK/server-fault-detected.tsv" server-fault-detected "$(tab "$SF_ID" infrastructure fail false n/a - prerequisite-missing)"
 
 # (11) End-to-end runner against a local faulty target. A scaffold from `template select` +
 # `template scaffold` (non-default layout) runs ./run-tests.sh end to end: runner-lib.sh, the

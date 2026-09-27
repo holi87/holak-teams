@@ -18,7 +18,7 @@ pytestmark = pytest.mark.contract_smoke
 @pytest.mark.regression
 @pytest.mark.bug("ATA-001")
 def test_widget_read_returns_the_specified_widget(anon_client, _argus_counterfactual):
-    assert current_api_url() == (_argus_counterfactual.stub.url if _argus_counterfactual else ENV.api_url)
+    assert current_api_url() == (_argus_counterfactual.api_url if _argus_counterfactual else ENV.api_url)
     res = anon_client.get("/widgets/1")
     if os.environ.get("ARGUS_SMOKE_EXTRA_REQUEST") == "1":
         anon_client.get("/widgets/2")

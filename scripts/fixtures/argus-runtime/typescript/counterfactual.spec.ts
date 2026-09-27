@@ -10,7 +10,7 @@ import { assertSchemaRef } from '../../src/oracles';
 // adds a request the fixture does not declare.
 
 test('widget read returns the specified widget', { tag: ['@regression', '@bug:ATA-001'] }, async ({ request, argusCounterfactual }) => {
-  expect(ENV.apiURL).toBe(argusCounterfactual?.stub.url ?? ENV.targetApiURL);
+  expect(ENV.apiURL).toBe(argusCounterfactual?.apiURL ?? ENV.targetApiURL);
   const res = await request.get('/widgets/1');
   if (process.env.ARGUS_SMOKE_EXTRA_REQUEST === '1') await request.get('/widgets/2');
   expect(res.status()).toBe(200);

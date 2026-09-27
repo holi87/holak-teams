@@ -1,11 +1,14 @@
+import { existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { ArgusPrerequisiteError, ArgusRestoreError, requireEnv } from './errors';
 
 // Fault injection for the resilience lane (TEMPLATE-CONTRACT.md, RUNNER-CONTRACT.md SD-5).
 // A fault is injected only around one body and always restored afterwards:
 //
 // 1. A server-scope fault changes the shared target, so it needs the caller's explicit
-//    ARGUS_FAULT_INJECTION=authorized. Inside an engagement scripts/runner-lib.sh accepts
-//    that value only with the chaos grant and the exclusive fault window.
+//    ARGUS_FAULT_INJECTION=authorized. Inside an engagement (insideEngagement()) that value
+//    is only a request: the fault also needs ARGUS_FAULT_INJECTION_GRANT, which
+//    scripts/runner-lib.sh sets only after the chaos grant and the exclusive fault window.
 // 2. The restore is recorded before inject() runs, so a partial injection is undone too.
 // 3. restore() runs in every case, then verifyRestored() proves the target is back to
 //    normal. A failure in either throws ArgusRestoreError (`infrastructure fail
@@ -111,4 +114,25 @@ function requireServerAuthorization(name: string): void {
   if (requireEnv('ARGUS_FAULT_INJECTION') !== 'authorized') {
     throw new ArgusPrerequisiteError(`server-side fault ${name} requires ARGUS_FAULT_INJECTION=authorized`);
   }
+  if (insideEngagement() && !/^[a-z][a-z0-9-]*$/.test(process.env.ARGUS_FAULT_INJECTION_GRANT ?? '')) {
+    throw new ArgusPrerequisiteError(
+      `server-side fault ${name} inside an Argus engagement requires the grant scripts/runner-lib.sh issues after the chaos authorization; run it through run-tests.sh`,
+    );
+  }
+}
+
+/**
+ * Whether this run belongs to an Argus engagement: ARGUS_ENGAGEMENT_MANIFEST is set, or an
+ * ai_agents_internal/engagement.json sits in the working directory, this harness, or an
+ * ancestor of either (as argus-assets finds one).
+ */
+export function insideEngagement(): boolean {
+  if (process.env.ARGUS_ENGAGEMENT_MANIFEST) return true;
+  for (const start of [process.cwd(), __dirname]) {
+    for (let cursor = resolve(start); ; cursor = dirname(cursor)) {
+      if (existsSync(join(cursor, 'ai_agents_internal', 'engagement.json'))) return true;
+      if (dirname(cursor) === cursor) break;
+    }
+  }
+  return false;
 }

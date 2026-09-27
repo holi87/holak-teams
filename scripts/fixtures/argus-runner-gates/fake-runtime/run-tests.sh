@@ -47,7 +47,7 @@ argus_native_run() {
   local case_id category status expected lifecycle bug_id reason
   shift 3
   fake_record "run $selection $pass $lanes${*:+ $*}"
-  fake_record "env mode=${ARGUS_RUNNER_MODE:-} pass=${ARGUS_EVIDENCE_PASS:-} outcome=${ARGUS_OUTCOME_FILE:-} fault=${ARGUS_FAULT_INJECTION:-}"
+  fake_record "env mode=${ARGUS_RUNNER_MODE:-} pass=${ARGUS_EVIDENCE_PASS:-} outcome=${ARGUS_OUTCOME_FILE:-} fault=${ARGUS_FAULT_INJECTION:-} grant=${ARGUS_FAULT_INJECTION_GRANT:-}"
   # A misbehaving hook that exits instead of returning; the library must still write a result.
   if [ -f "$SCENARIO/run-exit" ]; then exit 0; fi
   replay="$SCENARIO/events.$selection.$pass.tsv"

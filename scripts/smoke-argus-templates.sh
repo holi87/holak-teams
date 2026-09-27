@@ -306,6 +306,13 @@ if (dangling.length) {
 }
 NODE
 
+# The counterfactual wiring travels with the kit: the switch that loads Java's extension and
+# the Python fixtures that load each test's variant.
+grep -Eq '^junit\.jupiter\.extensions\.autodetection\.enabled *= *true$' "$WORK/kit-java/src/test/resources/junit-platform.properties" ||
+  fail "Java runner kit omitted the counterfactual extension's autodetection switch"
+grep -Eq '^def _argus_counterfactual\(' "$WORK/kit-python/src/qa/argus_plugin.py" && grep -Eq '^def _argus_stub\(' "$WORK/kit-python/src/qa/argus_plugin.py" ||
+  fail "Python runner kit omitted the counterfactual fixtures"
+
 # The kit copy fails closed before writing: a non-empty or symlinked destination, an
 # unknown runtime, and a contract entry that selects no composed file leave nothing behind.
 mkdir "$WORK/kit-non-empty"

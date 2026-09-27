@@ -498,6 +498,27 @@ if (cd "$TARGET" && "$CLI" copy-runner-kit python app/runner-kit) >"$WORK/runner
 fi
 grep -Fq 'copy-runner-kit denied by active engagement rule GUARD-TARGET-IMMUTABLE' "$WORK/runner-kit-guard.out" || fail "copy-runner-kit was not denied by the write guard: $(<"$WORK/runner-kit-guard.out")"
 test ! -e "$TARGET/app/runner-kit" || fail 'self-guarded copy-runner-kit created a target-source directory'
+# Engagement opt-ins reach the target only through the engagement's run-tests.sh, run by the
+# calling lane under its own name; only runner-lib.sh issues the fault-injection grant.
+guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized ./run-tests.sh --mode full-suite' allow
+guard_as argus:nike Bash "env ARGUS_ENGAGEMENT_LANE=\"nike\" ARGUS_ENGAGEMENT_MANIFEST=$MANIFEST ARGUS_FAULT_INJECTION=authorized bash $TARGET/run-tests.sh --mode full-suite" allow
+guard_as main Bash 'ARGUS_ENGAGEMENT_LANE=odysseus ARGUS_ENVIRONMENT_RESET=execute ./run-tests.sh --mode full-suite' allow
+guard_as argus:nike Bash 'ARGUS_FAULT_INJECTION=authorized ./run-tests.sh --mode full-suite' GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=tyche ARGUS_FAULT_INJECTION=authorized ./run-tests.sh --mode full-suite' GUARD-ENGAGEMENT-OPT-IN
+guard_as untyped Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized ./run-tests.sh --mode full-suite' GUARD-ENGAGEMENT-OPT-IN
+guard_shell 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized ./run-tests.sh --mode full-suite' GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized .venv/bin/python -m pytest -m resilience' GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized mvn test -Dgroups=resilience' GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized ./tests/run-tests.sh --mode full-suite' GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash "cd $TARGET && ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized ./run-tests.sh" GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash 'export ARGUS_FAULT_INJECTION=authorized; ./run-tests.sh' GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=$MODE ./run-tests.sh' GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash "ARGUS_ENGAGEMENT_LANE=nike ARGUS_ENGAGEMENT_MANIFEST=$WORK/forged/engagement.json ARGUS_FAULT_INJECTION=authorized ./run-tests.sh" GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash "ARGUS_ENGAGEMENT_LANE=nike ARGUS_AUTHORIZATION_MANIFEST=$WORK/forged/authorization.json ARGUS_FAULT_INJECTION=authorized ./run-tests.sh" GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized ARGUS_FAULT_INJECTION_GRANT=nike ./run-tests.sh' GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash 'ARGUS_FAULT_INJECTION_GRANT=nike .venv/bin/python -m pytest -m resilience' GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized ./run-tests.sh' GUARD-ENGAGEMENT-OPT-IN
+guard_as argus:nike Bash './run-tests.sh --mode full-suite' allow
 guard_shell "argus-assets template detect --target $TARGET" allow
 guard_shell "argus-assets template select --target $TARGET --runtime typescript --package-manager npm --test-root tests --harness-root qa-support --output ai_agents_internal/reports/template-selection.json" allow
 guard_shell "argus-assets template scaffold --selection ai_agents_internal/reports/template-selection.json --destination $atlas_tmp/scaffold" allow

@@ -240,13 +240,18 @@ argus_engagement_manifest() {
 
 # One opt-in request: refused when an engagement is indicated but its manifest cannot be
 # located, checked by argus_engagement_authorized against a located manifest, and allowed
-# outside an engagement.
+# outside an engagement. A fault opt-in the engagement authorizes also exports
+# ARGUS_FAULT_INJECTION_GRANT (the authorized lane): inside an engagement the packaged fault
+# injectors accept a server fault only with it, so a native run started with the opt-in but
+# without this library never injects. argus_main clears any inherited grant first.
 argus_engagement_request() {
   local manifest
   manifest="$(argus_engagement_manifest)" || return 1
   [ -n "$manifest" ] || return 0
-  ARGUS_ENGAGEMENT_MANIFEST="$manifest"
-  argus_engagement_authorized "$@"
+  export ARGUS_ENGAGEMENT_MANIFEST="$manifest"
+  argus_engagement_authorized "$@" || return 1
+  if [ "$1" = fault ]; then export ARGUS_FAULT_INJECTION_GRANT="$ARGUS_ENGAGEMENT_LANE"; fi
+  return 0
 }
 
 argus_engagement_optin() {
@@ -481,6 +486,8 @@ argus_main() {
   ARGUS_PASSTHROUGH=("$@")
 
   export ARGUS_RUNNER_MODE="$ARGUS_MODE"
+  # Only this run's own fault authorization may hand the injectors a grant.
+  unset ARGUS_FAULT_INJECTION_GRANT
   ARGUS_EVENTS="${ARGUS_OUTCOME_FILE:-$ARGUS_ROOT/reports/outcomes.raw.tsv}"
   case "$ARGUS_EVENTS" in /*) ;; *) ARGUS_EVENTS="$ARGUS_ROOT/$ARGUS_EVENTS" ;; esac
   export ARGUS_OUTCOME_FILE="$ARGUS_EVENTS"

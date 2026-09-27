@@ -5,9 +5,11 @@ injected only around one body and always restored afterwards:
 
 1. A ``server`` fault changes the shared target, so it needs the caller's explicit
    ``ARGUS_FAULT_INJECTION=authorized``; anything else raises ArgusPrerequisiteError before
-   anything is injected. Inside an engagement ``scripts/runner-lib.sh`` accepts that value
-   only with the chaos grant and the exclusive fault window. A ``client`` fault stays inside
-   the test process (``page.route``, a stub) and needs no grant.
+   anything is injected. Inside an engagement (``ARGUS_ENGAGEMENT_MANIFEST``, or an
+   ``ai_agents_internal/engagement.json`` above the working directory or this harness) that
+   value is only a request: the fault also needs ``ARGUS_FAULT_INJECTION_GRANT``, which
+   ``scripts/runner-lib.sh`` sets only after the chaos grant and the exclusive fault window.
+   A ``client`` fault stays inside the test process (``page.route``, a stub) and needs no grant.
 2. The restore is recorded before ``inject`` runs, so a partial injection is undone too.
 3. ``restore`` runs in every case, then ``verify_restored`` proves the target is back to
    normal. A failure in either raises ArgusRestoreError (``infrastructure fail
@@ -22,10 +24,12 @@ fault's intended effects. Messages carry only the fault name, never target data.
 """
 from __future__ import annotations
 
+import os
 import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, TypeVar
 
 from .errors import ArgusPrerequisiteError, ArgusRestoreError, require_env
@@ -34,6 +38,7 @@ FaultScope = Literal["client", "server"]
 T = TypeVar("T")
 
 _FAULT_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+_LANE = re.compile(r"[a-z][a-z0-9-]*")
 _OPERATOR_STOP = (KeyboardInterrupt, SystemExit)
 _active_lock = threading.Lock()
 _active = 0
@@ -183,6 +188,24 @@ def _restore_and_verify(fault: Fault) -> ArgusRestoreError | None:
     return None
 
 
+def inside_engagement() -> bool:
+    """True when ARGUS_ENGAGEMENT_MANIFEST is set or an ai_agents_internal/engagement.json sits in
+    the working directory, this harness, or an ancestor of either (as argus-assets finds one)."""
+    if os.environ.get("ARGUS_ENGAGEMENT_MANIFEST"):
+        return True
+    starts = [Path(__file__).resolve().parent]
+    try:
+        starts.append(Path.cwd())
+    except OSError:
+        pass
+    return any((directory / "ai_agents_internal" / "engagement.json").exists() for start in starts for directory in (start, *start.parents))
+
+
 def _require_server_authorization(name: str) -> None:
     if require_env("ARGUS_FAULT_INJECTION") != "authorized":
         raise ArgusPrerequisiteError(f"server-side fault {name} requires ARGUS_FAULT_INJECTION=authorized")
+    if inside_engagement() and not _LANE.fullmatch(os.environ.get("ARGUS_FAULT_INJECTION_GRANT", "")):
+        raise ArgusPrerequisiteError(
+            f"server-side fault {name} inside an Argus engagement requires the grant scripts/runner-lib.sh "
+            "issues after the chaos authorization; run it through run-tests.sh"
+        )

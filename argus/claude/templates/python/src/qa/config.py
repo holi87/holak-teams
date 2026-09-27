@@ -54,7 +54,7 @@ ROLES: tuple[str, ...] = tuple(ENV.accounts.keys())
 def current_api_url() -> str:
     """The API every client uses: ENV.api_url, except in a cf-* evidence pass.
 
-    There the root conftest's counterfactual fixture points ARGUS_COUNTERFACTUAL_API_URL at
+    There qa.argus_plugin's counterfactual fixture points ARGUS_COUNTERFACTUAL_API_URL at
     the in-process stub (TEMPLATE-CONTRACT.md SD-10). Only an http://127.0.0.1 URL is
     honoured, so a stray value never redirects the suite to another host. ENV.api_url itself
     always stays the real target.
