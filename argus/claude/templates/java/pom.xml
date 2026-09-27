@@ -17,8 +17,9 @@
 
     <!-- Dependency versions, one place. -->
     <junit.version>5.10.2</junit.version>
-    <jackson.version>2.17.1</jackson.version>
+    <jackson.version>2.18.3</jackson.version>
     <restassured.version>5.4.0</restassured.version>
+    <jsonschema.version>1.5.9</jsonschema.version>
     <playwright.version>1.44.0</playwright.version>
     <awaitility.version>4.2.1</awaitility.version>
 
@@ -43,7 +44,7 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
-      <!-- Aligned Jackson (used by REST Assured + by SchemaOracle). -->
+      <!-- Aligned Jackson (REST Assured, the OpenAPI oracles and the schema validator). -->
       <dependency>
         <groupId>com.fasterxml.jackson</groupId>
         <artifactId>jackson-bom</artifactId>
@@ -76,14 +77,15 @@
       <version>${restassured.version}</version>
       <scope>test</scope>
     </dependency>
-    <!-- OpenAPI / JSON-schema as an executable oracle (SchemaOracle). -->
+    <!-- OpenAPI / JSON Schema draft 2020-12 as an executable oracle (qa.support.oracles).
+         Draft 2020-12 is required for strict use-site unevaluatedProperties. -->
     <dependency>
-      <groupId>io.rest-assured</groupId>
+      <groupId>com.networknt</groupId>
       <artifactId>json-schema-validator</artifactId>
-      <version>${restassured.version}</version>
+      <version>${jsonschema.version}</version>
       <scope>test</scope>
     </dependency>
-    <!-- Explicit so SchemaOracle parses/rewrites the OpenAPI tree against a pinned version. -->
+    <!-- Explicit so the oracles parse/rewrite the OpenAPI tree against a pinned version. -->
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>

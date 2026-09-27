@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Clean-room validation of the Java runtime adapter: the JUnit Platform outcome listener,
 # the Launcher-discovery inventory, and the SD-4 ledger join, run against a
-# target-independent fixture in a freshly copied Java template.
+# target-independent fixture in a freshly copied Java template; then the contract oracle
+# self-tests in a second copy.
 
 set -euo pipefail
 
@@ -24,6 +25,7 @@ STATUS="$APP/reports/argus-adapter-status.txt"
 MVN=(mvn -B -ntp)
 
 in_app() { (cd "$APP" && "$@"); }
+in_dir() { local dir="$1"; shift; (cd "$dir" && "$@"); }
 run_logged() {
   local name="$1"
   shift
@@ -52,13 +54,14 @@ expect_lines() {
   [ "$(wc -l <"$file" | tr -d ' ')" -eq "$count" ] || { cat "$file" >&2; fail "$(basename "$file") holds $(wc -l <"$file" | tr -d ' ') lines, expected $count"; }
 }
 
-# The fixture replaces the legacy contract-smoke case, which writes its own event by hand.
+# The fixture replaces the stock contract-smoke classes: the legacy case writes its own event
+# by hand, and the oracle self-tests run in their own copy in section (4).
 "$CLI" copy-template java "$APP" >/dev/null
 grep -Fxq 'qa.support.argus.ArgusOutcomeListener' "$APP/src/test/resources/META-INF/services/org.junit.platform.launcher.TestExecutionListener" \
   || fail "outcome listener is not registered with the JUnit Platform launcher"
 grep -Fxq 'qa.support.SummaryListener' "$APP/src/test/resources/META-INF/services/org.junit.platform.launcher.TestExecutionListener" \
   || fail "summary listener registration was dropped"
-rm "$APP/src/test/java/qa/contract/TemplateContractTest.java"
+rm "$APP"/src/test/java/qa/contract/*.java
 cp "$FIXTURES/ClassificationFixtureTest.java" "$APP/src/test/java/qa/contract/ClassificationFixtureTest.java"
 cp "$FIXTURES/bug-ledger.json" "$APP/solution/bug-ledger.json"
 run_logged test-compile in_app "${MVN[@]}" -q -DskipTests test-compile
@@ -232,4 +235,19 @@ test ! -e "$WORK/inert.tsv" && test ! -e "$STATUS" || fail "the adapter emitted 
 run_fixture collect-only contract-smoke ARGUS_RUNNER_MODE=defect-evidence ARGUS_INVENTORY_ONLY=1
 test ! -e "$WORK/collect-only.tsv" && test ! -e "$STATUS" || fail "the adapter emitted in a collect-only pass"
 
-printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, and inert activation\n'
+# (4) Contract oracle self-tests in a clean copy: a baseline run where every case is a product pass.
+ORACLES="$WORK/java-oracles"
+O="$WORK/oracles.tsv"
+"$CLI" copy-template java "$ORACLES" >/dev/null
+cmp -s "$ROOT/argus/framework-template/tests/contract/fixtures/openapi.selftest.json" "$ORACLES/src/test/resources/openapi.selftest.json" \
+  || fail "the Java oracle self-test OpenAPI fixture drifted from the TypeScript fixture"
+oracle_cases="$(grep -Ec '^[[:space:]]*@Test[[:space:]]*$' "$ORACLES/src/test/java/qa/contract/OraclesContractSelfTest.java")"
+[ "$oracle_cases" -gt 0 ] || fail "the oracle self-test class declares no cases"
+run_logged oracles in_dir "$ORACLES" env ARGUS_RUNNER_MODE=baseline ARGUS_OUTCOME_FILE="$O" "${MVN[@]}" test -Dtest=OraclesContractSelfTest
+expect_lines "$O" "$oracle_cases"
+awk -F'\t' 'NF != 7 || index($1, "qa.contract.OraclesContractSelfTest.") != 1 || $2 != "product" || $3 != "pass" { bad = 1 } END { exit bad }' "$O" \
+  || { cat "$O" >&2; fail "an oracle self-test event is not a product pass"; }
+[ "$(cat "$ORACLES/reports/argus-adapter-status.txt" 2>/dev/null)" = "ok $oracle_cases" ] || fail "oracle self-test adapter status is not 'ok $oracle_cases'"
+if grep -Eq '127[.]0[.]0[.]1|argus-never-print-me' "$O"; then fail "an oracle self-test event carried test details"; fi
+
+printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, inert activation, and contract oracle self-tests\n'
