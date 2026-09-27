@@ -1018,6 +1018,31 @@ case "$probe_browser_status" in
   *) cat "$WORK/probe-browser.stderr" >&2; fail "probe-browser returned unexpected status $probe_browser_status" ;;
 esac
 
+# probe-browser follows preflight's host order: the runtimes --provision-browser installs come
+# before every global module, newest x.y.z release first (numerically, so 1.10.0 beats 1.2.0).
+# A non-release entry and an entry that is not a Playwright package are skipped. The recording
+# stand-in writes a real PNG, so the probe passes without a browser.
+PROVISIONED_HOME="$WORK/probe-provisioned-home"
+PROVISIONED_ROOT="$PROVISIONED_HOME/.cache/argus/browser-runtime"
+for provisioned_version in 1.2.0 1.10.0 9.0.0 latest; do
+  mkdir -p "$PROVISIONED_ROOT/$provisioned_version/node_modules"
+  cp -R "$ROOT/scripts/fixtures/argus-browser/fake-playwright-recording" "$PROVISIONED_ROOT/$provisioned_version/node_modules/playwright"
+  jq --arg version "$provisioned_version" '.version = $version' "$ROOT/scripts/fixtures/argus-browser/fake-playwright-recording/package.json" \
+    >"$PROVISIONED_ROOT/$provisioned_version/node_modules/playwright/package.json"
+done
+jq '.name = "not-playwright"' "$ROOT/scripts/fixtures/argus-browser/fake-playwright-recording/package.json" \
+  >"$PROVISIONED_ROOT/9.0.0/node_modules/playwright/package.json"
+# The real node binary leads PATH: a version-manager shim would need state under the real HOME.
+NODE_BIN_DIR="$(dirname "$(node -p process.execPath)")"
+set +e
+HOME="$PROVISIONED_HOME" PATH="$NODE_BIN_DIR:$PATH" "$LAUNCHER" probe-browser >"$WORK/probe-provisioned.stdout" 2>"$WORK/probe-provisioned.stderr"
+probe_provisioned_status=$?
+set -e
+[ "$probe_provisioned_status" -eq 0 ] || \
+  { cat "$WORK/probe-provisioned.stdout" "$WORK/probe-provisioned.stderr" >&2; fail "probe-browser did not pass with a host-provisioned runtime (status $probe_provisioned_status)"; }
+grep -Fxq "PASS  headless Chromium runs inside os-native-target-readonly@3 (module=$PROVISIONED_ROOT/1.10.0/node_modules/playwright version=1.10.0)" \
+  "$WORK/probe-provisioned.stdout" || { cat "$WORK/probe-provisioned.stdout" >&2; fail 'probe-browser did not prove the newest host-provisioned runtime first'; }
+
 # An explicit module is validated before any browser starts.
 mkdir -p "$WORK/not-playwright"
 printf '{"name":"not-playwright","version":"1.0.0"}\n' >"$WORK/not-playwright/package.json"

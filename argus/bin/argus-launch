@@ -77,11 +77,13 @@ The resulting engagement is reported as UNATTESTED — a named residual risk wit
 cryptographic proof of sandbox/turn-cap/model-dispatch integrity — in every downstream
 report, never silently. Default behavior (no --unattested) is unchanged and stays fail-closed.
 
-probe-browser needs no Claude CLI. It resolves a host Playwright package (--module, else
-`npm root -g`, then the Homebrew and system global node_modules), runs its headless Chromium
-shell inside the launch sandbox with the launch HOME/PATH/TMPDIR, and takes one screenshot.
-Exit 0 is PASS, 2 is FAIL, 3 is SKIP (no Playwright module). doctor --browser runs it after
-the sandbox probes: a SKIP only warns, a FAIL fails doctor.
+probe-browser needs no Claude CLI. It resolves a host Playwright package in preflight's host
+order (--module, else the newest runtimes --provision-browser installed under
+~/.cache/argus/browser-runtime, then `npm root -g`, then the Homebrew and system global
+node_modules), runs its headless Chromium shell inside the launch sandbox with the launch
+HOME/PATH/TMPDIR, and takes one screenshot. Exit 0 is PASS, 2 is FAIL, 3 is SKIP (no
+Playwright module). doctor --browser runs it after the sandbox probes: a SKIP only warns, a
+FAIL fails doctor.
 
 --provision-browser prepares the host before the sandbox starts, for attested and unattested
 launches alike: `argus-assets browser provision` reuses a host Playwright that already
@@ -483,15 +485,25 @@ playwright_module_version() {
   jq -er 'select(.name == "playwright") | (.version // "unknown") | tostring' "$directory/package.json" 2>/dev/null
 }
 
+# Follows preflight's host candidate order (browserRuntimeCandidateLocations in argus-assets):
+# the five newest x.y.z runtimes that --provision-browser installs under
+# ~/.cache/argus/browser-runtime come first, then the npm, Homebrew, and system global modules.
 resolve_playwright_module() {
-  local npm_root='' candidate
+  local npm_root='' candidate version provisioned_root="${HOME:-}/.cache/argus/browser-runtime"
+  local provisioned=()
+  if [ -n "${HOME:-}" ] && [ -d "$provisioned_root" ]; then
+    while IFS= read -r version; do
+      provisioned+=("$provisioned_root/$version/node_modules/playwright")
+    done < <(ls -1 "$provisioned_root" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
+      sort -t . -k 1,1nr -k 2,2nr -k 3,3nr | head -n 5)
+  fi
   if command -v npm >/dev/null 2>&1; then
     npm_root="$(run_with_deadline 10 npm root -g 2>/dev/null)" || npm_root=''
     case "$npm_root" in /*) ;; *) npm_root='' ;; esac
     case "$npm_root" in *$'\n'*) npm_root='' ;; esac
   fi
-  for candidate in ${npm_root:+"$npm_root/playwright"} /opt/homebrew/lib/node_modules/playwright \
-    /usr/local/lib/node_modules/playwright /usr/lib/node_modules/playwright; do
+  for candidate in ${provisioned[@]+"${provisioned[@]}"} ${npm_root:+"$npm_root/playwright"} \
+    /opt/homebrew/lib/node_modules/playwright /usr/local/lib/node_modules/playwright /usr/lib/node_modules/playwright; do
     if playwright_module_version "$candidate" >/dev/null; then
       (cd "$candidate" && pwd -P)
       return
@@ -621,7 +633,7 @@ case "${1:-}" in
       "$LAUNCHER_PATH" probe-browser || browser_status=$?
       case "$browser_status" in
         0) ;;
-        3) printf 'WARN  no Playwright module is resolvable on this host; browser lanes will be unavailable\n' ;;
+        3) printf 'WARN  no Playwright module is resolvable on this host; launch with --provision-browser, or browser lanes may be unavailable\n' ;;
         *) fail 'headless Chromium does not run inside the launch sandbox (see the probe-browser output above)' ;;
       esac
     fi
