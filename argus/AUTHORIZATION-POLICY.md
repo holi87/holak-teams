@@ -118,7 +118,10 @@ argus-assets redact --input <text-file|-> --output <safe-file|->
 ```
 
 The command redacts structured JSON by sensitive key and applies packaged patterns to
-free text. Authorization audit values pass through the same redactor before write.
+free text. In free text a sensitive key is also matched in JSON syntax (`"password":"…"`,
+escaped `\"password\":\"…\"`), including a cut JSON fragment or JSON state embedded in a
+page, and its whole quoted value is blanked. Authorization audit values pass through the
+same redactor before write.
 Never print raw input before redaction. Preserve only the minimum non-sensitive evidence
 needed to reproduce a defect.
 

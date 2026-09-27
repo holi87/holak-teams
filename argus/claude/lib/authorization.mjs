@@ -240,6 +240,15 @@ export function validateRedactionPatterns(patterns) {
   return errors;
 }
 
+const JSON_STRING_VALUE = String.raw`"(?:[^"\\]|\\.)*"?`;
+const ESCAPED_JSON_STRING_VALUE = String.raw`\\"(?:[^"\\]|\\[^"])*(?:\\")?`;
+
+function redactedValue(secret) {
+  if (secret.startsWith('"')) return '"[REDACTED]"';
+  if (secret.startsWith('\\"')) return '\\"[REDACTED]\\"';
+  return '[REDACTED]';
+}
+
 export function redactText(text, patterns) {
   const errors = validateRedactionPatterns(patterns);
   if (errors.length > 0) throw new Error(errors.join('; '));
@@ -253,13 +262,17 @@ export function redactText(text, patterns) {
       value = value.replace(regex, pattern.replacement);
     }
   }
+  // A key also matches in JSON syntax embedded in text (a cut JSON body, page state in a
+  // script, JSON inside a JSON string): the key may close its own quote, plain or escaped, and
+  // a quoted value is blanked whole, spaces and escapes included, even when the text ends
+  // inside it. A quoted value keeps its quotes, so a redacted text redacts to itself.
   for (const key of patterns.sensitiveKeys) {
     const escaped = escapeRegex(key);
-    const regex = new RegExp(`(\\b${escaped}\\b\\s*[:=]\\s*)([^\\s,;]+)`, 'gi');
+    const regex = new RegExp(String.raw`(\b${escaped}\b(?:\\?")?\s*[:=]\s*)(${JSON_STRING_VALUE}|${ESCAPED_JSON_STRING_VALUE}|[^\s,;]+)`, 'gi');
     if (regex.test(value)) {
       findings.add(`key:${key}`);
       regex.lastIndex = 0;
-      value = value.replace(regex, '$1[REDACTED]');
+      value = value.replace(regex, (match, prefix, secret) => `${prefix}${redactedValue(secret)}`);
     }
   }
   return { text: value, findings: [...findings].sort() };

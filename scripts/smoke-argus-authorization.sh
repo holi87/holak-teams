@@ -274,6 +274,24 @@ NODE
 printf '%s\n' 'Authorization: Bearer eyJaaaaaa.bbbbbb.cccccc' | "$CLI" redact --input - --output - >"$WORK/redaction/console.txt"
 grep -Fq 'Authorization: [REDACTED]' "$WORK/redaction/console.txt" || fail "console authorization header was not redacted"
 if grep -Fq 'eyJaaaaaa.bbbbbb.cccccc' "$WORK/redaction/console.txt"; then fail "console leaked bearer token"; fi
+# JSON syntax inside text (a cut JSON body, page state in a script, escaped JSON in a string)
+# is redacted by key too: whole quoted values, spaces and escapes included, and a redacted
+# text redacts to itself.
+cat >"$WORK/redaction/embedded.txt" <<'TEXT'
+{"refresh_token":"cut-refresh-value","api_key":"cut-api-value","password":"cut password, value","rows":[{"id":1
+<script>window.__STATE__={"user":{"name":"visible-name","refresh_token":"state-refresh-value","password":"state password value"}};</script>
+{"payload":"{\"password\":\"escaped password value\",\"id\":2}"}
+TEXT
+"$CLI" redact --input "$WORK/redaction/embedded.txt" --output - >"$WORK/redaction/embedded.safe"
+for leaked in cut-refresh-value cut-api-value 'cut password' state-refresh-value 'state password' 'escaped password'; do
+  if grep -Fq "$leaked" "$WORK/redaction/embedded.safe"; then fail "text-mode redaction leaked a quoted JSON value: $leaked"; fi
+done
+for kept in '"refresh_token":"[REDACTED]","api_key":"[REDACTED]","password":"[REDACTED]","rows":[{"id":1' \
+  '{"name":"visible-name","refresh_token":"[REDACTED]","password":"[REDACTED]"}' '{\"password\":\"[REDACTED]\",\"id\":2}'; do
+  grep -Fq -- "$kept" "$WORK/redaction/embedded.safe" || fail "text-mode redaction lost the JSON around a redacted key: $kept"
+done
+"$CLI" redact --input "$WORK/redaction/embedded.safe" --output - | cmp -s - "$WORK/redaction/embedded.safe" \
+  || fail 'text-mode redaction of an already redacted text changed it'
 printf '\211PNG\r\n\032\n\000secret' >"$WORK/redaction/screenshot.png"
 set +e
 "$CLI" redact --input "$WORK/redaction/screenshot.png" --output "$WORK/redaction/screenshot-safe.png" >"$WORK/redaction/binary.out" 2>&1

@@ -2,7 +2,8 @@
 // Live browser smoke for hunt-driver v2. The framework template's pinned dependencies are
 // installed into a temporary directory next to a copy of the driver, Chromium is installed for
 // that exact Playwright version, and each driver feature is exercised against a loopback
-// node:http fixture: response-body capture with path-segment auth-endpoint omission, client-side faults
+// node:http fixture: response-body capture with path-segment auth-endpoint omission and
+// redaction of bodies over the size caps and of JSON state in text pages, client-side faults
 // (fail, abort, delay, offline), a second actor with its own profile, concurrent race clicks,
 // clock advance and timezone emulation, uncaught page errors, and the aria snapshot.
 //
@@ -44,6 +45,21 @@ const STATUS = "document.querySelector('#status').textContent";
 const WHO = "document.querySelector('#who').textContent";
 
 const ITEMS_BODY = JSON.stringify({ items: [{ id: 1, name: 'a', internalNote: 'visible-only-in-payload' }] });
+// Capture-redaction fixtures. Each secret value is unique, so one leaked byte sequence names
+// the path that leaked it. The large body keeps its sensitive keys inside the first 64 KiB, so
+// only redaction before the size cap (not the cap itself) can hide them; the request body does
+// the same against the 16 KiB request-body cap, and the text/html page embeds JSON state.
+const CAPTURE_SECRETS = {
+  bigRefresh: 'opaque-big-refresh-SECRET', bigApiKey: 'big-api-key-SECRET', bigPassword: 'big-password-SECRET',
+  stateRefresh: 'ssr-refresh-SECRET', statePassword: 'ssr password SECRET with spaces',
+  requestPassword: 'request-password-SECRET', requestApiKey: 'request-api-key-SECRET',
+};
+const BIG_BODY = JSON.stringify({
+  refresh_token: CAPTURE_SECRETS.bigRefresh, api_key: CAPTURE_SECRETS.bigApiKey, password: CAPTURE_SECRETS.bigPassword,
+  rows: Array.from({ length: 1500 }, (_, index) => ({ id: index, label: `row-${index}`, note: 'x'.repeat(40) })),
+});
+const STATE_PAGE = `<!doctype html><html><body><p>state</p><script>window.__STATE__={"user":{"name":"visible-state-name","refresh_token":"${CAPTURE_SECRETS.stateRefresh}","password":"${CAPTURE_SECRETS.statePassword}"}};</script></body></html>`;
+const ECHO_REQUEST = JSON.stringify({ password: CAPTURE_SECRETS.requestPassword, api_key: CAPTURE_SECRETS.requestApiKey, pad: 'p'.repeat(20_000) });
 const MESSAGES_BODY = JSON.stringify({ messages: [{ id: 1, text: 'sibling-of-me-payload-visible' }] });
 const ME_SETTINGS_BODY = JSON.stringify({ theme: 'auth-sub-path-payload' });
 // Each buy is counted on arrival and held long enough that two race clicks overlap at the
@@ -106,9 +122,9 @@ Promise.allSettled([loadItems(), loadWho()]).then(() => { document.querySelector
 </html>
 `;
 
-// /capture fetches two auth-boundary neighbours of api.me=/api/me: /api/messages shares its
-// string prefix and must be captured, /api/me/settings sits below it and must stay omitted.
-// #ready appears once every body has been read.
+// /capture fetches the capture-redaction fixtures plus two auth-boundary neighbours of
+// api.me=/api/me: /api/messages shares its string prefix and must be captured, /api/me/settings
+// sits below it and must stay omitted. #ready appears once every body has been read.
 const CAPTURE_PAGE = `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Argus hunt-driver capture fixture</title></head>
@@ -117,8 +133,11 @@ const CAPTURE_PAGE = `<!doctype html>
 <script>
 const read = (path, init) => fetch(path, { cache: 'no-store', ...init }).then((response) => response.text());
 Promise.allSettled([
+  read('/api/big'),
+  read('/api/state'),
   read('/api/messages'),
   read('/api/me/settings'),
+  read('/api/echo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: ${JSON.stringify(ECHO_REQUEST)} }),
 ]).then(() => { document.querySelector('#ready').hidden = false; });
 </script>
 </body>
@@ -168,10 +187,32 @@ try {
     `(a) the /api/items network line does not reference its capture:\n${a.output}`);
   assert(!a.output.includes(`tok-${PRIMARY}`), `(a) the access token leaked into the driver output:\n${a.output}`);
 
-  // (k) The auth-endpoint boundary: /api/messages only shares a string prefix with api.me and
-  // is captured, while /api/me/settings is below it and stays omitted.
+  // (k) Capture redaction and the auth-endpoint boundary. A JSON body over the 64 KiB cap and
+  // a JSON request body over the 16 KiB cap are redacted whole before they are cut, so their
+  // sensitive keys stay blank; JSON state embedded in a text/html body is redacted by key too.
+  // /api/messages only shares a string prefix with api.me and is captured, while /api/me/settings
+  // is below it and stays omitted.
   const k = await driveCase('k', ['--agent', 'live-k', '--capture-bodies', '**/api/**', '--goto', '/capture', '--bodies']);
+  for (const [name, secret] of Object.entries(CAPTURE_SECRETS)) {
+    assert(!k.output.includes(secret), `(k) the ${name} secret leaked into the driver output:\n${k.output.slice(0, 4000)}`);
+  }
   const captured = capturedBodies(k.stdout);
+  const big = captured.find((entry) => entry.url.endsWith('/api/big'));
+  assert(big, `(k) the /api/big response was not captured:\n${k.output.slice(0, 4000)}`);
+  assert.equal(big.truncated, true, '(k) the /api/big body was not reported as truncated');
+  assert.equal(big.bytes, Buffer.byteLength(BIG_BODY), '(k) the /api/big byte count differs from the served body');
+  assert.equal(big.sha256, createHash('sha256').update(BIG_BODY).digest('hex'), '(k) the /api/big sha256 differs from the served body');
+  assert(Buffer.byteLength(big.body) <= 65536, `(k) the /api/big body exceeds the 64 KiB cap (${Buffer.byteLength(big.body)} bytes)`);
+  assert.match(big.body, /"refresh_token":"\[REDACTED\]","api_key":"\[REDACTED\]","password":"\[REDACTED\]","rows":\[\{"id":0,"label":"row-0"/,
+    '(k) the truncated /api/big body lost its redacted keys or its payload');
+  const state = captured.find((entry) => entry.url.endsWith('/api/state'));
+  assert(state?.body.includes('visible-state-name'), `(k) the /api/state page lost its payload:\n${state?.body}`);
+  assert(state.body.includes('"refresh_token":"[REDACTED]"') && state.body.includes('"password":"[REDACTED]"'),
+    `(k) the /api/state embedded JSON state was not redacted by key:\n${state.body}`);
+  const echo = captured.find((entry) => entry.url.endsWith('/api/echo'));
+  assert.equal(echo?.status, 200, `(k) the /api/echo request body did not reach the fixture intact:\n${k.output.slice(0, 4000)}`);
+  assert(Buffer.byteLength(echo.requestBody) <= 16384, '(k) the /api/echo request body exceeds the 16 KiB cap');
+  assert.match(echo.requestBody, /^\{"password":"\[REDACTED\]","api_key":"\[REDACTED\]","pad":"p/, `(k) the truncated /api/echo request body was not redacted by key:\n${echo.requestBody.slice(0, 200)}`);
   const messages = captured.find((entry) => entry.url.endsWith('/api/messages'));
   assert(messages?.body.includes('sibling-of-me-payload-visible'), `(k) /api/messages was omitted as if it were api.me:\n${messages?.body}`);
   const settings = captured.find((entry) => entry.url.endsWith('/api/me/settings'));
@@ -267,7 +308,7 @@ try {
   rmSync(WORK, { recursive: true, force: true });
 }
 
-console.log(`PASS  Argus hunt driver v2 live (Playwright ${PLAYWRIGHT_VERSION}, Chromium): body capture with path-segment auth omission, fail/abort/delay/offline faults, actors with lane profiles, race clicks, clock advance and timezone, page errors, and aria snapshot`);
+console.log(`PASS  Argus hunt driver v2 live (Playwright ${PLAYWRIGHT_VERSION}, Chromium): body capture with path-segment auth omission and capped-body redaction, fail/abort/delay/offline faults, actors with lane profiles, race clicks, clock advance and timezone, page errors, and aria snapshot`);
 
 // ---- setup ------------------------------------------------------------------------
 // The driver runs from its own copy of the template's scripts/ directory, so it resolves
@@ -361,8 +402,14 @@ async function handleFixture(request, response) {
   }
   if (route === 'GET /api/items') return send(response, 200, 'application/json', ITEMS_BODY);
   if (route === 'GET /capture') return send(response, 200, 'text/html; charset=utf-8', CAPTURE_PAGE);
+  if (route === 'GET /api/big') return send(response, 200, 'application/json', BIG_BODY);
+  if (route === 'GET /api/state') return send(response, 200, 'text/html; charset=utf-8', STATE_PAGE);
   if (route === 'GET /api/messages') return send(response, 200, 'application/json', MESSAGES_BODY);
   if (route === 'GET /api/me/settings') return send(response, 200, 'application/json', ME_SETTINGS_BODY);
+  if (route === 'POST /api/echo') {
+    const received = await readBody(request);
+    return sendJson(response, received === ECHO_REQUEST ? 200 : 400, { received: Buffer.byteLength(received) });
+  }
   if (route === 'POST /api/buy') {
     const { qty } = JSON.parse((await readBody(request)) || '{}');
     if (qty !== 1) return sendJson(response, 400, { error: 'qty must be 1' });
