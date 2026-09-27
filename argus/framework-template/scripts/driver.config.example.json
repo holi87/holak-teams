@@ -8,7 +8,7 @@
   "refreshTokenStorageKey": "CHANGE_ME-refresh-token",
   "postAuthMarker": "[data-testid=navbar-logout-cta]",
 
-  "_apiNote": "Endpoints used to mint tokens (login) and verify identity (me). Paths are relative to baseUrl.",
+  "_apiNote": "Endpoints used to mint tokens (login) and verify identity (me). Paths are relative to baseUrl. Add an optional \"refresh\" path when the app has a token-refresh endpoint, so body capture omits it too.",
   "api": {
     "login": "/api/auth/login",
     "me": "/api/auth/me"
@@ -21,5 +21,11 @@
     "student": { "email": "student@CHANGE_ME", "password": "CHANGE_ME" },
     "instructor": { "email": "instructor@CHANGE_ME", "password": "CHANGE_ME" },
     "admin": { "email": "admin@CHANGE_ME", "password": "CHANGE_ME" }
-  }
+  },
+
+  "_actorsNote": "--actor <name>=<role> opens a second, fully separate browser for that account. Give each extra actor a lane-suffixed account alias (for example argus-perseus-b) that the authorization manifest's accounts.allowedAliases allows; every non-anonymous actor account is authorized separately before launch.",
+
+  "_bodyCaptureNote": "--capture-bodies <glob> prints text/JSON response bodies for matching URLs to stdout only (redacted, never written to disk), each capped at maxCapturedBodyBytes. Bodies of api.login, api.me, api.refresh, and any bodyCaptureExclude URL glob are always omitted.",
+  "bodyCaptureExclude": [],
+  "maxCapturedBodyBytes": 65536
 }

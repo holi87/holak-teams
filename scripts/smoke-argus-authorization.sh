@@ -193,6 +193,57 @@ set -e
 [ "$driver_binary_code" -ne 0 ] || fail "browser driver captured unreviewed binary evidence"
 grep -Fq 'authorization denied binary-evidence' "$WORK/dev/driver-binary.out" || fail "browser driver did not enforce binary evidence review"
 
+# Client-side network faults are state changes, denied by default on production-like targets.
+set +e
+PATH="$ROOT/argus/claude/bin:$PATH" \
+DRIVER_CONFIG="$WORK/default/driver.config.json" \
+ARGUS_AUTHORIZATION_MANIFEST="$DEFAULT_MANIFEST" \
+node "$ROOT/argus/framework-template/scripts/hunt-driver.mjs" \
+  --agent orion --role argus-orion --fail-next '**/api/**' --goto / \
+  >"$WORK/default/driver-fault.out" 2>&1
+driver_fault_code=$?
+set -e
+[ "$driver_fault_code" -eq 2 ] || fail "browser driver client fault on production exited $driver_fault_code: $(<"$WORK/default/driver-fault.out")"
+grep -Fq 'authorization denied browser-state-change' "$WORK/default/driver-fault.out" || fail "browser driver client fault bypassed the production state-change denial"
+
+# A lane granted only browser:state-change still needs the separate browser:client-fault
+# mutation. The driver checks at the current time, so the grants and the time window bracket now.
+mkdir -p "$WORK/client-fault"
+node - "$FULL_FIXTURE" "$WORK/client-fault/authorization.json" <<'NODE'
+const fs = require('fs');
+const [source, target] = process.argv.slice(2);
+const manifest = JSON.parse(fs.readFileSync(source, 'utf8'));
+const startsAt = new Date(Date.now() - 3_600_000).toISOString();
+const endsAt = new Date(Date.now() + 3_600_000).toISOString();
+manifest.engagementId = 'client-fault-not-granted';
+manifest.allowedMutations = ['browser:state-change'];
+manifest.timeWindows = [{ startsAt, endsAt }];
+for (const grant of Object.values(manifest.actionGrants)) Object.assign(grant, { approvedAt: startsAt, expiresAt: endsAt });
+fs.writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+NODE
+CLIENT_FAULT_MANIFEST="$WORK/client-fault/authorization.json"
+set +e
+PATH="$ROOT/argus/claude/bin:$PATH" \
+DRIVER_CONFIG="$WORK/dev/driver.config.json" \
+ARGUS_AUTHORIZATION_MANIFEST="$CLIENT_FAULT_MANIFEST" \
+node "$ROOT/argus/framework-template/scripts/hunt-driver.mjs" \
+  --agent orion --role argus-orion --fail-next '**/api/**' --goto / \
+  >"$WORK/client-fault/driver.out" 2>&1
+client_fault_code=$?
+set -e
+[ "$client_fault_code" -eq 2 ] || fail "browser driver client fault without a grant exited $client_fault_code: $(<"$WORK/client-fault/driver.out")"
+grep -Fq 'authorization denied browser-client-fault' "$WORK/client-fault/driver.out" || fail "browser driver did not require the browser:client-fault grant: $(<"$WORK/client-fault/driver.out")"
+node - "$WORK/client-fault/authorization-audit.jsonl" <<'NODE'
+const fs = require('fs');
+const events = fs.readFileSync(process.argv[2], 'utf8').trim().split('\n').map(JSON.parse);
+const faults = events.filter((event) => event.lane === 'orion' && event.action === 'browser-state-change');
+if (faults.length !== 2) throw new Error(`expected the state-change and client-fault checks, got ${faults.length} events`);
+if (faults[0].decision !== 'allow') throw new Error(`the granted browser:state-change check was ${faults[0].decision}: ${faults[0].ruleId}`);
+if (faults[1].decision !== 'deny' || faults[1].ruleId !== 'AUTH-MUTATION-NOT-ALLOWED') {
+  throw new Error(`the browser:client-fault check was not denied with AUTH-MUTATION-NOT-ALLOWED: ${JSON.stringify(faults[1])}`);
+}
+NODE
+
 # Text artifacts and stdout are redacted; binary screenshots fail closed.
 mkdir -p "$WORK/redaction"
 node - "$WORK/redaction/raw.json" <<'NODE'

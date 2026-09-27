@@ -223,7 +223,7 @@ grep -Fxq "import $MODULE" "$LOG" || { cat "$LOG" >&2; fail 'managed driver did 
 [ "$(grep -c '^import ' "$LOG")" -eq 1 ] || fail 'managed driver imported more than one Playwright module'
 grep -Fxq "launch $PROFILE headless=true" "$LOG" || { cat "$LOG" >&2; fail 'managed driver did not launch the allocated profile'; }
 grep -Fq "page.goto $BASE/ status=200" "$LOG" || { cat "$LOG" >&2; fail 'managed driver did not navigate to the recon config base URL'; }
-grep -Fq 'page.accessibility.snapshot' "$LOG" || fail 'managed driver did not take the accessibility snapshot'
+grep -Fxq 'locator.ariaSnapshot body' "$LOG" || { cat "$LOG" >&2; fail 'managed driver did not take the aria snapshot of the page body'; }
 grep -Fxq "context.close $PROFILE" "$LOG" || fail 'managed driver did not close its browser context'
 grep -Fq 'Recorded landing page' "$WORK/driver.out" || { cat "$WORK/driver.out" >&2; fail 'managed driver did not print the snapshot'; }
 grep -Fxq 'GET /' "$WORK/server/requests.log" || fail 'fixture server did not receive the navigation'

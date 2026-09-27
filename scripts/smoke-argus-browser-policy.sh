@@ -137,5 +137,7 @@ done
 grep -Fq "'wcag22aa'" "$ROOT/argus/framework-template/tests/ui/a11y.smoke.spec.ts" || fail "TypeScript accessibility scan does not request WCAG 2.2 AA tags"
 grep -Fq 'ARGUS_BROWSER_ARTIFACTS' "$ROOT/argus/framework-template/scripts/hunt-driver.mjs" || fail "browser driver does not require the managed artifact boundary"
 grep -Fq "isWithin(join(browserArtifactsDir, 'screenshots'), output)" "$ROOT/argus/framework-template/scripts/hunt-driver.mjs" || fail "browser driver does not confine screenshots"
+# Driver v2 contract without a browser: flags, --plan authorization checks, and validation.
+node "$ROOT/scripts/smoke-argus-hunt-driver.mjs" >"$WORK/hunt-driver.out" 2>&1 || { cat "$WORK/hunt-driver.out" >&2; fail "hunt driver v2 contract smoke failed"; }
 
 printf 'PASS  Argus browser policy: WCAG 2.2 AA, risk-derived coverage, managed profiles, cleanup, and redaction fixtures\n'
