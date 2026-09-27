@@ -347,6 +347,7 @@ export function startWorkerAttempt(manifest, lane, { token, controllerToken, exe
     }
     const decision = loadImmutableSelectedDecision(manifest, lane, binding);
     validateRetryLineage(manifest, state, allocation, decision);
+    requireRetryBackoffElapsed(lane, decision);
     const dispatchBinding = validateDispatchAuthorization(manifest, lane, binding, dispatchAuthorization, allocation.allocationId);
     if (binding.runtime === 'codex') validateDispatchAuthorizationUse(manifest, state, lane, allocation, dispatchBinding, { operation: 'retry' });
     const nextToken = randomBytes(32).toString('hex');
@@ -1313,12 +1314,17 @@ function dispatchBindingWithHistory(allocation, dispatchBinding) {
   };
 }
 
+// A retry carries exactly one immutable lineage. A worker escalation resumes from its
+// current checkpoint. A pre-spawn model-unavailable retry and a controller-observed
+// outcome restart (no-artifact, zero-candidates, uncheckpointed turn-limit) bind the prior
+// selected decision and the exact active allocation instead, because no checkpoint exists.
 function validateRetryLineage(manifest, state, allocation, decision) {
   if (decision.signal === 'normal') throw new Error(`${allocation.lane} retry cannot use a normal baseline decision`);
   const escalation = decision.escalationBinding;
   const availability = decision.availabilityBinding;
-  if (Boolean(escalation) === Boolean(availability)) {
-    throw new Error(`${allocation.lane} retry requires exactly one immutable escalation or availability lineage`);
+  const outcome = decision.outcomeBinding;
+  if ([escalation, availability, outcome].filter(Boolean).length !== 1) {
+    throw new Error(`${allocation.lane} retry requires exactly one immutable escalation, availability, or outcome lineage`);
   }
   if (escalation) {
     const checkpoint = state.checkpoints[allocation.lane];
@@ -1334,13 +1340,27 @@ function validateRetryLineage(manifest, state, allocation, decision) {
       throw new Error(`${allocation.lane} retry checkpoint bytes differ from the immutable lineage`);
     }
   } else {
+    const lineage = availability ?? outcome;
+    const kind = availability ? 'availability' : 'outcome';
     const expectedAllocationSha256 = sha256(JSON.stringify(allocation));
-    if (availability.previousDecisionId !== allocation.modelDecisionId ||
-        availability.previousDecisionIntegritySha256 !== allocation.modelDecisionIntegritySha256 ||
-        availability.allocationId !== allocation.allocationId || availability.allocationSha256 !== expectedAllocationSha256) {
-      throw new Error(`${allocation.lane} retry availability lineage is stale or belongs to another allocation`);
+    if (lineage.previousDecisionId !== allocation.modelDecisionId ||
+        lineage.previousDecisionIntegritySha256 !== allocation.modelDecisionIntegritySha256 ||
+        lineage.allocationId !== allocation.allocationId || lineage.allocationSha256 !== expectedAllocationSha256) {
+      throw new Error(`${allocation.lane} retry ${kind} lineage is stale or belongs to another allocation`);
     }
   }
+}
+
+// A backoff retry may not rebind the allocation before its decision's backoff has elapsed,
+// measured from the immutable decision creation time. The CLI waits or refuses first; this
+// is the runtime's own fail-closed check for every other caller.
+function requireRetryBackoffElapsed(lane, decision, now = Date.now()) {
+  const backoffSeconds = decision.continuation?.backoffSeconds ?? 0;
+  if (backoffSeconds === 0) return;
+  if (!Number.isInteger(backoffSeconds) || backoffSeconds < 0) throw new Error(`${lane} retry backoff is malformed`);
+  const createdAt = Date.parse(decision.createdAt);
+  if (!Number.isFinite(createdAt)) throw new Error(`${lane} retry decision has no valid creation time for its backoff`);
+  if (now < createdAt + backoffSeconds * 1000) throw new Error(`${lane} retry backoff has not elapsed`);
 }
 
 function hasExecutionBinding(allocation) {

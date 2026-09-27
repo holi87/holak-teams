@@ -1229,6 +1229,12 @@
           "kind": "orchestration",
           "mechanism": "required-asset",
           "reference": "raci-matrix"
+        },
+        {
+          "consumer": "runtime:observedAccountableArtifacts",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "raci-matrix"
         }
       ]
     },

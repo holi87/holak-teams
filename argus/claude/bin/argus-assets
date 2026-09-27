@@ -243,7 +243,7 @@ Usage:
   argus-assets authorization check --manifest <path> --lane <slug> --action <action> --target <target> [options]
   argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup|resolve-gates> [options]
   argus-assets engagement allocate --manifest <engagement.json> --lane <slug> --decision <model-decision.json> [--dispatch-authorization <MDA-file>] [--token <lane-token>] [--controller-token <odysseus-token>]
-  argus-assets engagement start-attempt --manifest <engagement.json> --lane <slug> --decision <model-decision.json> --token <lane-token> [--controller-token <odysseus-token>] [--dispatch-authorization <MDA-file>]
+  argus-assets engagement start-attempt --manifest <engagement.json> --lane <slug> --decision <model-decision.json> --token <lane-token> [--controller-token <odysseus-token>] [--dispatch-authorization <MDA-file>] [--wait <true|false>]
   argus-assets schema <list|validate> [options]
   argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]
   argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
@@ -957,6 +957,7 @@ function modelCommand(args) {
     requirePreAllocationInitialRoute(engagementContext, options, attempt);
     const escalationBinding = bindModelEscalation(engagementContext, options, attempt);
     const availabilityBinding = bindModelUnavailable(engagementContext, options, attempt);
+    const outcomeBinding = bindModelOutcome(engagementContext, options, attempt);
     const operatorDecision = bindOperatorDecision(engagementContext, options, attempt, escalationBinding, availabilityBinding);
     const createdAt = new Date().toISOString();
     const routingInput = {
@@ -969,6 +970,7 @@ function modelCommand(args) {
       attempt,
       escalationBinding,
       availabilityBinding,
+      outcomeBinding,
       operatorDecision,
       trust: modelLaunchAssurance(engagementContext.engagement.launchAssurance),
       createdAt,
@@ -1438,6 +1440,7 @@ function persistModelEscalationRequest(context, options, attempt) {
 function bindModelEscalation(context, options, attempt) {
   const role = modelPolicy.roles.find((item) => item.slug === options.agent);
   if (!role) fail(`unknown model-policy role: ${options.agent}`);
+  if (isOutcomeRoute(options)) return null;
   const workerSignal = modelPolicy.escalationProfiles[role.escalationProfile].includes(options.signal);
   if (!workerSignal) {
     if (options.request) fail('model route --request is valid only for a declared worker escalation signal');
@@ -1503,6 +1506,67 @@ function priorUnavailableRetries(context, agent, runtime, dispatchId, attempt) {
   return selectedModelDecisions(context, agent, runtime, dispatchId, undefined)
     .filter((decision) => decision.signal === 'model-unavailable' && decision.attempt < attempt)
     .length;
+}
+
+// A controller-observed outcome needs no worker envelope: no-artifact and zero-candidates
+// always, and turn-limit when the lane left no checkpoint to resume from (no --request).
+function isOutcomeRoute(options) {
+  return ['no-artifact', 'zero-candidates'].includes(options.signal) || (options.signal === 'turn-limit' && !options.request);
+}
+
+// Binds a checkpoint-less continuation to the prior selected decision and the exact active
+// allocation, the same way a pre-spawn model-unavailable retry is bound. The controller's
+// claim is checked against the artifact root: the agent's RACI accountable artifacts that
+// physically exist are recorded, and a no-artifact claim they contradict is refused.
+function bindModelOutcome(context, options, attempt) {
+  if (!isOutcomeRoute(options)) return null;
+  if (options.request) fail(`${options.signal} is controller-observed and does not accept --request`);
+  if (options.operatorDecision) fail(`${options.signal} continuation is automatic and does not accept --operator-decision`);
+  if (attempt < 2) fail(`${options.signal} requires an attempt after a selected route`);
+  const state = getEngagementStatus(context.engagement);
+  const allocation = state.allocations[options.agent];
+  if (!allocation || allocation.status !== 'active') fail(`${options.signal} requires an active allocation for the exact agent`);
+  const previous = findPreviousModelDecision(context, {
+    agent: options.agent,
+    dispatchId: options.dispatchId,
+    attempt,
+  }, options.runtime);
+  requireAllocationExecutionAncestor(allocation, previous, options.signal);
+  const observedArtifacts = observedAccountableArtifacts(context, options.agent);
+  if (options.signal === 'no-artifact' && observedArtifacts.length > 0) {
+    fail(`no-artifact is contradicted by ${observedArtifacts.join(', ')}; route turn-limit instead`);
+  }
+  return {
+    previousDecisionId: previous.decisionId,
+    previousDecisionIntegritySha256: previous.integritySha256,
+    allocationId: allocation.allocationId,
+    allocationSha256: createHash('sha256').update(JSON.stringify(allocation)).digest('hex'),
+    priorCheckpointlessRetries: priorCheckpointlessRetries(context, options.agent, options.runtime, options.dispatchId, attempt),
+    observedArtifacts,
+  };
+}
+
+// Counts the checkpoint-less restarts that earlier attempts of the exact
+// agent/runtime/dispatch already consumed, so a replay of the same attempt recomputes the
+// same outcome binding.
+function priorCheckpointlessRetries(context, agent, runtime, dispatchId, attempt) {
+  return selectedModelDecisions(context, agent, runtime, dispatchId, undefined)
+    .filter((decision) => Boolean(decision.outcomeBinding) && decision.attempt < attempt)
+    .length;
+}
+
+// The agent's packaged RACI accountable artifacts that exist under the artifact root without
+// crossing a symbolic link, as sorted artifact-root-relative paths.
+function observedAccountableArtifacts(context, agent) {
+  assertPackagedAsset(requireAsset('raci-matrix'), 'trusted raci-matrix');
+  const record = raciContract.agents?.find((item) => item.slug === agent);
+  if (!record || !Array.isArray(record.accountableArtifacts)) fail(`raci-matrix has no accountable-artifact record for ${agent}`);
+  return record.accountableArtifacts
+    .filter((artifact) => {
+      const path = resolve(context.artifactRoot, artifact);
+      return isWithin(context.artifactRoot, path) && existsSync(path) && safePhysicalPath(context.artifactRoot, path);
+    })
+    .sort();
 }
 
 function validateModelEscalationState(context, request, runtime, raw) {
@@ -2095,8 +2159,9 @@ function engagementAllocate(args) {
 }
 
 function engagementStartAttempt(args) {
-  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--decision', '--dispatch-authorization', '--token', '--controller-token']));
+  const options = parseNamedOptions(args, new Set(['--manifest', '--lane', '--decision', '--dispatch-authorization', '--token', '--controller-token', '--wait']));
   requireOptions(options, ['manifest', 'lane', 'decision', 'token'], 'engagement start-attempt');
+  const wait = parseBooleanOption(options.wait, '--wait') ?? false;
   assertTrustedModelRoutingAssets();
   const context = loadModelEngagement(options.manifest, options.lane);
   requirePinnedModelTrust(context);
@@ -2107,6 +2172,7 @@ function engagementStartAttempt(args) {
   if (seal.runtime !== decision.runtime || seal.preflightSha256 !== preflight.sha256 || !seal.decisions[options.lane]) {
     fail('retry decision is outside the sealed dispatchable model-control set');
   }
+  awaitRetryBackoff(decision, wait);
   console.log(JSON.stringify(startWorkerAttempt(context.engagement, options.lane, {
     token: options.token,
     controllerToken: options.controllerToken,
@@ -2114,6 +2180,29 @@ function engagementStartAttempt(args) {
     dispatchAuthorization,
   })));
   return 0;
+}
+
+// A backoff retry may start only after its decision's backoff has elapsed, measured from
+// the immutable decision creation time. With --wait true the command sleeps in bounded
+// slices when no more than the policy's 300-second backoff ceiling remains; otherwise it
+// refuses before any state changes. The runtime re-checks the same rule under its lock.
+function awaitRetryBackoff(decision, wait) {
+  const maxWaitMs = 300_000;
+  const sliceMs = 1_000;
+  const backoffSeconds = decision.continuation?.backoffSeconds ?? 0;
+  if (backoffSeconds === 0) return;
+  const notBefore = Date.parse(decision.createdAt) + backoffSeconds * 1000;
+  if (!Number.isFinite(notBefore)) fail('retry decision has no valid creation time for its backoff');
+  let remaining = notBefore - Date.now();
+  if (remaining <= 0) return;
+  if (!wait || remaining > maxWaitMs) {
+    fail(`retry backoff has not elapsed; retry at ${new Date(notBefore).toISOString()} or pass --wait true`);
+  }
+  const slot = new Int32Array(new SharedArrayBuffer(4));
+  while (remaining > 0) {
+    Atomics.wait(slot, 0, 0, Math.min(remaining, sliceMs));
+    remaining = notBefore - Date.now();
+  }
 }
 
 function loadDispatchAuthorization(context, explicitPath, decision) {
