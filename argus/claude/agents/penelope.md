@@ -77,6 +77,7 @@ Write to disk, then return a summary to Odysseus. Never return path specs only i
 - Structured results include every funded surface, including passing observations.
 - Agent binding: `penelope`. Maximum turns: `80`. Declared signals: schema-validation-failure, ambiguity, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `penelope`; checkpoint, return it, and stop as required by qa-core.
+- Checkpoint after each completed work unit; an automatic continuation resumes only from your latest checkpoint, in a new thread.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract

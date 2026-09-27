@@ -97,6 +97,18 @@ After sealing, allocate Odysseus with `argus-assets engagement allocate --manife
 paths, and decision; never signing material. Workers checkpoint, honor locks/barriers, and
 clean on `success`, `failure`, or `interrupted`, preserving durable fragments/checkpoints.
 
+Batch the controller verbs; each also takes `--manifest <manifest>`. Persist the initial
+decisions once with `argus-assets model route --agents dispatchable --dispatch-prefix <id>
+--signal normal --attempt 1 --runtime claude`. Allocate each released wave's new lanes with
+`argus-assets engagement allocate --lanes <csv> --controller-token <token>`; read each new
+lane token from its stdout and pass it inline to that lane only. With `--controller-token`,
+record events via `argus-assets model telemetry --json`, arrivals via `argus-assets
+engagement barrier arrive --phase <phase> --json`, and worker releases via
+`argus-assets engagement cleanup --json`; Odysseus cleans alone, last, on its own token.
+Batch input is one inline single-line `--json` object (`events`, `lanes`, or `cleanups`);
+never write tokens or batch input to a file. Dispatch a wave's lanes as parallel `Agent`
+calls in one message. Record a lane's arrival only after its RESULT is validated.
+
 Advance W0–W4 in DAG order within the manifest ceiling. The DAG overrides illustrative role start times. `selected-dispatchable-predecessors`
 waits only on dispatched predecessors. The immutable dispatchable projection filters phase
 participants, so gated roles create no false barrier. Advance after projected arrivals;
@@ -118,6 +130,26 @@ The validated surface inventory is the coverage denominator. Calculate canonical
 coverage from versioned observations before reporting; test/defect counts contribute
 nothing. Every zero, omission, gate, or below-floor category is residual risk.
 
+## Turn budget
+
+The controller cap is the policy Odysseus `maxTurns`, enforced natively at launch;
+`controllerBudget.closeoutReserveTurns` of it is reserved for closeout. No runtime turn
+counter exists: count your own turns and estimate each wave's controller turns before it
+starts. At each wave boundary, if remaining turns are at most the reserve plus the next
+wave's estimate:
+
+1. Stop new hunting, deep-hunt, and retry work. Skip an untouched deep-hunt pass 2 or later
+   with `argus-assets engagement barrier skip --lane odysseus --reason controller-budget`.
+2. Batch-clean interrupted lanes with `argus-assets engagement cleanup --json`.
+3. Inside the reserve, run Minos's final merge, the independent blocklist, coverage, and
+   Kleio.
+4. Report every skipped wave, pass, retry, and lane as a named residual.
+
+A phase-scoped re-dispatch of a lane on its active lease (proof repair, oracle desk,
+deep-hunt pass, or a second Kalchas recon) is a new work unit with a fresh native
+`maxTurns`, bounded by the plan's phases. It reuses the lane's selected decision,
+allocation, and token and is never a turn-limit continuation.
+
 ## Model decisions
 
 Pin distinct public Ed25519 `runtime-attestation` and `operator-approval` anchors; private
@@ -134,8 +166,14 @@ that token.
 Persist `argus/model-escalation-request@1` through `argus-assets model request`; validate
 lane token, prior decision, allocation, checkpoint, dispatch, attempt, path, and digests.
 Running-worker signals require that checkpoint; pre-spawn `model-unavailable` uses the
-availability binding and may have none. Frontier continuation/retry also requires a signed
-`argus/model-operator-decision@1`.
+availability binding and may have none. Frontier continuation follows the policy
+`autoContinue` flag: `AUTO_CONTINUE_SELECTED` keeps the unchanged frontier baseline, and a
+checkpointed worker signal resumes from that checkpoint. Route a controller-observed
+`no-artifact`, `zero-candidates`, or uncheckpointed `turn-limit` without `--request`; each
+dispatch gets at most one such fresh-restart. `BACKOFF_RETRY_SELECTED` is followed by
+`start-attempt --wait true`. Report `AUTO_CONTINUATION_EXHAUSTED` as a named residual.
+Operator-gated signals still require a signed `argus/model-operator-decision@1`; unattested
+runs report them as blocked.
 
 Before retry, emit `argus-assets model telemetry` for the current decision, then run `argus-assets
 engagement start-attempt` with decision, lane token, and controller token. Replace the

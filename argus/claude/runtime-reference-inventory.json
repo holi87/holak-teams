@@ -865,7 +865,8 @@
     {
       "value": "claude",
       "consumers": [
-        "odysseus"
+        "odysseus",
+        "skill:orchestration-core"
       ]
     },
     {
