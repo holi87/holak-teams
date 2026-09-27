@@ -40,6 +40,7 @@ const MAX_REPORT_BYTES = 40 * 1024;
 const MAX_EVIDENCE_BYTES = 20 * 1024;
 const MAX_EVIDENCE_ITEMS = 5;
 const ATTEMPTS_PER_PASS = 2;
+const AUTH_FAILURES = new Set([401, 403]);
 const INVOCATION_TIMEOUT_MS = 600_000;
 const VERSION_TIMEOUT_MS = 60_000;
 const PROBE_TIMEOUT_MS = 120_000;
@@ -332,7 +333,10 @@ function parseEnvelope(stdout) {
   const models = isObject(envelope.modelUsage) ? Object.keys(envelope.modelUsage).sort(byName) : [];
   const costUsd = typeof envelope.total_cost_usd === 'number' && Number.isFinite(envelope.total_cost_usd) && envelope.total_cost_usd >= 0 ? envelope.total_cost_usd : null;
   if (envelope.is_error === true || (envelope.subtype !== undefined && envelope.subtype !== 'success')) {
-    return { error: `claude reported ${envelope.subtype ?? 'an error'}`, models, costUsd };
+    const status = Number.isInteger(envelope.api_error_status) ? envelope.api_error_status : null;
+    const detail = typeof envelope.result === 'string' && envelope.result ? `: ${clip(envelope.result, 300)}` : '';
+    const kind = envelope.subtype && envelope.subtype !== 'success' ? envelope.subtype : 'an error';
+    return { error: `claude reported ${kind}${status ? ` (API status ${status})` : ''}${detail}`, apiStatus: status, models, costUsd };
   }
   let output = isObject(envelope.structured_output) ? envelope.structured_output : null;
   if (!output && typeof envelope.result === 'string') {
@@ -529,6 +533,11 @@ async function main() {
     const parsed = parseEnvelope(result.stdout);
     for (const model of parsed.models) resolvedModels.add(model);
     if (parsed.costUsd !== null) totalCostUsd = (totalCostUsd ?? 0) + parsed.costUsd;
+    // A rejected API key fails every invocation (the CLI first retries it for minutes), so it
+    // stops the whole judgement instead of recording one failed verdict per finding.
+    if (AUTH_FAILURES.has(parsed.apiStatus)) {
+      throw new Error(`claude could not authenticate with ANTHROPIC_API_KEY (${parsed.error}); fix the key and rerun`);
+    }
     if (result.code !== 0) {
       const tail = result.stderr.trim();
       return { ...parsed, error: `claude exited with ${result.signal ?? `status ${result.code}`}${parsed.error ? ` (${parsed.error})` : ''}${tail ? `: ${tail}` : ''}` };

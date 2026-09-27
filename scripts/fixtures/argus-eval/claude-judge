@@ -7,7 +7,8 @@
 //                         parsed --json-schema, the answer, and every protocol violation seen
 //   $HOME/seen/<sha256>   calls per packet (every pass of a finding receives the same packet)
 //   $HOME/fail            failure injection: "invalid <n>" makes the next n calls answer with
-//                         output that violates the judge schema
+//                         output that violates the judge schema; "auth-error" makes every call
+//                         fail like the real CLI with a rejected API key (is_error, status 401)
 //
 // The answer is chosen by keywords in the finding title:
 //   [stub:real:<seedId>]  real, crediting <seedId> when the schema enum allows it (as
@@ -111,12 +112,17 @@ writeFileSync(seenPath, String(call));
 
 let injected = false;
 const failPath = join(home, 'fail');
-if (existsSync(failPath)) {
-  const match = /^invalid (\d+)\s*$/.exec(readFileSync(failPath, 'utf8'));
-  if (match && Number(match[1]) > 0) {
-    injected = true;
-    writeFileSync(failPath, `invalid ${Number(match[1]) - 1}\n`);
-  }
+const failMode = existsSync(failPath) ? readFileSync(failPath, 'utf8').trim() : '';
+if (failMode === 'auth-error') {
+  record({ kind: 'judge', stdin, schema, call, injected: true, answer: null });
+  process.stdout.write(`${JSON.stringify({ type: 'result', subtype: 'success', is_error: true, api_error_status: 401, terminal_reason: 'api_error',
+    result: 'Failed to authenticate. API Error: 401 API key is invalid.', num_turns: 1, total_cost_usd: 0, modelUsage: {} })}\n`);
+  process.exit(1);
+}
+const match = /^invalid (\d+)$/.exec(failMode);
+if (match && Number(match[1]) > 0) {
+  injected = true;
+  writeFileSync(failPath, `invalid ${Number(match[1]) - 1}\n`);
 }
 
 const title = packet.finding?.title ?? '';

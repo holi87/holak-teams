@@ -424,10 +424,20 @@ export async function probe() { return false; }
     assert.equal(stale.status, 1);
     assert.match(stale.stderr, /corpus mismatch/);
     assert.deepEqual(readCalls(refusalHome).filter(call => call.kind === 'judge'), [], 'no refused invocation reaches the judge');
+    // A key the API rejects stops the whole judgement at the first invocation, with no output.
+    const authHome = join(work, 'auth-home');
+    mkdirSync(authHome);
+    writeFileSync(join(authHome, 'fail'), 'auth-error\n');
+    const rejected = judge(['--runs', runsPath, '--output', join(work, 'auth.json'), '--claude', STUB, '--concurrency', '1'], { home: authHome });
+    assert.equal(rejected.status, 1);
+    assert.match(rejected.stderr, /could not authenticate with ANTHROPIC_API_KEY \(claude reported an error \(API status 401\): Failed to authenticate/);
+    assert(!rejected.stderr.includes(API_KEY), 'the key value is never printed');
+    assert(!existsSync(join(work, 'auth.json')));
+    assert.equal(readCalls(authHome).filter(call => call.kind === 'judge').length, 1);
     cases++;
   }
 
-  console.log(`PASS  first-pass judge: ${cases} cases (seed credit and probe, duplicates, pass disagreement, untrusted framing, judge failures, result-only answers, corrected-run enum, no private leakage, retry injection, private corpus probe, refusals). Stub CLI only; no model score claimed.`);
+  console.log(`PASS  first-pass judge: ${cases} cases (seed credit and probe, duplicates, pass disagreement, untrusted framing, judge failures, result-only answers, corrected-run enum, no private leakage, retry injection, private corpus probe, refusals and a rejected key). Stub CLI only; no model score claimed.`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
