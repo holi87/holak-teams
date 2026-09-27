@@ -6,7 +6,10 @@ Layers: tests -> (these fixtures) -> qa.api_client / qa.pages -> qa.config.
 What this provides:
   * api_as(role)        authenticated httpx.Client factory (token cached per API and role)
   * anon_client         unauthenticated httpx.Client (negative / public-route tests)
-  * created_resources   teardown list — POST-created entities get DELETEd after the test
+  * created_resources   teardown list — POST-created entities get DELETEd after the test;
+                        any failed DELETE fails the test as ArgusCleanupError
+  * fault_injector      runs a resilience fault around one body and always restores it
+                        (qa.argus.fault_injector); its teardown settles abandoned faults
   * storage_state       session-scoped UI auth (once per run) -> .auth/user.json
   * browser_context_args overridden so UI contexts use UI_URL + the saved auth state
   * console_guard        fails a UI test on console errors / 5xx responses (UI lane only)
@@ -20,7 +23,6 @@ from __future__ import annotations
 
 import sys
 import os
-import warnings
 from pathlib import Path
 from typing import Callable, Iterator
 
@@ -33,7 +35,9 @@ sys.path.insert(0, str(_ROOT / "src"))
 
 from qa.api_client import login, make_client  # noqa: E402
 from qa.argus import counterfactual  # noqa: E402
+from qa.argus.cleanup import cleanup_created_resources  # noqa: E402
 from qa.argus.errors import ArgusCounterfactualError  # noqa: E402
+from qa.argus.fault_injector import FaultInjector, fault_active  # noqa: E402
 from qa.argus.stub_server import StubServer  # noqa: E402
 from qa.config import ENV  # noqa: E402
 
@@ -149,21 +153,32 @@ def anon_client() -> Iterator[httpx.Client]:
 
 
 @pytest.fixture
-def created_resources() -> Iterator[list[tuple[httpx.Client, str]]]:
-    """Register (client, path) of POST-created entities; they are DELETEd in teardown.
+def created_resources(
+    api_as: Callable[[str], httpx.Client],
+    anon_client: httpx.Client,
+) -> Iterator[list[tuple[httpx.Client, str]]]:
+    """Register (client, path) of POST-created entities; teardown DELETEs every one, newest first.
 
-    Use when the app ships no reset command — never rely on accumulating unique
-    data alone. A 404 in cleanup is tolerated (already gone); other failures warn.
+    Use when the app ships no reset command — never rely on accumulating unique data alone.
+    Every DELETE is attempted; a status outside 200/202/204/404 (404: already gone) or an
+    exception fails the test as ArgusCleanupError (``cleanup-failed``), never a warning. It
+    depends on api_as and anon_client so every client they hand out outlives this teardown.
     """
     created: list[tuple[httpx.Client, str]] = []
     yield created
-    for client, path in reversed(created):
-        try:
-            res = client.delete(path)
-            if res.status_code not in (200, 202, 204, 404):
-                warnings.warn(f"cleanup failed: DELETE {path} -> {res.status_code}")
-        except Exception as exc:  # noqa: BLE001 - teardown must never mask the test result
-            warnings.warn(f"cleanup error: DELETE {path} -> {exc!r}")
+    cleanup_created_resources(created)
+
+
+@pytest.fixture
+def fault_injector() -> Iterator[FaultInjector]:
+    """Runs a fault around one body and always restores it: ``fault_injector.run(Fault(...), body)``.
+
+    A failed or unverifiable restore is ArgusRestoreError (``fault-restore-failed``); a server
+    fault needs ARGUS_FAULT_INJECTION=authorized. Teardown restores any fault still recorded.
+    """
+    injector = FaultInjector()
+    yield injector
+    injector.settle()
 
 
 # ---------------------------------------------------------------------------- UI
@@ -202,7 +217,9 @@ def browser_context_args(browser_context_args, storage_state):  # noqa: ANN001
 def console_guard(page) -> Iterator[None]:  # noqa: ANN001 - pytest-playwright `page`
     """Fail a UI test on console errors or 5xx responses — cheap, high-yield web signal.
 
-    Wired in as autouse for the UI lane via tests/ui/conftest.py.
+    Wired in as autouse for the UI lane via tests/ui/conftest.py; the resilience example
+    requests it explicitly. Errors and 5xx responses observed while a fault_injector fault is
+    active (qa.argus.fault_injector.fault_active) are the fault's intended effect.
     ADAPT-ME: add known-noise patterns to `allow` (3rd-party scripts, expected probes).
     """
     import re
@@ -213,11 +230,11 @@ def console_guard(page) -> Iterator[None]:  # noqa: ANN001 - pytest-playwright `
     violations: list[str] = []
 
     def on_console(msg) -> None:  # noqa: ANN001
-        if msg.type == "error" and not any(p.search(msg.text) for p in allow):
+        if msg.type == "error" and not fault_active() and not any(p.search(msg.text) for p in allow):
             violations.append(f"console.error: {msg.text}")
 
     def on_response(response) -> None:  # noqa: ANN001
-        if response.status >= 500 and not any(p.search(response.url) for p in allow):
+        if response.status >= 500 and not fault_active() and not any(p.search(response.url) for p in allow):
             violations.append(
                 f"HTTP {response.status}: {response.request.method} {response.url}"
             )

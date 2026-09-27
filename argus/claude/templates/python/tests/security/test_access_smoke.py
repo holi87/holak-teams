@@ -1,29 +1,28 @@
-"""@security lane — GATED behind SECURITY_ENABLED=1 (explicit opt-in).
+"""@security lane — behind an explicit clearance (SECURITY_ENABLED=1).
 
 Authz / IDOR / broken-access-control checks never run by accident against an
-environment that hasn't been cleared for them. The module self-skips unless
-SECURITY_ENABLED=1, so an unset run shows security as skipped and exit stays 0.
+environment that hasn't been cleared for them. The lane runs only when
+solution/test-lanes.tsv enables it, and then every case requires SECURITY_ENABLED=1: any
+other value is reported through ArgusPrerequisiteError as ``prerequisite-missing``; the tests
+never skip themselves.
 
 ADAPT-ME: replace the placeholder routes/roles with the real protected surface
 and threat model from recon + OpenAPI.
 """
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from qa.api_client import Endpoints
+from qa.argus.errors import ArgusPrerequisiteError, require_env
 
-SECURITY_ENABLED = os.environ.get("SECURITY_ENABLED") == "1"
+pytestmark = pytest.mark.security
 
-pytestmark = [
-    pytest.mark.security,
-    pytest.mark.skipif(
-        not SECURITY_ENABLED,
-        reason="security lane disabled: set SECURITY_ENABLED=1 once the target is cleared",
-    ),
-]
+
+@pytest.fixture(autouse=True)
+def _cleared_for_security_checks() -> None:
+    if require_env("SECURITY_ENABLED") != "1":
+        raise ArgusPrerequisiteError("SECURITY_ENABLED must be 1 once the target is cleared")
 
 
 def test_protected_route_rejects_anonymous(anon_client):
