@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
@@ -28,9 +29,17 @@ import java.util.regex.Pattern;
  * through {@link ArgusEvents}, classified from the exception type, never from message text,
  * and finishes each native run by writing {@code reports/argus-adapter-status.txt}.
  *
- * <p>This version maps the {@code live} and {@code repeat} evidence passes. Any other
- * {@code ARGUS_EVIDENCE_PASS} fails closed as an adapter error rather than being reported as
- * a live run.
+ * <p>It maps the {@code live} and {@code repeat} evidence passes and, in
+ * {@code defect-evidence}, the counterfactual passes {@code cf-correct} and
+ * {@code cf-tamper-<k>} (SD-10). Any other {@code ARGUS_EVIDENCE_PASS} fails closed as an
+ * adapter error rather than being reported as a live run. In a counterfactual pass the case
+ * suffix ({@code .cf-correct}, {@code .cf-<tamperId>}, or {@code .cf} for an exemption) is
+ * recomputed from the test's own fixture through {@link Counterfactual#decide}. A test aborted
+ * with {@code argus-counterfactual-not-applicable} for a variant that is indeed not applicable
+ * reports nothing; {@code argus-counterfactual-exempt:<reason>} for an indeed exempt bug reports
+ * the exemption; any other skip is an ordinary one. A test that passed or failed its assertion
+ * without {@link ArgusCounterfactualExtension} having loaded its variant would have reached the
+ * real target, so it is an adapter error, never a verdict.
  */
 public class ArgusOutcomeListener implements TestExecutionListener {
 
@@ -61,11 +70,13 @@ public class ArgusOutcomeListener implements TestExecutionListener {
     private String mode;
     private String pass;
     private String suffix;
+    private boolean counterfactual;
     private TestPlan plan;
     private ArgusCaseIds ids;
     private ArgusLedger ledger;
     private ArgusEvents events;
     private final Set<String> reported = ConcurrentHashMap.newKeySet();
+    private final Map<String, Counterfactual.Decision> decisions = new ConcurrentHashMap<>();
 
     @Override
     public void testPlanExecutionStarted(TestPlan testPlan) {
@@ -76,13 +87,16 @@ public class ArgusOutcomeListener implements TestExecutionListener {
         plan = testPlan;
         broken = false;
         reported.clear();
+        decisions.clear();
         events = new ArgusEvents(ArgusEvents.root());
         String requested = System.getenv("ARGUS_EVIDENCE_PASS");
         pass = requested == null || requested.isEmpty() ? "live" : requested;
-        if (!pass.equals("live") && !pass.equals("repeat")) {
+        counterfactual = Counterfactual.isPass(pass);
+        if (!pass.equals("live") && !pass.equals("repeat") && !(counterfactual && mode.equals("defect-evidence"))) {
             abandon();
             return;
         }
+        // A test's counterfactual suffix comes from its fixture; this one only names containers.
         suffix = pass.equals("live") ? "" : "." + pass;
         try {
             ledger = ArgusLedger.load(ArgusEvents.root());
@@ -129,15 +143,21 @@ public class ArgusOutcomeListener implements TestExecutionListener {
     private void emitCase(TestIdentifier identifier, Outcome outcome, Throwable throwable) {
         ArgusCaseIds.Markers markers = ArgusCaseIds.Markers.of(plan, identifier);
         String bug = regressionBug(markers);
-        String caseId = ids.of(identifier) + suffix;
         reported.add(identifier.getUniqueId());
-        switch (outcome.kind()) {
-            case PASSED, ASSERTION -> emitProduct(caseId, markers, bug, outcome.kind() == Kind.PASSED);
-            case SKIPPED -> {
-                if (markers.regression()) events.emit(caseId, "policy", "denied", false, "n/a", bug, "regression-skipped");
-                else events.emit(caseId, "skip", "skipped", false, "n/a", "-", "test-skipped");
+        String caseId;
+        if (counterfactual) {
+            caseId = emitCounterfactual(identifier, bug, outcome, throwable);
+            if (caseId == null) return;
+        } else {
+            caseId = ids.of(identifier) + suffix;
+            switch (outcome.kind()) {
+                case PASSED, ASSERTION -> emitProduct(caseId, markers, bug, outcome.kind() == Kind.PASSED);
+                case SKIPPED -> {
+                    if (markers.regression()) events.emit(caseId, "policy", "denied", false, "n/a", bug, "regression-skipped");
+                    else events.emit(caseId, "skip", "skipped", false, "n/a", "-", "test-skipped");
+                }
+                case OTHER -> events.emit(caseId, outcome.category(), "fail", false, "n/a", bug, outcome.reason());
             }
-            case OTHER -> events.emit(caseId, outcome.category(), "fail", false, "n/a", bug, outcome.reason());
         }
         if (throwable != null && !outcome.reason().equals("cleanup-failed") && suppressesCleanup(throwable, Collections.newSetFromMap(new IdentityHashMap<>()))) {
             events.emit(caseId + ".cleanup", "automation", "fail", false, "n/a", bug, "cleanup-failed");
@@ -165,6 +185,54 @@ public class ArgusOutcomeListener implements TestExecutionListener {
         } else {
             events.emit(caseId, "automation", "fail", false, "n/a", bug, "flaky-red");
         }
+    }
+
+    /**
+     * SD-6 counterfactual events for one case; returns the case id it reported under, or null
+     * when the case reports nothing. The rules do not depend on the declared repetition: the
+     * stub is deterministic.
+     */
+    private String emitCounterfactual(TestIdentifier identifier, String bug, Outcome outcome, Throwable throwable) {
+        Optional<String> loaded = ArgusCounterfactualExtension.takeLoaded(identifier.getUniqueId());
+        Counterfactual.Decision decision = decisions.computeIfAbsent(bug, key -> Counterfactual.decide(ArgusEvents.root(), key, pass));
+        String id = ids.of(identifier);
+        if (outcome.kind() == Kind.SKIPPED) {
+            String message = throwable == null ? null : throwable.getMessage();
+            if (decision instanceof Counterfactual.NotApplicable) return null;
+            if (decision instanceof Counterfactual.Exempt exempt) {
+                String caseId = id + ".cf";
+                if (Counterfactual.exemptSentinel(exempt.reason()).equals(message)) {
+                    events.emit(caseId, "policy", "pass", false, "n/a", bug, "counterfactual-exempt." + exempt.reason());
+                } else {
+                    events.emit(caseId, "policy", "denied", false, "n/a", bug, "regression-skipped");
+                }
+                return caseId;
+            }
+            String caseId = id + "." + ((Counterfactual.Variant) decision).tag();
+            events.emit(caseId, "policy", "denied", false, "n/a", bug, "regression-skipped");
+            return caseId;
+        }
+        // A verdict counts only for the variant the extension loaded; an automation or
+        // infrastructure failure (for example before the extension ran) is never evidence.
+        if (!(decision instanceof Counterfactual.Variant variant)
+                || (outcome.kind() != Kind.OTHER && !loaded.map(variant.tag()::equals).orElse(false))) {
+            events.recordFailure();
+            return null;
+        }
+        String caseId = id + "." + variant.tag();
+        boolean correct = pass.equals(Counterfactual.CORRECT);
+        switch (outcome.kind()) {
+            case PASSED -> {
+                if (correct) events.emit(caseId, "product", "pass", false, "reproduced", bug, "counterfactual-correct-pass");
+                else events.emit(caseId, "automation", "fail", false, "n/a", bug, "counterfactual-tamper-survived");
+            }
+            case ASSERTION -> {
+                if (correct) events.emit(caseId, "automation", "fail", false, "n/a", bug, "counterfactual-correct-red");
+                else events.emit(caseId, "product", "fail", true, "reproduced", bug, "counterfactual-tamper-red");
+            }
+            default -> events.emit(caseId, outcome.category(), "fail", false, "n/a", bug, outcome.reason());
+        }
+        return caseId;
     }
 
     /**
@@ -216,6 +284,10 @@ public class ArgusOutcomeListener implements TestExecutionListener {
             if (cause instanceof ArgusRestoreError) return Outcome.fail("infrastructure", "fault-restore-failed");
             if (cause instanceof ArgusCounterfactualError) return Outcome.fail("automation", "counterfactual-unmatched-request");
         }
+        // An unmatched stub request reported after a failing body voids that body's verdict.
+        if (suppresses(throwable, ArgusCounterfactualError.class, Collections.newSetFromMap(new IdentityHashMap<>()))) {
+            return Outcome.fail("automation", "counterfactual-unmatched-request");
+        }
         if (throwable instanceof AssertionError) return Outcome.ASSERTION;
         if (chain.stream().anyMatch(cause -> cause instanceof ConnectException || cause instanceof UnknownHostException || cause instanceof NoRouteToHostException)) {
             return Outcome.fail("infrastructure", "target-unreachable");
@@ -245,9 +317,14 @@ public class ArgusOutcomeListener implements TestExecutionListener {
 
     /** A teardown ArgusCleanupError that JUnit attached to a different primary failure. */
     private static boolean suppressesCleanup(Throwable throwable, Set<Throwable> seen) {
+        return suppresses(throwable, ArgusCleanupError.class, seen);
+    }
+
+    /** Whether JUnit attached a {@code type} (anywhere in a suppressed cause chain) to {@code throwable}. */
+    private static boolean suppresses(Throwable throwable, Class<? extends Throwable> type, Set<Throwable> seen) {
         if (!seen.add(throwable) || seen.size() > MAX_CHAIN) return false;
         for (Throwable suppressed : throwable.getSuppressed()) {
-            if (chain(suppressed).stream().anyMatch(cause -> cause instanceof ArgusCleanupError) || suppressesCleanup(suppressed, seen)) return true;
+            if (chain(suppressed).stream().anyMatch(type::isInstance) || suppresses(suppressed, type, seen)) return true;
         }
         return false;
     }

@@ -25,7 +25,8 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
 import static org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder.request;
 
 /**
- * Collect-only inventory pass (RUNNER-CONTRACT.md SD-3, SD-4). Run after test-compile with
+ * Collect-only inventory pass (RUNNER-CONTRACT.md SD-3, SD-4, TEMPLATE-CONTRACT.md SD-10). Run
+ * after test-compile with
  *
  * <pre>
  * mvn -q -B -ntp org.codehaus.mojo:exec-maven-plugin:3.1.1:java \
@@ -34,7 +35,9 @@ import static org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder.r
  *
  * <p>It discovers {@code target/test-classes} through the JUnit Platform Launcher, executes no
  * test, and atomically writes {@code reports/test-inventory.tsv} (one row per test and per
- * test-template or test-factory method) and {@code reports/expected-bugs.txt}. The inventory
+ * test-template or test-factory method), {@code reports/expected-bugs.txt}, and
+ * {@code reports/counterfactual-plan.tsv} (one {@link Counterfactual} row per expected bug,
+ * empty when there is none; only the evidence gate turns it into events). The inventory
  * is the full collection: no tag, lane, or Surefire include filter narrows it, so a test that
  * native selection would silently drop still shows up as not executed. Ledger problems are
  * reported as SD-4 events. Any failure throws, which exits Maven non-zero.
@@ -73,6 +76,8 @@ public final class ArgusInventory {
         Collections.sort(rows);
         ArgusEvents.writeAtomically(root.resolve(INVENTORY), lines(rows));
         ArgusEvents.writeAtomically(root.resolve(EXPECTED_BUGS), lines(ledger.expectedBugs()));
+        ArgusEvents.writeAtomically(root.resolve(Counterfactual.PLAN),
+                lines(Counterfactual.plan(root, ledger.expectedBugs()).stream().map(Counterfactual.PlanRow::line).toList()));
         if (events.failures() > 0) {
             throw new IllegalStateException("ArgusInventory: " + events.failures() + " ledger event(s) were not recorded");
         }

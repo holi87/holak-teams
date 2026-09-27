@@ -33,7 +33,10 @@ public class ApiClient {
     public static final String ME     = "/me";         // <-- adapt
     public static final String ORDERS = "/orders";     // <-- adapt
 
-    /** One token per role, shared across tests in the JVM (single reused fork). */
+    /**
+     * One token per API URL and role ({@code <apiUrl>|<role>}), shared across tests in the JVM
+     * (single reused fork); a counterfactual stub never receives a real target's token.
+     */
     private static final Map<String, String> TOKENS = new ConcurrentHashMap<>();
 
     /** Anonymous request spec (no Authorization header). */
@@ -45,7 +48,7 @@ public class ApiClient {
 
     /** Authenticated request spec for a role — {@code Bearer <token>}. */
     public RequestSpecification apiAs(String role) {
-        String token = TOKENS.computeIfAbsent(role, this::login);
+        String token = TOKENS.computeIfAbsent(Config.apiUrl() + "|" + role, key -> login(role));
         return new RequestSpecBuilder()
                 .setBaseUri(Config.apiUrl())
                 .addHeader("Authorization", "Bearer " + token) // <-- adapt scheme
