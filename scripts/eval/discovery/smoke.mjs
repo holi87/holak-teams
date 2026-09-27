@@ -15,7 +15,9 @@ const { spawnSync } = await import('node:child_process');
 const { createHash } = await import('node:crypto');
 const { normalizeConfig } = await import('./lib/config.mjs');
 const { pathForms, scanArtifacts } = await import('./lib/contamination.mjs');
-const { formatSchemaErrors, validateEval } = await import('./lib/schemas.mjs');
+const { formatSchemaErrors, validateArgus, validateEval } = await import('./lib/schemas.mjs');
+const { manifestSha256 } = await import('./lib/authorization.mjs');
+const { evaluateAuthorization } = await import('../../../argus/runtime/authorization.mjs');
 
 const RUN = fileURLToPath(new URL('./run.mjs', import.meta.url));
 const ADJUDICATE = fileURLToPath(new URL('./adjudicate.mjs', import.meta.url));
@@ -46,13 +48,21 @@ for (const key of ${JSON.stringify(PRIVATE_KEYS)}) if (key in request) fail('pri
 if (process.env.ARGUS_EVAL_SMOKE !== undefined || process.env.ARGUS_EVAL_SMOKE_UNLISTED !== undefined) fail('an unlisted variable reached the adapter');
 if (process.env.ARGUS_EVAL_SMOKE_LISTED !== 'present') fail('a listed adapterEnv variable was dropped');
 if (realpathSync(request.artifactRoot) !== request.artifactRoot) fail('artifactRoot is not physical');
-for (const key of ['resultPath', 'usagePath', 'logPath']) if (realpathSync(dirname(request[key])) !== dirname(request[key])) fail(key + ' is not physical');
+for (const key of ['resultPath', 'usagePath', 'logPath', 'authorization']) if (realpathSync(dirname(request[key])) !== dirname(request[key])) fail(key + ' is not physical');
 const inside = (root, path) => { const rel = relative(root, path); return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel)); };
-for (const key of ['resultPath', 'usagePath', 'logPath']) if (inside(request.artifactRoot, request[key])) fail(key + ' is inside the artifact root');
+for (const key of ['resultPath', 'usagePath', 'logPath', 'authorization']) if (inside(request.artifactRoot, request[key])) fail(key + ' is inside the artifact root');
 if (readdirSync(request.artifactRoot).length) fail('artifact root is not empty');
 if ((statSync(request.artifactRoot).mode & 0o777) !== 0o700) fail('artifact root is not 0700');
 const response = await fetch(request.contractUrl);
 if (!response.ok) fail('application unreachable');
+// Emulates argus-launch --authorization, which copies the operator manifest into the artifact
+// root; no-authorization emulates a launcher that ignored it, default-deny one that kept another.
+if (behavior !== 'no-authorization') {
+  const manifest = readFileSync(request.authorization, 'utf8');
+  mkdirSync(join(request.artifactRoot, 'ai_agents_internal'), { mode: 0o700 });
+  writeFileSync(join(request.artifactRoot, 'ai_agents_internal', 'authorization.json'),
+    behavior === 'default-deny' ? JSON.stringify({ ...JSON.parse(manifest), timeWindows: [] }) : manifest, { mode: 0o600 });
+}
 const outputRoot = dirname(dirname(dirname(request.artifactRoot)));
 const usage = { source: 'claude-cli-result-json', inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, costUsd: 0, numTurns: 1, controllerTurnCapHit: false };
 const result = { schema: 'argus-eval/adapter-result@2', status: 'completed', launcherExitCode: 0, usage, subject: { pluginVersion: null, pluginDigest: null }, reason: null, launchAssurance: 'unattested' };
@@ -80,6 +90,7 @@ switch (behavior) {
   case 'bogus-assurance': result.launchAssurance = 'bogus'; break;
   case 'refused': Object.assign(result, { status: 'launcher-refused', launcherExitCode: 1, reason: 'host has trust material; an attested adapter is required' }); break;
   case 'heavy': Object.assign(usage, { inputTokens: 6, outputTokens: 4, totalTokens: 10, costUsd: 0.5 }); break;
+  case 'no-authorization': case 'default-deny': break;
   default: fail('unknown behavior ' + behavior);
 }
 writeFileSync(request.logPath, 'protocol stub ' + behavior + '\\n');
@@ -111,8 +122,12 @@ try {
   {
     const raw = { schema: 'argus-eval/comparison-config@2', variants: [variant('baseline', 'normal')], repeats: 2 };
     const defaults = normalizeConfig(raw, { baseDir: work, env: {} });
-    assert.deepEqual([defaults.modes, defaults.builds, defaults.secondsByMode, defaults.tokens, defaults.adapterEnv, defaults.seeds, defaults.replay],
-      [['B'], ['faulty', 'corrected'], { A: 28800, B: 14400 }, null, [], null, { enabled: false }]);
+    assert.deepEqual([defaults.modes, defaults.builds, defaults.secondsByMode, defaults.tokens, defaults.adapterEnv, defaults.seeds, defaults.replay, defaults.authorization],
+      [['B'], ['faulty', 'corrected'], { A: 28800, B: 14400 }, null, [], null, { enabled: false },
+        { grants: ['browser-state-change', 'load', 'persistent-mutation', 'security-active'] }]);
+    assert.deepEqual(normalizeConfig({ ...raw, authorization: { grants: ['security-active', 'chaos'] } }, { baseDir: work, env: {} }).authorization,
+      { grants: ['chaos', 'security-active'] }, 'configured grants are normalized');
+    assert.deepEqual(normalizeConfig({ ...raw, authorization: { grants: [] } }, { baseDir: work, env: {} }).authorization, { grants: [] });
     assert.equal(defaults.workRoot, realpathSync(tmpdir()), 'workRoot defaults to the physical temporary directory');
     const rejects = (change, pattern, env = {}) => assert.throws(() => normalizeConfig({ ...raw, ...change }, { baseDir: work, env }), pattern);
     rejects({ adapterEnv: ['ANTHROPIC_API_KEY', 'HOME'] }, /must not list HOME/);
@@ -129,6 +144,9 @@ try {
     rejects({ tokens: 0 }, /tokens/);
     rejects({ replay: { enabled: true } }, /replay/);
     rejects({ seconds: 600 }, /additional property seconds/);
+    rejects({ authorization: { grants: ['read'] } }, /authorization/);
+    rejects({ authorization: { grants: ['load', 'load'] } }, /authorization/);
+    rejects({ authorization: { environment: 'production' } }, /additional property environment/);
     mkdirSync(join(work, 'real-root'));
     symlinkSync(join(work, 'real-root'), join(work, 'alias-root'));
     rejects({ workRoot: join(work, 'alias-root') }, /workRoot/);
@@ -142,7 +160,7 @@ try {
     assert.notEqual(gated.status, 0);
     assert.match(gated.stderr, /testMode is reserved/);
     assert(!existsSync(join(work, 'gated-output')), 'a rejected configuration creates no output');
-    console.log('PASS  comparison-config@2: defaults (A 8 h, B 4 h, uncapped measured tokens), smoke-only testMode, reserved adapter variables, pinned seeds, physical workRoot');
+    console.log('PASS  comparison-config@2: defaults (A 8 h, B 4 h, uncapped measured tokens, four high-risk grants), smoke-only testMode, reserved adapter variables, pinned seeds, physical workRoot, authorization grants');
   }
 
   // Contamination matching: path-bounded evaluator paths, the canary, and the run's own root.
@@ -177,6 +195,7 @@ try {
     assert.equal(runs.length, 16);
     assert.equal(new Set(runs.map(run => run.runId)).size, 16);
     assert.equal(new Set(runs.map(run => run.publicId)).size, 16, 'every run gets its own public ID');
+    const manifests = [];
     for (const dir of [output, join(output, 'sealed'), join(output, 'sealed', 'runs'), join(output, 'active')]) assert.equal(mode(dir), 0o700, `${dir} must be 0700`);
     assert.deepEqual(readdirSync(join(output, 'active')), [], 'completed runs leave active/');
     assert.equal(mode(summary.privateResults), 0o600);
@@ -210,6 +229,21 @@ try {
       for (const word of ['faulty', 'corrected', 'baseline', 'candidate', run.runId, ...seedIds]) {
         assert(!visible.includes(word), `${run.runId}: the public hunt request reveals ${word}`);
       }
+      // Every hunt names its own evaluator-written manifest outside the artifact root, bound to
+      // its engagement ID and target, and the artifact root holds exactly that manifest.
+      assert.equal(request.authorization, join(output, 'active', run.publicId, 'authorization.json'));
+      const manifestPath = join(dirname(run.artifactRoot), 'authorization.json');
+      assert.equal(mode(manifestPath), 0o600);
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      assert.deepEqual(validateArgus('authorization-manifest', manifest), []);
+      assert.deepEqual([manifest.engagementId, manifest.target.environment, manifest.target.identifiers],
+        [request.engagementId, 'development', [`${request.target}/`, `${request.target}/*`]]);
+      assert.deepEqual(run.authorization, { sha256: manifestSha256(manifest), installed: 'match' });
+      const visibleManifest = JSON.stringify(manifest);
+      for (const word of ['faulty', 'corrected', 'baseline', 'candidate', run.runId, ...seedIds]) {
+        assert(!visibleManifest.includes(word), `${run.runId}: the authorization manifest reveals ${word}`);
+      }
+      manifests.push({ manifest, request });
       assert.equal(mode(join(dirname(run.artifactRoot), 'request.json')), 0o600);
       assert.equal(request.budget.seconds, 30);
       assert.equal(request.budget.tokens, null);
@@ -217,6 +251,36 @@ try {
       assert.equal(run.contract.application, 'argus-eval-suite');
     }
     assert.deepEqual([...new Set(runs.map(run => run.mode))], ['A', 'B']);
+    // The grants a doctrine-following hunter needs hold for the whole budget and only then; an
+    // ungranted high-risk action, a foreign target, and an over-ceiling load test stay denied.
+    {
+      const { manifest, request } = manifests[0];
+      const target = `${request.target}/`;
+      const start = Date.parse(manifest.timeWindows[0].startsAt);
+      const decide = (action, fields = {}, at = start) => evaluateAuthorization({
+        manifest, now: new Date(at).toISOString(),
+        request: { lane: 'atalanta', action, target, sourceTrust: 'manifest', ...fields },
+      });
+      const bounded = { rate: 10, concurrency: 10, totalRequests: 200, duration: 60 };
+      const allowed = [
+        ['read', { account: 'alice' }],
+        ['persistent-mutation', { account: 'alice', namespace: 'orders', mutation: 'order:create' }],
+        ['browser-state-change', { account: 'guest', mutation: 'browser:state-change' }],
+        ['security-active', { account: 'bob', ...bounded }],
+        ['load', { ...bounded, target: `${request.target}/api/catalog` }],
+      ];
+      for (const at of [start, start + request.budget.seconds * 1000 - 1]) {
+        for (const [action, fields] of allowed) {
+          const decision = decide(action, fields, at);
+          assert.equal(decision.decision, 'allow', `${action} at +${at - start} ms: ${decision.ruleId} ${decision.reason}`);
+        }
+      }
+      assert.equal(decide('destructive', { account: 'alice', namespace: 'orders', mutation: 'order:purge' }).ruleId, 'AUTH-EXPLICIT-OPT-IN');
+      assert.equal(decide('read', { target: 'http://127.0.0.1:1/' }).ruleId, 'AUTH-TARGET-MISMATCH');
+      assert.equal(decide('load', { ...bounded, concurrency: 1000 }).ruleId, 'AUTH-RATE-LIMIT');
+      assert.equal(decide('persistent-mutation', { account: 'alice', namespace: 'orders', mutation: 'unbounded-load' }).ruleId, 'AUTH-PROHIBITED-ACTION');
+      assert.equal(decide('load', bounded, Date.parse(manifest.timeWindows[0].endsAt)).decision, 'deny', 'the grants end with the window');
+    }
     const order = repeat => runs.filter(run => run.repeat === repeat && run.mode === 'A' && run.build === 'faulty').map(run => run.variant);
     assert.deepEqual([order(0), order(1)], [['baseline', 'candidate'], ['candidate', 'baseline']], 'execution order alternates per repeat');
 
@@ -249,7 +313,7 @@ try {
       assert.deepEqual([row.perMode.A.regression.faultyRuns, row.perMode.A.regression.replayedRuns, row.perMode.A.regression.failToPassRate], [2, 0, null]);
       assert.equal(row.perMode.B.regression, null);
     }
-    console.log('PASS  16 paired comparison protocol runs (modes A and B, faulty and corrected, pinned seeds): public request only, opaque public run IDs (no build, variant, or seed in any request value or path), physical 0700 layout, evaluator-side extraction; an empty stub earns zero recall and null pooled precision');
+    console.log('PASS  16 paired comparison protocol runs (modes A and B, faulty and corrected, pinned seeds): public request only, opaque public run IDs (no build, variant, or seed in any request value or path), a bound per-run authorization manifest whose grants hold for the whole budget and are installed in every artifact root, physical 0700 layout, evaluator-side extraction; an empty stub earns zero recall and null pooled precision');
   }
 
   // 2. A result.json forged inside artifacts/ has no effect: usage and findings come only from
@@ -346,6 +410,19 @@ try {
     assert(lstatSync(join(work, 'physical-parent', 'out')).isDirectory());
     assert.equal(relative(join(work, 'physical-parent'), dirname(dirname(runs[0].artifactRoot))).split('/')[0], 'out');
     console.log('PASS  an exceeded token cap is flagged overBudget; random seeds are recorded; the output path is physical');
+  }
+
+  // 8. Authorization: a hunt whose artifact root holds no copy of the evaluator's manifest, or
+  // another manifest (as when a launcher ignores --authorization), is an invalid run.
+  {
+    const { status, runs } = harness('authorization', { variants: [variant('ignored', 'no-authorization', '0'), variant('replaced', 'default-deny', '1')], builds: ['faulty'], repeats: 2 });
+    assert.equal(status, 1);
+    for (const run of runs) {
+      const installed = run.variant === 'ignored' ? 'missing' : 'mismatch';
+      assert.deepEqual([run.status, run.adapter.resultState, run.authorization.installed], ['invalid-run', 'valid', installed]);
+      assert.equal(run.reason, `the hunt did not run under the evaluator's authorization manifest (ai_agents_internal/authorization.json is ${installed})`);
+    }
+    console.log('PASS  a hunt without the evaluator authorization manifest in its artifact root (missing or replaced) is an invalid run');
   }
 } finally {
   for (const output of outputs) if (existsSync(output)) reopen(output);

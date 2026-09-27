@@ -9,7 +9,8 @@
 //   stub-adapter.mjs [--behavior <name>] replay <replay-request.json>
 // Behaviors: normal (default); replay-no-result (the replay phase writes no replay result).
 //
-// Hunt: writes a valid ledger with BUG-0001 (origin ATA-001, confirmed, wired, REG-0001) and
+// Hunt: copies the request's authorization manifest to ai_agents_internal/authorization.json, as
+// argus-launch --authorization does, then writes a valid ledger with BUG-0001 (origin ATA-001, confirmed, wired, REG-0001) and
 // BUG-0002 (origin ATA-002, confirmed, wired, REG-0002), one report each, and a regression
 // framework (run-tests.sh plus scripts/runner-contract.sh) whose node check POSTs quantity
 // limit+1 to /api/orders: BUG-0001 fails with category product on 201 and passes on 422,
@@ -131,6 +132,9 @@ function hunt(requestPath) {
   const request = readRequest(requestPath, 'hunt-request');
   if (!physical(request.artifactRoot) || readdirSync(request.artifactRoot).length) fail('the artifact root must be physical and empty');
   const root = request.artifactRoot;
+  if (inside(root, request.authorization)) fail('the authorization manifest is inside the artifact root');
+  // Emulates argus-launch --authorization: the operator manifest is copied into the artifact root.
+  write(root, 'ai_agents_internal/authorization.json', readFileSync(request.authorization), 0o600);
   write(root, 'solution/bug-ledger.json', `${JSON.stringify(ledger(request.engagementId), null, 2)}\n`);
   write(root, 'bugs/ATA-001-quantity-limit.md', '# Order quantity above the published limit is accepted\n');
   write(root, 'bugs/ATA-002-delivery-window.md', '# Order confirmation omits the promised delivery window\n');

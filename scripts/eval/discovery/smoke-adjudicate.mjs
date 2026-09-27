@@ -142,6 +142,7 @@ function makeRun(sealed, plan) {
     runId: plan.runId, publicId: sha256(plan.runId).slice(0, 16), variant, revision: 'a'.repeat(40), repeat: Number(repeat), seed: 100 + Number(repeat), mode, build, enabledSeeds, truth,
     url: 'http://127.0.0.1:40000', port: 40000, contract: { rules: ['Synthetic public rule.'] }, status,
     reason: status === 'awaiting-adjudication' ? null : `smoke fixture: ${status}`, launchAssurance: 'unattested',
+    authorization: { sha256: sha256(`authorization ${plan.runId}`), installed: 'match' },
     startedAt: new Date(STARTED).toISOString(), elapsedMs: 60_000, timedOut: status === 'timed-out', overBudget: false, artifactRoot,
     adapter: { envNames: ['HOME', 'PATH', 'TMPDIR'], exitCode: reported ? 0 : null, signal: status === 'timed-out' ? 'SIGKILL' : null,
       spawnError: status === 'invalid-run' ? 'smoke fixture: no adapter' : null, resultState: reported ? 'valid' : 'missing', resultErrors: [], result },
@@ -196,7 +197,7 @@ function fixture(name, adjust = {}) {
     config: { schema: 'argus-eval/comparison-config@2', variants: [{ name: 'baseline', revision: 'a'.repeat(40), command: ['/bin/true'] }],
       modes: ['A', 'B'], builds: ['faulty', 'corrected'], repeats: 2, seeds: [100, 101], secondsByMode: { A: 28800, B: 14400 }, tokens: null,
       workRoot: work, adapterEnv: ['ANTHROPIC_API_KEY'], replay: { enabled: true, repeats: 2, perSeedMatrix: true, secondsPerRunner: 1800 },
-      corpusModule: null, testMode: false },
+      authorization: { grants: ['browser-state-change', 'load', 'persistent-mutation', 'security-active'] }, corpusModule: null, testMode: false },
     corpus: { version: corpusVersion, digest: corpusDigest() }, canarySha256: sha256('smoke canary'), runs,
   };
   assertValid('private-runs', privateRuns);

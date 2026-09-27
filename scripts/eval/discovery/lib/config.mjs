@@ -1,10 +1,12 @@
 // Loads and normalizes an argus-eval/comparison-config@2 document. The JSON Schema carries the
 // structural rules; the checks the runtime validator cannot express (distinct variant names,
 // an absolute adapter executable, seeds matching repeats, the smoke-only testMode, a physical
-// workRoot, and regression replay only with Mode A) are enforced here.
+// workRoot, and regression replay only with Mode A) are enforced here. authorization.grants
+// defaults to the four high-risk actions the corpus needs and normalizes to a sorted list.
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, resolve } from 'node:path';
+import { normalizeGrants } from './authorization.mjs';
 import { assertEval } from './schemas.mjs';
 
 export const CONFIG_SCHEMA = 'argus-eval/comparison-config@2';
@@ -82,6 +84,8 @@ export function normalizeConfig(raw, { baseDir, env = process.env } = {}) {
     workRoot,
     adapterEnv: [...(raw.adapterEnv ?? [])],
     replay,
+    // The high-risk actions every hunt's authorization manifest grants (lib/authorization.mjs).
+    authorization: { grants: normalizeGrants(raw.authorization?.grants) },
     corpusModule,
     testMode,
   };

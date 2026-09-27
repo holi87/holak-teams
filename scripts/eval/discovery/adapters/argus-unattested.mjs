@@ -11,8 +11,9 @@
 //
 // Hunt: binds to the checkout (HEAD equals the requested revision and argus/claude is clean),
 // requires an empty, physical 0700 artifact root, identifies the plugin by version and content
-// digest, and runs `<pluginRoot>/bin/argus-launch claude --unattested ...` once, with this
-// process's environment unchanged. It never sets HOME, ARGUS_MODEL_TRUST_STORE or
+// digest, and runs `<pluginRoot>/bin/argus-launch claude --unattested --engagement-id
+// <request.engagementId> --authorization <request.authorization> ...` once, with this process's
+// environment unchanged. A launcher without --authorization is never started. It never sets HOME, ARGUS_MODEL_TRUST_STORE or
 // CLAUDE_CONFIG_DIR, never touches a trust store, never shims `claude`, and never retries: a
 // host with trust material gets `launcher-refused` from the launcher's downgrade guard and
 // needs an attested adapter. Measured usage comes from the launcher's --usage-json report.
@@ -193,11 +194,22 @@ function artifactRootProblem(artifactRoot) {
   return null;
 }
 
-// The launcher options this revision's argus-launch advertises in its --help text.
+// Why the evaluator's authorization manifest cannot be passed to the launcher, or null: it must
+// be a physical regular file outside every artifact root (argus-launch checks the rest).
+function authorizationProblem(path, artifactRoots) {
+  const stat = lstatOrNull(path);
+  if (!stat?.isFile()) return `authorization manifest ${path} is not a regular file`;
+  if (realpathOrSelf(path) !== path) return `authorization manifest ${path} is not its physical path`;
+  const root = artifactRoots.find(candidate => within(candidate, path));
+  return root ? `authorization manifest ${path} lies inside ${root}` : null;
+}
+
+// The launcher options this revision's argus-launch advertises in its --help text. The
+// operator manifest option is `--authorization`; `--launch-authorization` never contains it.
 function launcherFeatures(launcher) {
   const result = spawnSync(launcher, ['--help'], { encoding: 'utf8', timeout: HELP_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'pipe'] });
   const text = result.status === 0 ? result.stdout : '';
-  return { usageJson: text.includes('--usage-json'), provisionBrowser: text.includes('--provision-browser') };
+  return { usageJson: text.includes('--usage-json'), provisionBrowser: text.includes('--provision-browser'), authorization: text.includes('--authorization') };
 }
 
 // The Claude CLI result document the launcher wrote with --usage-json, or null.
@@ -310,6 +322,8 @@ async function hunt(options) {
   }
   const artifactProblem = artifactRootProblem(request.artifactRoot);
   if (artifactProblem) return notLaunched(artifactProblem);
+  const manifestProblem = authorizationProblem(request.authorization, artifactRoots);
+  if (manifestProblem) return notLaunched(manifestProblem);
 
   if (!isPhysicalDirectory(pluginRoot)) return notLaunched(`plugin root ${pluginRoot} is not a physical directory`);
   let subject;
@@ -328,8 +342,13 @@ async function hunt(options) {
   if (lstatOrNull(request.usagePath)) return notLaunched(`usage report ${request.usagePath} already exists`, subject);
 
   const features = launcherFeatures(launcher);
+  // Without --authorization the launcher would install the default-deny manifest: the hunt could
+  // not act on the grants every other run of the comparison has, so it is never launched.
+  if (!features.authorization) {
+    return notLaunched(`${launcher} has no --authorization option, so the hunt would run under the default-deny manifest instead of the evaluator's`, subject);
+  }
   const args = ['claude', '--target', request.target, '--artifact-root', request.artifactRoot, '--mode', request.mode,
-    '--engagement-id', request.engagementId, '--unattested'];
+    '--engagement-id', request.engagementId, '--unattested', '--authorization', request.authorization];
   if (options.provisionBrowser && features.provisionBrowser) args.push('--provision-browser');
   if (features.usageJson) args.push('--usage-json', request.usagePath);
 

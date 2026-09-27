@@ -13,6 +13,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildRunAuthorization, manifestSha256 } from './lib/authorization.mjs';
 import { pluginDigest, pluginSubject } from './lib/plugin-digest.mjs';
 import { detectSandbox, escapeSandboxValue, LINUX_SANDBOX, macosProfile, sandboxInvocation } from './lib/sandbox.mjs';
 import { formatSchemaErrors, validateArgus, validateEval } from './lib/schemas.mjs';
@@ -49,13 +50,14 @@ function git(cwd, ...args) {
 }
 
 // Stub argus-launch: every call appends {argv, env} to STUB_LAUNCH_RECORD. --help advertises the
-// options named in STUB_LAUNCH_HELP (default usage-json); STUB_LAUNCH_BEHAVIOR picks the launch.
+// options named in STUB_LAUNCH_HELP (default usage-json and authorization); STUB_LAUNCH_BEHAVIOR
+// picks the launch.
 const STUB_LAUNCHER = `#!${process.execPath}
 import { appendFileSync, writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);
 appendFileSync(process.env.STUB_LAUNCH_RECORD, JSON.stringify({ argv: args, env: process.env }) + '\\n');
 if (args[0] === '--help') {
-  const features = (process.env.STUB_LAUNCH_HELP ?? 'usage-json').split(',').filter(Boolean);
+  const features = (process.env.STUB_LAUNCH_HELP ?? 'usage-json,authorization').split(',').filter(Boolean);
   process.stdout.write('Usage:\\n  argus-launch claude --target <t> --artifact-root <a> --mode <m> --engagement-id <id> --unattested'
     + features.map(name => ' [--' + name + ' ...]').join('') + '\\nOperators who cannot provision keys may use --unattested.\\n');
   process.exit(0);
@@ -106,11 +108,14 @@ function prepareRun(overrides = {}) {
   const paths = {
     dir, artifacts: directory(join(dir, 'artifacts')), request: join(dir, 'request.json'), record: join(dir, 'launcher-record.jsonl'),
     resultPath: join(dir, 'result.json'), usagePath: join(dir, 'usage.json'), logPath: join(dir, 'launcher.log'),
+    authorization: join(dir, 'authorization.json'),
   };
+  // The manifest run.mjs writes for every hunt, outside the artifact root.
+  writeFileSync(paths.authorization, `${JSON.stringify(buildRunAuthorization({ engagementId: ENGAGEMENT_ID, target: TARGET, seconds: 600 }), null, 2)}\n`, { mode: 0o600 });
   const request = {
-    schema: 'argus-eval/hunt-request@2', runId: RUN_ID, engagementId: ENGAGEMENT_ID, revision, target: TARGET, contractUrl: `${TARGET}/contract`, mode: 'B',
-    artifactRoot: paths.artifacts, resultPath: paths.resultPath, usagePath: paths.usagePath, logPath: paths.logPath,
-    budget: { seconds: 600, tokens: null }, ...overrides,
+    schema: 'argus-eval/hunt-request@2', runId: RUN_ID, engagementId: ENGAGEMENT_ID, authorization: paths.authorization, revision, target: TARGET,
+    contractUrl: `${TARGET}/contract`, mode: 'B', artifactRoot: paths.artifacts, resultPath: paths.resultPath, usagePath: paths.usagePath,
+    logPath: paths.logPath, budget: { seconds: 600, tokens: null }, ...overrides,
   };
   assert.deepEqual(validateEval('hunt-request', request), []);
   writeFileSync(paths.request, `${JSON.stringify(request, null, 2)}\n`, { mode: 0o600 });
@@ -124,7 +129,7 @@ const baseEnv = { PATH: process.env.PATH, HOME: harnessHome, TMPDIR: harnessTmp,
 function adapter(args, env) {
   return spawnSync(process.execPath, [ADAPTER, ...args], { env, encoding: 'utf8', timeout: 180_000 });
 }
-function hunt(run, { behavior = 'success', help = 'usage-json', options = [], env = {} } = {}) {
+function hunt(run, { behavior = 'success', help = 'usage-json,authorization', options = [], env = {} } = {}) {
   const result = adapter([...stubOptions, ...options, run.request], { ...baseEnv, STUB_LAUNCH_RECORD: run.record, STUB_LAUNCH_BEHAVIOR: behavior, STUB_LAUNCH_HELP: help, ...env });
   return { ...result, result: existsSync(run.resultPath) ? readAdapterResult(run.resultPath) : null, records: records(run.record) };
 }
@@ -224,7 +229,7 @@ try {
     const [launch, ...more] = launches(outcome.records);
     assert.equal(more.length, 0, 'the launcher must be started exactly once');
     assert.deepEqual(launch.argv, ['claude', '--target', TARGET, '--artifact-root', run.artifacts, '--mode', 'B',
-      '--engagement-id', ENGAGEMENT_ID, '--unattested', '--usage-json', run.usagePath]);
+      '--engagement-id', ENGAGEMENT_ID, '--unattested', '--authorization', run.authorization, '--usage-json', run.usagePath]);
     assert.ok(!launch.argv.includes('--trust-store') && !launch.argv.includes('--provision-browser'));
     assert.equal(launch.env.HOME, harnessHome);
     assert.equal(launch.env.PATH, baseEnv.PATH, 'no claude shim may be prepended to PATH');
@@ -237,13 +242,81 @@ try {
     const log = readFileSync(run.logPath, 'utf8');
     assert.match(log, /stub launch complete/);
     assert.match(log, /stub launch stderr/);
-    console.log('PASS  completed hunt: one --unattested --mode B launch on the physical artifact root with --usage-json and no trust store; HOME and PATH unchanged; usage summed over modelUsage');
+    console.log('PASS  completed hunt: one --unattested --mode B launch on the physical artifact root with the request engagement ID, the evaluator --authorization manifest, --usage-json and no trust store; HOME and PATH unchanged; usage summed over modelUsage');
+  }
+
+  // The evaluator's authorization manifest: a launcher without --authorization, or a manifest
+  // path that is missing or inside the artifact root, is never launched.
+  {
+    const legacy = hunt(prepareRun(), { help: 'usage-json,launch-authorization' });
+    assert.equal(legacy.status, 2, legacy.stderr);
+    assert.equal(legacy.result.status, 'launcher-failed');
+    assert.match(legacy.result.reason, /^not launched: .*has no --authorization option, so the hunt would run under the default-deny manifest/);
+    assert.deepEqual(launches(legacy.records), [], 'a launcher without --authorization must not be started');
+    const missing = prepareRun();
+    unlinkSync(missing.authorization);
+    const noManifest = hunt(missing);
+    assert.equal(noManifest.status, 2, noManifest.stderr);
+    assert.match(noManifest.result.reason, /^not launched: authorization manifest .* is not a regular file/);
+    assert.deepEqual(noManifest.records, []);
+    const inside = prepareRun();
+    writeFileSync(inside.request, JSON.stringify({ ...inside.requestDocument, authorization: join(inside.artifacts, 'authorization.json') }), { mode: 0o600 });
+    writeFileSync(join(inside.artifacts, 'authorization.json'), readFileSync(inside.authorization), { mode: 0o600 });
+    const planted = hunt(inside);
+    assert.equal(planted.status, 2, planted.stderr);
+    assert.match(planted.result.reason, /^not launched: artifact root .* is not empty/);
+    unlinkSync(join(inside.artifacts, 'authorization.json'));
+    writeFileSync(join(inside.dir, 'alias-target.json'), readFileSync(inside.authorization), { mode: 0o600 });
+    symlinkSync(join(inside.dir, 'alias-target.json'), join(inside.dir, 'alias.json'));
+    writeFileSync(inside.request, JSON.stringify({ ...inside.requestDocument, authorization: join(inside.dir, 'alias.json') }), { mode: 0o600 });
+    const aliased = hunt(inside);
+    assert.equal(aliased.status, 2, aliased.stderr);
+    assert.match(aliased.result.reason, /^not launched: authorization manifest .* is not a regular file/);
+    assert.deepEqual(launches(aliased.records), []);
+    console.log('PASS  authorization manifest: a launcher without --authorization, a missing manifest, or a symbolic link gives exit 2 without a launch');
+  }
+
+  // The manifest run.mjs writes passes the packaged operator verification of argus-launch and
+  // allows the granted high-risk actions through the packaged evaluator, unlike the default-deny
+  // manifest a hunt without --authorization gets.
+  {
+    const assets = join(REAL_PLUGIN, 'bin', 'argus-assets');
+    const run = prepareRun();
+    const verified = spawnSync(process.execPath, [assets, 'authorization', 'verify', '--artifact-root', join(run.dir, 'not-yet-created'),
+      '--engagement-id', ENGAGEMENT_ID, '--target', TARGET, '--manifest', run.authorization], { encoding: 'utf8', timeout: 60_000 });
+    assert.equal(verified.status, 0, verified.stderr);
+    const manifest = JSON.parse(readFileSync(run.authorization, 'utf8'));
+    assert.equal(verified.stdout.trim(), `AUTHORIZATION  verified source=operator environment=development sha256=${manifestSha256(manifest)} manifest=${join(run.dir, 'not-yet-created', 'ai_agents_internal', 'authorization.json')}`);
+    const foreign = spawnSync(process.execPath, [assets, 'authorization', 'verify', '--artifact-root', join(run.dir, 'not-yet-created'),
+      '--engagement-id', 'eval-ffffffffffffffff', '--target', TARGET, '--manifest', run.authorization], { encoding: 'utf8', timeout: 60_000 });
+    assert.notEqual(foreign.status, 0, 'the manifest is bound to its own engagement ID');
+    assert.match(foreign.stderr, /engagementId differs from the launch engagement id/);
+    const checkDir = directory(join(work, 'authorization-check'));
+    const copy = join(checkDir, 'authorization.json');
+    writeFileSync(copy, readFileSync(run.authorization), { mode: 0o600 });
+    const check = (action, ...fields) => spawnSync(process.execPath, [assets, 'authorization', 'check', '--manifest', copy, '--lane', 'atalanta',
+      '--action', action, '--target', `${TARGET}/`, '--source-trust', 'manifest', ...fields], { encoding: 'utf8', timeout: 60_000 });
+    const bounded = ['--rate', '10', '--concurrency', '10', '--total-requests', '200', '--duration', '60'];
+    for (const [action, fields] of [
+      ['persistent-mutation', ['--account', 'alice', '--namespace', 'orders', '--mutation', 'order:create']],
+      ['browser-state-change', ['--account', 'guest', '--mutation', 'browser:state-change']],
+      ['security-active', ['--account', 'bob', ...bounded]],
+      ['load', bounded],
+    ]) {
+      const decision = check(action, ...fields);
+      assert.equal(decision.status, 0, `${action}: ${decision.stdout}${decision.stderr}`);
+      assert.match(decision.stdout, /^AUTHORIZATION {2}ALLOW rule=AUTH-ALLOW /);
+    }
+    const destructive = check('destructive', '--account', 'alice', '--namespace', 'orders', '--mutation', 'order:purge');
+    assert.equal(destructive.status, 3);
+    assert.match(destructive.stdout, /DENY rule=AUTH-EXPLICIT-OPT-IN/);
+    console.log('PASS  evaluator authorization manifest: packaged authorization verify accepts it for its engagement ID only; packaged authorization check allows persistent-mutation, browser-state-change, security-active and load, and still denies ungranted destructive actions');
   }
 
   // Feature detection: --provision-browser only when advertised and not opted out; no
   // --usage-json means unavailable usage; the snake_case usage fields are the fallback.
   {
-    const provisioned = hunt(prepareRun(), { help: 'provision-browser' });
+    const provisioned = hunt(prepareRun(), { help: 'provision-browser,authorization' });
     assert.equal(provisioned.status, 0, provisioned.stderr);
     const [launch] = launches(provisioned.records);
     assert.ok(launch.argv.includes('--provision-browser') && !launch.argv.includes('--usage-json'));
@@ -251,7 +324,7 @@ try {
       source: 'unavailable', inputTokens: null, outputTokens: null, cacheReadTokens: null, cacheCreationTokens: null,
       totalTokens: null, costUsd: null, numTurns: null, controllerTurnCapHit: null,
     });
-    const optedOut = hunt(prepareRun(), { help: 'usage-json,provision-browser', options: ['--no-provision-browser'] });
+    const optedOut = hunt(prepareRun(), { help: 'usage-json,provision-browser,authorization', options: ['--no-provision-browser'] });
     assert.equal(optedOut.status, 0, optedOut.stderr);
     assert.ok(!launches(optedOut.records)[0].argv.includes('--provision-browser'));
     const snake = hunt(prepareRun(), { behavior: 'snake-usage' });
@@ -381,7 +454,15 @@ try {
       assert.equal(byVariable.status, 3, byVariable.stderr);
       assert.equal(readAdapterResult(variable.resultPath).status, 'launcher-refused');
       assert.ok(readFileSync(store).equals(before));
-      console.log('PASS  real argus-launch: a HOME trust store or ARGUS_MODEL_TRUST_STORE gives launcher-refused (exit 3); the trust store is byte-identical afterwards');
+      // On a host without key material, the real launcher's operator verification accepts the
+      // evaluator manifest with the adapter's exact hunt arguments (a dry run installs nothing).
+      const dry = prepareRun();
+      const dryRun = spawnSync(join(REAL_PLUGIN, 'bin', 'argus-launch'), ['claude', '--target', TARGET, '--artifact-root', dry.artifacts, '--mode', 'B',
+        '--engagement-id', ENGAGEMENT_ID, '--unattested', '--authorization', dry.authorization, '--dry-run'], { env, encoding: 'utf8', timeout: 120_000 });
+      assert.equal(dryRun.status, 0, dryRun.stderr);
+      assert.match(dryRun.stdout, / attestation=UNATTESTED .*authorizationSource=operator targetEnvironment=development /);
+      assert.ok(!existsSync(join(dry.artifacts, 'ai_agents_internal', 'authorization.json')), 'a dry run installs no manifest');
+      console.log('PASS  real argus-launch: a HOME trust store or ARGUS_MODEL_TRUST_STORE gives launcher-refused (exit 3); the trust store is byte-identical afterwards; without key material the evaluator manifest passes its --authorization verification (dry run)');
     }
   }
 
