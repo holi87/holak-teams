@@ -237,6 +237,41 @@
       "runtimeIncludes": "2.4.11 Focus Not Obscured (Minimum)"
     },
     {
+      "name": "charon-entry-count",
+      "catalog": "charon",
+      "operation": "remove",
+      "pointer": "/entries/11",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 12 entries"
+    },
+    {
+      "name": "charon-unknown-route",
+      "catalog": "charon",
+      "operation": "replace",
+      "pointer": "/entries/0/routes/0",
+      "value": "database",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "unknown route database"
+    },
+    {
+      "name": "charon-read-only-marker-drift",
+      "catalog": "charon",
+      "operation": "replace",
+      "pointer": "/entries/0/construct/0",
+      "value": "Open a database session with the provided credentials before the first query",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "default_transaction_read_only"
+    },
+    {
+      "name": "charon-api-echo-marker-drift",
+      "catalog": "charon",
+      "operation": "replace",
+      "pointer": "/entries/3/construct/2",
+      "value": "Read the amounts back through the API and recompute every derived amount",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "stored bytes, not the API echo"
+    },
+    {
       "name": "orion-entry-count",
       "catalog": "orion",
       "operation": "remove",
