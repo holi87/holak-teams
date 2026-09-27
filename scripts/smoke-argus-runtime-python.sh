@@ -6,7 +6,11 @@
 # pytest-xdist), fail closed on emission problems, and stay inert without ARGUS_RUNNER_MODE.
 # The qa.oracles self-tests must report a product pass for every case against loopback stubs,
 # and the cf-correct/cf-tamper passes must judge a regression against the in-process
-# counterfactual stub. No browser and no target.
+# counterfactual stub. The created_resources and fault_injector fixtures must report their
+# failures through the adapter. Finally ./run-tests.sh runs end to end (runner-lib.sh, lane
+# plan, environment baseline, evidence passes) in a scaffold against
+# scripts/fixtures/argus-runtime/faulty-target.mjs. Only loopback stubs and that local
+# 127.0.0.1 target are ever contacted; no browser is needed.
 
 set -euo pipefail
 
@@ -15,13 +19,28 @@ CLI="${ARGUS_ASSETS:-$ROOT/argus/claude/bin/argus-assets}"
 FIXTURES="$ROOT/scripts/fixtures/argus-runtime/python"
 PYTHON_BIN="${PYTHON:-python3}"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
-# The host environment must not activate or redirect the adapter behind the smoke's back.
+TARGET_PID="" TARGET_URL=""
+
+# stop_target: stops the end-to-end target started by start_target, if any.
+stop_target() {
+  if [ -n "$TARGET_PID" ]; then
+    kill "$TARGET_PID" 2>/dev/null || true
+    wait "$TARGET_PID" 2>/dev/null || true
+    TARGET_PID=""
+  fi
+}
+trap 'stop_target; rm -rf "$WORK"' EXIT
+# The host environment must not activate or redirect the adapter behind the smoke's back. The
+# same holds for the runner library's inputs in the end-to-end section.
 unset ARGUS_RUNNER_MODE ARGUS_INVENTORY_ONLY ARGUS_EVIDENCE_PASS ARGUS_OUTCOME_FILE ARGUS_CONTRACT_SMOKE \
-  ARGUS_COUNTERFACTUAL_API_URL ARGUS_API_ROUTE_PATTERN ARGUS_SMOKE_EXTRA_REQUEST OPENAPI_PATH
+  ARGUS_COUNTERFACTUAL_API_URL ARGUS_API_ROUTE_PATTERN ARGUS_SMOKE_EXTRA_REQUEST OPENAPI_PATH \
+  ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET ARGUS_FAULT_INJECTION ARGUS_READINESS_URLS \
+  ARGUS_TEST_ROOT ARGUS_AUTH_DIRECTORY ARGUS_BROWSER_ARTIFACTS ARGUS_RESET_TIMEOUT_SECONDS ARGUS_VERIFY_TIMEOUT_SECONDS \
+  UI_URL PERF_BUDGET_MS SECURITY_ENABLED DB_URL WORKERS
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 tab() { local IFS=$'\t'; printf '%s\n' "$*"; }
+for tool in jq node; do command -v "$tool" >/dev/null 2>&1 || fail "$tool is required"; done
 
 APP="$WORK/python"
 "$CLI" copy-template python "$APP" >/dev/null
@@ -523,4 +542,218 @@ with StubServer.start() as stub:
     assert [(r["method"], r["path"]) for r in stub.unmatched()] == [("POST", "/widgets")], stub.unmatched()
 PY
 
-printf 'PASS  Argus Python runtime adapter: collect-only inventory, ledger join, SD-5/SD-6 events, xdist parity, repetition, fail-closed status, inert default, contract oracle self-tests, SD-10 counterfactual plan, and cf-correct/cf-tamper passes against the in-process stub\n'
+# (10) Runner-kit fixtures through the adapter. created_resources attempts every DELETE and turns
+# a refused one into cleanup-failed; the clients api_as and anon_client hand out outlive its
+# teardown whatever the parameter order; fault_injector reports an unverifiable restore as
+# fault-restore-failed. Only a loopback stub is contacted.
+cat >tests/contract/test_runner_kit_fixture.py <<'PY'
+import httpx
+import pytest
+
+from qa.argus.fault_injector import Fault
+from qa.argus.stub_server import StubServer
+
+pytestmark = pytest.mark.contract_smoke
+
+
+@pytest.fixture
+def stub():
+    with StubServer.start() as server:
+        server.load([
+            {"id": "deleted", "request": {"method": "DELETE", "path": "/items/1"}, "response": {"status": 204}},
+            {"id": "already-gone", "request": {"method": "DELETE", "path": "/items/2"}, "response": {"status": 404}},
+            {"id": "refused", "request": {"method": "DELETE", "path": "/items/3"}, "response": {"status": 409, "body": {"detail": "argus-never-print-me"}}},
+        ])
+        yield server
+
+
+@pytest.fixture
+def items(stub):
+    with httpx.Client(base_url=stub.url, timeout=10.0, trust_env=False) as client:
+        yield client
+
+
+def test_deleted_and_already_gone_resources_pass(items, created_resources):
+    created_resources.extend([(items, "/items/1"), (items, "/items/2")])
+
+
+def test_a_refused_delete_fails_a_passing_test_as_cleanup(items, created_resources):
+    created_resources.extend([(items, "/items/1"), (items, "/items/3"), (items, "/items/2")])
+
+
+def test_the_harness_clients_outlive_the_cleanup(stub, created_resources, anon_client):
+    created_resources.append((anon_client, f"{stub.url}/items/1"))
+
+
+def test_an_unverifiable_restore_is_fault_restore_failed(fault_injector):
+    def unverifiable():
+        raise AssertionError("the fault is still visible")
+
+    fault = Fault(name="api-unavailable", scope="client", inject=lambda: None, restore=lambda: None, verify_restored=unverifiable)
+    fault_injector.run(fault, lambda: None)
+PY
+RK_CASE='tests.contract.test_runner_kit_fixture.py::'
+pytest_run runner-kit ARGUS_RUNNER_MODE=baseline ARGUS_OUTCOME_FILE="$WORK/runner-kit.tsv" -- tests/contract/test_runner_kit_fixture.py
+rm -f tests/contract/test_runner_kit_fixture.py
+expect_exit runner-kit 1
+expect_events "$WORK/runner-kit.tsv" runner-kit \
+  "$(tab "${RK_CASE}test_deleted_and_already_gone_resources_pass" product pass false n/a - passed)" \
+  "$(tab "${RK_CASE}test_a_refused_delete_fails_a_passing_test_as_cleanup" automation fail false n/a - cleanup-failed)" \
+  "$(tab "${RK_CASE}test_the_harness_clients_outlive_the_cleanup" product pass false n/a - passed)" \
+  "$(tab "${RK_CASE}test_an_unverifiable_restore_is_fault_restore_failed" infrastructure fail false n/a - fault-restore-failed)"
+expect_status "ok 4" runner-kit
+grep -Fq 'ArgusCleanupError: cleanup failed for 1 resource(s)' "$WORK/runner-kit.log" || fail "the cleanup failure does not report its count"
+if grep -Fq 'argus-never-print-me' "$WORK/runner-kit.log"; then fail "the cleanup failure printed a response body"; fi
+
+# (11) End-to-end runner against a local faulty target. A scaffold from `template select` +
+# `template scaffold` (non-default layout) runs ./run-tests.sh end to end: runner-lib.sh, the
+# lane plan, readiness, the environment baseline, the compile gate, the inventory, the
+# quarantine, inventory, and evidence gates, and every evidence pass.
+# scripts/fixtures/argus-runtime/faulty-target.mjs answers GET /widgets/1 with 500 (buggy) or
+# the specified widget (fixed).
+E="$WORK/e2e"
+E2E="$FIXTURES/e2e"
+E2E_TESTS="$E/quality/python-tests"
+E2E_ID='quality.python-tests.api.test_widget_regression.py::test_widget_read_returns_the_specified_widget'
+E2E_HEALTH_ID='quality.python-tests.api.test_widget_regression.py::test_health_endpoint_reports_ok'
+E2E_EV="$E/reports/outcomes.raw.tsv"
+for fixture in BUG-0001.json test-lanes.tsv environment.tsv; do
+  cmp -s "$ROOT/scripts/fixtures/argus-runtime/java/e2e/$fixture" "$E2E/$fixture" || fail "the Python e2e $fixture drifted from the Java fixture"
+done
+mkdir -p "$WORK/e2e-target"
+"$CLI" template select --target "$WORK/e2e-target" --runtime python --package-manager pip \
+  --test-root quality/python-tests --harness-root quality/python-support --output "$WORK/e2e-selection.json" >/dev/null
+"$CLI" template scaffold --selection "$WORK/e2e-selection.json" --destination "$E" >/dev/null
+# The same requirements.txt: the scaffold reuses the installed venv instead of a second install.
+mv "$APP/.venv" "$E/.venv"
+for lane in api ui perf security db resilience; do rm -f "$E2E_TESTS/$lane/"test_*.py; done
+[ -z "$(find "$E2E_TESTS" -name 'test_*.py' ! -path '*/contract/*' -print -quit)" ] || fail "e2e: an ADAPT-ME example test survived"
+cp "$E2E/test_widget_regression.py" "$E2E_TESTS/api/test_widget_regression.py"
+cp "$E2E/bug-ledger.json" "$E/solution/bug-ledger.json"
+cp "$E2E/BUG-0001.json" "$E/solution/counterfactual/BUG-0001.json"
+cp "$E2E/test-lanes.tsv" "$E2E/environment.tsv" "$E/solution/"
+# The same read-only verify as the TypeScript end-to-end fixture: the target holds no state.
+cp "$ROOT/scripts/fixtures/argus-runtime/typescript/e2e/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
+
+# expect_event <file> <field...>: the file holds exactly this event line.
+expect_event() {
+  local file="$1" line
+  shift
+  line="$(tab "$@")"
+  grep -Fxq -- "$line" "$file" 2>/dev/null || { cat "$file" >&2 2>/dev/null; fail "missing event: $line"; }
+}
+
+# start_target <buggy|fixed>: (re)starts the faulty target on an ephemeral 127.0.0.1 port.
+start_target() {
+  local port="" attempt
+  stop_target
+  : >"$WORK/target.log"
+  FAULTY_MODE="$1" PORT=0 node "$ROOT/scripts/fixtures/argus-runtime/faulty-target.mjs" >"$WORK/target.log" 2>&1 &
+  TARGET_PID=$!
+  for attempt in $(seq 1 100); do
+    port="$(sed -n 's/^listening \([0-9][0-9]*\)$/\1/p' "$WORK/target.log")"
+    [ -z "$port" ] || break
+    sleep 0.1
+  done
+  [ -n "$port" ] || { cat "$WORK/target.log" >&2; fail "the faulty target did not start after $attempt checks"; }
+  TARGET_URL="http://127.0.0.1:$port"
+}
+
+# e2e <log> <expected-exit> <mode> [VAR=value ...] [-- passthrough...]
+e2e() {
+  local log="$1" expected="$2" mode="$3" code
+  local environment=() passthrough=()
+  shift 3
+  while [ "$#" -gt 0 ] && [ "$1" != -- ]; do environment+=("$1"); shift; done
+  if [ "$#" -gt 0 ]; then shift; passthrough=(-- "$@"); fi
+  set +e
+  (cd "$E" && env "API_URL=$TARGET_URL" "ARGUS_READINESS_URLS=$TARGET_URL/health" PLAYWRIGHT_INSTALL=0 \
+    ${environment[@]+"${environment[@]}"} ./run-tests.sh --mode "$mode" ${passthrough[@]+"${passthrough[@]}"}) >"$WORK/e2e-$log.log" 2>&1
+  code=$?
+  set -e
+  if [ "$code" -ne "$expected" ]; then
+    tail -60 "$WORK/e2e-$log.log" >&2
+    cat "$E2E_EV" >&2 2>/dev/null || true
+    fail "e2e $log exited $code instead of $expected"
+  fi
+  jq -e --arg mode "$mode" --argjson code "$expected" '.mode == $mode and .exitCode == $code' "$E/reports/argus-runner-result.json" >/dev/null ||
+    fail "e2e $log: the result does not record mode $mode and exit $expected"
+}
+# pass_report <pass> <jq filter>: the pytest-json-report summary of one evidence pass.
+pass_report() {
+  jq -e ".summary | $2" "$E/reports/evidence/passes/$1/report.json" >/dev/null
+}
+
+start_target buggy
+e2e defect-evidence 0 defect-evidence
+expect_event "$E2E_EV" "$E2E_ID" product fail true reproduced BUG-0001 expected-red
+expect_event "$E2E_EV" "$E2E_ID.repeat" product fail true reproduced BUG-0001 expected-red-repeat
+expect_event "$E2E_EV" "$E2E_ID.cf-correct" product pass false reproduced BUG-0001 counterfactual-correct-pass
+expect_event "$E2E_EV" "$E2E_ID.cf-observed-defect" product fail true reproduced BUG-0001 counterfactual-tamper-red
+expect_event "$E2E_EV" "$E2E_ID.cf-missing-field" product fail true reproduced BUG-0001 counterfactual-tamper-red
+expect_event "$E2E_EV" environment infrastructure pass false n/a - environment-baseline-verified
+grep -Fq 'Compile gate' "$WORK/e2e-defect-evidence.log" || fail "e2e: the compile gate did not run"
+# Each pass keeps its own native evidence: the RED passes and the green cf-correct pass.
+for pass in live repeat cf-correct cf-tamper-1 cf-tamper-2; do
+  [ -f "$E/reports/evidence/passes/$pass/html/index.html" ] && [ -f "$E/reports/evidence/passes/$pass/report.json" ] &&
+    [ -f "$E/reports/evidence/passes/$pass/junit.xml" ] || fail "e2e: pass $pass kept no native evidence"
+done
+for pass in live repeat cf-tamper-1 cf-tamper-2; do
+  pass_report "$pass" '.total == 1 and .failed == 1 and (.passed // 0) == 0' || fail "e2e: pass $pass evidence is not its own RED run"
+done
+pass_report cf-correct '.total == 1 and .passed == 1 and (.failed // 0) == 0' || fail "e2e: cf-correct evidence is not its own green run"
+
+# A regression that checks only the status lets the missing-field tamper survive.
+cp "$E2E_TESTS/api/test_widget_regression.py" "$WORK/test_widget_regression.py"
+grep -v 'argus-smoke: strict body' "$WORK/test_widget_regression.py" >"$E2E_TESTS/api/test_widget_regression.py"
+e2e weakened 11 defect-evidence
+cp "$WORK/test_widget_regression.py" "$E2E_TESTS/api/test_widget_regression.py"
+expect_event "$E2E_EV" "$E2E_ID.cf-missing-field" automation fail false n/a BUG-0001 counterfactual-tamper-survived
+
+# A regression that does not compile stops the run before any test.
+printf 'def broken(:\n' >"$E2E_TESTS/api/test_syntax_error.py"
+e2e compile-error 11 baseline
+rm -f "$E2E_TESTS/api/test_syntax_error.py"
+expect_event "$E2E_EV" compile automation fail false n/a - python-compile-failed
+[ ! -e "$E/reports/test-inventory.tsv" ] || fail "e2e: a compile failure still ran the inventory"
+
+# baseline stays strict green while the known bug is RED: it never selects the regression.
+e2e baseline 0 baseline
+expect_event "$E2E_EV" "$E2E_HEALTH_ID" product pass false n/a - passed
+expect_event "$E2E_EV" lane.api policy pass false n/a - lane-executed
+if grep -Fq -- "$E2E_ID" "$E2E_EV"; then cat "$E2E_EV" >&2; fail "e2e: baseline selected the regression"; fi
+
+start_target fixed
+e2e candidate 0 candidate-regression
+expect_event "$E2E_EV" "$E2E_ID" product pass false fixed BUG-0001 regression-green
+if grep -Fq -- "$E2E_HEALTH_ID" "$E2E_EV"; then cat "$E2E_EV" >&2; fail "e2e: candidate-regression selected a non-regression test"; fi
+e2e full 0 full-suite
+jq -e '.deliveryGate == true' "$E/reports/argus-runner-result.json" >/dev/null || fail "e2e: full-suite is not the delivery gate"
+expect_event "$E2E_EV" "$E2E_ID" product pass false fixed BUG-0001 regression-green
+expect_event "$E2E_EV" "$E2E_HEALTH_ID" product pass false n/a - passed
+expect_event "$E2E_EV" lane.api policy pass false n/a - lane-executed
+for lane in ui perf security db resilience; do
+  expect_event "$E2E_EV" "lane.$lane" policy pass false n/a - lane-disabled.residual.not-in-fixture
+done
+# The contract-smoke self-tests stay in the scaffold but belong to the contract smoke only.
+if grep -Fq -- quality.python-tests.contract. "$E2E_EV"; then cat "$E2E_EV" >&2; fail "e2e: full-suite selected a contract-smoke test"; fi
+e2e full-narrowed 13 full-suite -- -k x
+expect_event "$E2E_EV" runner-selection policy denied false n/a - full-suite-narrowing-forbidden
+
+# Lane and environment decisions are enforced before any test runs.
+cp "$E/solution/test-lanes.tsv" "$WORK/test-lanes.tsv"
+awk 'BEGIN { FS = OFS = "\t" } $1 == "ui" { $2 = "enabled"; $5 = "-" } { print }' "$WORK/test-lanes.tsv" >"$E/solution/test-lanes.tsv"
+e2e ui-without-url 13 full-suite
+expect_event "$E2E_EV" lane.ui policy denied false n/a - lane-prerequisite-missing
+awk 'BEGIN { FS = OFS = "\t" } $1 == "perf" { $5 = "not-yet-planned" } { print }' "$WORK/test-lanes.tsv" >"$E/solution/test-lanes.tsv"
+e2e undecided-lane 13 full-suite
+expect_event "$E2E_EV" lane.perf policy denied false n/a - lane-decision-missing
+cp "$WORK/test-lanes.tsv" "$E/solution/test-lanes.tsv"
+cp "$E/scripts/verify-baseline.sh" "$WORK/verify-baseline.sh"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$E/scripts/verify-baseline.sh"
+e2e not-at-baseline 12 full-suite
+cp "$WORK/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
+expect_event "$E2E_EV" environment infrastructure fail false n/a - environment-not-at-baseline
+stop_target
+
+printf 'PASS  Argus Python runtime adapter: collect-only inventory, ledger join, SD-5/SD-6 events, xdist parity, repetition, fail-closed status, inert default, contract oracle self-tests, SD-10 counterfactual plan, cf-correct/cf-tamper passes against the in-process stub, strict cleanup and fault-restore fixtures, and an end-to-end runner against a faulty target\n'

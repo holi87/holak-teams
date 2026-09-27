@@ -2,21 +2,20 @@
 
 ADAPT-ME: replace endpoints/shapes with the real OpenAPI surface. Put each
 resource/tag in its own module (tests/api/test_<resource>.py) so parallel writers
-don't collide.
+don't collide. The api lane runs when solution/test-lanes.tsv enables it (run-tests.sh
+selects it by marker); a plain ``pytest -m api`` runs it alone.
 """
 from __future__ import annotations
-
-import os
 
 import pytest
 
 from qa.api_client import Endpoints, ResourceClient
+from qa.argus.errors import require_env
 from qa.data.factory import build_order
+from qa.oracles import load_openapi
 from qa.schema_oracle import SchemaOracle
 
 pytestmark = pytest.mark.api
-
-OPENAPI_PATH = os.environ.get("OPENAPI_PATH", "./openapi.json")
 
 
 def test_health_endpoint_responds(anon_client):
@@ -45,15 +44,14 @@ def test_protected_route_rejects_anonymous(anon_client):
     assert res.status_code in (401, 403)
 
 
-@pytest.mark.skipif(
-    not os.path.exists(OPENAPI_PATH),
-    reason=(
-        "schema oracle disabled: no OpenAPI doc at OPENAPI_PATH "
-        "(set OPENAPI_PATH to the spec to enable contract validation)"
-    ),
-)
 def test_response_matches_openapi_schema(api_as):
-    # The spec is the oracle: every mismatch is a contract-drift bug candidate.
-    oracle = SchemaOracle(OPENAPI_PATH)
+    # The spec is the oracle: every mismatch is a contract-drift bug candidate. It requires
+    # OPENAPI_PATH: an unset variable or a missing document is reported as
+    # prerequisite-missing before any request, never skipped.
+    # ADAPT-ME: if the target publishes no OpenAPI document, delete this test and record the
+    # missing contract oracle as a residual risk in solution/TEST-STRATEGY.md.
+    openapi_path = require_env("OPENAPI_PATH")
+    load_openapi(openapi_path)
+    oracle = SchemaOracle(openapi_path)
     res = api_as("user").get(Endpoints.ME)
     oracle.assert_matches(res.json(), "#/components/schemas/User")  # <-- adapt schema ref

@@ -1,0 +1,7 @@
+# lane<TAB>state<TAB>owner<TAB>prerequisites<TAB>reason
+api	enabled	talos	API_URL	-
+ui	disabled	daidalos	UI_URL	residual.not-in-fixture
+perf	disabled	nike	PERF_BUDGET_MS	residual.not-in-fixture
+security	disabled	aegis	SECURITY_ENABLED	residual.not-in-fixture
+db	disabled	mnemosyne	DB_URL	residual.not-in-fixture
+resilience	disabled	nike	-	residual.not-in-fixture
