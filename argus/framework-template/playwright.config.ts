@@ -66,7 +66,8 @@ export default defineConfig({
     },
     // Browser/viewport matrix — chromium-only is a DECISION to record in the
     // strategy, not a default to assume. Enable per strategy (also add the
-    // browsers to run-tests.sh playwright install):
+    // browsers to run-tests.sh playwright install). Keep the `<lane>-<variant>`
+    // name: run-tests.sh selects `--project=<lane>-*` with the lane.
     // {
     //   name: 'ui-firefox',
     //   testDir: './tests/ui',

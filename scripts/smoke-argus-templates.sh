@@ -270,6 +270,41 @@ for runtime in typescript java python; do
 done
 test -f "$WORK/kit-java/src/test/resources/META-INF/services/org.junit.platform.launcher.TestExecutionListener" || fail "Java runner kit omitted the listener registration"
 test -f "$WORK/kit-python/src/qa/argus_plugin.py" && test ! -e "$WORK/kit-python/src/qa/config.py" || fail "Python runner kit selected the wrong files"
+# The TypeScript kit ships its counterfactual activation (the suite's `test` extends
+# counterfactualTest, clients resolve the API URL through counterfactualApiURL), and every
+# relative import in the kit resolves inside the kit: no seam dangles on src/fixtures or
+# src/config, which stay ADAPT-ME files of the scaffold.
+grep -Fq 'export const counterfactualTest' "$WORK/kit-typescript/src/argus/playwright-fixtures.ts" &&
+  grep -Fq 'export function counterfactualApiURL' "$WORK/kit-typescript/src/argus/api-url.ts" ||
+  fail "TypeScript runner kit omitted the counterfactual activation"
+KIT_TREE="$WORK/kit-typescript" node --input-type=module <<'NODE' || fail "TypeScript runner kit imports a file it does not ship"
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+
+const root = process.env.KIT_TREE;
+const files = [];
+const walk = (directory) => {
+  for (const name of readdirSync(directory)) {
+    const path = join(directory, name);
+    if (statSync(path).isDirectory()) walk(path);
+    else if (/\.(ts|mjs)$/.test(name)) files.push(path);
+  }
+};
+walk(root);
+const dangling = [];
+for (const file of files) {
+  for (const [, specifier] of readFileSync(file, 'utf8').matchAll(/(?:from\s+|import\s*\(?\s*)['"](\.[^'"]+)['"]/g)) {
+    const target = resolve(dirname(file), specifier);
+    if (![target, `${target}.ts`, join(target, 'index.ts')].some((candidate) => existsSync(candidate) && statSync(candidate).isFile())) {
+      dangling.push(`${relative(root, file)} -> ${specifier}`);
+    }
+  }
+}
+if (dangling.length) {
+  console.error(`dangling kit imports: ${dangling.join(', ')}`);
+  process.exit(1);
+}
+NODE
 
 # The kit copy fails closed before writing: a non-empty or symlinked destination, an
 # unknown runtime, and a contract entry that selects no composed file leave nothing behind.

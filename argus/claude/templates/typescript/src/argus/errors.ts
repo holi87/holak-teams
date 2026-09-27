@@ -1,7 +1,7 @@
 // Argus error classes (RUNNER-CONTRACT.md SD-5). The outcome adapter classifies a failure
-// by the error name, so every class sets `name` explicitly; the names are identical in the
-// TypeScript, Java, and Python templates. Messages must stay free of target data: name the
-// resource kind or variable, never a body, token, or URL.
+// by the error name, so every class sets `name` explicitly; the names the Java and Python
+// templates also define are identical there. Messages must stay free of target data: name
+// the resource kind or variable, never a body, token, or URL.
 
 /** Created test data could not be removed: `automation fail cleanup-failed`. */
 export class ArgusCleanupError extends Error {
@@ -32,6 +32,17 @@ export class ArgusCounterfactualError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = 'ArgusCounterfactualError';
+  }
+}
+
+/**
+ * A counterfactual stub never served the fixture's subject exchange, so the regression
+ * reached the API some other way: `automation fail counterfactual-subject-not-served`.
+ */
+export class ArgusCounterfactualSubjectError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'ArgusCounterfactualSubjectError';
   }
 }
 

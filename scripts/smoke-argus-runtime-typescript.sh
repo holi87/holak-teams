@@ -133,6 +133,44 @@ printf 'BUG-0001\tmissing\t-\t-\n' | cmp -s - "$PLAN" || { show "$PLAN"; fail "t
 [ ! -e "$T/reports/outcomes.raw.tsv" ] || { show "$T/reports/outcomes.raw.tsv"; fail "a valid ledger produced inventory events"; }
 expect_status 'ok 0' "inventory pass"
 
+# The inventory pass also publishes its SD-2 ids, keyed by an identity digest, for executed
+# runs to reuse: their suite is already filtered, so suffixes computed there would drift.
+IDS="$WORK/test-case-ids.tsv"
+cp "$T/reports/test-case-ids.tsv" "$IDS" || fail "inventory pass wrote no reports/test-case-ids.tsv"
+expect_count "$IDS" "$listed" "one case id per collected test"
+awk -F'\t' 'NF != 2 || $1 !~ /^[0-9a-f]{64}$/ { exit 1 }' "$IDS" || { show "$IDS"; fail "a case-id row is not <sha256><TAB><id>"; }
+[ "$(cut -f2 "$IDS" | sort)" = "$(cut -f1 "$INV" | sort)" ] || fail "the case-id map does not name exactly the inventory ids"
+
+# pw_ids <log-name> <case-id map> [VAR=value ...] <command ...>: pw with the inventory pass's
+# case-id map in place, as runner-lib.sh leaves it before every executed pass.
+pw_ids() {
+  local log="$1" ids="$2"
+  shift 2
+  rm -rf "$T/reports"
+  mkdir -p "$T/reports"
+  cp "$ids" "$T/reports/test-case-ids.tsv"
+  set +e
+  (cd "$T" && env "$@") >"$WORK/$log.log" 2>&1
+  PW_CODE=$?
+  set -e
+}
+# A filtered run that selects only the second of two colliding titles keeps its `.2` id.
+COLLISION_CMD=(npx playwright test --project=contract-smoke "--reporter=$REPORTER" --grep 'collision a b' "$SPEC")
+pw_ids joined-collision "$IDS" ARGUS_RUNNER_MODE=defect-evidence "${COLLISION_CMD[@]}"
+expect_line "$T/reports/outcomes.raw.tsv" "filtered collision keeps the inventory id" "${ID}collision-a-b.2" product pass false n/a - passed
+expect_count "$T/reports/outcomes.raw.tsv" 1 "filtered collision events"
+expect_status 'ok 1' "filtered collision"
+# A test the map does not name fails the adapter status and emits nothing under a guess.
+grep -Fv "	${ID}collision-a-b.2" "$IDS" >"$WORK/test-case-ids.partial.tsv"
+pw_ids unjoined-collision "$WORK/test-case-ids.partial.tsv" ARGUS_RUNNER_MODE=defect-evidence "${COLLISION_CMD[@]}"
+[ "$PW_CODE" -ne 0 ] || fail "an executed run with an unjoined test did not fail"
+[ ! -e "$T/reports/outcomes.raw.tsv" ] || { show "$T/reports/outcomes.raw.tsv"; fail "an unjoined test emitted an event"; }
+expect_status 'error [0-9]+' "unjoined collision"
+printf 'not-a-digest\tid\n' >"$WORK/test-case-ids.malformed.tsv"
+pw_ids malformed-case-ids "$WORK/test-case-ids.malformed.tsv" ARGUS_RUNNER_MODE=defect-evidence "${COLLISION_CMD[@]}"
+[ ! -e "$T/reports/outcomes.raw.tsv" ] || fail "a malformed case-id map produced events"
+expect_status 'error [0-9]+' "malformed case-id map"
+
 # Ledger v1 has the same id/origin shape and joins identically.
 jq '."$schema" = "argus/bug-ledger@1" | .schemaVersion = 1' "$WORK/bug-ledger.json" >"$LEDGER"
 pw inventory-v1 ARGUS_RUNNER_MODE=defect-evidence ARGUS_INVENTORY_ONLY=1 "${INVENTORY_CMD[@]}"
@@ -175,7 +213,8 @@ printf "import { test } from '@playwright/test';\nthrow new Error('load failure 
 pw inventory-load-error ARGUS_RUNNER_MODE=defect-evidence ARGUS_INVENTORY_ONLY=1 "${INVENTORY_CMD[@]}"
 rm -f "$T/tests/contract/broken-load.spec.ts"
 [ "$PW_CODE" -ne 0 ] || fail "a collection error did not fail the inventory pass"
-[ ! -e "$T/reports/test-inventory.tsv" ] && [ ! -e "$T/reports/expected-bugs.txt" ] && [ ! -e "$PLAN" ] || fail "a collection error published inventory artifacts"
+[ ! -e "$T/reports/test-inventory.tsv" ] && [ ! -e "$T/reports/expected-bugs.txt" ] && [ ! -e "$PLAN" ] && [ ! -e "$T/reports/test-case-ids.tsv" ] ||
+  fail "a collection error published inventory artifacts"
 expect_status 'error [0-9]+' "collection error"
 
 # --- Executed defect-evidence live pass (SD-5, SD-6) ------------------------------------
@@ -377,6 +416,50 @@ expect_only_event "unmatched request" "$CF_ID.cf-correct" automation fail false 
 cf_pass cf-unmatched-tamper cf-tamper-1 ARGUS_SMOKE_EXTRA_REQUEST=1
 expect_only_event "unmatched request in a tamper pass" "$CF_ID.cf-observed-defect" automation fail false n/a BUG-0001 counterfactual-unmatched-request
 
+# A regression that bypasses counterfactualTest (an ADAPT suite that never wired the runner
+# kit's activation) is never counterfactual evidence, whatever its verdict.
+UNACTIVATED_SPEC=tests/contract/unactivated.spec.ts
+UNACTIVATED_ID='contract-smoke:contract-unactivated.spec.ts:widget-read-without-the-counterfactual-activation'
+cp "$FIXTURES/unactivated.spec.ts" "$T/$UNACTIVATED_SPEC"
+pw cf-unactivated-correct "${CF_ENV[@]}" ARGUS_EVIDENCE_PASS=cf-correct npx playwright test --project=contract-smoke "--reporter=$REPORTER" "$UNACTIVATED_SPEC"
+expect_only_event "unactivated regression in cf-correct" "$UNACTIVATED_ID.cf-correct" automation fail false n/a BUG-0001 counterfactual-not-activated
+pw cf-unactivated-tamper "${CF_ENV[@]}" ARGUS_EVIDENCE_PASS=cf-tamper-1 npx playwright test --project=contract-smoke "--reporter=$REPORTER" "$UNACTIVATED_SPEC"
+expect_only_event "unactivated regression in a tamper pass" "$UNACTIVATED_ID.cf-observed-defect" automation fail false n/a BUG-0001 counterfactual-not-activated
+rm -f "$T/$UNACTIVATED_SPEC"
+
+# A regression that bypasses the stub (a URL captured at module load, a per-file baseURL)
+# reaches the real target. With API_URL naming a live buggy target its verdict would read as
+# counterfactual-correct-red and, worse, a credited tamper RED; the subject check makes both
+# counterfactual-subject-not-served, and the overridden baseURL fails before its request.
+BYPASS_SPEC=tests/contract/counterfactual-bypass.spec.ts
+BYPASS_PREFIX='contract-smoke:contract-counterfactual-bypass.spec.ts:'
+BYPASS_CAPTURED="${BYPASS_PREFIX}widget-read-through-a-URL-captured-at-module-load"
+BYPASS_OVERRIDE="${BYPASS_PREFIX}per-file-base-URL-widget-read-with-an-overridden-base-URL"
+cp "$FIXTURES/counterfactual-bypass.spec.ts" "$T/$BYPASS_SPEC"
+: >"$WORK/bypass-target.log"
+FAULTY_MODE=buggy PORT=0 node "$ROOT/scripts/fixtures/argus-runtime/faulty-target.mjs" >"$WORK/bypass-target.log" 2>&1 &
+TARGET_PID=$!
+bypass_port=""
+for _ in $(seq 1 100); do
+  bypass_port="$(sed -n 's/^listening \([0-9][0-9]*\)$/\1/p' "$WORK/bypass-target.log")"
+  [ -z "$bypass_port" ] || break
+  sleep 0.1
+done
+[ -n "$bypass_port" ] || { cat "$WORK/bypass-target.log" >&2; fail "the bypass target did not start"; }
+for pass in cf-correct cf-tamper-1; do
+  pw "cf-bypass-$pass" "${CF_ENV[@]}" "API_URL=http://127.0.0.1:$bypass_port" "ARGUS_EVIDENCE_PASS=$pass" \
+    npx playwright test --project=contract-smoke "--reporter=list,$REPORTER" "$BYPASS_SPEC"
+  suffix=".$pass"
+  [ "$pass" = cf-correct ] || suffix=.cf-observed-defect
+  expect_line "$EV" "captured URL in $pass" "$BYPASS_CAPTURED$suffix" automation fail false n/a BUG-0001 counterfactual-subject-not-served
+  expect_line "$EV" "overridden baseURL in $pass" "$BYPASS_OVERRIDE$suffix" automation fail false n/a BUG-0001 counterfactual-subject-not-served
+  expect_count "$EV" 2 "bypass events in $pass"
+  expect_status 'ok 2' "bypass $pass"
+done
+grep -Fq 'baseURL is overridden for this test' "$WORK/cf-bypass-cf-correct.log" || fail "the overridden baseURL was not refused before its request"
+stop_target
+rm -f "$T/$BYPASS_SPEC"
+
 # An exemption records one event in cf-correct and nothing in a tamper pass.
 jq '{"$schema": ."$schema", schemaVersion, bugId, exemption: {reason: "front-end-logic", justification: "The defect lives in client-side rendering."}}' \
   "$WORK/cf-fixture.json" >"$CF_FIXTURE"
@@ -422,7 +505,8 @@ expect_plan cf-shipped-example fixture observed-defect,wrong-rejection-status -
 cp "$WORK/cf-fixture.json" "$CF_FIXTURE"
 cf_inventory cf-no-openapi "OPENAPI_PATH=$WORK/absent-openapi.json"
 [ "$PW_CODE" -ne 0 ] || fail "an unverifiable contract did not fail the inventory pass"
-[ ! -e "$PLAN" ] && [ ! -e "$T/reports/test-inventory.tsv" ] || fail "an unverifiable contract published inventory artifacts"
+[ ! -e "$PLAN" ] && [ ! -e "$T/reports/test-inventory.tsv" ] && [ ! -e "$T/reports/test-case-ids.tsv" ] ||
+  fail "an unverifiable contract published inventory artifacts"
 expect_status 'error [0-9]+' "unverifiable contract"
 
 # --- Provenance through the collection (SD-3, SD-4, SD-11) -------------------------------
@@ -602,11 +686,44 @@ e2e weakened 11 defect-evidence
 cp "$WORK/widget.regression.spec.ts" "$E/quality/specs/api/widget.regression.spec.ts"
 expect_line "$E2E_EV" "e2e weakened regression" "$E2E_ID.cf-missing-field" automation fail false n/a BUG-0001 counterfactual-tamper-survived
 
+# A non-regression neighbour declared first whose title sanitizes to the same id owns the
+# base id, so the regression is `.2` in the inventory. Every evidence pass selects only
+# @regression, and each must still report under `.2`; recomputing the suffix over the
+# filtered run would hand the RED to the neighbour's row (selected-test-not-executed, exit 15).
+awk -v q="'" 'index($0, "test(" q "widget read returns the specified widget" q ",") == 1 {
+    print "test(" q "widget read returns the specified widget?" q ", async ({ request }) => {"
+    print "  expect((await request.get(" q "/health" q ")).status()).toBe(200);"
+    print "});"
+    print ""
+  } { print }' "$WORK/widget.regression.spec.ts" >"$E/quality/specs/api/widget.regression.spec.ts"
+e2e collide 0 defect-evidence
+cp "$WORK/widget.regression.spec.ts" "$E/quality/specs/api/widget.regression.spec.ts"
+grep -Fxq "$(printf '%s\tapi\tfalse' "$E2E_ID")" <(cut -f1-3 "$E/reports/test-inventory.tsv") &&
+  grep -Fxq "$(printf '%s\tapi\ttrue' "$E2E_ID.2")" <(cut -f1-3 "$E/reports/test-inventory.tsv") ||
+  { show "$E/reports/test-inventory.tsv"; fail "e2e: the colliding neighbour did not take the base id"; }
+expect_line "$E2E_EV" "e2e collision live RED" "$E2E_ID.2" product fail true reproduced BUG-0001 expected-red
+expect_line "$E2E_EV" "e2e collision repeat RED" "$E2E_ID.2.repeat" product fail true reproduced BUG-0001 expected-red-repeat
+expect_line "$E2E_EV" "e2e collision cf-correct" "$E2E_ID.2.cf-correct" product pass false reproduced BUG-0001 counterfactual-correct-pass
+expect_line "$E2E_EV" "e2e collision tamper" "$E2E_ID.2.cf-observed-defect" product fail true reproduced BUG-0001 counterfactual-tamper-red
+if cut -f1 "$E2E_EV" | grep -Fxq -- "$E2E_ID"; then show "$E2E_EV"; fail "e2e: the regression's evidence landed on the neighbour's row"; fi
+
 # baseline stays strict green while the known bug is RED: it never selects @regression.
 e2e baseline 0 baseline
 expect_line "$E2E_EV" "e2e baseline test" "$E2E_HEALTH_ID" product pass false n/a - passed
 expect_line "$E2E_EV" "e2e baseline api lane executed" lane.api policy pass false n/a - lane-executed
 if grep -Fq -- "$E2E_ID" "$E2E_EV"; then show "$E2E_EV"; fail "e2e: baseline selected the regression"; fi
+
+# A `<lane>-<variant>` browser/device project is inventoried in its lane, so the lane's
+# selection runs it too; otherwise its rows are selected-test-not-executed (exit 15).
+cp "$E/playwright.config.ts" "$WORK/playwright.config.ts"
+awk -v q="'" '{ print } index($0, "{ name: " q "api" q ", testDir:") { sub("name: " q "api" q, "name: " q "api-replica" q); print }' \
+  "$WORK/playwright.config.ts" >"$E/playwright.config.ts"
+grep -Fq "name: 'api-replica'" "$E/playwright.config.ts" || fail "e2e: the api variant project was not added"
+e2e variant-baseline 0 baseline
+cp "$WORK/playwright.config.ts" "$E/playwright.config.ts"
+expect_line "$E2E_EV" "e2e variant project" "api-replica:${E2E_HEALTH_ID#api:}" product pass false n/a - passed
+expect_line "$E2E_EV" "e2e variant lane project" "$E2E_HEALTH_ID" product pass false n/a - passed
+if grep -Fq selected-test-not-executed "$E2E_EV"; then show "$E2E_EV"; fail "e2e: a variant project was inventoried but not selected"; fi
 
 start_target fixed
 e2e candidate 0 candidate-regression

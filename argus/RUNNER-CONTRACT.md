@@ -150,7 +150,11 @@ leading and trailing `-`. Above 200 characters it keeps the first 187 characters
 | Python | `item.nodeid` with `/` replaced by `.` |
 | Java | `<fqcn>.<method>`, plus `(<param simple names>)` only for overloads; template and dynamic invocations become `<id>.i<N>` |
 
-Collisions get `.2`, `.3`, … in declaration order. Pass suffixes are `.repeat`,
+Collisions get `.2`, `.3`, … in declaration order over the full collection, so a mode- or
+lane-filtered run never renumbers them: it reuses the inventory pass's ids (TypeScript
+joins each test to `reports/test-case-ids.tsv`, `<sha256 of the raw identity><TAB><id>`,
+and a test it cannot join fails the adapter status; only a run with no map at all, a plain
+`playwright test` outside the runner, numbers its own suite). Pass suffixes are `.repeat`,
 `.cf-correct`, `.cf-<tamperId>`, and `.cf` (exemption); a secondary cleanup event uses
 `.cleanup`.
 
@@ -206,6 +210,7 @@ in every runtime.
 | `ArgusPrerequisiteError` | `infrastructure fail`, `prerequisite-missing` |
 | `ArgusRestoreError` | `infrastructure fail`, `fault-restore-failed` |
 | `ArgusCounterfactualError` | `automation fail`, `counterfactual-unmatched-request` |
+| TS: `ArgusCounterfactualSubjectError` (the stub never served the subject exchange, or a per-test `baseURL` override would bypass it) | `automation fail`, `counterfactual-subject-not-served` |
 | Any other error. | `automation fail`, `uncaught-error` |
 | Runtime skip. | `skip skipped false n/a`, `test-skipped`; for a regression test `policy denied`, `regression-skipped` |
 | `test.fail`, xfail, or xpass. | `policy denied`, `expected-failure-forbidden` |
@@ -227,7 +232,10 @@ A non-regression test gives `product pass false n/a - passed` or
 | `candidate-regression`, `full-suite` | `product fail false automated B regression-red` | `product pass false fixed B regression-green` |
 
 Non-product outcomes of a regression test carry `B` with `expected=false` and
-`lifecycle=n/a`. A counterfactual exemption (SD-10) gives
+`lifecycle=n/a`. TypeScript credits a `cf-correct` or `cf-tamper-<k>` row only when the
+counterfactual activation recorded the variant the stub served (the
+`argus-counterfactual-variant` test annotation); otherwise the regression gives
+`automation fail false n/a B counterfactual-not-activated`. A counterfactual exemption (SD-10) gives
 `<case>.cf policy pass false n/a B counterfactual-exempt.<reason>` in `cf-correct`; a
 tamper pass whose variant is exempt or not applicable emits nothing for that test.
 
@@ -257,11 +265,12 @@ The reason field of an adapter event comes only from SD-4, SD-5, and SD-6
 (`passed`, `assertion-failed`, `test-timeout`, `fixture-failed`, `hook-failed`,
 `container-failed`, `playwright-api-failed`, `target-unreachable`, `test-interrupted`, `cleanup-failed`,
 `prerequisite-missing`, `fault-restore-failed`, `counterfactual-unmatched-request`,
-`uncaught-error`, `test-skipped`, `regression-skipped`, `expected-failure-forbidden`,
+`counterfactual-subject-not-served`, `uncaught-error`, `test-skipped`, `regression-skipped`, `expected-failure-forbidden`,
 `expected-red`, `expected-red-passed`, `expected-red-repeat`, `flaky-red`,
 `intermittent-unreproduced`, `repetition-invalid`, `counterfactual-correct-pass`,
 `counterfactual-correct-red`, `counterfactual-tamper-red`,
-`counterfactual-tamper-survived`, `counterfactual-exempt.<reason>`, `regression-green`,
+`counterfactual-tamper-survived`, `counterfactual-not-activated`,
+`counterfactual-exempt.<reason>`, `regression-green`,
 `regression-red`,
 `bug-ledger-missing`, `bug-ledger-invalid`) plus the gate tokens that
 `scripts/runner-lib.sh`, `scripts/runner-contract.sh`, and the portable lane-plan,
@@ -384,9 +393,14 @@ manifest and belong to `argus-assets automation-review check`. Other modes and c
 smokes skip the gate: only a `full-suite` result carries `deliveryGate: true`, and
 `defect-evidence` and `candidate-regression` runs are the repair loop a `BLOCK` asks for.
 
-**Engagement opt-ins.** Inside an Argus engagement (`ARGUS_ENGAGEMENT_MANIFEST` set),
-`ARGUS_ENVIRONMENT_RESET=execute` and `ARGUS_FAULT_INJECTION=authorized` are requests, not
-permissions. When the reset opt-in is set, before the environment gate (action
+**Engagement opt-ins.** Inside an Argus engagement, `ARGUS_ENVIRONMENT_RESET=execute` and
+`ARGUS_FAULT_INJECTION=authorized` are requests, not permissions. The library locates the
+engagement manifest the way `argus-assets` does, because `argus-launch` never exports
+`ARGUS_ENGAGEMENT_MANIFEST`: a non-empty `ARGUS_ENGAGEMENT_MANIFEST`, the `engagement.json`
+next to the launch receipt (`ARGUS_NATIVE_LAUNCH_RECEIPT`), and the first
+`ai_agents_internal/engagement.json` at or above the physical harness root. A named
+manifest that does not exist, or two sources that name different files, refuse the
+opt-in. When the reset opt-in is set, before the environment gate (action
 `destructive`, exclusive window `reset`), and when the fault opt-in is set, before any
 native hook (action `chaos`, exclusive window `fault`), the library reads
 `argus-assets engagement status` and requires the window to be held, then requires an

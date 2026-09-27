@@ -17,7 +17,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 # The runner reads these; a hermetic smoke never inherits them from its caller.
 unset ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET ARGUS_FAULT_INJECTION \
-  ARGUS_CONTRACT_SMOKE ARGUS_OUTCOME_FILE ARGUS_READINESS_URLS ARGUS_TEST_ROOT ARGUS_TODAY \
+  ARGUS_NATIVE_LAUNCH_RECEIPT ARGUS_CONTRACT_SMOKE ARGUS_OUTCOME_FILE ARGUS_READINESS_URLS ARGUS_TEST_ROOT ARGUS_TODAY \
   ARGUS_RESET_TIMEOUT_SECONDS ARGUS_VERIFY_TIMEOUT_SECONDS ARGUS_AUTHORIZATION_MANIFEST \
   ARGUS_AUTHORIZATION_TARGET ARGUS_AUTHORIZATION_SOURCE_TRUST ARGUS_AUTHORIZATION_ACCOUNT \
   ARGUS_AUTHORIZATION_NAMESPACE ARGUS_AUTHORIZATION_MUTATION ARGUS_AUTHORIZATION_RATE \
@@ -707,6 +707,7 @@ esac
 STUB
 chmod 755 "$FAKE_BIN/argus-assets"
 MANIFEST="$WORK/engagement/ai_agents_internal/engagement.json"
+printf '{"engagementId":"smoke"}\n' >"$MANIFEST"
 printf '{"engagementId":"smoke","exclusiveLocks":{"reset":{"lane":"odysseus","acquiredAt":"2026-01-01T00:00:00.000Z"}}}\n' >"$WORK/state-reset.json"
 printf '{"engagementId":"smoke","exclusiveLocks":{"fault":{"lane":"tyche","acquiredAt":"2026-01-01T00:00:00.000Z"}}}\n' >"$WORK/state-fault.json"
 printf '{"engagementId":"smoke","exclusiveLocks":{}}\n' >"$WORK/state-none.json"
@@ -777,6 +778,82 @@ engagement_env "$label" reset
 run_case "$label" 13 baseline "${ENGAGEMENT_ENV[@]}" ARGUS_ENGAGEMENT_LANE=tyche ARGUS_FAULT_INJECTION=authorized
 has_event "$label" fault-injection policy denied false n/a - fault-injection-unauthorized
 not_called "$label" '.'
+
+# argus-launch never exports ARGUS_ENGAGEMENT_MANIFEST, so the library locates the manifest
+# the way argus-assets does: ai_agents_internal/engagement.json at or above the harness root,
+# or next to the launch receipt. A located manifest is checked exactly like a named one.
+implicit_manifest() {
+  printf '{"engagementId":"smoke"}\n' >"$WORK/$1/ai_agents_internal/engagement.json"
+  IMPLICIT="$(cd "$WORK/$1/ai_agents_internal" && pwd -P)/engagement.json"
+}
+label=engagement-reset-implicit-allowed
+prepare "$label" reset-ok
+implicit_manifest "$label"
+run_case "$label" 0 full-suite "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-reset.json" \
+  ARGUS_ENGAGEMENT_LANE=odysseus ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment infrastructure pass false n/a - environment-reset-executed
+[ "$(cli_log "$label" | sed -n 1p)" = "engagement status --manifest $IMPLICIT" ] || fail "$label did not read the located engagement: $(cli_log "$label")"
+cli_log "$label" | sed -n 2p | grep -Fq "authorization check --manifest $(dirname "$IMPLICIT")/authorization.json --lane odysseus --action destructive " ||
+  fail "$label did not check the located engagement's authorization: $(cli_log "$label")"
+
+label=engagement-reset-implicit-no-lane
+prepare "$label" reset-ok
+implicit_manifest "$label"
+run_case "$label" 13 full-suite "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-reset.json" \
+  ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment policy denied false n/a - environment-reset-unauthorized
+not_called "$label" '^reset$'
+
+label=engagement-reset-empty-variable
+prepare "$label" reset-ok
+implicit_manifest "$label"
+run_case "$label" 13 full-suite "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-reset.json" \
+  ARGUS_ENGAGEMENT_MANIFEST= ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment policy denied false n/a - environment-reset-unauthorized
+not_called "$label" '^reset$'
+
+label=engagement-fault-implicit-no-lane
+prepare "$label" green
+implicit_manifest "$label"
+run_case "$label" 13 baseline "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-fault.json" \
+  ARGUS_FAULT_INJECTION=authorized
+has_event "$label" fault-injection policy denied false n/a - fault-injection-unauthorized
+not_called "$label" '.'
+
+# An engagement that is named but cannot be read, or two sources that disagree, refuse
+# before the CLI is consulted.
+label=engagement-reset-named-missing
+prepare "$label" reset-ok
+engagement_env "$label" reset
+run_case "$label" 13 full-suite "${ENGAGEMENT_ENV[@]}" "ARGUS_ENGAGEMENT_MANIFEST=$WORK/absent/ai_agents_internal/engagement.json" \
+  ARGUS_ENGAGEMENT_LANE=odysseus ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment policy denied false n/a - environment-reset-unauthorized
+not_called "$label" '^reset$'
+[ -z "$(cli_log "$label")" ] || fail "$label consulted the CLI for a missing manifest"
+
+label=engagement-reset-receipt-allowed
+prepare "$label" reset-ok
+run_case "$label" 0 full-suite "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-reset.json" \
+  "ARGUS_NATIVE_LAUNCH_RECEIPT=$(dirname "$MANIFEST")/native-launch-receipt.json" ARGUS_ENGAGEMENT_LANE=odysseus ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment infrastructure pass false n/a - environment-reset-executed
+[ "$(cli_log "$label" | sed -n 1p)" = "engagement status --manifest $MANIFEST" ] || fail "$label did not read the launched engagement: $(cli_log "$label")"
+
+label=engagement-reset-receipt-without-manifest
+prepare "$label" reset-ok
+run_case "$label" 13 full-suite "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-reset.json" \
+  "ARGUS_NATIVE_LAUNCH_RECEIPT=$WORK/launch/ai_agents_internal/native-launch-receipt.json" ARGUS_ENGAGEMENT_LANE=odysseus ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment policy denied false n/a - environment-reset-unauthorized
+not_called "$label" '^reset$'
+[ -z "$(cli_log "$label")" ] || fail "$label consulted the CLI without the launched engagement's manifest"
+
+label=engagement-reset-conflicting-manifests
+prepare "$label" reset-ok
+implicit_manifest "$label"
+engagement_env "$label" reset
+run_case "$label" 13 full-suite "${ENGAGEMENT_ENV[@]}" ARGUS_ENGAGEMENT_LANE=odysseus ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment policy denied false n/a - environment-reset-unauthorized
+not_called "$label" '^reset$'
+[ -z "$(cli_log "$label")" ] || fail "$label consulted the CLI although two engagement manifests disagree"
 
 # Outside an engagement the operator's opt-in stands and the CLI is never consulted.
 label=customer-reset

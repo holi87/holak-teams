@@ -1,10 +1,12 @@
+import { counterfactualApiURL, targetApiURL } from '../argus/api-url';
+
 // Central config for the target app. Fill in at the start of an engagement from Kalchas's recon.
-const TARGET_API_URL = process.env.API_URL ?? 'http://localhost:3001';
+const TARGET_API_URL = targetApiURL();
 
 export const ENV = {
   /**
-   * The API every client uses. In a cf-* evidence pass the counterfactual fixture points it
-   * at the in-worker stub (ARGUS_COUNTERFACTUAL_API_URL); only a 127.0.0.1 URL is honoured.
+   * The API every client uses, resolved at call time. In a cf-* evidence pass the
+   * counterfactual fixture points it at the in-worker stub (src/argus/api-url.ts).
    */
   get apiURL(): string {
     return counterfactualApiURL() ?? TARGET_API_URL;
@@ -22,14 +24,3 @@ export const ENV = {
 } as const;
 
 export type Role = keyof typeof ENV.accounts;
-
-function counterfactualApiURL(): string | undefined {
-  if (!(process.env.ARGUS_EVIDENCE_PASS ?? '').startsWith('cf-')) return undefined;
-  const value = process.env.ARGUS_COUNTERFACTUAL_API_URL;
-  if (!value) return undefined;
-  try {
-    return new URL(value).hostname === '127.0.0.1' ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}

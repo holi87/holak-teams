@@ -7,8 +7,8 @@ import type { StubExchange, StubResponse } from './stub-server';
 // distinguishes correct from defective behaviour without contacting the target: the
 // cf-correct pass serves the subject exchange as specified, and each cf-tamper-<k> pass
 // replaces the subject response with tampers[k-1]. The outcome adapter loads this module
-// for the inventory plan and for cf-* passes; the fixtures in src/fixtures/fixtures.ts load
-// it inside the workers.
+// for the inventory plan and for cf-* passes; the counterfactualTest fixtures in
+// src/argus/playwright-fixtures.ts load it inside the workers.
 
 export const FIXTURE_SCHEMA = 'argus/counterfactual-fixture@1';
 export const REQUIRED_TAMPER = 'observed-defect';
@@ -18,6 +18,8 @@ export const ORACLE_KINDS = ['requirement', 'contract', 'justified-invariant'] a
 export const NOT_APPLICABLE = 'argus-counterfactual-not-applicable';
 /** Skip description prefix for an exempt bug in cf-correct, followed by the exemption reason. */
 export const EXEMPT_PREFIX = 'argus-counterfactual-exempt:';
+/** Annotation type naming the variant the stub served; a cf-* verdict without it is `counterfactual-not-activated`. */
+export const ACTIVATION_ANNOTATION = 'argus-counterfactual-variant';
 
 export type ExemptionReason = (typeof EXEMPTION_REASONS)[number];
 export type InvalidReason = 'schema-invalid' | 'missing-observed-defect' | 'correct-violates-contract';
