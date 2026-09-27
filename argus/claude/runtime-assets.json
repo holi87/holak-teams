@@ -101,8 +101,8 @@
       "source": "argus/RACI-CONTRACT.md",
       "destination": "references/RACI-CONTRACT.md",
       "files": 1,
-      "bytes": 11777,
-      "sha256": "8dd38bfcc8ed80d18c8c0f707b706ca3e782688546fda2a10a8394ab5a0d76e5"
+      "bytes": 11824,
+      "sha256": "3142218dcf45c552fe83b801146f7ae167f73104bf92be03a5af8275411adfa0"
     },
     {
       "id": "raci-matrix",
@@ -110,8 +110,8 @@
       "source": "argus/raci.json",
       "destination": "references/raci.json",
       "files": 1,
-      "bytes": 25569,
-      "sha256": "2aadef9be26a8b0d7adc94c2deff7d9f182ee425777a790b401f80b233e6e62d"
+      "bytes": 25642,
+      "sha256": "f934381b30e23391dfb6d7567361beb557b657584b8e341f37dbe92275b4bea3"
     },
     {
       "id": "orchestration-core-skill",
@@ -182,8 +182,8 @@
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
-      "bytes": 25393,
-      "sha256": "b256b1804fe0a99de4a79885e160d14a2238a98bde93900af008b505a4324c86"
+      "bytes": 25448,
+      "sha256": "fa3c1d813f679929f5c01829fec2631d368eb25c5463d3f90b5a69157e693e14"
     },
     {
       "id": "technique-catalogs-bundle",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 59014,
-    "sha256": "a8bacb4399165e12c8711abd0ba0b9d545ce88746d8efbf941d8a427697b5a79"
+    "bytes": 59731,
+    "sha256": "b0fea8ccf66faca6548ccd9e29014e27b9aeceab464ccde24100db60a32f1974"
   }
 }
