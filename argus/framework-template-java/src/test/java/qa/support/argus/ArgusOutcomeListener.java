@@ -127,8 +127,7 @@ public class ArgusOutcomeListener implements TestExecutionListener {
                 Throwable throwable = result.getThrowable().orElse(null);
                 emitCase(identifier, classify(result, throwable), throwable);
             } else if (result.getStatus() == TestExecutionResult.Status.FAILED) {
-                // Children of a failed container never report; its id prefixes theirs.
-                events.emit(ids.of(identifier) + suffix, "automation", "fail", false, "n/a", "-", "container-failed");
+                failUnreported(identifier);
             } else if (result.getStatus() == TestExecutionResult.Status.ABORTED) {
                 skipUnreported(identifier);
             }
@@ -257,16 +256,49 @@ public class ArgusOutcomeListener implements TestExecutionListener {
 
     /** An aborted container: every case under it that never reported is a runtime skip. */
     private void skipUnreported(TestIdentifier container) {
+        for (TestIdentifier candidate : casesAt(container)) {
+            if (!covered(candidate)) emitCase(candidate, Outcome.SKIPPED, null);
+        }
+    }
+
+    /**
+     * A failed container: every case under it that never reported fails with it under its own
+     * case id and bug, so each joins its inventory row and its bug's evidence. A failure no case
+     * carries (an {@code @AfterAll} after every case reported, or cases with nothing to prove in
+     * this counterfactual pass) reports under the container id.
+     */
+    private void failUnreported(TestIdentifier container) {
+        boolean carried = false;
+        for (TestIdentifier candidate : casesAt(container)) {
+            if (covered(candidate)) continue;
+            String bug = regressionBug(ArgusCaseIds.Markers.of(plan, candidate));
+            String caseSuffix = suffix;
+            if (counterfactual) {
+                Counterfactual.Decision decision = decisions.computeIfAbsent(bug, key -> Counterfactual.decide(ArgusEvents.root(), key, pass));
+                if (decision instanceof Counterfactual.NotApplicable) continue;
+                caseSuffix = decision instanceof Counterfactual.Variant variant ? "." + variant.tag() : ".cf";
+            }
+            reported.add(candidate.getUniqueId());
+            events.emit(ids.of(candidate) + caseSuffix, "automation", "fail", false, "n/a", bug, "container-failed");
+            carried = true;
+        }
+        if (!carried) events.emit(ids.of(container) + suffix, "automation", "fail", false, "n/a", "-", "container-failed");
+    }
+
+    /** The container when it is a case, then every case under it, in plan order. */
+    private List<TestIdentifier> casesAt(TestIdentifier container) {
         List<TestIdentifier> cases = new ArrayList<>();
         if (ArgusCaseIds.isCase(container)) cases.add(container);
         for (TestIdentifier descendant : plan.getDescendants(container)) {
             if (ArgusCaseIds.isCase(descendant)) cases.add(descendant);
         }
-        for (TestIdentifier candidate : cases) {
-            boolean covered = reported.contains(candidate.getUniqueId())
-                    || plan.getDescendants(candidate).stream().anyMatch(child -> reported.contains(child.getUniqueId()));
-            if (!covered) emitCase(candidate, Outcome.SKIPPED, null);
-        }
+        return cases;
+    }
+
+    /** Whether the case, or a case under it, already reported. */
+    private boolean covered(TestIdentifier candidate) {
+        return reported.contains(candidate.getUniqueId())
+                || plan.getDescendants(candidate).stream().anyMatch(child -> reported.contains(child.getUniqueId()));
     }
 
     /** SD-5 primary classification of a finished test. */

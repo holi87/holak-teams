@@ -1,5 +1,5 @@
 """Self-tests for the runner-kit helpers behind the ``fault_injector`` and ``created_resources``
-fixtures (qa.argus.fault_injector, qa.argus.cleanup).
+fixtures (qa.argus.fault_injector, qa.argus.cleanup) and for qa.argus.reproduce.
 
 Nothing contacts a real target: faults are recorded calls, and cleanup DELETEs go to a
 127.0.0.1 stub. Negative cases assert the rejection itself, so a healthy run reports
@@ -16,6 +16,7 @@ import pytest
 from qa.argus.cleanup import cleanup_created_resources
 from qa.argus.errors import ArgusCleanupError, ArgusPrerequisiteError, ArgusRestoreError
 from qa.argus.fault_injector import Fault, FaultInjector, FaultScope, fault_active, run
+from qa.argus.repetition import reproduce
 from qa.argus.stub_server import StubServer
 
 pytestmark = pytest.mark.contract_smoke
@@ -75,6 +76,23 @@ def test_fault_injector_restores_after_a_failing_body_and_reraises_the_body_erro
         run(recorded_fault(calls), body)
     assert calls == ["inject", "body", "restore", "verify"]
     assert not fault_active()
+
+
+def test_reproduce_repeats_the_attempt_and_stops_at_the_first_violation():
+    attempts: list[int] = []
+    reproduce(3, lambda: attempts.append(1))
+    assert len(attempts) == 3
+
+    def attempt() -> None:
+        attempts.append(1)
+        assert len(attempts) < 5, "synthetic violation"
+
+    with pytest.raises(AssertionError, match="synthetic violation"):
+        reproduce(9, attempt)
+    assert len(attempts) == 5
+    for invalid in (0, 201, True, 2.0):
+        with pytest.raises(ValueError, match="1..200"):
+            reproduce(invalid, attempt)  # type: ignore[arg-type]
 
 
 def test_fault_injector_restores_a_partial_injection():

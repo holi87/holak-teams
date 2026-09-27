@@ -493,6 +493,10 @@ test -d "$WORK/python/quality/python-tests" && test -d "$WORK/python/quality/pyt
 if grep -Fq 'src/test/java' "$WORK/java/README.md"; then fail "Java generated instructions retained the placeholder source root"; fi
 grep -Fq 'retries: 0' "$WORK/typescript/playwright.config.ts" || fail "TypeScript retries are not disabled"
 grep -Fq '<rerunFailingTestsCount>0</rerunFailingTestsCount>' "$WORK/java/pom.xml" || fail "Java reruns are not disabled"
+# The Java stack table names the contract oracle the pom pins (networknt, draft 2020-12), never
+# REST Assured's draft-04 schema module, which cannot express the strict oracle.
+grep -Fq '<groupId>com.networknt</groupId>' "$WORK/java/pom.xml" && grep -Fq '**networknt `json-schema-validator`** (draft 2020-12)' "$WORK/java/README.md" &&
+  ! grep -Fq 'REST Assured `json-schema-validator`' "$WORK/java/README.md" || fail "Java README names a contract oracle the template does not ship"
 if grep -Eq '^[[:space:]]*"pytest-rerunfailures|^[[:space:]]*--reruns' "$WORK/python/requirements.txt" "$WORK/python/pyproject.toml"; then fail "Python template enables automatic reruns"; fi
 
 run_logged typescript-install bash -c "cd '$WORK/typescript' && npm ci --ignore-scripts"

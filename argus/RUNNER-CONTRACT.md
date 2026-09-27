@@ -202,7 +202,7 @@ in every runtime.
 | Assertion. TS: the terminal error matches the error of an `expect`-category step found depth-first in `result.steps`. Java: `instanceof AssertionError`, including opentest4j. Python: a call-phase `AssertionError`. | `product fail`, see SD-6 |
 | Test-level timeout. TS `timedOut` or Playwright `TimeoutError`; `httpx.TimeoutException`; Java `TimeoutException`, `SocketTimeoutException`, or Awaitility `ConditionTimeoutException`. | `automation fail`, `test-timeout` |
 | Fixture, hook, or setup failure. | `automation fail`, `fixture-failed` or `hook-failed` |
-| Java: a failed container (a class or template whose `@BeforeAll`, argument source, or factory failed), whose tests therefore never report. The case id is the container id, which prefixes theirs. | `automation fail`, `container-failed` |
+| Java: a failed container (a class or template whose `@BeforeAll`, argument source, or factory failed), whose tests therefore never report. Each case under it that never reported gets the event under its own case id, pass suffix, and bug; a container whose cases all reported (a failed `@AfterAll`) gets it under the container id. | `automation fail`, `container-failed` |
 | Playwright API error. | `automation fail`, `playwright-api-failed` |
 | Refused, unknown-host, or reset connection. TS: `ECONNREFUSED`, `ENOTFOUND`, `ECONNRESET`, `EAI_AGAIN`, `net::ERR_`. Java: `ConnectException`, `UnknownHostException`, or `NoRouteToHostException` in the cause chain. Python: `httpx.ConnectError`, `ConnectTimeout`, or `ConnectionError`. | `infrastructure fail`, `target-unreachable` |
 | Interrupted test. | `infrastructure fail`, `test-interrupted` |
@@ -368,10 +368,11 @@ evidence-live-red-missing` or `evidence-repeat-red-missing`, and a usable plan r
 else `counterfactual.<B> policy denied counterfactual-plan-missing`; a plan with an
 unparseable row or two rows for one bug is unusable. A `missing` row gives
 `counterfactual-missing`, an `invalid` row `automation fail
-counterfactual-fixture-invalid.<reason>`. A `fixture` needs exactly one
-`counterfactual-correct-pass` and a `counterfactual-tamper-red` whose case id ends in
-`.cf-<t>` for every tamper `t`; an `exempt` row needs `counterfactual-exempt.<reason>` with
-the plan's reason; otherwise `counterfactual-incomplete`. A missing proof is not denied when
+counterfactual-fixture-invalid.<reason>`. A `fixture` needs a
+`counterfactual-correct-pass`, at most one per case id (each invocation of a template or
+parametrized regression is its own case), and a `counterfactual-tamper-red` whose case id
+ends in `.cf-<t>` for every tamper `t`; an `exempt` row needs `counterfactual-exempt.<reason>`
+with the plan's reason; otherwise `counterfactual-incomplete`. A missing proof is not denied when
 the same pass (by SD-2 case-id suffix) already gave `B` a failing verdict such as `flaky-red`
 or `counterfactual-tamper-survived`, so that verdict keeps its own exit code.
 

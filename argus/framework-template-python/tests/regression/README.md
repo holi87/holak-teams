@@ -37,7 +37,10 @@ A regression lives in the directory of the lane that owns the behaviour, for exa
   defect. Every request the test makes (a login included) must be one of the fixture's
   exchanges. Authoring rules and the exemption set: `solution/counterfactual/README.md`.
 - An intermittent defect declares `@pytest.mark.repetition(n)` from the ledger's
-  reproduction record (RUNNER-CONTRACT.md SD-6).
+  reproduction record (RUNNER-CONTRACT.md SD-6), and its one test repeats the reproduction in
+  its body: `reproduce(n, attempt)` from `qa.argus` runs up to n attempts, each from fresh
+  state, and fails at the first violation. Never parametrize it: each parametrized item is a
+  separate case, not an attempt.
 
 ```python
 # tests/api/test_orders_regression.py

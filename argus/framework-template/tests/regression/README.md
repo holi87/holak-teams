@@ -30,7 +30,9 @@ project. `@regression` selects it in `defect-evidence` and
   pass on the spec-correct response and fail on every tamper, starting with the observed
   defect. Authoring rules and the exemption set: `solution/counterfactual/README.md`.
 - An intermittent defect declares `@repetition:<n>` from the ledger's reproduction record
-  (RUNNER-CONTRACT.md SD-6).
+  (RUNNER-CONTRACT.md SD-6), and its one test repeats the reproduction in its body, up to n
+  attempts from fresh state, failing at the first violation. `repeatEach` or a loop that
+  declares n tests is not repetition: each is a separate case, not an attempt.
 
 ```ts
 // tests/api/orders.regression.spec.ts

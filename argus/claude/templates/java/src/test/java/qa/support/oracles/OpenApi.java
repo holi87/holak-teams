@@ -149,9 +149,24 @@ public final class OpenApi {
         return defs(direction, strict).deepCopy();
     }
 
-    /** The response object documented for exactly {@code status}, with {@code $ref} chains resolved. */
+    /**
+     * The {@code responses} key that documents {@code status} (OpenAPI 3.x): the exact code,
+     * else its {@code 1XX}..{@code 5XX} range, else {@code default}; empty when none applies.
+     */
+    public Optional<String> responseKey(String operationId, int status) {
+        JsonNode responses = operation(operationId).path("responses");
+        String range = status >= 100 && status <= 599 ? (status / 100) + "XX" : null;
+        for (String key : new String[] {Integer.toString(status), range, "default"}) {
+            if (key != null && responses.has(key)) return Optional.of(key);
+        }
+        return Optional.empty();
+    }
+
+    /** The response object {@link #responseKey} selects for {@code status}, with {@code $ref} chains resolved. */
     public Optional<JsonNode> response(String operationId, int status) {
-        JsonNode response = operation(operationId).path("responses").get(Integer.toString(status));
+        Optional<String> key = responseKey(operationId, status);
+        if (key.isEmpty()) return Optional.empty();
+        JsonNode response = operation(operationId).path("responses").get(key.get());
         for (int hops = 0; response != null && response.path("$ref").isTextual(); hops++) {
             String ref = response.get("$ref").asText();
             response = hops > 10 ? null : resolveRef(ref);

@@ -14,17 +14,24 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLI="${ARGUS_ASSETS:-$ROOT/argus/claude/bin/argus-assets}"
 FIXTURES="$ROOT/scripts/fixtures/argus-runtime/java"
 WORK="$(mktemp -d)"
-TARGET_PID="" TARGET_URL=""
+TARGET_PID="" TARGET_PORT="" TARGET_URL="" NODE_BIN=""
+# Exits 0 when 127.0.0.1:<argv[1]> accepts a connection.
+PORT_OPEN='const s = require("net").connect(Number(process.argv[1]), "127.0.0.1"); s.on("connect", () => process.exit(0)); s.on("error", () => process.exit(1));'
 
-# stop_target: stops the end-to-end target started by start_target, if any.
+# stop_target: stops the end-to-end target started by start_target, if any, and returns
+# non-zero unless its port is closed afterwards. The target runs as the resolved node binary
+# (NODE_BIN): under a version-manager shim $! is the shim, and killing it would orphan the
+# listening server.
 stop_target() {
+  local port="$TARGET_PORT"
   if [ -n "$TARGET_PID" ]; then
     kill "$TARGET_PID" 2>/dev/null || true
     wait "$TARGET_PID" 2>/dev/null || true
-    TARGET_PID=""
   fi
+  TARGET_PID="" TARGET_PORT=""
+  [ -z "$port" ] || ! "$NODE_BIN" -e "$PORT_OPEN" "$port"
 }
-trap 'stop_target; rm -rf "$WORK"' EXIT
+trap 'stop_target || printf "FAIL  the faulty target outlived the smoke\n" >&2; rm -rf "$WORK"' EXIT
 # The adapter reads these; a caller's environment must not leak into the clean room. The
 # same holds for the runner library's inputs in the end-to-end section.
 unset ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY ARGUS_OUTCOME_FILE ARGUS_CONTRACT_SMOKE \
@@ -34,6 +41,7 @@ unset ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY ARGUS_OUTCOME_F
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 for tool in java mvn jq node; do command -v "$tool" >/dev/null 2>&1 || fail "$tool is required"; done
+NODE_BIN="$(node -p process.execPath)"
 
 APP="$WORK/java"
 C=qa.contract.ClassificationFixtureTest
@@ -113,6 +121,7 @@ expect_row "$C.na-ve_caf" contract-smoke false false - - - "$C"
 expect_row "$C.na-ve_caf.2" contract-smoke false false - - - "$C"
 expect_row "$C-CleanupAfterPass.body_passes" contract-smoke false false - - - "$C-CleanupAfterPass"
 expect_row "$C-FailingSetup.never_runs" contract-smoke false false - - - "$C-FailingSetup"
+expect_row "$C-FailingTeardown.body_passes" contract-smoke false false - - - "$C-FailingTeardown"
 expect_row "$C-DisabledGroup.skipped_with_its_class" contract-smoke false false - - skip "$C-DisabledGroup"
 LONG_X="$C.method_name_long_enough_that_its_sanitized_case_id_exceeds_two_hundred_characters_and_is_therefore_truncated_to_a_prefix_of_one_hundred_eighty_seven_characters_plus_a_digest"
 LONG_ID="${LONG_X:0:187}.$(sha256_hex "$LONG_X" | cut -c1-12)"
@@ -214,17 +223,30 @@ expect_event "$L" "$LONG_ID" product pass false n/a - passed
 expect_event "$L" "$C-CleanupAfterPass.body_passes" automation fail false n/a - cleanup-failed
 expect_event "$L" "$C-CleanupAfterFailure.body_fails" product fail false n/a - assertion-failed
 expect_event "$L" "$C-CleanupAfterFailure.body_fails.cleanup" automation fail false n/a - cleanup-failed
-expect_event "$L" "$C-FailingSetup" automation fail false n/a - container-failed
+# A failed @BeforeAll fails each case under its own id; a failed @AfterAll, after every case
+# reported, keeps the container id.
+expect_event "$L" "$C-FailingSetup.never_runs" automation fail false n/a - container-failed
+expect_event "$L" "$C-FailingTeardown.body_passes" product pass false n/a - passed
+expect_event "$L" "$C-FailingTeardown" automation fail false n/a - container-failed
 expect_event "$L" "$C-AbortedSetup.skipped_with_its_container" skip skipped false n/a - test-skipped
 expect_event "$L" "$C-DisabledGroup.skipped_with_its_class" skip skipped false n/a - test-skipped
-expect_lines "$L" 31
-expect_status live "ok 31"
+expect_lines "$L" 33
+expect_status live "ok 33"
 if grep -Eq 'synthetic|127[.]0[.]0[.]1|Connection refused' "$L"; then fail "an event carried test messages or target details"; fi
-# Every executed or skipped case joins its inventory row by id or '<id>.' prefix.
-cut -f1 "$L" | while IFS= read -r event_id; do
-  cut -f1 "$INVENTORY" | awk -v e="$event_id" '$0 == e || index(e, $0 ".") == 1 || index($0, e ".") == 1 { found = 1 } END { exit !found }' \
-    || fail "event $event_id does not join the inventory"
-done
+# The runner's own gates join every selected case: nothing is reported as not executed, and a
+# product lane whose only test sits under a failed container still counts as executed.
+cp "$L" "$WORK/live-executed.tsv"
+bash "$APP/scripts/inventory-gate.sh" executed --inventory "$INVENTORY" --lanes api --events "$WORK/live-executed.tsv" \
+  --mode full-suite --contract-smoke 2>/dev/null || fail "the executed gate failed on the live events"
+cmp -s "$L" "$WORK/live-executed.tsv" || { diff "$L" "$WORK/live-executed.tsv" >&2 || true; fail "the executed gate reported a selected case as not executed"; }
+awk -F'\t' -v OFS='\t' -v id="$C-FailingSetup.never_runs" '$1 == id { $2 = "ui"; print }' "$INVENTORY" >"$WORK/ui-inventory.tsv"
+printf '%s\n' "$(tsv api disabled talos - residual.not-in-fixture)" "$(tsv ui enabled daidalos - -)" \
+  "$(tsv perf disabled nike - residual.not-in-fixture)" "$(tsv security disabled aegis - residual.not-in-fixture)" \
+  "$(tsv db disabled mnemosyne - residual.not-in-fixture)" "$(tsv resilience disabled nike - residual.not-in-fixture)" >"$WORK/ui-lanes.tsv"
+cp "$L" "$WORK/live-lanes.tsv"
+bash "$APP/scripts/lane-plan.sh" verify --plan "$WORK/ui-lanes.tsv" --inventory "$WORK/ui-inventory.tsv" --events "$WORK/live-lanes.tsv" \
+  --mode full-suite 2>/dev/null || fail "lane-plan verify failed on the live events"
+expect_event "$WORK/live-lanes.tsv" lane.ui policy pass false n/a - lane-executed
 
 run_fixture repeat regression ARGUS_RUNNER_MODE=defect-evidence ARGUS_EVIDENCE_PASS=repeat
 R="$WORK/repeat.tsv"
@@ -483,6 +505,18 @@ if grep -Eq '^counterfactual[.]BUG-000[14]'$'\t' "$WORK/cf-proof.tsv"; then
   fail "the evidence gate rejected the adapter's counterfactual proof"
 fi
 expect_event "$WORK/cf-proof.tsv" counterfactual.BUG-0003 policy denied false n/a BUG-0003 counterfactual-missing
+# Every case of a bug reports its own proof: with both BUG-0001 regressions, two correct passes
+# are no denial, and the weakened one's survived tamper stays the failing verdict.
+awk -F'\t' -v a="$CFC.widget_matches_the_contract." -v b="$CFC.widget_status_only." 'index($1, a) == 1 || index($1, b) == 1' \
+  "$C1" "$T1" "$T2" >"$WORK/cf-two.tsv"
+printf 'BUG-0001\n' >"$WORK/cf-two-bugs.txt"
+bash "$CF/scripts/evidence-gate.sh" --expected-bugs "$WORK/cf-two-bugs.txt" --plan "$CF_PLAN" --events "$WORK/cf-two.tsv" \
+  || fail "the evidence gate failed on two regressions of one bug"
+if grep -Eq '^counterfactual[.]BUG-0001'$'\t' "$WORK/cf-two.tsv"; then
+  grep -E '^counterfactual[.]' "$WORK/cf-two.tsv" >&2
+  fail "the evidence gate denied a bug whose two regressions each reported their own proof"
+fi
+expect_event "$WORK/cf-two.tsv" "$CFC.widget_status_only.cf-missing-field" automation fail false n/a BUG-0001 counterfactual-tamper-survived
 
 # (6) End-to-end runner against a local faulty target. A scaffold from `template select` +
 # `template scaffold` (non-default layout) runs ./run-tests.sh end to end: runner-lib.sh, the
@@ -512,9 +546,9 @@ cp "$ROOT/scripts/fixtures/argus-runtime/typescript/e2e/verify-baseline.sh" "$E/
 # start_target <buggy|fixed>: (re)starts the faulty target on an ephemeral 127.0.0.1 port.
 start_target() {
   local port="" attempt
-  stop_target
+  stop_target || fail "the previous faulty target still listens after stop_target"
   : >"$WORK/target.log"
-  FAULTY_MODE="$1" PORT=0 node "$ROOT/scripts/fixtures/argus-runtime/faulty-target.mjs" >"$WORK/target.log" 2>&1 &
+  FAULTY_MODE="$1" PORT=0 "$NODE_BIN" "$ROOT/scripts/fixtures/argus-runtime/faulty-target.mjs" >"$WORK/target.log" 2>&1 &
   TARGET_PID=$!
   for attempt in $(seq 1 100); do
     port="$(sed -n 's/^listening \([0-9][0-9]*\)$/\1/p' "$WORK/target.log")"
@@ -522,7 +556,7 @@ start_target() {
     sleep 0.1
   done
   [ -n "$port" ] || { cat "$WORK/target.log" >&2; fail "the faulty target did not start after $attempt checks"; }
-  TARGET_URL="http://127.0.0.1:$port"
+  TARGET_PORT="$port" TARGET_URL="http://127.0.0.1:$port"
 }
 
 # e2e <log> <expected-exit> <mode> [VAR=value ...] [-- passthrough...]
@@ -613,6 +647,6 @@ printf '#!/usr/bin/env bash\nexit 1\n' >"$E/scripts/verify-baseline.sh"
 e2e not-at-baseline 12 full-suite
 cp "$WORK/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
 expect_event "$E2E_EV" environment infrastructure fail false n/a - environment-not-at-baseline
-stop_target
+stop_target || fail "the faulty target still listens after stop_target"
 
 printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, inert activation, contract, data and behaviour oracle self-tests, exact-oracle examples, the SD-10 counterfactual plan, passes and evidence, and an end-to-end runner against a faulty target\n'

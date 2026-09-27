@@ -14,7 +14,7 @@ layout. Same doctrine and lane layout as the TypeScript template, ported to the 
 |---|---|---|
 | Runner | **JUnit 5 (Jupiter)** | lanes via `@Tag`, enabled or disabled by `solution/test-lanes.tsv`; a missing prerequisite fails visibly, never a silent skip |
 | API / contract | **REST Assured** | fluent given/when/then; the assertion vocabulary the whole industry reads |
-| Contract oracle | **REST Assured `json-schema-validator`** | OpenAPI/JSON-schema as an *executable* oracle — every drift is a bug candidate, not a hand-rolled field check |
+| Contract oracle | **networknt `json-schema-validator`** (draft 2020-12) behind `qa.support.oracles` | OpenAPI as an *executable* oracle: `Schema.assertSchema` is strict by default (an undocumented field is RED), so every drift is a bug candidate, not a hand-rolled field check. REST Assured's draft-04 `matchesJsonSchema` cannot express that strictness; do not use it |
 | UI | **Playwright for Java** (`com.microsoft.playwright`) | one modern browser-automation API, role/label locators, storageState auth-once, trace/screenshot/video for evidence — **no Selenium** |
 | Async waits | **Awaitility** | readable polling for genuinely async conditions instead of `Thread.sleep` |
 | Build / report | **Maven + Surefire** | Surefire XML per class (CI-native) + a small `reports/summary.{json,html}` digest |

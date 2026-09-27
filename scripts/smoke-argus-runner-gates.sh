@@ -428,6 +428,10 @@ evidence_expect passing-tamper fixture.tsv counterfactual-incomplete "$LIVE" "$R
   "api.w.cf-observed-defect${T}product${T}pass${T}false${T}n/a${T}BUG-0001${T}passed"
 evidence_expect expected-red-passed fixture.tsv evidence-repeat-red-missing "api.w${T}product${T}pass${T}true${T}automated${T}BUG-0001${T}expected-red-passed" \
   "$CORRECT" "$TAMPER"
+# Each invocation of a template or parametrized regression is its own case with its own
+# correct pass; one case id passing twice is a damaged record, never a proof.
+evidence_expect two-invocations fixture.tsv "" "$LIVE" "$REPEAT" "${CORRECT/api.w.cf-correct/api.w.i1.cf-correct}" \
+  "${CORRECT/api.w.cf-correct/api.w.i2.cf-correct}" "$TAMPER"
 evidence_expect two-correct fixture.tsv counterfactual-incomplete "$LIVE" "$REPEAT" "$CORRECT" "$CORRECT" "$TAMPER"
 evidence_expect wrong-tamper fixture.tsv counterfactual-incomplete "$LIVE" "$REPEAT" "$CORRECT" "${TAMPER/cf-observed-defect/cf-stale-cache}"
 evidence_expect other-bug-proof fixture.tsv "evidence-live-red-missing evidence-repeat-red-missing counterfactual-incomplete" \

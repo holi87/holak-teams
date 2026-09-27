@@ -144,7 +144,7 @@ awk -F '\t' '
     if (red && $7 == "expected-red") print "live-red\t" bug
     if (red && $7 == "expected-red-repeat") print "repeat-red\t" bug
     if ($7 == "intermittent-unreproduced") print "intermittent\t" bug
-    if ($2 == "product" && $3 == "pass" && $7 == "counterfactual-correct-pass") print "correct\t" bug
+    if ($2 == "product" && $3 == "pass" && $7 == "counterfactual-correct-pass") print "correct\t" bug "\t" id
     if ($2 == "policy" && $3 == "pass" && index($7, "counterfactual-exempt.") == 1) {
       print "exempt\t" bug "\t" substr($7, length("counterfactual-exempt.") + 1)
     }
@@ -169,15 +169,17 @@ awk -F '\t' '
 
 fact() { grep -Fxq -- "$1" "$facts"; }
 
-# A fixture is carried out by exactly one counterfactual-correct pass and a RED under every
-# tamper; each proof may instead be answered by a failing verdict of its own pass.
+# A fixture is carried out by a counterfactual-correct pass and a RED under every tamper; each
+# proof may instead be answered by a failing verdict of its own pass. Every case of the bug
+# reports its own verdict (each invocation of a template or parametrized regression is a case,
+# and any failing one fails the run), but one case id passing twice is a damaged record (-1).
 fixture_complete() {
   local bug="$1" correct tamper
   local ids=()
-  correct="$(grep -Fxc -- "correct$TAB$bug" "$facts" || true)"
-  if [ "$correct" -ne 1 ]; then
-    [ "$correct" -eq 0 ] && fact "answered$TAB$bug${TAB}cf-correct" || return 1
-  fi
+  correct="$(awk -F '\t' -v bug="$bug" '$1 == "correct" && $2 == bug { n++; if (seen[$3]++) twice = 1 }
+    END { print twice ? -1 : n + 0 }' "$facts")"
+  [ "$correct" -ge 0 ] || return 1
+  if [ "$correct" -eq 0 ]; then fact "answered$TAB$bug${TAB}cf-correct" || return 1; fi
   IFS=, read -r -a ids <<<"$plan_tampers"
   for tamper in "${ids[@]}"; do
     fact "tamper$TAB$bug$TAB$tamper" || fact "answered$TAB$bug${TAB}cf-$tamper" || return 1

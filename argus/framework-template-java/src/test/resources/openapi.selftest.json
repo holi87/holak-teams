@@ -77,6 +77,26 @@
           }
         }
       }
+    },
+    "/gadgets/{id}": {
+      "get": {
+        "operationId": "getGadget",
+        "responses": {
+          "200": {
+            "description": "The gadget",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Base" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "4XX": {
+            "description": "Any other client error: a range key",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          },
+          "default": {
+            "description": "Every other status",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -167,6 +187,19 @@
             }
           }
         }
+      },
+      "Problem": {
+        "type": "object",
+        "required": ["error", "fields"],
+        "properties": {
+          "error": { "type": "string" },
+          "fields": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": { "error": { "type": "string" } }
       }
     },
     "responses": {

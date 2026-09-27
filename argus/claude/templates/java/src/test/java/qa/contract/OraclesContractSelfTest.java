@@ -203,6 +203,19 @@ class OraclesContractSelfTest {
     }
 
     @Test
+    void operation_lookup_resolves_the_exact_code_then_its_range_then_default() {
+        // 404 has its own key, so the 4XX schema's extra field is RED there.
+        Schema.assertSchema(DOC, 404, "{\"error\":\"no such gadget\"}", "getGadget", Options.STRICT);
+        red(() -> Schema.assertSchema(DOC, 404, "{\"error\":\"no such gadget\",\"fields\":[]}", "getGadget", Options.STRICT), "fields");
+        // 422 falls under 4XX, which requires fields: the default Error body alone is RED.
+        Schema.assertSchema(DOC, 422, "{\"error\":\"invalid\",\"fields\":[\"name\"]}", "getGadget", Options.STRICT);
+        red(() -> Schema.assertSchema(DOC, 422, "{\"error\":\"invalid\"}", "getGadget", Options.STRICT), "HTTP 422 via 4XX");
+        // 500 falls under default.
+        Schema.assertSchema(DOC, 500, "{\"error\":\"boom\"}", "getGadget", Options.STRICT);
+        red(() -> Schema.assertSchema(DOC, 500, "{\"error\":\"boom\",\"trace\":\"x\"}", "getGadget", Options.STRICT), "HTTP 500 via default");
+    }
+
+    @Test
     void strict_false_with_a_reason_is_green_without_a_reason_it_throws() {
         String drifted = "{\"id\":1,\"name\":\"widget\",\"legacyField\":true}";
         Schema.assertSchema(DOC, 200, drifted, "getWidget", Options.lenient("legacyField is a recorded, accepted drift"));

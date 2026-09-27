@@ -184,6 +184,18 @@ test.describe('contract oracles', { tag: '@contract-smoke' }, () => {
     await expect(assertSchema({ status: 200, body: {} }, 'noSuchOperation')).rejects.toThrow(/not defined/);
   });
 
+  test('operation lookup: the exact code, then its range, then default', async () => {
+    // 404 has its own key, so the 4XX schema's extra field is RED there.
+    await assertSchema({ status: 404, body: { error: 'no such gadget' } }, 'getGadget');
+    await expect(assertSchema({ status: 404, body: { error: 'no such gadget', fields: [] } }, 'getGadget')).rejects.toThrow(/fields/);
+    // 422 falls under 4XX, which requires fields: the default Error body alone is RED.
+    await assertSchema({ status: 422, body: { error: 'invalid', fields: ['name'] } }, 'getGadget');
+    await expect(assertSchema({ status: 422, body: { error: 'invalid' } }, 'getGadget')).rejects.toThrow(/HTTP 422 via 4XX/);
+    // 500 falls under default.
+    await assertSchema({ status: 500, body: { error: 'boom' } }, 'getGadget');
+    await expect(assertSchema({ status: 500, body: { error: 'boom', trace: 'x' } }, 'getGadget')).rejects.toThrow(/HTTP 500 via default/);
+  });
+
   test('strict:false with a reason is GREEN; without a reason it throws', async () => {
     const drifted = { status: 200, body: { id: 1, name: 'widget', legacyField: true } };
     await assertSchema(drifted, 'getWidget', { strict: false, reason: 'legacyField is a recorded, accepted drift' });

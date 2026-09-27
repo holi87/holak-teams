@@ -183,7 +183,10 @@ shapes.
 is reserved, because `.cf-correct` already names the correct pass. The loaders also require
 `bugId` to equal the file name, unique exchange and tamper ids, and a `subject` that names an
 exchange. With `contract`, the correct subject response must have `contract.status` and pass
-the strict schema oracle for `contract.operationId`. Files named `*.example.json` are never
+the strict schema oracle for `contract.operationId`. That oracle, in every runtime, reads the
+`responses` key for the exact status, else its `1XX`..`5XX` range, else `default` (OpenAPI
+3.x), and a status none of them covers is RED. A range or `default` key only selects the
+schema: the status oracles still assert one exact code. Files named `*.example.json` are never
 loaded.
 
 Matching compares method and path exactly, plus any listed query parameters. An
