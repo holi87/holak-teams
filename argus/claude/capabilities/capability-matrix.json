@@ -152,7 +152,7 @@
       "catalogType": "hunter",
       "idPrefix": "ORI",
       "entryCount": 13,
-      "sha256": "140a7a5e0212a8042d3e6ccefce83e7c92f94502bb4c07bce0d3f85ca8eb0d52",
+      "sha256": "ed3ec5e334b1a411840a98b87a148d5ae28060adf34436a9439417a261b4b4c9",
       "delivery": "lazy",
       "requiredAsset": "technique-catalogs-bundle",
       "selectionInput": "argus/surface-inventory@1",

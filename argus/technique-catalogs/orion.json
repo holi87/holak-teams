@@ -15,7 +15,7 @@
       "techniques": ["decision table", "equivalence partitioning"],
       "appliesWhen": "surface-present",
       "construct": ["For every form drive {empty, each required field missing alone, one invalid value per field, all valid} against every mutating CTA on it and record enabled or disabled state plus the click outcome"],
-      "oracles": ["Enablement and click outcome match the cited client-validation requirement; a sibling form's behaviour is a hypothesis, not proof, and a server rejecting invalid input with 4xx is not itself a UI defect"],
+      "oracles": ["Enablement and click outcome match the cited client-validation requirement; a divergence from a sibling form's behaviour is a consistency oracle: file it as Suspected per qa-core, and it never confirms; a server rejecting invalid input with 4xx is not itself a UI defect"],
       "routes": ["ui"]
     },
     {

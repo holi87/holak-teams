@@ -151,7 +151,7 @@ const SEMANTIC_MARKERS = Object.freeze({
   // Orion markers pin the functional-UI escape classes and the lane-split clauses that keep
   // them honest: contract-bound effect counts, field-bound messages, the one server-bypass
   // replay, and the routes to Lynceus and Perseus. Removing a phrase fails the validator.
-  'ORI-T01': ['cited client-validation requirement', 'hypothesis, not proof'],
+  'ORI-T01': ['cited client-validation requirement', 'consistency oracle: file it as Suspected', 'never confirms'],
   'ORI-T02': ['never perform the primary or destructive action', 'shared handler'],
   'ORI-T03': ['every mutating CTA', 'cited action contract'],
   'ORI-T04': ['exactly its labelled action', 'no sibling'],
