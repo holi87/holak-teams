@@ -2,7 +2,7 @@
 # Clean-room validation of the Java runtime adapter: the JUnit Platform outcome listener,
 # the Launcher-discovery inventory, and the SD-4 ledger join, run against a
 # target-independent fixture in a freshly copied Java template; then the contract oracle
-# self-tests in a second copy.
+# self-tests in a second copy, and the counterfactual evidence passes (SD-10) in a third.
 
 set -euo pipefail
 
@@ -21,6 +21,7 @@ APP="$WORK/java"
 C=qa.contract.ClassificationFixtureTest
 INVENTORY="$APP/reports/test-inventory.tsv"
 EXPECTED_BUGS="$APP/reports/expected-bugs.txt"
+PLAN="$APP/reports/counterfactual-plan.tsv"
 STATUS="$APP/reports/argus-adapter-status.txt"
 MVN=(mvn -B -ntp)
 
@@ -100,6 +101,8 @@ LONG_ID="${LONG_X:0:187}.$(sha256_hex "$LONG_X" | cut -c1-12)"
 [ "${#LONG_ID}" -eq 200 ] || fail "truncated case id is not 200 characters"
 expect_row "$LONG_ID" contract-smoke false false - - - "$C"
 printf 'BUG-0001\nBUG-0003\nBUG-0004\n' | cmp -s - "$EXPECTED_BUGS" || fail "expected bugs are not exactly the confirmed ledger entries"
+printf '%s\n' "$(tsv BUG-0001 missing - -)" "$(tsv BUG-0003 missing - -)" "$(tsv BUG-0004 missing - -)" | cmp -s - "$PLAN" \
+  || fail "the counterfactual plan does not list every expected bug, each without a fixture"
 
 # (2) SD-4 ledger states, run directly on the resolved test classpath for speed.
 run_logged classpath in_app "${MVN[@]}" -q org.apache.maven.plugins:maven-dependency-plugin:3.6.1:build-classpath \
@@ -107,10 +110,10 @@ run_logged classpath in_app "${MVN[@]}" -q org.apache.maven.plugins:maven-depend
 CLASSPATH_TEST="$APP/target/test-classes:$(cat "$WORK/classpath.txt")"
 inventory_direct() {
   local mode="$1" events="$2"
-  rm -f "$events" "$INVENTORY" "$EXPECTED_BUGS"
+  rm -f "$events" "$INVENTORY" "$EXPECTED_BUGS" "$PLAN"
   in_app env ARGUS_RUNNER_MODE="$mode" ARGUS_OUTCOME_FILE="$events" java -cp "$CLASSPATH_TEST" qa.support.argus.ArgusInventory >"$WORK/direct.log" 2>&1 \
     || { cat "$WORK/direct.log" >&2; fail "direct inventory failed in $mode"; }
-  test -s "$INVENTORY" && test -f "$EXPECTED_BUGS" || fail "direct inventory omitted an artifact in $mode"
+  test -s "$INVENTORY" && test -f "$EXPECTED_BUGS" && test -f "$PLAN" || fail "direct inventory omitted an artifact in $mode"
 }
 LEDGER="$APP/solution/bug-ledger.json"
 
@@ -121,7 +124,7 @@ expect_row "$C.regression_assertion_reproduces_the_defect" contract-smoke true f
 
 rm -f "$LEDGER"
 inventory_direct baseline "$WORK/missing-baseline.tsv"
-test ! -s "$WORK/missing-baseline.tsv" && test ! -s "$EXPECTED_BUGS" || fail "a missing ledger in baseline was not silent and empty"
+test ! -s "$WORK/missing-baseline.tsv" && test ! -s "$EXPECTED_BUGS" && test ! -s "$PLAN" || fail "a missing ledger in baseline was not silent and empty"
 inventory_direct defect-evidence "$WORK/missing-evidence.tsv"
 expect_event "$WORK/missing-evidence.tsv" bug-ledger policy denied false n/a - bug-ledger-missing
 expect_lines "$WORK/missing-evidence.tsv" 1
@@ -224,10 +227,20 @@ expect_event "$K" "$C.intermittent_regression_unreproduced" product pass false f
 expect_lines "$K" 6
 expect_status candidate "ok 6"
 
-# A pass this adapter cannot map fails closed instead of posing as live evidence.
-run_fixture unsupported-pass regression ARGUS_RUNNER_MODE=defect-evidence ARGUS_EVIDENCE_PASS=cf-correct
+# A counterfactual pass without fixtures isolates every regression: nothing runs, nothing reports.
+run_fixture cf-without-fixtures regression ARGUS_RUNNER_MODE=defect-evidence ARGUS_EVIDENCE_PASS=cf-correct
+[ "$native" -eq 0 ] || fail "a counterfactual pass without fixtures ran a regression"
+test ! -s "$WORK/cf-without-fixtures.tsv" || fail "a counterfactual pass without fixtures emitted events"
+expect_status cf-without-fixtures "ok 0"
+
+# A pass this adapter cannot map fails closed instead of posing as live evidence, and
+# counterfactual evidence belongs to defect-evidence only.
+run_fixture unsupported-pass regression ARGUS_RUNNER_MODE=defect-evidence ARGUS_EVIDENCE_PASS=cf-bogus
 test ! -s "$WORK/unsupported-pass.tsv" || fail "an unsupported evidence pass emitted events"
 expect_status unsupported-pass "error 1"
+run_fixture cf-outside-evidence regression ARGUS_RUNNER_MODE=candidate-regression ARGUS_EVIDENCE_PASS=cf-correct
+test ! -s "$WORK/cf-outside-evidence.tsv" || fail "a counterfactual pass outside defect-evidence emitted events"
+expect_status cf-outside-evidence "error 1"
 
 # Without ARGUS_RUNNER_MODE (or in a collect-only pass) the adapter is inert.
 run_fixture inert contract-smoke
@@ -250,4 +263,159 @@ awk -F'\t' 'NF != 7 || index($1, "qa.contract.OraclesContractSelfTest.") != 1 ||
 [ "$(cat "$ORACLES/reports/argus-adapter-status.txt" 2>/dev/null)" = "ok $oracle_cases" ] || fail "oracle self-test adapter status is not 'ok $oracle_cases'"
 if grep -Eq '127[.]0[.]0[.]1|argus-never-print-me' "$O"; then fail "an oracle self-test event carried test details"; fi
 
-printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, inert activation, and contract oracle self-tests\n'
+# (5) Counterfactual evidence (SD-6, SD-10) in a clean copy: the plan, every cf pass, and the
+# evidence gate over the adapter's own events. API_URL is a refused loopback port, so a case
+# that escaped the stub would report target-unreachable instead of its verdict.
+CF="$WORK/java-counterfactual"
+CFC=qa.api.CounterfactualFixtureTest
+CF_PLAN="$CF/reports/counterfactual-plan.tsv"
+CF_FIXTURE="$CF/solution/counterfactual/BUG-0001.json"
+CF_EXEMPT="$CF/solution/counterfactual/BUG-0004.json"
+CF_ENV=(OPENAPI_PATH="$CF/counterfactual-openapi.json" API_URL=http://127.0.0.1:9)
+"$CLI" copy-template java "$CF" >/dev/null
+grep -Fxq 'qa.support.argus.ArgusCounterfactualExtension' "$CF/src/test/resources/META-INF/services/org.junit.jupiter.api.extension.Extension" \
+  || fail "the counterfactual extension is not registered for JUnit Jupiter autodetection"
+grep -Eq '^junit[.]jupiter[.]extensions[.]autodetection[.]enabled[[:space:]]*=[[:space:]]*true$' "$CF/src/test/resources/junit-platform.properties" \
+  || fail "JUnit Jupiter extension autodetection is not enabled"
+cp "$FIXTURES/CounterfactualFixtureTest.java" "$CF/src/test/java/qa/api/CounterfactualFixtureTest.java"
+cp "$FIXTURES/bug-ledger.json" "$CF/solution/bug-ledger.json"
+cp "$FIXTURES/counterfactual-openapi.json" "$CF/counterfactual-openapi.json"
+mkdir -p "$CF/solution/counterfactual"
+cp "$FIXTURES/counterfactual/BUG-0001.json" "$CF_FIXTURE"
+cp "$CF_FIXTURE" "$WORK/BUG-0001.json"
+jq -n '{"$schema": "argus/counterfactual-fixture@1", schemaVersion: 1, bugId: "BUG-0004",
+  exemption: {reason: "front-end-logic", justification: "Client-side rendering logic; no HTTP exchange distinguishes the defect."}}' >"$CF_EXEMPT"
+cp "$CF_EXEMPT" "$WORK/BUG-0004.json"
+# Only BUG-NNNN.json is ever read: a broken example next to the fixtures changes nothing.
+printf '{' >"$CF/solution/counterfactual/BUG-0000.example.json"
+run_logged cf-compile in_dir "$CF" "${MVN[@]}" -q -DskipTests test-compile
+run_logged cf-classpath in_dir "$CF" "${MVN[@]}" -q org.apache.maven.plugins:maven-dependency-plugin:3.6.1:build-classpath \
+  -Dmdep.outputFile="$WORK/cf-classpath.txt" -Dmdep.includeScope=test
+CF_CLASSPATH="$CF/target/test-classes:$(cat "$WORK/cf-classpath.txt")"
+
+# cf_plan <row...>: the inventory pass writes exactly these SD-10 rows, one per expected bug.
+cf_plan() {
+  rm -f "$CF_PLAN" "$WORK/cf-inventory.tsv"
+  in_dir "$CF" env ARGUS_RUNNER_MODE=defect-evidence ARGUS_OUTCOME_FILE="$WORK/cf-inventory.tsv" "${CF_ENV[@]}" \
+    java -cp "$CF_CLASSPATH" qa.support.argus.ArgusInventory >"$WORK/cf-plan.log" 2>&1 \
+    || { cat "$WORK/cf-plan.log" >&2; fail "counterfactual inventory failed"; }
+  test ! -s "$WORK/cf-inventory.tsv" || fail "the counterfactual inventory emitted events"
+  printf '%s\n' "$@" | cmp -s - "$CF_PLAN" || { cat "$CF_PLAN" >&2; fail "counterfactual plan is not: $*"; }
+}
+FIXTURE_ROW="$(tsv BUG-0001 fixture observed-defect,missing-field -)"
+MISSING_ROW="$(tsv BUG-0003 missing - -)"
+EXEMPT_ROW="$(tsv BUG-0004 exempt - front-end-logic)"
+cf_plan "$FIXTURE_ROW" "$MISSING_ROW" "$EXEMPT_ROW"
+[ "$(bash "$CF/scripts/evidence-gate.sh" --plan "$CF_PLAN" --list-passes | tr '\n' ' ')" = "cf-correct cf-tamper-1 cf-tamper-2 " ] \
+  || fail "the evidence gate does not derive cf-correct, cf-tamper-1 and cf-tamper-2 from the written plan"
+invalid_fixture() {
+  local reason="$1" filter="$2"
+  jq "$filter" "$WORK/BUG-0001.json" >"$CF_FIXTURE"
+  cf_plan "$(tsv BUG-0001 invalid - "$reason")" "$MISSING_ROW" "$EXEMPT_ROW"
+}
+invalid_fixture missing-observed-defect '.tampers |= map(select(.id != "observed-defect"))'
+invalid_fixture correct-violates-contract '.exchanges[0].response.body.extra = true'
+invalid_fixture correct-violates-contract '.contract.status = 201'
+invalid_fixture schema-invalid '.subject = "unrecorded"'
+invalid_fixture schema-invalid '.bugId = "BUG-0002"'
+invalid_fixture schema-invalid '.tampers[1].id = "correct"'
+invalid_fixture schema-invalid '.tampers += [.tampers[1]]'
+invalid_fixture schema-invalid '.exchanges[0].request.method = "get"'
+invalid_fixture schema-invalid '.exchanges[0].response.headers = {"Content-Type": "application/json"}'
+invalid_fixture schema-invalid '.oracle.kind = "hunch"'
+invalid_fixture schema-invalid '.unexpected = true'
+invalid_fixture schema-invalid '. + {exemption: {reason: "front-end-logic", justification: "Both shapes at once."}}'
+printf '{' >"$CF_FIXTURE"
+cf_plan "$(tsv BUG-0001 invalid - schema-invalid)" "$MISSING_ROW" "$EXEMPT_ROW"
+cp "$WORK/BUG-0001.json" "$CF_FIXTURE"
+jq '.exemption.reason = "too-hard"' "$WORK/BUG-0004.json" >"$CF_EXEMPT"
+cf_plan "$FIXTURE_ROW" "$MISSING_ROW" "$(tsv BUG-0004 invalid - schema-invalid)"
+cp "$WORK/BUG-0004.json" "$CF_EXEMPT"
+cf_plan "$FIXTURE_ROW" "$MISSING_ROW" "$EXEMPT_ROW"
+
+# cf_run <name> <pass|live> <methods>: one native run of the selected fixture cases.
+cf_run() {
+  local name="$1" pass="$2" methods="$3"
+  local selection=(ARGUS_RUNNER_MODE=defect-evidence)
+  if [ "$pass" != live ]; then selection+=(ARGUS_EVIDENCE_PASS="$pass"); fi
+  rm -f "$CF/reports/argus-adapter-status.txt" "$WORK/$name.tsv"
+  if in_dir "$CF" env "${selection[@]}" "${CF_ENV[@]}" ARGUS_OUTCOME_FILE="$WORK/$name.tsv" \
+    "${MVN[@]}" test -Dtest="CounterfactualFixtureTest#$methods" >"$WORK/$name.log" 2>&1; then native=0; else native=$?; fi
+  grep -Fq 'Tests run:' "$WORK/$name.log" || { tail -80 "$WORK/$name.log" >&2; fail "$name did not execute the counterfactual fixture"; }
+  touch "$WORK/$name.tsv"
+}
+cf_status() {
+  [ "$(cat "$CF/reports/argus-adapter-status.txt" 2>/dev/null)" = "$2" ] \
+    || fail "$1 adapter status is '$(cat "$CF/reports/argus-adapter-status.txt" 2>/dev/null)', expected '$2'"
+}
+PROOF=widget_matches_the_contract+widget_status_only+exempt_front_end_regression+regression_without_fixture
+
+# Outside a counterfactual pass the extension is inert: the regression reaches API_URL.
+cf_run cf-live live widget_matches_the_contract
+expect_event "$WORK/cf-live.tsv" "$CFC.widget_matches_the_contract" infrastructure fail false n/a BUG-0001 target-unreachable
+expect_lines "$WORK/cf-live.tsv" 1
+
+cf_run cf-correct cf-correct "$PROOF"
+[ "$native" -eq 0 ] || fail "cf-correct failed a case natively"
+C1="$WORK/cf-correct.tsv"
+expect_event "$C1" "$CFC.widget_matches_the_contract.cf-correct" product pass false reproduced BUG-0001 counterfactual-correct-pass
+expect_event "$C1" "$CFC.widget_status_only.cf-correct" product pass false reproduced BUG-0001 counterfactual-correct-pass
+expect_event "$C1" "$CFC.exempt_front_end_regression.cf" policy pass false n/a BUG-0004 counterfactual-exempt.front-end-logic
+expect_lines "$C1" 3
+cf_status cf-correct "ok 3"
+
+cf_run cf-tamper-1 cf-tamper-1 "$PROOF"
+T1="$WORK/cf-tamper-1.tsv"
+expect_event "$T1" "$CFC.widget_matches_the_contract.cf-observed-defect" product fail true reproduced BUG-0001 counterfactual-tamper-red
+expect_event "$T1" "$CFC.widget_status_only.cf-observed-defect" product fail true reproduced BUG-0001 counterfactual-tamper-red
+expect_lines "$T1" 2
+cf_status cf-tamper-1 "ok 2"
+
+# The weakened copy checks the status only, so the 200 response without a field survives it.
+cf_run cf-tamper-2 cf-tamper-2 "$PROOF"
+T2="$WORK/cf-tamper-2.tsv"
+expect_event "$T2" "$CFC.widget_matches_the_contract.cf-missing-field" product fail true reproduced BUG-0001 counterfactual-tamper-red
+expect_event "$T2" "$CFC.widget_status_only.cf-missing-field" automation fail false n/a BUG-0001 counterfactual-tamper-survived
+expect_lines "$T2" 2
+cf_status cf-tamper-2 "ok 2"
+
+# A tamper pass beyond the fixture's tampers is not applicable: nothing runs, nothing reports.
+cf_run cf-tamper-3 cf-tamper-3 "$PROOF"
+[ "$native" -eq 0 ] && test ! -s "$WORK/cf-tamper-3.tsv" || fail "a not-applicable tamper pass ran or reported a case"
+cf_status cf-tamper-3 "ok 0"
+
+# A request outside the recorded exchanges voids the verdict whether or not the body passed,
+# and a test cannot silence itself with the not-applicable sentinel.
+cf_run cf-unmatched cf-correct widget_with_an_undeclared_call+undeclared_call_breaks_the_assertion+spoofed_not_applicable
+U="$WORK/cf-unmatched.tsv"
+expect_event "$U" "$CFC.widget_with_an_undeclared_call.cf-correct" automation fail false n/a BUG-0001 counterfactual-unmatched-request
+expect_event "$U" "$CFC.undeclared_call_breaks_the_assertion.cf-correct" automation fail false n/a BUG-0001 counterfactual-unmatched-request
+expect_event "$U" "$CFC.spoofed_not_applicable.cf-correct" policy denied false n/a BUG-0001 regression-skipped
+expect_lines "$U" 3
+cf_status cf-unmatched "ok 3"
+
+# A correct response the regression rejects is counterfactual-correct-red.
+jq 'del(.contract) | .exchanges[0].response.body.extra = true' "$WORK/BUG-0001.json" >"$CF_FIXTURE"
+cf_run cf-correct-red cf-correct widget_matches_the_contract
+expect_event "$WORK/cf-correct-red.tsv" "$CFC.widget_matches_the_contract.cf-correct" automation fail false n/a BUG-0001 counterfactual-correct-red
+expect_lines "$WORK/cf-correct-red.tsv" 1
+cp "$WORK/BUG-0001.json" "$CF_FIXTURE"
+
+if cat "$C1" "$T1" "$T2" "$U" "$WORK/cf-correct-red.tsv" | grep -Eq 'target-unreachable|127[.]0[.]0[.]1|boom'; then
+  fail "a counterfactual case reached the target or carried response details"
+fi
+
+# The evidence gate accepts the adapter's own proof for the fixture and the exemption, and
+# fails the bug that has no fixture: plan rows and event suffixes agree byte for byte.
+awk -F'\t' -v a="$CFC.widget_matches_the_contract." -v b="$CFC.exempt_front_end_regression." 'index($1, a) == 1 || index($1, b) == 1' \
+  "$C1" "$T1" "$T2" >"$WORK/cf-proof.tsv"
+expect_lines "$WORK/cf-proof.tsv" 4
+bash "$CF/scripts/evidence-gate.sh" --expected-bugs "$CF/reports/expected-bugs.txt" --plan "$CF_PLAN" --events "$WORK/cf-proof.tsv" \
+  || fail "the evidence gate failed on the counterfactual proof"
+if grep -Eq '^counterfactual[.]BUG-000[14]'$'\t' "$WORK/cf-proof.tsv"; then
+  grep -E '^counterfactual[.]' "$WORK/cf-proof.tsv" >&2
+  fail "the evidence gate rejected the adapter's counterfactual proof"
+fi
+expect_event "$WORK/cf-proof.tsv" counterfactual.BUG-0003 policy denied false n/a BUG-0003 counterfactual-missing
+
+printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, inert activation, contract oracle self-tests, and the SD-10 counterfactual plan, passes and evidence\n'
