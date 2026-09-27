@@ -8,7 +8,9 @@
 #   argus_native_inventory                  collect-only pass (ARGUS_INVENTORY_ONLY=1) that writes
 #                                           reports/test-inventory.tsv and reports/expected-bugs.txt
 #   argus_native_run <baseline|full|regression> <lanes-csv> <pass> [passthrough...]
-#                                           one native run; its status is the native exit code
+#                                           one native run; its status is the native exit code.
+#                                           <pass> is live, or in defect-evidence also repeat,
+#                                           cf-correct, and cf-tamper-<k> (SD-1)
 #   argus_native_collect <pass>             copies native reports and traces into
 #                                           reports/evidence/passes/<pass>/
 #   argus_native_post <mode>                optional post-run gates
@@ -249,6 +251,37 @@ argus_run_pass() {
   return 0
 }
 
+# scripts/inventory-gate.sh <static|executed> [options...] over the current inventory, lane
+# selection, and mode. Its denials are events; only an unusable inventory (exit 1) or a
+# broken call stops the run.
+argus_inventory_gate() {
+  local action="$1"
+  shift
+  local args=(--inventory "$ARGUS_INVENTORY" --lanes "$ARGUS_LANES" --events "$ARGUS_EVENTS" --mode "$ARGUS_MODE")
+  if [ "${ARGUS_CONTRACT_SMOKE:-0}" = 1 ]; then args+=(--contract-smoke); fi
+  argus_call bash "$ARGUS_ROOT/scripts/inventory-gate.sh" "$action" "${args[@]}" "$@"
+  if [ "$ARGUS_CALL_STATUS" -ne 0 ]; then argus_finish 1; fi
+}
+
+# defect-evidence (SD-6, SD-10): live and repeat always, then the counterfactual passes the
+# plan needs: cf-correct when any bug has a fixture or an exemption, and cf-tamper-1..N for
+# the largest tamper count among the fixtures. scripts/evidence-gate.sh owns the plan format.
+argus_defect_evidence_passes() {
+  local output pass pass_name='^cf-(correct|tamper-[1-9][0-9]*)$'
+  local passes=()
+  output="$(mktemp)"
+  argus_call bash "$ARGUS_ROOT/scripts/evidence-gate.sh" --plan "$ARGUS_COUNTERFACTUAL_PLAN" --list-passes >"$output"
+  if [ "$ARGUS_CALL_STATUS" -ne 0 ]; then rm -f "$output"; argus_finish 1; fi
+  while IFS= read -r pass; do
+    if [[ ! "$pass" =~ $pass_name ]]; then rm -f "$output"; argus_finish 1; fi
+    passes+=("$pass")
+  done <"$output"
+  rm -f "$output"
+  argus_run_pass regression live
+  argus_run_pass regression repeat
+  for pass in ${passes[@]+"${passes[@]}"}; do argus_run_pass regression "$pass"; done
+}
+
 argus_main() {
   set -euo pipefail
   ARGUS_ROOT="$PWD"
@@ -318,10 +351,13 @@ argus_main() {
   argus_call bash "$ARGUS_ROOT/scripts/quarantine-contract.sh" --events "$ARGUS_EVENTS" --ledger "$ARGUS_QUARANTINE_LEDGER" --inventory "$ARGUS_INVENTORY"
   if [ "$ARGUS_CALL_STATUS" -ne 0 ]; then argus_finish 1; fi
 
+  argus_inventory_gate static --expected-bugs "$ARGUS_EXPECTED_BUGS" --test-root "$TEST_ROOT"
+
   case "$ARGUS_MODE" in
     baseline) argus_run_pass baseline live ;;
     full-suite) argus_run_pass full live ;;
-    defect-evidence|candidate-regression) argus_run_pass regression live ;;
+    candidate-regression) argus_run_pass regression live ;;
+    defect-evidence) argus_defect_evidence_passes ;;
   esac
 
   if declare -F argus_native_post >/dev/null; then
@@ -331,6 +367,12 @@ argus_main() {
 
   if [ "${ARGUS_CONTRACT_SMOKE:-0}" != 1 ] && { [ "$ARGUS_MODE" = baseline ] || [ "$ARGUS_MODE" = full-suite ]; }; then
     argus_call bash "$ARGUS_ROOT/scripts/lane-plan.sh" verify --plan "$ARGUS_LANE_PLAN" --inventory "$ARGUS_INVENTORY" --events "$ARGUS_EVENTS" --mode "$ARGUS_MODE"
+    if [ "$ARGUS_CALL_STATUS" -ne 0 ]; then argus_finish 1; fi
+  fi
+
+  argus_inventory_gate executed
+  if [ "$ARGUS_MODE" = defect-evidence ]; then
+    argus_call bash "$ARGUS_ROOT/scripts/evidence-gate.sh" --expected-bugs "$ARGUS_EXPECTED_BUGS" --plan "$ARGUS_COUNTERFACTUAL_PLAN" --events "$ARGUS_EVENTS"
     if [ "$ARGUS_CALL_STATUS" -ne 0 ]; then argus_finish 1; fi
   fi
 
