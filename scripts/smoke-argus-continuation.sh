@@ -131,6 +131,14 @@ route kalchas "$KALCHAS_DISPATCH" no-artifact 3 >"$WORK/k4.json" || status=$?
 jq -e '.status == "blocked" and .reasonCode == "AUTO_CONTINUATION_EXHAUSTED" and .operatorEscalation == false and
   .continuation == null and .outcomeBinding.priorCheckpointlessRetries == 1' \
   "$WORK/k4.json" >/dev/null || fail 'k4: a second no-artifact was not AUTO_CONTINUATION_EXHAUSTED'
+# A turn-limit without a checkpoint envelope is controller-observed too and shares the same
+# single restart, so it cannot reopen the dispatch.
+status=0
+route kalchas "$KALCHAS_DISPATCH" turn-limit 3 >"$WORK/k4-turn-limit.json" || status=$?
+[ "$status" -eq 2 ] || fail "k4: an uncheckpointed turn-limit exited $status instead of a blocked decision"
+jq -e '.status == "blocked" and .reasonCode == "AUTO_CONTINUATION_EXHAUSTED" and .escalationBinding == null and
+  .outcomeBinding.priorCheckpointlessRetries == 1' \
+  "$WORK/k4-turn-limit.json" >/dev/null || fail 'k4: an uncheckpointed turn-limit was not outcome-bound and exhausted'
 
 # o1: a checkpointed turn-limit resumes from the checkpoint on the same frontier baseline with
 # a fresh native per-attempt cap.
