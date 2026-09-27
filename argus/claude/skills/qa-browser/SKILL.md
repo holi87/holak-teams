@@ -37,3 +37,8 @@ The complete installed isolation contract is
 - Keep cookies, tokens, downloads, screenshots, traces, videos, and profiles inside the
   engagement boundary. Persist only authorized, reviewed, redacted evidence and verify
   sensitive state is removed during cleanup.
+- Register browser proof as `screenshot`, `video`, `trace`, `dom-snapshot`, or `har`
+  evidence with its declared media type. Run DOM snapshots and HARs through
+  `argus-assets redact`, then mask every credential header, cookie value, and token query
+  parameter left in a HAR. A second agent registers each screenshot, video, or trace zip
+  under its own lease after its masking review; the collector never does.

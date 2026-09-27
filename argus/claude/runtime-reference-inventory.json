@@ -193,7 +193,6 @@
       "consumers": [
         "antigone",
         "ariadne",
-        "aristarchus",
         "asklepios",
         "atalanta",
         "charon",
@@ -365,6 +364,19 @@
     {
       "value": "reports/argus-runner-result.json",
       "consumers": [
+        "aristarchus",
+        "atlas"
+      ]
+    },
+    {
+      "value": "reports/evidence/",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "reports/expected-bugs.txt",
+      "consumers": [
         "atlas"
       ]
     },
@@ -477,19 +489,22 @@
     {
       "value": "solution/automation-review.json",
       "consumers": [
-        "aristarchus"
+        "aristarchus",
+        "kleio"
       ]
     },
     {
       "value": "solution/automation-status.json",
       "consumers": [
-        "atlas"
+        "atlas",
+        "minos"
       ]
     },
     {
       "value": "solution/bug-ledger.json",
       "consumers": [
         "aegis",
+        "aristarchus",
         "kleio",
         "minos",
         "mnemosyne"
@@ -498,7 +513,6 @@
     {
       "value": "solution/BUG-LEDGER.md",
       "consumers": [
-        "aristarchus",
         "kleio",
         "minos"
       ]

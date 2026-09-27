@@ -8,6 +8,7 @@
 - **Status:** Confirmed | Suspected
 - **Reproducibility:** <occurrences>/<attempts> from <initial state> — deterministic | intermittent | single-attempt (reason)
 - **Canonical-ID:** <BUG-NNNN — Minos assigns at final triage; leave blank when filing>
+- **Triage status:** <Minos: confirmed | suspected | needs-oracle | duplicate of BUG-NNNN | rejected (reason)>   <!-- set from solution/bug-ledger.json; bounced and quarantined are interim proof-repair states; leave blank when filing -->
 - **Lane:** ui | api | perf | security | a11y | db   <!-- metadata; not the filename prefix -->
 - **Detected by:** automated suite (spec path / @tag) | agent exploratory/manual (charter or probe) | recon
 - **Divergence side:** implementation | documentation | undecidable   <!-- required whenever two sources disagree; `undecidable` states both hypotheses in Expected -->
@@ -33,7 +34,10 @@
 <what happened — status code, response body, error>
 
 ## Evidence
-<response snippet / screenshot / report link>
+One line per registered evidence ID from `solution/evidence-reference.json`:
+- <EVD-NNNN> — <kind: http | har | screenshot | video | dom-snapshot | trace | log | metric | runner-result | text> — <what it shows>
+
+Binary kinds (screenshot, video, trace archive) appear only after their second-agent masking review is registered.
 
 ## Notes
 <business impact, workaround>
