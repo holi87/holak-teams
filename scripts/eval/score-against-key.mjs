@@ -43,9 +43,23 @@
 //   - plus every bug file that matches no ledger row, keyed by its basename (PRO-001-c.md);
 //   - with no ledger: every bug file, keyed by its basename.
 //
-// precision = real / (real + false-positive + duplicate), over adjudicated findings only.
-// It is null when no finding is adjudicated (an empty run, or --entries-only). A duplicate
-// is never real: the first report earns the finding, every repeat costs precision.
+// Ledger rows are classified with the discovery evaluator's status table (classifyLedgerStatus
+// in discovery/lib/extract.mjs). Rows Minos withdrew, bug-ledger@2 status `duplicate` or
+// `rejected`, are NOT reported findings: they need no outcome and never cost precision, but
+// they still claim their bug files, so those files are not re-counted as unledgered findings.
+// Crediting a key entry through a withdrawn row is contested. Every other row is a finding:
+// confirmed, the unproven statuses (suspected, needs-oracle, bounced, quarantined), and a row
+// with a missing or unknown status, which is never dropped silently.
+//
+// precision = real / (real + false-positive + duplicate), over adjudicated findings only:
+// confirmed rows, unproven rows, rows without a known status, and unledgered bug files, the
+// candidate set the Argus final summary headline counts (confirmed plus suspected). It is null
+// when no finding is adjudicated (an empty run, or --entries-only). A duplicate is never
+// real: the first report earns the finding, every repeat costs precision. confirmedPrecision
+// is the same ratio over confirmed rows only, the definition the discovery evaluator scores
+// (scripts/eval/discovery/README.md); findings.byStatus counts the findings per ledger status
+// (`none` for bug files and rows without a status) and findings.withdrawn lists the withdrawn
+// rows.
 //
 // Key file shape:
 // {
@@ -87,6 +101,8 @@
 //   - one finding carries the verdict for several credited entries (it may genuinely cover
 //     both, so it is confirmed, not rejected);
 //   - an entry credited full or partial through a finding judged false-positive or duplicate;
+//   - an entry credited full or partial through a ledger row Minos withdrew (duplicate or
+//     rejected), which the run does not report;
 //   - a finding judged real whose entryIds include an entry judged miss.
 //
 // Exit codes:
@@ -97,6 +113,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
+import { classifyLedgerStatus } from './discovery/lib/extract.mjs';
 
 const CREDITS = Object.freeze(['full', 'partial', 'miss']);
 const OUTCOMES = Object.freeze(['real', 'false-positive', 'duplicate']);
@@ -151,18 +168,19 @@ if (documents.length === 0) {
 }
 
 const entryIds = new Set(key.entries.map((entry) => String(entry.id)));
-const findings = deriveFindings(ledgerPresent, ledger, bugFiles.map((path) => basename(path)));
+const { findings, withdrawn } = deriveFindings(ledgerPresent, ledger, bugFiles.map((path) => basename(path)));
 const findingKeys = new Set(findings.map((finding) => finding.key));
 const findingReferences = indexFindingReferences(findings);
-reportStaleVerdicts(verdicts, entryIds, findingKeys);
+const withdrawnReferences = indexFindingReferences(withdrawn);
+reportStaleVerdicts(verdicts, entryIds, findingKeys, withdrawn);
 
 const rows = key.entries.map((entry) => adjudicate(entry, documents, ownValue(verdicts.entries, entry.id)));
-for (const row of rows) row.matchedFindings = resolveMatchedFindings(row, findingReferences);
+for (const row of rows) Object.assign(row, resolveMatchedFindings(row, findingReferences, withdrawnReferences));
 const findingRows = findings.map((finding) =>
   adjudicateFinding(finding, ownValue(verdicts.findings, finding.key), entryIds, findingKeys));
 const contested = [
   ...reportContestedVerdicts(rows, findingReferences),
-  ...reportInconsistentFindings(rows, findingRows),
+  ...reportInconsistentFindings(rows, findingRows, withdrawn),
 ];
 const adjudicated = rows.filter((row) => row.credit !== 'unadjudicated');
 const unadjudicated = rows.filter((row) => row.credit === 'unadjudicated');
@@ -171,7 +189,7 @@ const maximum = key.maximum ?? key.entries.reduce((sum, entry) => sum + entry.po
 const adjudicatedMaximum = adjudicated.reduce((sum, row) => sum + row.points, 0);
 const counts = { full: 0, partial: 0, miss: 0, unadjudicated: 0 };
 for (const row of rows) counts[row.credit] += 1;
-const findingSummary = summarizeFindings(findingRows, entriesOnly);
+const findingSummary = summarizeFindings(findingRows, withdrawn, entriesOnly);
 const unadjudicatedFindings = findingRows.filter((row) => row.outcome === 'unadjudicated');
 const findingsComplete = entriesOnly || unadjudicatedFindings.length === 0;
 const complete = unadjudicated.length === 0 && findingsComplete;
@@ -215,6 +233,10 @@ if (args.json) {
         const outcome = row.outcome === 'duplicate' ? `duplicate of ${row.duplicateOf}` : row.outcome;
         console.log(`| ${row.key} | ${formatFindingSources(row)} | ${outcome} |`);
       }
+    }
+    if (withdrawn.length > 0) {
+      console.log('');
+      console.log(`Withdrawn ledger rows (not findings, no outcome needed): ${withdrawn.map((row) => `${row.key} (${row.status})`).join(', ')}`);
     }
     console.log('');
   }
@@ -260,9 +282,11 @@ function normalizeVerdicts(document, source) {
 
 // A ledger row and the bug files it originates from are ONE reported finding; counting the
 // twin file again would charge the run twice for one report. Only a file no row claims is a
-// finding of its own.
+// finding of its own. A row Minos withdrew (duplicate, rejected) is no finding, but it still
+// claims its files: they are the withdrawn report, not an unledgered one.
 function deriveFindings(hasLedger, ledgerRows, fileNames) {
   const derived = [];
+  const withdrawn = [];
   const claimed = new Set();
   if (hasLedger) {
     ledgerRows.forEach((row, index) => {
@@ -271,19 +295,22 @@ function deriveFindings(hasLedger, ledgerRows, fileNames) {
       const files = fileNames.filter((name) => matchesOrigin(name, origins));
       for (const name of files) claimed.add(name);
       const id = typeof row?.id === 'string' && row.id.trim().length > 0 ? row.id.trim() : null;
-      derived.push({ key: id ?? label, kind: 'ledger', label, files });
+      const status = typeof row?.status === 'string' && row.status.length > 0 ? row.status : null;
+      const entry = { key: id ?? label, kind: 'ledger', label, files, status };
+      if (classifyLedgerStatus(status) === 'excluded') withdrawn.push(entry);
+      else derived.push(entry);
     });
   }
   for (const name of fileNames) {
-    if (!claimed.has(name)) derived.push({ key: name, kind: 'bug-file', label: name, files: [name] });
+    if (!claimed.has(name)) derived.push({ key: name, kind: 'bug-file', label: name, files: [name], status: null });
   }
   const seen = new Set();
-  for (const finding of derived) {
+  for (const finding of [...derived, ...withdrawn]) {
     assert(!seen.has(finding.key),
       `finding key ${finding.key} is not unique — solution/bug-ledger.json repeats a row id`);
     seen.add(finding.key);
   }
-  return derived;
+  return { findings: derived, withdrawn };
 }
 
 // Every name an adjudicator may reasonably write in matchedBy: the finding key, the triage
@@ -317,20 +344,25 @@ function matchedByNames(row) {
 }
 
 // Resolution feeds the consistency checks. A name that is ambiguous or names nothing in this
-// run cannot be checked, so it is surfaced instead of being guessed.
-function resolveMatchedFindings(row, index) {
-  const resolved = [];
+// run cannot be checked, so it is surfaced instead of being guessed. A name that resolves only
+// to a withdrawn ledger row is recorded in matchedWithdrawn for the consistency checks.
+function resolveMatchedFindings(row, index, withdrawnIndex) {
+  const matchedFindings = [];
+  const matchedWithdrawn = [];
   for (const name of matchedByNames(row)) {
     const matches = resolveReference(name, index);
+    const withdrawnMatches = matches.length === 0 ? resolveReference(name, withdrawnIndex) : [];
     if (matches.length === 1) {
-      if (!resolved.includes(matches[0])) resolved.push(matches[0]);
+      if (!matchedFindings.includes(matches[0])) matchedFindings.push(matches[0]);
     } else if (matches.length > 1) {
       warn(`entry ${row.id}: matchedBy ${name} is ambiguous (${matches.join(', ')}) — name one finding key`);
+    } else if (withdrawnMatches.length > 0) {
+      for (const match of withdrawnMatches) if (!matchedWithdrawn.includes(match)) matchedWithdrawn.push(match);
     } else if (row.credit === 'full' || row.credit === 'partial') {
       warn(`entry ${row.id}: matchedBy ${name} names no finding in this run — the consistency checks cannot see it`);
     }
   }
-  return resolved;
+  return { matchedFindings, matchedWithdrawn };
 }
 
 function adjudicateFinding(finding, verdict, knownEntryIds, knownFindingKeys) {
@@ -370,6 +402,7 @@ function adjudicateFinding(finding, verdict, knownEntryIds, knownFindingKeys) {
     kind: finding.kind,
     label: finding.label,
     files: finding.files,
+    status: finding.status,
     outcome,
     reason: verdict?.reason ?? null,
     entryIds: reportedEntryIds,
@@ -379,24 +412,40 @@ function adjudicateFinding(finding, verdict, knownEntryIds, knownFindingKeys) {
 
 // A verdict whose key matches nothing is not an error by itself (a run can be re-merged), but
 // it usually means a misspelled key, which leaves the real row unadjudicated.
-function reportStaleVerdicts(normalized, knownEntryIds, knownFindingKeys) {
+function reportStaleVerdicts(normalized, knownEntryIds, knownFindingKeys, withdrawnRows) {
+  const withdrawnStatus = new Map(withdrawnRows.map((row) => [row.key, row.status]));
   for (const id of Object.keys(normalized.entries)) {
     if (!knownEntryIds.has(id)) warn(`entry verdict ${id} names no entry of the answer key`);
   }
   for (const id of Object.keys(normalized.findings)) {
-    if (!knownFindingKeys.has(id)) warn(`finding verdict ${id} names no ledger row or bug file in this run`);
+    if (withdrawnStatus.has(id)) {
+      warn(`finding verdict ${id} names a ledger row withdrawn as ${withdrawnStatus.get(id)}, which is not a reported finding — the verdict is ignored`);
+    } else if (!knownFindingKeys.has(id)) {
+      warn(`finding verdict ${id} names no ledger row or bug file in this run`);
+    }
   }
 }
 
 // The two halves of the verdict file must tell one story. Credit earned through a report the
 // same file calls false or a repeat, or a real report claiming an entry the file calls a miss,
 // is a contradiction for the adjudicator to settle, not for this tool to pick a side in.
-function reportInconsistentFindings(entryRows, adjudicatedFindings) {
+function reportInconsistentFindings(entryRows, adjudicatedFindings, withdrawnRows) {
   const byKey = new Map(adjudicatedFindings.map((row) => [row.key, row]));
   const byEntry = new Map(entryRows.map((row) => [String(row.id), row]));
+  const withdrawnStatus = new Map(withdrawnRows.map((row) => [row.key, row.status]));
   const inconsistent = [];
   for (const row of entryRows) {
     if (row.credit !== 'full' && row.credit !== 'partial') continue;
+    for (const withdrawnKey of row.matchedWithdrawn) {
+      const status = withdrawnStatus.get(withdrawnKey);
+      inconsistent.push({
+        kind: 'credit-through-withdrawn-row',
+        entry: row.id,
+        finding: withdrawnKey,
+        outcome: status,
+        message: `entry ${row.id} is credited ${row.credit} through ${withdrawnKey}, a ledger row withdrawn as ${status} that the run does not report — credit a reported finding or change the verdict.`,
+      });
+    }
     for (const findingKey of row.matchedFindings) {
       const finding = byKey.get(findingKey);
       if (finding?.outcome !== 'false-positive' && finding?.outcome !== 'duplicate') continue;
@@ -427,7 +476,7 @@ function reportInconsistentFindings(entryRows, adjudicatedFindings) {
   return inconsistent;
 }
 
-function summarizeFindings(adjudicatedFindings, precisionSkipped) {
+function summarizeFindings(adjudicatedFindings, withdrawnRows, precisionSkipped) {
   const tally = { real: 0, falsePositive: 0, duplicate: 0, unadjudicated: 0 };
   for (const row of adjudicatedFindings) {
     if (row.outcome === 'real') tally.real += 1;
@@ -436,10 +485,18 @@ function summarizeFindings(adjudicatedFindings, precisionSkipped) {
     else tally.unadjudicated += 1;
   }
   const judged = tally.real + tally.falsePositive + tally.duplicate;
+  const confirmed = adjudicatedFindings.filter((row) => row.status === 'confirmed' && row.outcome !== 'unadjudicated');
+  const byStatus = {};
+  for (const row of adjudicatedFindings) byStatus[row.status ?? 'none'] = (byStatus[row.status ?? 'none'] ?? 0) + 1;
   return {
     total: adjudicatedFindings.length,
     ...tally,
     precision: precisionSkipped || judged === 0 ? null : tally.real / judged,
+    confirmedPrecision: precisionSkipped || confirmed.length === 0
+      ? null
+      : confirmed.filter((row) => row.outcome === 'real').length / confirmed.length,
+    byStatus,
+    withdrawn: withdrawnRows.map((row) => ({ key: row.key, status: row.status, files: row.files })),
     keys: adjudicatedFindings.map((row) => row.key),
     rows: adjudicatedFindings,
   };
@@ -451,7 +508,12 @@ function formatFindingSummary(summary, precisionSkipped) {
   const precision = summary.precision === null
     ? 'not measured (no adjudicated findings)'
     : `${summary.precision.toFixed(3)} (${summary.real} of ${judged} adjudicated)`;
-  return `findings: ${summary.real} real / ${summary.falsePositive} false-positive / ${summary.duplicate} duplicate / ${summary.unadjudicated} unadjudicated — precision ${precision}`;
+  const statuses = Object.entries(summary.byStatus).map(([status, total]) => `${total} ${status}`).join(', ') || 'none';
+  const confirmedPrecision = summary.confirmedPrecision === null ? 'not measured' : summary.confirmedPrecision.toFixed(3);
+  return [
+    `findings: ${summary.real} real / ${summary.falsePositive} false-positive / ${summary.duplicate} duplicate / ${summary.unadjudicated} unadjudicated — precision ${precision}`,
+    `findings by ledger status: ${statuses}; withdrawn rows: ${summary.withdrawn.length}; confirmed-only precision ${confirmedPrecision}`,
+  ].join('\n');
 }
 
 function formatFindingSources(row) {

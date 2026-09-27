@@ -41,9 +41,10 @@ function makeRun(runId, build, status, rows) {
   mkdirSync(artifactRoot, { recursive: true, mode: 0o700 });
   const valid = status !== 'invalid-run';
   return {
-    runId, variant: 'baseline', revision: 'a'.repeat(40), repeat, seed: 100 + repeat, mode: 'B', build, enabledSeeds, truth: truthFor(enabledSeeds),
+    runId, publicId: sha256(runId).slice(0, 16), variant: 'baseline', revision: 'a'.repeat(40), repeat, seed: 100 + repeat, mode: 'B', build, enabledSeeds, truth: truthFor(enabledSeeds),
     url: 'http://127.0.0.1:40000', port: 40000, contract: { rules: ['Synthetic public rule.'] }, status,
     reason: status === 'awaiting-adjudication' ? null : `smoke fixture: ${status}`, launchAssurance: 'unattested',
+    authorization: { sha256: sha256(`authorization ${runId}`), installed: 'match' },
     startedAt: new Date(STARTED).toISOString(), elapsedMs: 60_000, timedOut: status === 'timed-out', overBudget: false, artifactRoot,
     adapter: { envNames: ['HOME', 'PATH', 'TMPDIR'], exitCode: valid ? 0 : null, signal: null, spawnError: valid ? null : 'smoke fixture: no adapter',
       resultState: valid ? 'valid' : 'missing', resultErrors: [], result: valid ? {} : null },
@@ -117,7 +118,7 @@ function writePrivateRuns(path, runList) {
     schema: 'argus-eval/private-runs@2', createdAt: new Date(STARTED).toISOString(),
     config: { schema: 'argus-eval/comparison-config@2', variants: [{ name: 'baseline', revision: 'a'.repeat(40), command: ['/bin/true'] }],
       modes: ['B'], builds: ['faulty', 'corrected'], repeats: 3, seeds: [100, 101, 102], secondsByMode: { A: 28800, B: 14400 }, tokens: null,
-      workRoot: work, adapterEnv: ['ANTHROPIC_API_KEY'], replay: { enabled: false }, corpusModule: null, testMode: false },
+      workRoot: work, adapterEnv: ['ANTHROPIC_API_KEY'], replay: { enabled: false }, authorization: { grants: ['browser-state-change', 'load', 'persistent-mutation', 'security-active'] }, corpusModule: null, testMode: false },
     corpus: { version: corpusVersion, digest: corpusDigest() }, canarySha256: sha256('smoke canary'), runs: runList,
   };
   const errors = validateEval('private-runs', document);

@@ -301,13 +301,15 @@ try {
       } });
 
       // Public replay requests: exact keys, no private data, physical paths outside the artifact root.
-      const active = join(output, 'active', run.runId);
+      const active = join(output, 'active', run.publicId);
       const requests = requestsOf(output, run);
       assert.deepEqual(requests.map(item => item.file), expectedCases.map(item => `${caseName(item)}.json`).sort());
       for (const { file, path, request } of requests) {
         const name = file.slice(0, -'.json'.length);
         assert.deepEqual(Object.keys(request).sort(), REQUEST_KEYS, `${name}: replay request keys`);
         assert.deepEqual(PRIVATE_KEYS.filter(key => key in request), []);
+        assert.equal(request.runId, run.publicId, `${name}: the replay request carries the opaque public run ID`);
+        assert(!JSON.stringify(request).includes(run.runId), `${name}: the replay request carries the private run ID`);
         const rest = JSON.stringify(request).replaceAll(request.case, '');
         for (const seed of corpusSeeds) {
           assert(!rest.includes(seed.id), `${name}: the request names seed ${seed.id} outside its case label`);

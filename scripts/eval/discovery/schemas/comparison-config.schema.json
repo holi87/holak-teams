@@ -57,6 +57,13 @@
         "secondsPerRunner": { "type": "integer", "minimum": 1, "maximum": 7200 }
       }
     },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "grants": { "type": "array", "uniqueItems": true, "items": { "enum": ["binary-evidence", "browser-state-change", "chaos", "database-write", "destructive", "load", "persistent-mutation", "security-active"] } }
+      }
+    },
     "corpusModule": { "type": "string", "minLength": 1 },
     "testMode": { "type": "boolean" }
   },

@@ -60,9 +60,9 @@ function makeRun({ runId, repeat, seed, build, status, root, app, source, enable
   assert.equal(extraction.ledger, 'present', `${runId}: fixture ledger rejected: ${extraction.ledgerErrors.join('; ')}`);
   const valid = status !== 'timed-out';
   return {
-    runId, variant: 'baseline', revision: 'a'.repeat(40), repeat, seed, mode: 'B', build, enabledSeeds, truth: source.truthFor(enabledSeeds),
+    runId, publicId: sha256(runId).slice(0, 16), variant: 'baseline', revision: 'a'.repeat(40), repeat, seed, mode: 'B', build, enabledSeeds, truth: source.truthFor(enabledSeeds),
     url: app.url, port: app.port, contract: app.contract, status, reason: status === 'awaiting-adjudication' ? null : `smoke fixture: ${status}`,
-    launchAssurance: 'unattested', startedAt: new Date(STARTED).toISOString(), elapsedMs: ELAPSED, timedOut: status === 'timed-out', overBudget: false,
+    launchAssurance: 'unattested', authorization: { sha256: sha256(`authorization ${runId}`), installed: 'match' }, startedAt: new Date(STARTED).toISOString(), elapsedMs: ELAPSED, timedOut: status === 'timed-out', overBudget: false,
     artifactRoot: root,
     adapter: { envNames: ['PATH', 'HOME', 'TMPDIR'], exitCode: valid ? 0 : null, signal: valid ? null : 'SIGKILL', spawnError: null,
       resultState: valid ? 'valid' : 'missing', resultErrors: [], result: valid ? {} : null },
@@ -75,7 +75,7 @@ function privateRuns(sealed, runs, corpus = { version: corpusVersion, digest: co
     schema: 'argus-eval/private-runs@2', createdAt: new Date(STARTED).toISOString(),
     config: { schema: 'argus-eval/comparison-config@2', variants: [{ name: 'baseline', revision: 'a'.repeat(40), command: ['/bin/true'] }],
       modes: ['B'], builds: ['faulty', 'corrected'], repeats: 2, seeds: [11, 12], secondsByMode: { A: 28800, B: 14400 }, tokens: null,
-      workRoot: work, adapterEnv: ['ANTHROPIC_API_KEY'], replay: { enabled: false }, corpusModule, testMode: false },
+      workRoot: work, adapterEnv: ['ANTHROPIC_API_KEY'], replay: { enabled: false }, authorization: { grants: ['browser-state-change', 'load', 'persistent-mutation', 'security-active'] }, corpusModule, testMode: false },
     corpus, canarySha256: sha256(CANARY), runs,
   };
   const errors = validateEval('private-runs', document);

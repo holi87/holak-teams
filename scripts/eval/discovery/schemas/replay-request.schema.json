@@ -7,7 +7,7 @@
   "required": ["schema", "runId", "case", "runnerMode", "frameworkRoot", "replayRoot", "target", "seconds", "resultPath"],
   "properties": {
     "schema": { "const": "argus-eval/replay-request@1" },
-    "runId": { "type": "string", "pattern": "^r[0-9]{1,2}-A-faulty-[a-z][a-z0-9-]{0,31}$" },
+    "runId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
     "case": { "type": "string", "pattern": "^(?:all-on|all-off|all-off-baseline|only-[a-z][a-z0-9-]*)$" },
     "runnerMode": { "enum": ["defect-evidence", "candidate-regression", "baseline"] },
     "frameworkRoot": { "$ref": "#/$defs/absolutePath" },

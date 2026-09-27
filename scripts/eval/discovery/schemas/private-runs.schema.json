@@ -39,7 +39,7 @@
     "config": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema", "variants", "modes", "builds", "repeats", "seeds", "secondsByMode", "tokens", "workRoot", "adapterEnv", "replay", "corpusModule", "testMode"],
+      "required": ["schema", "variants", "modes", "builds", "repeats", "seeds", "secondsByMode", "tokens", "workRoot", "adapterEnv", "replay", "authorization", "corpusModule", "testMode"],
       "properties": {
         "schema": { "const": "argus-eval/comparison-config@2" },
         "variants": { "type": "array", "minItems": 1, "maxItems": 2, "items": { "$ref": "#/$defs/variant" } },
@@ -75,6 +75,14 @@
               "then": { "required": ["repeats", "perSeedMatrix", "secondsPerRunner"] }
             }
           ]
+        },
+        "authorization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["grants"],
+          "properties": {
+            "grants": { "type": "array", "uniqueItems": true, "items": { "enum": ["binary-evidence", "browser-state-change", "chaos", "database-write", "destructive", "load", "persistent-mutation", "security-active"] } }
+          }
         },
         "corpusModule": { "type": ["string", "null"], "pattern": "^/" },
         "testMode": { "type": "boolean" }
@@ -250,9 +258,10 @@
     "run": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["runId", "variant", "revision", "repeat", "seed", "mode", "build", "enabledSeeds", "truth", "url", "port", "contract", "status", "reason", "launchAssurance", "startedAt", "elapsedMs", "timedOut", "overBudget", "artifactRoot", "adapter", "extraction", "contamination", "replay"],
+      "required": ["runId", "publicId", "variant", "revision", "repeat", "seed", "mode", "build", "enabledSeeds", "truth", "url", "port", "contract", "status", "reason", "launchAssurance", "authorization", "startedAt", "elapsedMs", "timedOut", "overBudget", "artifactRoot", "adapter", "extraction", "contamination", "replay"],
       "properties": {
         "runId": { "type": "string", "pattern": "^r[0-9]{1,2}-[AB]-(?:faulty|corrected)-[a-z][a-z0-9-]{0,31}$" },
+        "publicId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
         "variant": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
         "revision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
         "repeat": { "type": "integer", "minimum": 0, "maximum": 19 },
@@ -267,6 +276,15 @@
         "status": { "enum": ["awaiting-adjudication", "timed-out", "invalid-run", "contaminated"] },
         "reason": { "type": ["string", "null"], "minLength": 1 },
         "launchAssurance": { "enum": ["attested", "unattested", "unreported"] },
+        "authorization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sha256", "installed"],
+          "properties": {
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "installed": { "enum": ["match", "missing", "mismatch", "invalid"] }
+          }
+        },
         "startedAt": { "type": "string", "format": "date-time" },
         "elapsedMs": { "$ref": "#/$defs/count" },
         "timedOut": { "type": "boolean" },

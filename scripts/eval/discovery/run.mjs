@@ -6,6 +6,8 @@
 // (argus-eval/hunt-request@2) and reports launch status and measured usage
 // (argus-eval/adapter-result@2). The evaluator extracts findings itself from the run's artifact
 // root, seals its private state while a hunt runs, and scans the artifacts for contamination.
+// Every hunt runs under an evaluator-written authorization manifest that the request names and
+// the launcher installs; a run whose artifact root does not hold that manifest is invalid.
 // A faulty Mode A run that left a regression framework is then replayed (lib/replay.mjs): the
 // same adapter receives public replay requests (argus-eval/replay-request@1) as
 // `replay <request>` and runs the frozen suite in its sandbox against fresh applications on the
@@ -15,16 +17,20 @@
 //   <output>/sealed/private-runs.json  private truth and results (chmod 000 during every hunt)
 //   <output>/sealed/canary.txt         contamination canary
 //   <output>/sealed/runs/<runId>/      completed runs, moved out of active/
-//   <output>/active/<runId>/           request.json, result.json, usage.json, launcher.log and
+//   <output>/active/<publicId>/        request.json, authorization.json (the run's operator
+//                                      authorization manifest, lib/authorization.mjs),
+//                                      result.json, usage.json, launcher.log and
 //                                      artifacts/ (the hunter's only writable root); a replayed
 //                                      run adds replay-requests/<case>-<k>.json and
 //                                      replay/<case>-<k>/ plus replay/<case>-<k>.result.json
+// <runId> is the private r<repeat>-<mode>-<build>-<variant>; <publicId> is 16 random hex digits.
 import { chmodSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import * as builtInCorpus from './corpus/index.mjs';
+import { buildRunAuthorization, INSTALLED_MANIFEST, installedAuthorization, manifestSha256 } from './lib/authorization.mjs';
 import { loadConfig } from './lib/config.mjs';
 import { corpusFileNames, scanArtifacts } from './lib/contamination.mjs';
 import { extractFindings } from './lib/extract.mjs';
@@ -189,7 +195,10 @@ function readAdapterResult(path) {
   return { resultState: 'valid', resultErrors: [], result };
 }
 
-function classify({ outcome, adapter, contamination }) {
+// A hunt that did not run under the evaluator's manifest (the artifact root holds none, another
+// one such as the default-deny manifest, or an unusable file) measured something other than the
+// protocol, so it is invalid even when it timed out.
+function classify({ outcome, adapter, contamination, authorization }) {
   const problems = [];
   if (outcome.spawnError) problems.push(`adapter could not start: ${outcome.spawnError}`);
   if (adapter.resultState === 'missing') problems.push('adapter wrote no result.json');
@@ -197,11 +206,14 @@ function classify({ outcome, adapter, contamination }) {
   if (adapter.result && adapter.result.status !== 'completed') {
     problems.push(`adapter status ${adapter.result.status}${adapter.result.reason ? `: ${adapter.result.reason}` : ''}`);
   }
+  const unauthorized = authorization.installed !== 'match';
+  if (unauthorized) problems.push(`the hunt did not run under the evaluator's authorization manifest (${INSTALLED_MANIFEST} is ${authorization.installed})`);
   if (contamination.status === 'contaminated') {
     const kinds = [...new Set(contamination.hits.filter(hit => hit.kind !== 'seed-id' && hit.kind !== 'unreadable').map(hit => hit.kind))];
     return { status: 'contaminated', reason: [`artifacts contain ${kinds.join(', ')} traces`, ...problems].join('; ') };
   }
-  if (outcome.timedOut) return { status: 'timed-out', reason: ['adapter exceeded the mode budget and was killed', ...problems].join('; ') };
+  if (outcome.timedOut && !unauthorized) return { status: 'timed-out', reason: ['adapter exceeded the mode budget and was killed', ...problems].join('; ') };
+  if (outcome.timedOut) problems.unshift('adapter exceeded the mode budget and was killed');
   if (problems.length) return { status: 'invalid-run', reason: problems.join('; ') };
   return { status: 'awaiting-adjudication', reason: null };
 }
@@ -220,7 +232,7 @@ async function replayCase(run, plan, { runDir, requestsDir, replayDir, framework
   try {
     if (app.port !== run.port) return infrastructureReplayCase(plan, `the application bound port ${app.port} instead of the hunt port ${run.port}`);
     const request = assertEval('replay-request', {
-      schema: 'argus-eval/replay-request@1', runId: run.runId, case: plan.case, runnerMode: plan.runnerMode, frameworkRoot,
+      schema: 'argus-eval/replay-request@1', runId: run.publicId, case: plan.case, runnerMode: plan.runnerMode, frameworkRoot,
       replayRoot: join(replayDir, name), target: app.url, seconds, resultPath: join(replayDir, `${name}.result.json`),
     }, 'replay request');
     const requestPath = join(requestsDir, `${name}.json`);
@@ -260,21 +272,33 @@ async function replayRun(run, { runDir, artifactRoot, variant, env }) {
   return { status: replayStatus(cases), reason, cases };
 }
 
+// The private run ID names the repeat, mode, build, and variant; it keys sealed/ and every
+// evaluator document. Everything a hunter can see (the active/ directory and its paths, the
+// hunt and replay requests, and the engagement ID the adapter launches with, which argus-launch
+// puts in the controller prompt) carries only a random public ID instead.
 async function executeRun({ repeat, seed, mode, build, variant }) {
   const runId = `r${repeat}-${mode}-${build}-${variant.name}`;
+  const publicId = randomBytes(8).toString('hex');
   const enabledSeeds = build === 'faulty' ? [...source.seedIds] : [];
   const truth = source.truthFor(enabledSeeds);
-  const runDir = makeDirectory(join(active, runId));
+  const runDir = makeDirectory(join(active, publicId));
   const artifactRoot = makeDirectory(join(runDir, 'artifacts'));
   const requestPath = join(runDir, 'request.json');
   const resultPath = join(runDir, 'result.json');
   const seconds = config.secondsByMode[mode];
   const { names: envNames, env } = adapterEnvironment();
+  const engagementId = `eval-${publicId}`;
+  const authorizationPath = join(runDir, 'authorization.json');
+  let authorizationSha256;
   const app = await source.startApplication({ seed, enabledSeeds });
   let outcome;
   try {
+    // Identical grants for every build and variant, bound to this engagement and target.
+    const manifest = buildRunAuthorization({ engagementId, target: app.url, seconds, grants: config.authorization.grants });
+    authorizationSha256 = manifestSha256(manifest);
+    writeFileSync(authorizationPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
     const request = assertEval('hunt-request', {
-      schema: 'argus-eval/hunt-request@2', runId, revision: variant.revision, target: app.url,
+      schema: 'argus-eval/hunt-request@2', runId: publicId, engagementId, authorization: authorizationPath, revision: variant.revision, target: app.url,
       contractUrl: `${app.url}/contract`, mode, artifactRoot, resultPath, usagePath: join(runDir, 'usage.json'),
       logPath: join(runDir, 'launcher.log'), budget: { seconds, tokens: config.tokens },
     }, 'hunt request');
@@ -286,12 +310,13 @@ async function executeRun({ repeat, seed, mode, build, variant }) {
   const adapter = { envNames, exitCode: outcome.exitCode, signal: outcome.signal, spawnError: outcome.spawnError, ...readAdapterResult(resultPath) };
   const extraction = extractFindings(artifactRoot, { startedAtMs: outcome.startedAtMs, elapsedMs: outcome.elapsedMs });
   const contamination = scanArtifacts(artifactRoot, scanOptions);
-  const { status, reason } = classify({ outcome, adapter, contamination });
+  const authorization = { sha256: authorizationSha256, installed: installedAuthorization(artifactRoot, authorizationSha256) };
+  const { status, reason } = classify({ outcome, adapter, contamination, authorization });
   const totalTokens = adapter.result?.usage.totalTokens;
   const run = {
-    runId, variant: variant.name, revision: variant.revision, repeat, seed, mode, build, enabledSeeds, truth,
+    runId, publicId, variant: variant.name, revision: variant.revision, repeat, seed, mode, build, enabledSeeds, truth,
     url: app.url, port: app.port, contract: app.contract, status, reason,
-    launchAssurance: adapter.result?.launchAssurance ?? 'unreported',
+    launchAssurance: adapter.result?.launchAssurance ?? 'unreported', authorization,
     startedAt: new Date(outcome.startedAtMs).toISOString(), elapsedMs: outcome.elapsedMs, timedOut: outcome.timedOut,
     overBudget: config.tokens !== null && Number.isFinite(totalTokens) && totalTokens > config.tokens,
     artifactRoot, adapter, extraction, contamination, replay: null,

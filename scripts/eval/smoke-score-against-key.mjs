@@ -125,12 +125,13 @@ try {
   const { rows: findingRows, ...findingTotals } = report.findings;
   assert.deepEqual(findingTotals, {
     total: 3, real: 2, falsePositive: 1, duplicate: 0, unadjudicated: 0,
-    precision: 2 / (2 + 1 + 0), keys: ['BUG-0001', 'BUG-0002', 'PRO-001-c.md'],
+    precision: 2 / (2 + 1 + 0), confirmedPrecision: 1, byStatus: { confirmed: 2, none: 1 }, withdrawn: [],
+    keys: ['BUG-0001', 'BUG-0002', 'PRO-001-c.md'],
   });
-  assert.deepEqual(findingRows.map((row) => [row.key, row.kind, row.files]), [
-    ['BUG-0001', 'ledger', ['ATA-001-a.md']],
-    ['BUG-0002', 'ledger', ['ATA-002-b.md']],
-    ['PRO-001-c.md', 'bug-file', ['PRO-001-c.md']],
+  assert.deepEqual(findingRows.map((row) => [row.key, row.kind, row.files, row.status]), [
+    ['BUG-0001', 'ledger', ['ATA-001-a.md'], 'confirmed'],
+    ['BUG-0002', 'ledger', ['ATA-002-b.md'], 'confirmed'],
+    ['PRO-001-c.md', 'bug-file', ['PRO-001-c.md'], null],
   ]);
   assert.deepEqual(report.rows.map((row) => row.matchedFindings), [['BUG-0001'], ['BUG-0002'], []]);
   console.log('PASS  complete v2 verdicts: exit 0, precision 2/3, ledger twins counted once, --json findings block');
@@ -251,6 +252,59 @@ try {
     assert.match(result.stderr, message, name);
   }
   console.log(`PASS  ${malformed.length} malformed finding verdicts: exit 1`);
+
+  // bug-ledger@2 statuses: rows Minos withdrew (duplicate, rejected) are no findings but still
+  // claim their bug files; a suspected row stays a finding and is counted per status.
+  {
+    const triageRun = engagementRoot('triage-run', {
+      files: {
+        ...BUG_FILES,
+        'ATA-003-d.md': '# ATA-003 Password hash returned again\n\n- **Lane:** api\n\nThe profile response carries the password hash.\n',
+        'PRO-004-e.md': '# PRO-004 Negative quantity rounding\n\n- **Lane:** api\n\nA negative quantity is rounded.\n',
+      },
+      ledger: [
+        ledgerRow('BUG-0001', 'ATA-001', 'Password hash returned in the profile response'),
+        { ...ledgerRow('BUG-0002', 'ATA-002', 'Negative quantity accepted'), status: 'suspected' },
+        { ...ledgerRow('BUG-0003', 'ATA-003', 'Password hash returned again'), status: 'duplicate', duplicateOf: 'BUG-0001' },
+        { ...ledgerRow('BUG-0004', 'PRO-004', 'Negative quantity rounding'), status: 'rejected' },
+      ],
+    });
+    // The v2 file judges the reported findings only; Minos's own withdrawals need no outcome.
+    const triaged = scoreJson(['--run', triageRun, '--verdicts', complete], 0, 'duplicate and rejected ledger rows');
+    assert.equal(triaged.complete, true);
+    assert.deepEqual(triaged.findings.keys, ['BUG-0001', 'BUG-0002', 'PRO-001-c.md'], 'withdrawn rows are not findings');
+    assert.deepEqual(triaged.findings.withdrawn, [
+      { key: 'BUG-0003', status: 'duplicate', files: ['ATA-003-d.md'] },
+      { key: 'BUG-0004', status: 'rejected', files: ['PRO-004-e.md'] },
+    ], 'withdrawn rows still claim their bug files');
+    assert.deepEqual([triaged.findings.total, triaged.findings.real, triaged.findings.falsePositive, triaged.findings.duplicate], [3, 2, 1, 0]);
+    assert.equal(triaged.findings.precision, 2 / 3, 'withdrawn rows never cost precision');
+    assert.deepEqual(triaged.findings.byStatus, { confirmed: 1, suspected: 1, none: 1 }, 'a suspected row is a finding, counted per status');
+    assert.equal(triaged.findings.confirmedPrecision, 1, 'confirmed-only precision matches the discovery evaluator definition');
+    const text = expectExit(score(['--run', triageRun, '--verdicts', complete]), 0, 'duplicate and rejected ledger rows (text)');
+    assert.ok(text.stdout.includes('findings: 2 real / 1 false-positive / 0 duplicate / 0 unadjudicated — precision 0.667 (2 of 3 adjudicated)'), text.stdout);
+    assert.ok(text.stdout.includes('findings by ledger status: 1 confirmed, 1 suspected, 1 none; withdrawn rows: 2; confirmed-only precision 1.000'), text.stdout);
+    assert.ok(text.stdout.includes('Withdrawn ledger rows (not findings, no outcome needed): BUG-0003 (duplicate), BUG-0004 (rejected)'), text.stdout);
+    assert.doesNotMatch(text.stdout, /\| (?:ATA-003-d|PRO-004-e)\.md \|/, 'a withdrawn row\'s bug file is not an unledgered finding');
+
+    // A suspected row without an outcome still leaves the run UNSCORED.
+    const suspectedMissing = expectExit(score(['--run', triageRun, '--verdicts', variant((document) => { delete document.findings['BUG-0002']; })]),
+      20, 'suspected row without an outcome');
+    assert.match(suspectedMissing.stdout, /Findings without an outcome: BUG-0002$/m);
+
+    // A stale verdict for a withdrawn row is ignored with a warning; credit through one is contested.
+    const staleWithdrawn = expectExit(score(['--run', triageRun, '--verdicts', variant((document) => {
+      document.findings['BUG-0003'] = { outcome: 'duplicate', reason: 'Repeats BUG-0001', duplicateOf: 'BUG-0001' };
+    })]), 0, 'verdict for a withdrawn row');
+    assert.match(staleWithdrawn.stderr, /finding verdict BUG-0003 names a ledger row withdrawn as duplicate, which is not a reported finding/);
+    for (const matchedBy of ['BUG-0004', 'PRO-004-e.md']) {
+      const throughWithdrawn = scoreJson(['--run', triageRun, '--verdicts', variant((document) => {
+        document.entries['02'].matchedBy = matchedBy;
+      })], 21, `credit through a withdrawn row by ${matchedBy}`);
+      assert.deepEqual(contestedKinds(throughWithdrawn), ['credit-through-withdrawn-row:02:BUG-0004'], matchedBy);
+    }
+    console.log('PASS  bug-ledger@2 statuses: duplicate and rejected rows need no outcome, never cost precision and still claim their bug files; suspected rows are counted per status; credit through a withdrawn row is contested');
+  }
 
   // A nonexistent run fails loudly instead of printing an all-miss table.
   const missingRun = expectExit(score(['--run', join(work, 'no-such-run'), '--verdicts', complete]), 1, 'nonexistent run');
