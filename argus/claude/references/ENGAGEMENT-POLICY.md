@@ -182,11 +182,20 @@ Still fail-closed, by design and with no way to opt out:
 - **Codex dispatch is unavailable.** A Codex allocation needs a signed JIT
   `MODEL_DISPATCH_AUTHORIZATION`, which cannot exist without a runtime-attestation key.
   Unattested mode is Claude-only, enforced at decision creation, not just at the CLI.
-- **Operator-approved escalations are unavailable.** A frontier role that hits
-  `ambiguity`/`safety`/`repeated-failure`, or `model-unavailable` on a frontier role,
-  produces `OPERATOR_ESCALATION_REQUIRED`/`FRONTIER_UNAVAILABLE` and stays blocked: weaker
-  fallback is forbidden and there is no operator-approval anchor to verify a signature
-  against. Standard-role `model-unavailable` still routes upward to frontier as usual.
+- **Operator-approved escalations are unavailable.** Automatic frontier continuation under
+  the policy's `autoContinue` flag needs no operator signature, so its three paths work
+  unattested exactly as attested: checkpoint-resume for a checkpointed `turn-limit` or
+  `repeated-failure`, one fresh restart per dispatch for a controller-observed
+  `no-artifact`, `zero-candidates`, or uncheckpointed `turn-limit`, and same-baseline
+  backoff retries for frontier `model-unavailable`. Everything that still needs an operator
+  stays blocked, because there is no operator-approval anchor to verify a signature against:
+  an operator-gated signal (`safety`, `ambiguity`, `cross-lane`, `conflicting-evidence`,
+  `oracle-ambiguity`, `schema-validation-failure`) or a checkpointed worker signal past
+  `maxAutoContinuations` produces `OPERATOR_ESCALATION_REQUIRED`, and frontier
+  `model-unavailable` after the last backoff produces `FRONTIER_UNAVAILABLE`. A spent
+  checkpoint-less restart is `AUTO_CONTINUATION_EXHAUSTED`, reported as a residual. Weaker
+  fallback is forbidden in both modes. Standard-role `model-unavailable` still routes upward
+  to frontier as usual.
 
 ### Named residual risk
 
@@ -373,11 +382,31 @@ content is idempotent; different content at an existing sequence is rejected.
 `engagement status` exposes the last durable phase, arrivals, allocations, locks,
 checkpoints, ID identities, and merges for resume.
 
-A declared worker escalation requires the current monotonic checkpoint and binds the next
-attempt to its path and SHA-256. `start-attempt` validates that exact checkpoint before
-rotating the token. A pre-spawn `model-unavailable` route is different: it binds the prior
-selected decision and active allocation directly and may retry without a checkpoint because
-no worker thread began.
+A retry decision carries exactly one immutable lineage; `start-attempt` rejects a decision
+with none or with more than one.
+
+- **Escalation lineage.** A declared worker escalation, including an automatic
+  checkpoint-resume, requires the current monotonic checkpoint and binds the next attempt to
+  its path and SHA-256. `start-attempt` validates that exact checkpoint before rotating the
+  token.
+- **Availability lineage.** A pre-spawn `model-unavailable` route binds the prior selected
+  decision and the active allocation directly (allocation ID and the SHA-256 of its state
+  record) and may retry without a checkpoint because no worker thread began.
+- **Outcome lineage.** A controller-observed `no-artifact`, `zero-candidates`, or
+  uncheckpointed `turn-limit` is routed without `--request` or `--operator-decision` and is
+  bound to the prior selected decision and allocation the same way. The route also records
+  `observedArtifacts`: the agent's RACI accountable artifacts that physically exist under the
+  artifact root without crossing a symbolic link. A `no-artifact` claim they contradict is
+  refused (`route turn-limit instead`). `priorCheckpointlessRetries` counts the outcome-bound
+  selected decisions of earlier attempts on the same dispatch, so the policy grants one fresh
+  restart per dispatch and then returns `AUTO_CONTINUATION_EXHAUSTED`.
+
+A `BACKOFF_RETRY_SELECTED` decision carries `continuation.backoffSeconds`; its retry may not
+rebind before the decision's `createdAt` plus that backoff. Earlier, `start-attempt` fails
+with `retry backoff has not elapsed; retry at <ISO> or pass --wait true` and changes nothing.
+With `--wait true` it sleeps out a remaining wait of at most 300 seconds and then rebinds.
+The runtime re-checks the same rule inside its state lock for every caller. Emit the active
+decision's telemetry before `start-attempt`, because the rebind supersedes that decision.
 
 The manifest is `schemaVersion: 2` with the derived phase plan. State is `schemaVersion: 3`
 only, carries `skippedPhases`, `ledgerSnapshots`, `conditionalAgents`, and `gateResolution`,

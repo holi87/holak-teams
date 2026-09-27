@@ -317,6 +317,12 @@ else
   fail "[argus] (p) runtime model policy contract"
 fi
 
+if "$ROOT/scripts/smoke-argus-continuation.sh"; then
+  pass "[argus] (p2) automatic continuation: outcome-bound restarts, checkpoint resume, enforced backoff, and token rotation"
+else
+  fail "[argus] (p2) automatic frontier continuation contract"
+fi
+
 if node "$ROOT/scripts/verify-agent-runtime-parity.mjs"; then
   pass "[agents] (q) 49-agent generated configuration, model mapping, support levels, and roster alignment"
 else
