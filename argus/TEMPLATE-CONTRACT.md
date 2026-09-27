@@ -108,7 +108,14 @@ runner, and declare the libraries the kit imports in the suite's manifest (`copy
 shows the reference versions). The ported `scripts/runner-lib.sh` still requires the
 ADAPT selection record at `ai_agents_internal/template-selection.json` and a suite entry
 point that sets `ARGUS_RUNTIME`, `ARGUS_PACKAGE_MANAGER`, and `TEST_ROOT` and defines the
-four `argus_native_*` hooks; the scaffold's `run-tests.sh` is the reference. The kit relies
+four `argus_native_*` hooks; the scaffold's `run-tests.sh` is the reference. The TypeScript
+kit ships its counterfactual activation, and the port must wire it: the suite's `test`
+extends `counterfactualTest` (`src/argus/playwright-fixtures.ts`); every API client resolves
+its base URL at call time through `counterfactualApiURL()` (`src/argus/api-url.ts`), falling
+back to the target URL, never from a constant captured at module load; and a ui lane is a
+project named `ui` or `ui-<variant>` whose API calls match `ARGUS_API_ROUTE_PATTERN`
+(default `<API_URL>/**`). A `cf-*` verdict of a regression that never ran through the
+activation is `counterfactual-not-activated`. The kit relies
 on seams it does not ship: Java's
 `qa.support.Config` (target URL), `qa.support.SchemaOracle` (one contract self-test), and
 the `qa.support.SummaryListener` line of the launcher service file; Python's

@@ -227,7 +227,10 @@ A non-regression test gives `product pass false n/a - passed` or
 | `candidate-regression`, `full-suite` | `product fail false automated B regression-red` | `product pass false fixed B regression-green` |
 
 Non-product outcomes of a regression test carry `B` with `expected=false` and
-`lifecycle=n/a`. A counterfactual exemption (SD-10) gives
+`lifecycle=n/a`. TypeScript credits a `cf-correct` or `cf-tamper-<k>` row only when the
+counterfactual activation recorded the variant the stub served (the
+`argus-counterfactual-variant` test annotation); otherwise the regression gives
+`automation fail false n/a B counterfactual-not-activated`. A counterfactual exemption (SD-10) gives
 `<case>.cf policy pass false n/a B counterfactual-exempt.<reason>` in `cf-correct`; a
 tamper pass whose variant is exempt or not applicable emits nothing for that test.
 
@@ -261,7 +264,8 @@ The reason field of an adapter event comes only from SD-4, SD-5, and SD-6
 `expected-red`, `expected-red-passed`, `expected-red-repeat`, `flaky-red`,
 `intermittent-unreproduced`, `repetition-invalid`, `counterfactual-correct-pass`,
 `counterfactual-correct-red`, `counterfactual-tamper-red`,
-`counterfactual-tamper-survived`, `counterfactual-exempt.<reason>`, `regression-green`,
+`counterfactual-tamper-survived`, `counterfactual-not-activated`,
+`counterfactual-exempt.<reason>`, `regression-green`,
 `regression-red`,
 `bug-ledger-missing`, `bug-ledger-invalid`) plus the gate tokens that
 `scripts/runner-lib.sh`, `scripts/runner-contract.sh`, and the portable lane-plan,

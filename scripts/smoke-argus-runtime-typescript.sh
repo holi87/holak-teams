@@ -377,6 +377,17 @@ expect_only_event "unmatched request" "$CF_ID.cf-correct" automation fail false 
 cf_pass cf-unmatched-tamper cf-tamper-1 ARGUS_SMOKE_EXTRA_REQUEST=1
 expect_only_event "unmatched request in a tamper pass" "$CF_ID.cf-observed-defect" automation fail false n/a BUG-0001 counterfactual-unmatched-request
 
+# A regression that bypasses counterfactualTest (an ADAPT suite that never wired the runner
+# kit's activation) is never counterfactual evidence, whatever its verdict.
+UNACTIVATED_SPEC=tests/contract/unactivated.spec.ts
+UNACTIVATED_ID='contract-smoke:contract-unactivated.spec.ts:widget-read-without-the-counterfactual-activation'
+cp "$FIXTURES/unactivated.spec.ts" "$T/$UNACTIVATED_SPEC"
+pw cf-unactivated-correct "${CF_ENV[@]}" ARGUS_EVIDENCE_PASS=cf-correct npx playwright test --project=contract-smoke "--reporter=$REPORTER" "$UNACTIVATED_SPEC"
+expect_only_event "unactivated regression in cf-correct" "$UNACTIVATED_ID.cf-correct" automation fail false n/a BUG-0001 counterfactual-not-activated
+pw cf-unactivated-tamper "${CF_ENV[@]}" ARGUS_EVIDENCE_PASS=cf-tamper-1 npx playwright test --project=contract-smoke "--reporter=$REPORTER" "$UNACTIVATED_SPEC"
+expect_only_event "unactivated regression in a tamper pass" "$UNACTIVATED_ID.cf-observed-defect" automation fail false n/a BUG-0001 counterfactual-not-activated
+rm -f "$T/$UNACTIVATED_SPEC"
+
 # An exemption records one event in cf-correct and nothing in a tamper pass.
 jq '{"$schema": ."$schema", schemaVersion, bugId, exemption: {reason: "front-end-logic", justification: "The defect lives in client-side rendering."}}' \
   "$WORK/cf-fixture.json" >"$CF_FIXTURE"

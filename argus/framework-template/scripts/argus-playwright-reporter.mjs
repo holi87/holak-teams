@@ -253,10 +253,10 @@ export default class ArgusPlaywrightReporter {
       // response nor the tamper: its assertions prove nothing either way.
       primary = other('automation', 'fail', 'counterfactual-unmatched-request');
     } else if (result.status === 'passed') {
-      primary = this.productEvent(id, entry, true);
+      primary = this.productEvent(id, entry, true, test, result);
     } else {
       const outcome = classifyFailure(result);
-      primary = outcome === 'product' ? this.productEvent(id, entry, false) : other(...outcome);
+      primary = outcome === 'product' ? this.productEvent(id, entry, false, test, result) : other(...outcome);
     }
     const events = [primary];
     if (primary[6] !== 'cleanup-failed' && hasNamedError(result, 'ArgusCleanupError')) {
@@ -267,12 +267,18 @@ export default class ArgusPlaywrightReporter {
 
   // SD-6. A regression without exactly one resolved bug keeps the non-regression product
   // mapping: it never claims expected RED, and the inventory gate owns the provenance denial.
-  productEvent(id, entry, passed) {
+  productEvent(id, entry, passed, test, result) {
     if (!entry.regression || entry.bug === '-') {
       return passed ? [id, 'product', 'pass', 'false', 'n/a', '-', 'passed'] : [id, 'product', 'fail', 'false', 'n/a', '-', 'assertion-failed'];
     }
     const bug = entry.bug;
     if (!entry.repetition.valid) return [id, 'policy', 'denied', 'false', 'n/a', bug, 'repetition-invalid'];
+    // A counterfactual verdict counts only when the activation (src/argus/playwright-fixtures.ts)
+    // recorded the variant the stub served; without it the test ran against whatever its
+    // client reached, so the result proves nothing either way.
+    if (this.counterfactual && !this.servedVariant(entry, test, result)) {
+      return [id, 'automation', 'fail', 'false', 'n/a', bug, 'counterfactual-not-activated'];
+    }
     // Counterfactual passes run against deterministic stubs, so their rules ignore n.
     if (this.counterfactual && this.pass === 'cf-correct') {
       return passed ? [id, 'product', 'pass', 'false', 'reproduced', bug, 'counterfactual-correct-pass'] : [id, 'automation', 'fail', 'false', 'n/a', bug, 'counterfactual-correct-red'];
@@ -302,6 +308,16 @@ export default class ArgusPlaywrightReporter {
       if (variant !== 'not-applicable') return `${entry.id}.cf-${variant.id}`;
     }
     return `${entry.id}.${this.pass}`;
+  }
+
+  // True when the test carries the activation annotation for exactly the variant this pass
+  // serves, recomputed from the fixture through variantFor.
+  servedVariant(entry, test, result) {
+    const fixture = this.fixtureFor(entry.bug);
+    const variant = fixture?.kind === 'fixture' ? this.cf.variantFor(fixture, this.pass) : 'not-applicable';
+    if (variant === 'not-applicable') return false;
+    return [...(result.annotations ?? []), ...(test.annotations ?? [])]
+      .some((annotation) => annotation.type === this.cf.ACTIVATION_ANNOTATION && annotation.description === variant.id);
   }
 
   // SD-6: a sentinel skip emits nothing when the test has no applicable variant (and for an

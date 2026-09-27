@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { ENV } from '../../src/config/env';
-import { counterfactualTest as test } from '../../src/fixtures/fixtures';
+import { counterfactualTest as test } from '../../src/argus/playwright-fixtures';
 import { assertSchemaRef } from '../../src/oracles';
 
 // Counterfactual fixture for scripts/smoke-argus-runtime-typescript.sh. In a cf-* pass the
