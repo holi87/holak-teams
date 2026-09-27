@@ -74,8 +74,8 @@
       "source": "argus/RUNNER-CONTRACT.md",
       "destination": "references/RUNNER-CONTRACT.md",
       "files": 1,
-      "bytes": 29319,
-      "sha256": "7975fe39a34f54b0bcb4454e64f656d7a353b421d422e5b73a866d37fb6499aa"
+      "bytes": 29454,
+      "sha256": "3e984c8208860672fd7039d35e5c4f803274304df4f316c8ff4f9f2835dc08dd"
     },
     {
       "id": "template-contract",
@@ -281,8 +281,8 @@
       "source": "argus/framework-template-java",
       "destination": "templates/java",
       "files": 57,
-      "bytes": 461329,
-      "sha256": "13048773c4ddd6e86f8386201caf4648cb97a3d523d6411a7a88f8bb9fe6796f"
+      "bytes": 462900,
+      "sha256": "958a7fb778320442c2d3805518dec6b40eb20342cc2ab1998ccfea1032324c9b"
     },
     {
       "id": "python-template",

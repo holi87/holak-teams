@@ -202,7 +202,7 @@ in every runtime.
 | Assertion. TS: the terminal error matches the error of an `expect`-category step found depth-first in `result.steps`. Java: `instanceof AssertionError`, including opentest4j. Python: a call-phase `AssertionError`. | `product fail`, see SD-6 |
 | Test-level timeout. TS `timedOut` or Playwright `TimeoutError`; `httpx.TimeoutException`; Java `TimeoutException`, `SocketTimeoutException`, or Awaitility `ConditionTimeoutException`. | `automation fail`, `test-timeout` |
 | Fixture, hook, or setup failure. | `automation fail`, `fixture-failed` or `hook-failed` |
-| Java: a failed container (a class or template whose `@BeforeAll`, argument source, or factory failed), whose tests therefore never report. The case id is the container id, which prefixes theirs. | `automation fail`, `container-failed` |
+| Java: a failed container (a class or template whose `@BeforeAll`, argument source, or factory failed), whose tests therefore never report. Each case under it that never reported gets the event under its own case id, pass suffix, and bug; a container whose cases all reported (a failed `@AfterAll`) gets it under the container id. | `automation fail`, `container-failed` |
 | Playwright API error. | `automation fail`, `playwright-api-failed` |
 | Refused, unknown-host, or reset connection. TS: `ECONNREFUSED`, `ENOTFOUND`, `ECONNRESET`, `EAI_AGAIN`, `net::ERR_`. Java: `ConnectException`, `UnknownHostException`, or `NoRouteToHostException` in the cause chain. Python: `httpx.ConnectError`, `ConnectTimeout`, or `ConnectionError`. | `infrastructure fail`, `target-unreachable` |
 | Interrupted test. | `infrastructure fail`, `test-interrupted` |

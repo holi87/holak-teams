@@ -6,6 +6,7 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.util.stream.Stream;
 
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
@@ -200,6 +201,19 @@ class ClassificationFixtureTest {
 
         @Test
         void never_runs() {
+        }
+    }
+
+    @Nested
+    @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+    class FailingTeardown {
+        @Test
+        void body_passes() {
+        }
+
+        @AfterAll
+        void release() {
+            throw new IllegalStateException("synthetic teardown failure");
         }
     }
 

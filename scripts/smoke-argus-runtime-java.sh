@@ -121,6 +121,7 @@ expect_row "$C.na-ve_caf" contract-smoke false false - - - "$C"
 expect_row "$C.na-ve_caf.2" contract-smoke false false - - - "$C"
 expect_row "$C-CleanupAfterPass.body_passes" contract-smoke false false - - - "$C-CleanupAfterPass"
 expect_row "$C-FailingSetup.never_runs" contract-smoke false false - - - "$C-FailingSetup"
+expect_row "$C-FailingTeardown.body_passes" contract-smoke false false - - - "$C-FailingTeardown"
 expect_row "$C-DisabledGroup.skipped_with_its_class" contract-smoke false false - - skip "$C-DisabledGroup"
 LONG_X="$C.method_name_long_enough_that_its_sanitized_case_id_exceeds_two_hundred_characters_and_is_therefore_truncated_to_a_prefix_of_one_hundred_eighty_seven_characters_plus_a_digest"
 LONG_ID="${LONG_X:0:187}.$(sha256_hex "$LONG_X" | cut -c1-12)"
@@ -222,17 +223,30 @@ expect_event "$L" "$LONG_ID" product pass false n/a - passed
 expect_event "$L" "$C-CleanupAfterPass.body_passes" automation fail false n/a - cleanup-failed
 expect_event "$L" "$C-CleanupAfterFailure.body_fails" product fail false n/a - assertion-failed
 expect_event "$L" "$C-CleanupAfterFailure.body_fails.cleanup" automation fail false n/a - cleanup-failed
-expect_event "$L" "$C-FailingSetup" automation fail false n/a - container-failed
+# A failed @BeforeAll fails each case under its own id; a failed @AfterAll, after every case
+# reported, keeps the container id.
+expect_event "$L" "$C-FailingSetup.never_runs" automation fail false n/a - container-failed
+expect_event "$L" "$C-FailingTeardown.body_passes" product pass false n/a - passed
+expect_event "$L" "$C-FailingTeardown" automation fail false n/a - container-failed
 expect_event "$L" "$C-AbortedSetup.skipped_with_its_container" skip skipped false n/a - test-skipped
 expect_event "$L" "$C-DisabledGroup.skipped_with_its_class" skip skipped false n/a - test-skipped
-expect_lines "$L" 31
-expect_status live "ok 31"
+expect_lines "$L" 33
+expect_status live "ok 33"
 if grep -Eq 'synthetic|127[.]0[.]0[.]1|Connection refused' "$L"; then fail "an event carried test messages or target details"; fi
-# Every executed or skipped case joins its inventory row by id or '<id>.' prefix.
-cut -f1 "$L" | while IFS= read -r event_id; do
-  cut -f1 "$INVENTORY" | awk -v e="$event_id" '$0 == e || index(e, $0 ".") == 1 || index($0, e ".") == 1 { found = 1 } END { exit !found }' \
-    || fail "event $event_id does not join the inventory"
-done
+# The runner's own gates join every selected case: nothing is reported as not executed, and a
+# product lane whose only test sits under a failed container still counts as executed.
+cp "$L" "$WORK/live-executed.tsv"
+bash "$APP/scripts/inventory-gate.sh" executed --inventory "$INVENTORY" --lanes api --events "$WORK/live-executed.tsv" \
+  --mode full-suite --contract-smoke 2>/dev/null || fail "the executed gate failed on the live events"
+cmp -s "$L" "$WORK/live-executed.tsv" || { diff "$L" "$WORK/live-executed.tsv" >&2 || true; fail "the executed gate reported a selected case as not executed"; }
+awk -F'\t' -v OFS='\t' -v id="$C-FailingSetup.never_runs" '$1 == id { $2 = "ui"; print }' "$INVENTORY" >"$WORK/ui-inventory.tsv"
+printf '%s\n' "$(tsv api disabled talos - residual.not-in-fixture)" "$(tsv ui enabled daidalos - -)" \
+  "$(tsv perf disabled nike - residual.not-in-fixture)" "$(tsv security disabled aegis - residual.not-in-fixture)" \
+  "$(tsv db disabled mnemosyne - residual.not-in-fixture)" "$(tsv resilience disabled nike - residual.not-in-fixture)" >"$WORK/ui-lanes.tsv"
+cp "$L" "$WORK/live-lanes.tsv"
+bash "$APP/scripts/lane-plan.sh" verify --plan "$WORK/ui-lanes.tsv" --inventory "$WORK/ui-inventory.tsv" --events "$WORK/live-lanes.tsv" \
+  --mode full-suite 2>/dev/null || fail "lane-plan verify failed on the live events"
+expect_event "$WORK/live-lanes.tsv" lane.ui policy pass false n/a - lane-executed
 
 run_fixture repeat regression ARGUS_RUNNER_MODE=defect-evidence ARGUS_EVIDENCE_PASS=repeat
 R="$WORK/repeat.tsv"
