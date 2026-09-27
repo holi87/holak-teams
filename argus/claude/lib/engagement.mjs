@@ -508,20 +508,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
           ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
         if (canonicalJson({ ...document, generatedAt: null }) !== canonicalJson({ ...calculated, generatedAt: null })) throw new Error('coverage result does not match canonical inputs');
       }
-      if (canonical.schema === 'final-summary' && document.coverage) {
-        const path = engagementPath(manifest, 'solution/coverage-result.json');
-        if (existsSync(path)) {
-          const checked = validateCanonicalFragment('coverage-result', readManagedFile(path, 'canonical case depth'));
-          if (checked.errors.length || checked.document.engagementId !== manifest.engagementId) throw new Error('invalid final coverage source');
-          const depth = checked.document.overall.caseDepth;
-          if (depth) {
-            document.coverage.caseDepth = depth;
-            if ((depth.coverage === null || depth.gaps.length || depth.unplannedSurfaces.length) && document.status === 'completed') document.status = 'degraded';
-          } else delete document.coverage.caseDepth;
-        } else if (document.coverage.caseDepth) throw new Error('case depth claim requires canonical coverage result');
-      }
-      if (canonical.schema === 'final-summary' && document.runner === null && (manifest.mode !== 'B' || document.counts.automated !== 0)) throw new Error('runner=null is only valid for Mode B without automation');
-      if (canonical.schema === 'final-summary' && skippedPhaseStatusReasons(state).length > 0 && document.status === 'completed') document.status = 'degraded';
+      if (canonical.schema === 'final-summary') applyFinalSummaryFacts(manifest, state, document);
       if (canonical.schema === 'bug-ledger' && document.bugs.some(bug => ledgerEvidenceIds(bug).length > 0)) {
         const evidencePath = engagementPath(manifest, 'solution/evidence-reference.json');
         const evidenceRecords = state.fragments['solution/evidence-reference.json'] ?? [];
@@ -686,6 +673,139 @@ function collectReviewCorpus(root, path, files) {
   const fd = openSync(absolute, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   try { files.set(path, sha256(readFileSync(fd))); }
   finally { closeSync(fd); }
+}
+
+// Kleio writes the final summary's narrative, never its facts. Counts, likely-but-unproven
+// findings, the review verdict, the runner outcome, coverage, and source schemas are derived
+// from the merge-verified canonical inputs, and every status reason carries a ceiling the
+// merged status can never be better than (completed < degraded < blocked).
+const FINAL_SUMMARY_DERIVED_FIELDS = Object.freeze(['counts', 'unproven', 'automationReview', 'runner', 'coverage', 'sourceSchemas', 'statusReasons']);
+const FINAL_SUMMARY_STATUS_ORDER = Object.freeze(['completed', 'degraded', 'blocked']);
+const FINAL_SUMMARY_TESTED_STATUSES = new Set(['implemented', 'passed', 'failed']);
+const FINAL_SUMMARY_DEGRADING_EXIT_CODES = new Set([11, 12, 13, 14, 15]);
+const FINAL_SUMMARY_RUNNER_RESULT = 'reports/argus-runner-result.json';
+const FINAL_SUMMARY_COVERAGE_RESULT = 'solution/coverage-result.json';
+
+// Without a fragment (`engagement report-facts`) the runner outcome is read whenever the runner
+// result exists. With a fragment, a non-null runner requires that file, and a null runner stays
+// null so the merge can enforce the Mode B unfunded-automation rule against derived counts.
+export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
+  const dispatchable = state.dispatchableAgents ?? manifest.selectedAgents;
+  const ledger = readMergedCanonical(manifest, state, 'solution/bug-ledger.json', 'bug-ledger');
+  if (!ledger && dispatchable.includes('minos')) throw new Error('final summary counts require the canonical bug ledger while minos is dispatchable');
+  const evidence = readMergedCanonical(manifest, state, 'solution/evidence-reference.json', 'evidence-reference');
+  const automationStatus = readMergedCanonical(manifest, state, 'solution/automation-status.json', 'automation-status');
+  const coverageResult = readMergedCanonical(manifest, state, FINAL_SUMMARY_COVERAGE_RESULT, 'coverage-result');
+  if (!coverageResult) throw new Error(`final summary coverage requires the merged canonical ${FINAL_SUMMARY_COVERAGE_RESULT}`);
+  const review = readAutomationReview(manifest, state);
+  const automationReview = automationReviewStatus(manifest, state);
+
+  const bugs = ledger?.bugs ?? [];
+  const idsWith = (status) => bugs.filter((bug) => bug.status === status).map((bug) => bug.id).sort();
+  const confirmed = idsWith('confirmed');
+  const suspected = idsWith('suspected').length;
+  const tested = (automationStatus?.tests ?? []).filter((test) => FINAL_SUMMARY_TESTED_STATUSES.has(test.status));
+  const regressed = new Set(tested.flatMap((test) => test.coversBugIds));
+  const counts = {
+    bugs: {
+      confirmed: confirmed.length,
+      suspected,
+      needsOracle: idsWith('needs-oracle').length,
+      duplicate: idsWith('duplicate').length,
+      rejected: idsWith('rejected').length,
+      headline: confirmed.length + suspected,
+    },
+    regression: {
+      wired: confirmed.filter((id) => regressed.has(id)).length,
+      uncovered: confirmed.filter((id) => !regressed.has(id)),
+    },
+    automated: tested.length,
+    evidence: evidence?.references.length ?? 0,
+  };
+  const unproven = bugs.filter((bug) => bug.status === 'suspected' || bug.status === 'needs-oracle')
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+    .map((bug) => {
+      if (!bug.missingProof) throw new Error(`${bug.id} is ${bug.status} without missingProof`);
+      return { id: bug.id, title: bug.title, severity: bug.severity, status: bug.status, missing: [...bug.missingProof.elements], detail: bug.missingProof.detail };
+    });
+
+  const runnerResult = (fragment ? fragment.runner !== null : Boolean(lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))))
+    ? readRunnerResult(manifest) : null;
+  const runner = runnerResult && {
+    mode: runnerResult.mode,
+    status: runnerResult.status,
+    exitCode: runnerResult.exitCode,
+    resultPath: FINAL_SUMMARY_RUNNER_RESULT,
+    categories: Object.fromEntries(['product', 'automation', 'infrastructure', 'skip', 'policy'].map((category) => [category, runnerResult.categories[category]])),
+    deliveryGate: runnerResult.deliveryGate,
+  };
+
+  const overall = coverageResult.overall;
+  const coverage = {
+    resultPath: FINAL_SUMMARY_COVERAGE_RESULT,
+    discoveryCompleteness: coverageResult.discovery.completeness,
+    executionCoverage: overall.executionCoverage,
+    assertionQuality: overall.assertionQuality,
+    evidenceQuality: overall.evidenceQuality,
+    automatedExecution: overall.automatedExecution,
+    scopedOutcomes: coverageResult.scopedOutcomes.length,
+    criticalUnexecuted: [...coverageResult.criticalUnexecuted],
+    ...(overall.caseDepth ? { caseDepth: structuredClone(overall.caseDepth) } : {}),
+  };
+  const sourceSchemas = [ledger, evidence, automationStatus, runnerResult, coverageResult, review?.document]
+    .filter(Boolean).map((document) => document.$schema);
+
+  const ceilings = new Map();
+  if (['blocked', 'stale', 'absent'].includes(automationReview.status)) ceilings.set(`automation-review-${automationReview.status}`, 'blocked');
+  if (runner && counts.regression.uncovered.length > 0) ceilings.set('confirmed-bug-without-regression', 'blocked');
+  if (coverage.criticalUnexecuted.length > 0) ceilings.set('critical-surface-unexecuted', 'degraded');
+  // Required-case depth is unproven unless the coverage result records it complete: a missing
+  // depth, an unplanned surface, or any gap counts, so a summary cannot overstate coverage.
+  const depth = coverage.caseDepth;
+  if (!depth || depth.coverage === null || depth.gaps.length > 0 || depth.unplannedSurfaces.length > 0) ceilings.set('case-depth-gaps', 'degraded');
+  if (runner && runner.deliveryGate !== true) ceilings.set('runner-not-delivery-gate', 'degraded');
+  if (runner && FINAL_SUMMARY_DEGRADING_EXIT_CODES.has(runner.exitCode)) ceilings.set(`runner-exit-${runner.exitCode}`, 'degraded');
+  for (const reason of skippedPhaseStatusReasons(state)) ceilings.set(reason, 'degraded');
+  const statusReasons = [...ceilings.keys()].sort();
+  const statusCeiling = [...ceilings.values()].reduce(worseFinalSummaryStatus, 'completed');
+  return { counts, unproven, automationReview, runner, coverage, sourceSchemas, statusCeiling, statusReasons };
+}
+
+// The merge overwrites every derived field of Kleio's fragment and never raises its status.
+function applyFinalSummaryFacts(manifest, state, document) {
+  const facts = deriveFinalSummaryFacts(manifest, state, document);
+  if (document.runner === null && (manifest.mode !== 'B' || facts.counts.automated !== 0)) throw new Error('runner=null is only valid for Mode B without automation');
+  for (const field of FINAL_SUMMARY_DERIVED_FIELDS) document[field] = facts[field];
+  document.status = worseFinalSummaryStatus(document.status, facts.statusCeiling);
+  const errors = validateCanonicalDocument('final-summary', document);
+  if (errors.length) throw new Error(`derived final summary is invalid: ${errors.join('; ')}`);
+}
+
+function worseFinalSummaryStatus(left, right) {
+  return FINAL_SUMMARY_STATUS_ORDER.indexOf(left) >= FINAL_SUMMARY_STATUS_ORDER.indexOf(right) ? left : right;
+}
+
+// A canonical input counts only once merged, and only while its file still matches the digest
+// its merge record published.
+function readMergedCanonical(manifest, state, path, schema) {
+  const canonical = requireCanonical(manifest, path);
+  if (canonical.schema !== schema) throw new Error(`${path} is not declared as the ${schema} canonical`);
+  const merge = state.merges?.[canonical.path];
+  if (!merge) return null;
+  const content = readManagedFile(engagementPath(manifest, canonical.path), canonical.path);
+  if (sha256(content) !== merge.sha256) throw new Error(`${canonical.path} does not match its merge record`);
+  const { errors, document } = validateCanonicalFragment(schema, content);
+  if (errors.length) throw new Error(`${canonical.path} is invalid: ${errors.join('; ')}`);
+  if (document.engagementId !== manifest.engagementId) throw new Error(`${canonical.path} engagementId does not match ${manifest.engagementId}`);
+  return document;
+}
+
+function readRunnerResult(manifest) {
+  const path = engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT);
+  if (!lstatEntry(path)) throw new Error(`final summary runner outcome requires ${FINAL_SUMMARY_RUNNER_RESULT}`);
+  const { errors, document } = validateCanonicalFragment('runner-result', readManagedFile(path, FINAL_SUMMARY_RUNNER_RESULT));
+  if (errors.length) throw new Error(`${FINAL_SUMMARY_RUNNER_RESULT} is invalid: ${errors.join('; ')}`);
+  return document;
 }
 
 export function allocateId(manifest, lane, token, kind, identity) {
@@ -2031,6 +2151,7 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
   if (['help', '--help', '-h', 'list', 'path', 'inventory', 'verify'].includes(primary)) return allow('packaged read-only command');
   if (primary === 'engagement') {
     if (operation === 'init') return deny('engagement init cannot run inside an active engagement');
+    if (operation === 'report-facts') return classifyReportFactsCommand(tokens.slice(index + 3), manifest, manifestPath, cwd, allow, deny);
     if (['validate', 'allocate', 'start-attempt', 'status', 'claim', 'release', 'fragment', 'merge', 'id', 'checkpoint', 'heartbeat', 'barrier', 'cleanup', 'resolve-gates'].includes(operation)) {
       const requestedManifest = optionValue(tokens, '--manifest');
       const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
@@ -2134,6 +2255,29 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     return classifyPackagedQuery(primary, operation, tokens.slice(index + 3), allow, deny);
   }
   return deny('unknown packaged command operation');
+}
+
+// `engagement report-facts` only reads the merge-verified canonical inputs. It must name the
+// active manifest and accepts only --manifest and --output; stdout is read-only, and a file
+// output goes through the ordinary write-root and canonical-owner checks.
+function classifyReportFactsCommand(args, manifest, manifestPath, cwd, allow, deny) {
+  for (let cursor = 0; cursor < args.length; cursor += 2) {
+    const value = args[cursor + 1];
+    if (!['--manifest', '--output'].includes(args[cursor]) || !value || value.startsWith('--')) {
+      return deny('engagement report-facts accepts only --manifest <path> and --output <json|->');
+    }
+  }
+  const requestedManifest = optionValue(args, '--manifest');
+  const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
+  try {
+    if (!requestedManifest || resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
+      return deny('engagement report-facts must bind to the active engagement manifest');
+    }
+  } catch {
+    return deny('engagement report-facts manifest cannot be resolved safely');
+  }
+  const output = optionValue(args, '--output') ?? '-';
+  return output === '-' ? allow('engagement report-facts to stdout is read-only') : { paths: [output] };
 }
 
 // Automation review commands only read the engagement and the test corpus. They must name the

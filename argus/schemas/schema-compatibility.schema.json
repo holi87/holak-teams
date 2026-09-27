@@ -8,7 +8,7 @@
     "$schema": { "type": "string" }, "schemaVersion": { "const": 4 }, "current": { "const": 1 }, "readCompatible": { "const": [1] }, "migration": { "type": "string", "minLength": 1 },
     "contracts": {
       "type": "object", "additionalProperties": false,
-      "required": ["lane-plan", "evidence-reference", "automation-status", "preflight-report", "bug-ledger", "coverage-observations", "coverage-result"],
+      "required": ["lane-plan", "evidence-reference", "automation-status", "preflight-report", "bug-ledger", "coverage-observations", "coverage-result", "final-summary"],
       "properties": {
         "lane-plan": { "$ref": "#/$defs/override" },
         "evidence-reference": { "$ref": "#/$defs/override" },
@@ -16,7 +16,8 @@
         "preflight-report": { "$ref": "#/$defs/override" },
         "bug-ledger": { "$ref": "#/$defs/override" },
         "coverage-observations": { "$ref": "#/$defs/override" },
-        "coverage-result": { "$ref": "#/$defs/override" }
+        "coverage-result": { "$ref": "#/$defs/override" },
+        "final-summary": { "$ref": "#/$defs/override" }
       }
     }
   },
