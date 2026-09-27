@@ -101,7 +101,8 @@ outcomes can never appear in a worker envelope. Two retries carry no checkpoint.
 pre-spawn `model-unavailable` retry uses the prior-decision/allocation availability binding
 because no worker thread began. A controller-observed outcome (or an uncheckpointed
 turn-limit) uses an outcome binding to the same prior decision and allocation, which also
-records the accountable artifacts the controller observed.
+records the lane's outputs observed on disk: accountable artifacts, filed candidates,
+sole-owned artifact files, and submitted fragments.
 
 Model-control records are likewise runtime controls, not mergeable solution fragments.
 `argus/model-decision@3` is the immutable selected/blocked route under
