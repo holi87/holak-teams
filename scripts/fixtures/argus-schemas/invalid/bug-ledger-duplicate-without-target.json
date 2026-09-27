@@ -8,10 +8,10 @@
       "origin": [
         "ATA-001"
       ],
-      "title": "First defect",
+      "title": "Order endpoint returns another account's order",
       "severity": "Major",
       "priority": "P2",
-      "lane": "minos",
+      "lane": "atalanta",
       "oracleId": "ORC-API-001",
       "status": "confirmed",
       "wired": true,
@@ -49,48 +49,37 @@
       }
     },
     {
-      "id": "BUG-0001",
+      "id": "BUG-0004",
       "origin": [
-        "PRO-002"
+        "TAL-004"
       ],
-      "title": "Different defect with a colliding identity",
-      "severity": "Minor",
-      "priority": "P3",
-      "lane": "minos",
-      "oracleId": "ORC-API-002",
-      "status": "confirmed",
+      "title": "Conformance test reads another account's order",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "talos",
+      "oracleId": "ORC-API-001",
+      "status": "duplicate",
       "wired": false,
       "testId": null,
       "evidenceIds": [
         "EVD-0002"
       ],
-      "verification": {
-        "build": "synthetic-fixture",
-        "disputedOracle": false,
-        "oracle": {
-          "kind": "requirement",
-          "sourceRef": "Synthetic requirement 1",
-          "evidenceId": "EVD-0001",
-          "applicability": "Synthetic authorized test accounts",
-          "exceptions": []
-        },
-        "reproduction": {
-          "initialState": "Fresh synthetic fixture",
-          "steps": [
-            "Execute the synthetic reproduction request."
-          ],
-          "attempts": 2,
-          "occurrences": 2,
-          "evidenceIds": [
-            "EVD-0001"
-          ]
-        },
-        "independent": {
-          "status": "not-required",
-          "executor": null,
-          "evidenceIds": [],
-          "reason": "Synthetic example; no independent runtime executor was run."
-        }
+      "merge": {
+        "rationale": "The conformance failure is the same missing ownership check as BUG-0001.",
+        "causalEvidence": [
+          {
+            "ref": "TAL-004",
+            "evidenceIds": [
+              "EVD-0002"
+            ]
+          },
+          {
+            "ref": "BUG-0001",
+            "evidenceIds": [
+              "EVD-0001"
+            ]
+          }
+        ]
       }
     }
   ]

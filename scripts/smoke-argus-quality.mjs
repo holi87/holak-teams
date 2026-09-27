@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { validateCanonicalDocument, renderFinalSummary } from '../argus/runtime/contracts.mjs';
 import { calculateCoverage, validateCasePlan } from '../argus/runtime/coverage.mjs';
-import { reconcileFindings, reconcileCaseEvidence } from '../argus/runtime/finding-quality.mjs';
+import { ledgerEvidenceIds, quarantineFindings, reconcileFindings, reconcileCaseEvidence } from '../argus/runtime/finding-quality.mjs';
 const read = path => JSON.parse(readFileSync(new URL(path, import.meta.url)));
 const copy = value => structuredClone(value);
 const valid = read('./fixtures/argus-schemas/valid/bug-ledger.json');
@@ -25,15 +25,64 @@ rejects(bug => { bug.verification.reproduction.attempts = 10; }, needsIndependen
 const rare = copy(valid); Object.assign(rare.bugs[0].verification.reproduction, { attempts: 5, occurrences: 1 }); rare.bugs[0].verification.independent = copy(unavailable);
 assert.deepEqual(validateCanonicalDocument('bug-ledger', rare), []);
 rejects(bug => { Object.assign(bug.verification.reproduction, { attempts: 1, occurrences: 1 }); }, needsIndependence);
+const semantic = (document, reason) => { const errors = validateCanonicalDocument('bug-ledger', document); assert(errors.some(error => reason.test(error)), errors.join('; ') || 'document unexpectedly valid'); };
+const row = (document, id) => document.bugs.find(bug => bug.id === id);
+// bug-ledger@2 status blocks: exclusivity rules the schema subset cannot express are semantic.
+rejects(bug => { bug.verification.oracle.kind = 'justified-invariant'; }, /invariantClass/);
+const invariant = copy(valid); Object.assign(invariant.bugs[0].verification.oracle, { kind: 'justified-invariant', invariantClass: 'server-error' });
+assert.deepEqual(validateCanonicalDocument('bug-ledger', invariant), []);
+rejects(bug => { bug.verification.oracle.invariantClass = 'crash'; }, /invariantClass requires a justified-invariant oracle/);
+rejects(bug => { bug.quarantine = { reasons: ['stale capture'] }; }, /quarantine is only valid for quarantined status/);
+rejects(bug => { bug.repair = { round: 1, missing: ['reproduction'], assignedTo: 'atalanta' }; }, /repair is not valid on a confirmed entry/);
+const chain = copy(valid); chain.bugs.push({ ...copy(row(valid, 'BUG-0004')), id: 'BUG-0008', origin: ['TAL-008'], duplicateOf: 'BUG-0004', merge: { rationale: 'Same failure as the duplicate row.', causalEvidence: [{ ref: 'TAL-008', evidenceIds: ['EVD-0003'] }, { ref: 'BUG-0004', evidenceIds: ['EVD-0002'] }] } });
+semantic(chain, /BUG-0008: duplicateOf target BUG-0004 is duplicate/);
+const sharedOrigin = copy(valid); row(sharedOrigin, 'BUG-0003').origin = ['ATA-001'];
+semantic(sharedOrigin, /BUG-0003: origin ATA-001 is already assigned to BUG-0001/);
+const missingOrigin = copy(valid); row(missingOrigin, 'BUG-0002').merge.causalEvidence[1].ref = 'ORI-009';
+semantic(missingOrigin, /BUG-0002: merge causalEvidence must cite each origin exactly once/);
+const unmergedDuplicate = copy(valid); delete row(unmergedDuplicate, 'BUG-0004').merge;
+assert(validateCanonicalDocument('bug-ledger', unmergedDuplicate).length, 'a duplicate without a causal merge passed');
+const unproven = copy(valid); row(unproven, 'BUG-0005').rejection.evidenceIds = [];
+semantic(unproven, /BUG-0005: rejection requires evidence unless the reason is out-of-scope/);
+row(unproven, 'BUG-0005').rejection.reason = 'out-of-scope';
+assert.deepEqual(validateCanonicalDocument('bug-ledger', unproven), []);
+const oracleGap = copy(valid); row(oracleGap, 'BUG-0003').missingProof.elements = ['evidence'];
+semantic(oracleGap, /BUG-0003: needs-oracle requires an oracle gap in missingProof/);
+const wiredSuspect = copy(valid); Object.assign(row(wiredSuspect, 'BUG-0002'), { wired: true, testId: 'REG-0002' });
+semantic(wiredSuspect, /BUG-0002: only a confirmed entry can be wired/);
+
+// Reconciliation checks every row's evidence; failures are per bug, never a global abort.
 const bytes = Buffer.from('synthetic requirement and reproduction');
-const registry = { engagementId: valid.engagementId, references: [{ id: 'EVD-0001', source: 'reports/proof.txt', sha256: createHash('sha256').update(bytes).digest('hex'), capturedAt: new Date().toISOString(), collectedBy: 'minos' }] };
-assert.deepEqual(reconcileFindings(valid, registry, () => bytes), []);
-assert(reconcileFindings(valid, { ...registry, engagementId: 'foreign' }, () => bytes).length);
-assert(reconcileFindings(valid, { ...registry, references: [] }, () => bytes).length);
-assert(reconcileFindings(valid, registry, () => Buffer.from('modified')).length);
-assert(reconcileFindings(valid, registry, () => { throw new Error('missing'); }).length);
+const digest = createHash('sha256').update(bytes).digest('hex');
+const reference = (id, collectedBy) => ({ id, source: `reports/${id}.txt`, sha256: digest, capturedAt: new Date().toISOString(), collectedBy });
+const registry = { engagementId: valid.engagementId, references: [reference('EVD-0001', 'atalanta'), reference('EVD-0002', 'talos')] };
+assert.deepEqual(reconcileFindings(valid, registry, () => bytes), { errors: [], byBug: {} });
+assert.deepEqual(reconcileFindings(valid, { ...registry, engagementId: 'foreign' }, () => bytes), { errors: ['evidence engagementId does not match ledger'], byBug: {} });
+const unresolved = reconcileFindings(valid, { ...registry, references: [] }, () => bytes);
+assert.deepEqual(unresolved.errors, []);
+assert.deepEqual(Object.keys(unresolved.byBug).sort(), valid.bugs.filter(bug => bug.evidenceIds.length || bug.verification).map(bug => bug.id).sort());
+assert(reconcileFindings(valid, registry, () => Buffer.from('modified')).byBug['BUG-0001'].some(error => /evidence digest drift EVD-0001/.test(error)));
+assert(reconcileFindings(valid, registry, () => { throw new Error('missing'); }).byBug['BUG-0005'].some(error => /missing or unsafe evidence EVD-0002/.test(error)));
+const oneCollector = { ...registry, references: [reference('EVD-0001', 'atalanta'), reference('EVD-0002', 'atalanta')] };
+assert.deepEqual(reconcileFindings(valid, oneCollector, () => bytes).byBug, { 'BUG-0002': ['BUG-0002: merge must cite evidence collected by each merged lane'] });
 const independent = copy(valid); independent.bugs[0].verification.independent = { status: 'reproduced', executor: 'atalanta', evidenceIds: ['EVD-0001'], reason: 'Fresh independent reproduction' };
-assert(reconcileFindings(independent, registry, () => bytes).length);
+assert(reconcileFindings(independent, registry, () => bytes).byBug['BUG-0001'].some(error => /independent reproduction reuses original evidence/.test(error)));
+// An independent executor must not be the collector of the evidence it claims to reproduce.
+const selfCheck = copy(valid); selfCheck.bugs[0].verification.independent = { status: 'reproduced', executor: 'ariadne', evidenceIds: ['EVD-0003'], reason: 'Fresh-state reproduction from a second lane' };
+const ariadneRegistry = { ...registry, references: [reference('EVD-0001', 'ariadne'), reference('EVD-0002', 'talos'), reference('EVD-0003', 'ariadne')] };
+assert.deepEqual(reconcileFindings(selfCheck, ariadneRegistry, () => bytes).byBug['BUG-0001'], ['BUG-0001: independent executor collected the original reproduction evidence']);
+const trueIndependence = { ...registry, references: [...registry.references, reference('EVD-0003', 'ariadne')] };
+assert.deepEqual(reconcileFindings(selfCheck, trueIndependence, () => bytes), { errors: [], byBug: {} });
+
+// A quarantined row keeps its submitted blocks, never counts as confirmed, and stays valid.
+const drifted = copy(valid);
+const failures = reconcileFindings(drifted, registry, source => (source === 'reports/EVD-0001.txt' ? Buffer.from('replaced') : bytes)).byBug;
+assert.deepEqual(quarantineFindings(drifted, failures), ['BUG-0001', 'BUG-0002', 'BUG-0004', 'BUG-0007']);
+assert.deepEqual(validateCanonicalDocument('bug-ledger', drifted), []);
+assert(row(drifted, 'BUG-0001').status === 'quarantined' && row(drifted, 'BUG-0001').quarantine.reasons.includes('evidence digest drift EVD-0001'));
+assert(row(drifted, 'BUG-0007').quarantine.reasons.length === 2, 'a re-quarantined row lost its earlier reason');
+assert(!drifted.bugs.some(bug => bug.status === 'confirmed'), 'a drifted confirmed row still counts as confirmed');
+assert.deepEqual(ledgerEvidenceIds(row(valid, 'BUG-0004')), ['EVD-0001', 'EVD-0002']);
 const inventory = read('./fixtures/argus-coverage/surface-inventory.json');
 const observations = read('./fixtures/argus-coverage/coverage-observations.json');
 const surface = inventory.items.find(item => item.accessibility === 'testable');
@@ -47,7 +96,9 @@ assert.equal(depth.coverage, 0.5); assert.equal(depth.gaps[0].obligationId, 'CAS
 obs.cases[0].controlEvidenceIds = []; assert.equal(calculateCoverage(inventory, observations).overall.caseDepth.coverage, 0);
 obs.cases[0].controlEvidenceIds = ['EVD-0001']; assert(validateCasePlan(inventory, observations).length);
 obs.cases[0].controlEvidenceIds = ['EVD-0002'];
-assert(reconcileCaseEvidence(inventory, observations, { ...registry, engagementId: inventory.engagementId }, () => bytes).length);
+const caseRegistry = { ...registry, engagementId: inventory.engagementId };
+assert.deepEqual(reconcileCaseEvidence(inventory, observations, caseRegistry, () => bytes), []);
+assert(reconcileCaseEvidence(inventory, observations, { ...caseRegistry, references: [caseRegistry.references[0]] }, () => bytes).length);
 obs.cases.push({ ...obs.cases[0], obligationId: 'CASE-OTHER', outcome: 'failed' });
 assert.equal(calculateCoverage(inventory, observations).overall.caseDepth.coverage, 1);
 obs.cases[1].oracleId = 'invented'; assert(validateCasePlan(inventory, observations).length);
@@ -56,4 +107,4 @@ assert(renderFinalSummary(summary).includes('no framework runner was executed'))
 const plan = read('../argus/orchestration-plan.json');
 assert(!plan.roles.find(role => role.slug === 'perseus').gates.includes('browser-runtime'));
 assert(!plan.roles.find(role => role.slug === 'daidalos').modes.includes('B'));
-console.log('PASS  Finding proof, conditional oracles, intermittent and single-attempt independence, dedup evidence, case depth, and unfunded runner regressions');
+console.log('PASS  Finding proof, conditional oracles, intermittent and single-attempt independence, ledger@2 status blocks, causal merges, per-bug quarantine, dedup evidence, case depth, and unfunded runner regressions');

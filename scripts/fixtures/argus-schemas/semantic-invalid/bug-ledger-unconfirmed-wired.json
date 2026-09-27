@@ -1,0 +1,50 @@
+{
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
+  "engagementId": "fixture-1",
+  "bugs": [
+    {
+      "id": "BUG-0002",
+      "origin": [
+        "ATA-002",
+        "TAL-002"
+      ],
+      "title": "Cart total accepts a negative quantity",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-002",
+      "status": "suspected",
+      "wired": true,
+      "testId": "REG-0002",
+      "evidenceIds": [
+        "EVD-0001",
+        "EVD-0002"
+      ],
+      "merge": {
+        "rationale": "Both filings trace the same unvalidated quantity field in the cart handler.",
+        "causalEvidence": [
+          {
+            "ref": "ATA-002",
+            "evidenceIds": [
+              "EVD-0001"
+            ]
+          },
+          {
+            "ref": "TAL-002",
+            "evidenceIds": [
+              "EVD-0002"
+            ]
+          }
+        ]
+      },
+      "missingProof": {
+        "elements": [
+          "independent-reproduction"
+        ],
+        "detail": "An independent reproduction from fresh synthetic accounts would confirm it.",
+        "owner": "ariadne"
+      }
+    }
+  ]
+}

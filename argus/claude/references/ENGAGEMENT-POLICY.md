@@ -87,6 +87,14 @@ fragments by stable filename, acquires the single merge lock, writes a temporary
 and atomically renames it over the canonical path. Repeated merges of the same fragments
 produce byte-identical output.
 
+A canonical entry may declare `merge`: `concatenate` (the default) or `latest-revision`.
+Only markdown artifacts may use `latest-revision`; Minos's `solution/BUG-LEDGER.md` and
+`solution/WHITEBOX-LEADS.md` do. Their owner alone submits fragments, and any other lane is
+refused with `<path> revisions are written only by <owner>`. Each new fragment id receives
+the next revision number, and replaying an existing fragment returns its original record.
+The merge still digest-checks every revision but publishes only the highest one; the merge
+record adds `revision` and `supersededFragments`.
+
 ## Unattested launch (no trust store)
 
 `argus-launch claude ... --unattested` and `argus-assets preflight ... --unattested-launch`
@@ -361,7 +369,9 @@ A proof phase whose projected participants include Minos cannot advance until Mi
 merged `solution/bug-ledger.json` during that phase. Each bug-ledger merge records
 `ledgerSnapshots[<current phase>]`: the merged fragment ids, the sorted bug ids per status
 (`confirmed`, `suspected`, `needsOracle`, `bounced`, `quarantined`), `newConfirmed` (the
-confirmed ids that no earlier phase's snapshot had confirmed), and `mergedAt`.
+confirmed ids that no earlier phase's snapshot had confirmed), and `mergedAt`. The snapshot
+is taken from the merged ledger after reconciliation, so a row the merge quarantined for an
+evidence failure counts as `quarantined`, never as confirmed.
 
 `engagement barrier skip --lane odysseus --reason converged|controller-budget` ends the
 deep hunt early. Only Odysseus may skip, only from the untouched start (no arrivals) of a
@@ -472,7 +482,7 @@ counts as a non-dispatched predecessor, and its unmet gates remain a named resid
 ## Canonical machine contracts
 
 The installed `schemas/` directory defines the versioned, machine-readable contracts:
-`argus/bug-ledger@1`, `argus/lane-plan@2`, `argus/evidence-reference@2`,
+`argus/bug-ledger@2`, `argus/lane-plan@2`, `argus/evidence-reference@2`,
 `argus/automation-status@2`, `argus/runner-result@1`, and the inventory, coverage, and
 final-summary contracts. Canonical solution JSON documents are single-owner
 `json-document` artifacts; the runner result is validated at its runner-owned report path.
@@ -490,9 +500,12 @@ summary is traceable to the machine contract. The lane-plan `lanes`, evidence-re
 `lane`, `id`, and `testId`; the final summary lists its source schemas and counts.
 
 The per-contract version policy is `policies/schema-compatibility.json`. Unchanged
-contracts remain v1-only. The three collection contracts accept only current v2. There is
-no guessed migration from a retired shape. A future version must
-retain the old schema until it ships an explicit deterministic migration and fixtures. Maintainers run
+contracts remain v1-only. The three collection contracts and the bug ledger accept only
+current v2. Retired shapes, such as `argus/bug-ledger@1`, fail closed; there is no guessed
+or in-place migration, and a 4.x engagement finishes on its 4.9.x runtime. A future version
+moves its expected-version row, compatibility policy, packaged consumers, and fixtures in one
+change. The bug-ledger merge quarantines a row whose cited evidence fails reconciliation
+instead of failing; see `CANONICAL-CONTRACTS.md` "Bug ledger v2 in 5.0". Maintainers run
 `argus-assets schema list` and `argus-assets schema validate --kind <contract> --input
 <file>`; CI exercises both valid and invalid fixtures for every canonical contract.
 

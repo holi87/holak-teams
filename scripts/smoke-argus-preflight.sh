@@ -484,7 +484,7 @@ for scenario in full partial; do
       if jq -e --arg phase "$phase" '.phasePlan[] | select(.id == $phase) | .kind == "proof"' "$manifest" >/dev/null &&
         "$CLI" engagement barrier status --manifest "$manifest" --phase "$phase" | jq -e '.participants | index("minos")' >/dev/null; then
         if [ ! -f "$WORK/partial-ledger.json" ]; then
-          jq -n --arg id "$(jq -r .engagementId "$manifest")" '{"$schema":"argus/bug-ledger@1",schemaVersion:1,engagementId:$id,bugs:[]}' >"$WORK/partial-ledger.json"
+          jq -n --arg id "$(jq -r .engagementId "$manifest")" '{"$schema":"argus/bug-ledger@2",schemaVersion:2,engagementId:$id,bugs:[]}' >"$WORK/partial-ledger.json"
           "$CLI" engagement fragment --manifest "$manifest" --lane minos --token "$(tr -d '\n' <"$WORK/partial-tokens/minos")" \
             --canonical solution/bug-ledger.json --id partial-ledger --input "$WORK/partial-ledger.json" >/dev/null
         fi

@@ -721,7 +721,7 @@ function runToSecondDeepHunt(name) {
   arriveBarrier(manifest, 'hermes', tokens.hermes, 'deep-hunt-1');
   advanceBarrier(manifest, 'odysseus', tokens.controller);
   arriveBarrier(manifest, 'minos', tokens.minos, 'deep-proof-1');
-  // bug-ledger@1 is one complete document, so the next proof phase re-merges it.
+  // bug-ledger@2 is one complete document, so the next proof phase re-merges it.
   mergeEmptyLedger(fixture, tokens.minos);
   const state = getEngagementStatus(manifest);
   assert(state.ledgerSnapshots['deep-proof-1']?.newConfirmed.length === 0 &&
@@ -736,7 +736,7 @@ function runToSecondDeepHunt(name) {
 // Writes the empty ledger fragment when an id is given, then merges the canonical ledger.
 function mergeEmptyLedger(fixture, token, fragmentId) {
   if (fragmentId) {
-    const ledger = { $schema: 'argus/bug-ledger@1', schemaVersion: 1, engagementId: fixture.manifest.engagementId, bugs: [] };
+    const ledger = { $schema: 'argus/bug-ledger@2', schemaVersion: 2, engagementId: fixture.manifest.engagementId, bugs: [] };
     writeFragment(fixture.manifest, 'minos', token, 'solution/bug-ledger.json', fragmentId, `${JSON.stringify(ledger)}\n`);
   }
   mergeCanonical(fixture.manifest, 'minos', token, 'solution/bug-ledger.json');
