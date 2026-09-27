@@ -45,9 +45,15 @@ export function normalizeGrants(grants = DEFAULT_GRANTS) {
   return [...new Set(grants)].sort();
 }
 
+// A representative bounded request for each high-risk action, used to prove a grant is usable.
+const PROBE_FIELDS = Object.freeze({ account: 'synthetic', namespace: 'synthetic', mutation: 'synthetic:change', rate: 1, concurrency: 1,
+  totalRequests: 1, duration: 1, binaryReviewed: true });
+
 // The manifest for one hunt: bound to the engagement ID the adapter launches with and to the
 // launch target, valid from `now` for the mode budget plus the grace period. Throws unless it
-// satisfies the packaged schema and validator and allows the launcher's boundary read.
+// satisfies the packaged schema and validator, allows the launcher's boundary read, and allows
+// every granted action at its start (a target the evaluator treats as production-like, such as
+// one it does not recognize as loopback, fails here instead of yielding a read-only hunt).
 export function buildRunAuthorization({ engagementId, target, seconds, grants = DEFAULT_GRANTS, now = new Date() }) {
   const targetIdentity = new URL(target).toString();
   const manifest = createDefaultAuthorization({
@@ -73,6 +79,11 @@ export function buildRunAuthorization({ engagementId, target, seconds, grants = 
   if (errors.length) throw new Error(`evaluation authorization manifest is invalid: ${errors.join('; ')}`);
   const boundary = evaluateAuthorization({ manifest, request: { lane: 'odysseus', action: 'read', target: targetIdentity, sourceTrust: 'manifest' }, now: startsAt });
   if (boundary.decision !== 'allow') throw new Error(`evaluation authorization manifest denies the boundary read (${boundary.ruleId})`);
+  for (const action of normalizeGrants(grants)) {
+    const decision = evaluateAuthorization({ manifest, now: startsAt,
+      request: { lane: 'odysseus', action, target: targetIdentity, sourceTrust: 'manifest', ...PROBE_FIELDS } });
+    if (decision.decision !== 'allow') throw new Error(`evaluation authorization manifest denies the granted ${action} on ${targetIdentity} (${decision.ruleId}: ${decision.reason})`);
+  }
   return manifest;
 }
 

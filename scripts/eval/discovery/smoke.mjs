@@ -16,7 +16,7 @@ const { createHash } = await import('node:crypto');
 const { normalizeConfig } = await import('./lib/config.mjs');
 const { pathForms, scanArtifacts } = await import('./lib/contamination.mjs');
 const { formatSchemaErrors, validateArgus, validateEval } = await import('./lib/schemas.mjs');
-const { manifestSha256 } = await import('./lib/authorization.mjs');
+const { buildRunAuthorization, manifestSha256 } = await import('./lib/authorization.mjs');
 const { evaluateAuthorization } = await import('../../../argus/runtime/authorization.mjs');
 
 const RUN = fileURLToPath(new URL('./run.mjs', import.meta.url));
@@ -181,6 +181,19 @@ try {
     assert.equal(scanArtifacts(root, { corpusFileNames: ['tenant-authz.mjs'] }).status, 'clean', 'node_modules is not scanned');
     assert.deepEqual(pathForms('/definitely/not/private'), ['/definitely/not/private']);
     console.log('PASS  contamination scan: canary, path-bounded evaluator paths, artifact-root exemption, node_modules skipped');
+  }
+
+  // The manifest builder fails closed: every grant must be usable at the start of the hunt.
+  {
+    const build = (target, grants) => buildRunAuthorization({ engagementId: 'eval-0123456789abcdef', target, seconds: 60, grants });
+    for (const target of ['http://127.0.0.1:5000', 'http://localhost:5000']) {
+      const manifest = build(target, ['binary-evidence', 'browser-state-change', 'chaos', 'database-write', 'destructive', 'load', 'persistent-mutation', 'security-active']);
+      assert(Object.values(manifest.actionGrants).every(grant => grant.enabled && !grant.productionOverride), `${target}: every configured grant is enabled without a production override`);
+    }
+    assert(Object.entries(build('http://127.0.0.1:5000', []).actionGrants).every(([, grant]) => !grant.enabled), 'no grants configured means none enabled');
+    assert.throws(() => build('http://[::1]:5000', ['load']), /denies the granted load on http:\/\/\[::1\]:5000\/ \(AUTH-PRODUCTION-READ-ONLY/,
+      'a target the evaluator does not recognize as loopback fails before any hunt instead of yielding a read-only one');
+    console.log('PASS  authorization manifest builder: every configured grant is usable at the start; an unrecognized loopback target fails closed');
   }
 
   // 1. Protocol: 2 variants x 2 pinned repeats x modes A and B x faulty and corrected = 16 runs.
