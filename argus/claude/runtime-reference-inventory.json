@@ -434,6 +434,7 @@
     {
       "value": "reports/test-inventory.tsv",
       "consumers": [
+        "asklepios",
         "skill:qa-framework-runner"
       ]
     },
@@ -802,6 +803,13 @@
       "value": "solution/perseus-ledger.json",
       "consumers": [
         "perseus"
+      ]
+    },
+    {
+      "value": "solution/quarantine.tsv",
+      "consumers": [
+        "asklepios",
+        "skill:qa-framework-runner"
       ]
     },
     {

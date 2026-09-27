@@ -190,8 +190,12 @@ The complete installed framework contract is
   `intermittent-unreproduced`, which is not RED evidence; after one, raise n once to the
   99% bound min(200, ceil(ln 0.01 / ln(1 - p))). Flaky-RED applies only to deterministic
   (n = 1) regressions.
-- Quarantine requires an owner, reason, evidence, expiry, and explicit runner outcome.
-  Expired or malformed entries fail closed, and a regression is never quarantined. Final
+- Quarantine requires an owner, reason, evidence, expiry, and explicit runner outcome: the
+  runtime quarantine tag (TypeScript `@quarantine`, Java `@Tag("quarantine")`, Python
+  `@pytest.mark.quarantine`) plus exactly one headerless `solution/quarantine.tsv` row that
+  only Atlas or Asklepios writes, five tab-separated fields: inventory `case_id`, owner
+  lane, reason token, ISO `expires_on`, and issue token (`#123` or `KEY-123`). Expired,
+  malformed, or unmatched entries fail closed, and a regression is never quarantined. Final
   verification uses the lockfile, clean install/state, and the same command documented for
   CI.
 
