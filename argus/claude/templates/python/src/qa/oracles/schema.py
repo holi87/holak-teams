@@ -71,10 +71,12 @@ def assert_schema(
     *,
     openapi_path: str | os.PathLike[str] | None = None,
 ) -> None:
-    """Validate a response against ``responses[status].content['application/json'].schema``.
+    """Validate a response against ``responses[key].content['application/json'].schema``.
 
-    An undocumented status is RED; a status documented without content requires an empty
-    body. Accepts an httpx or Playwright response or a plain ``{status, body}`` record.
+    The key is the exact status, else its ``NXX`` range, else ``default`` (OpenAPI 3.x);
+    failure messages name a range or default key. A status none of them covers is RED; a
+    status documented without content requires an empty body. Accepts an httpx or
+    Playwright response or a plain ``{status, body}`` record.
     """
     is_strict = _strictness(strict, reason)
     variant = _variant("response", is_strict, openapi_path)
@@ -82,10 +84,11 @@ def assert_schema(
     snapshot = read_result(response)
     responses = operation.operation.get("responses")
     responses = responses if isinstance(responses, dict) else {}
-    key = str(snapshot.status)
-    if key not in responses:
+    key = _response_key(responses, snapshot.status)
+    if key is None:
         documented = ", ".join(responses) or "none"
-        raise AssertionError(f"{operation_id}: HTTP {key} is not documented (documented: {documented}): {describe_result(snapshot)}")
+        raise AssertionError(f"{operation_id}: HTTP {snapshot.status} is not documented (documented: {documented}): {describe_result(snapshot)}")
+    where = f"HTTP {snapshot.status}" if key == str(snapshot.status) else f"HTTP {snapshot.status} via {key}"
     if operation.path.startswith("webhooks:"):
         pointer = ["webhooks", operation.path[len("webhooks:"):], operation.method, "responses", key]
     else:
@@ -96,27 +99,27 @@ def assert_schema(
     while isinstance(documented_response, dict) and isinstance(documented_response.get("$ref"), str):
         segments = ref_segments(documented_response["$ref"])
         if segments is None or hops > 10:
-            raise ValueError(f"{operation_id}: HTTP {key} response reference {documented_response['$ref']} cannot be resolved")
+            raise ValueError(f"{operation_id}: {where} response reference {documented_response['$ref']} cannot be resolved")
         pointer = segments
         documented_response = resolve_ref(variant.doc, documented_response["$ref"])
         hops += 1
     if not isinstance(documented_response, dict):
-        raise ValueError(f"{operation_id}: HTTP {key} response is not a response object")
+        raise ValueError(f"{operation_id}: {where} response is not a response object")
     content = documented_response.get("content")
     content = content if isinstance(content, dict) else {}
     if not content:
         if not snapshot.empty:
-            raise AssertionError(f"{operation_id}: HTTP {key} documents no content, but the body is not empty: {describe_result(snapshot)}")
+            raise AssertionError(f"{operation_id}: {where} documents no content, but the body is not empty: {describe_result(snapshot)}")
         return
     media_type = "application/json" if "application/json" in content else next((name for name in content if _JSON_MEDIA.match(name)), None)
     if media_type is None:
-        raise ValueError(f"{operation_id}: HTTP {key} documents no JSON media type ({', '.join(content)}); assert_schema validates JSON bodies only")
+        raise ValueError(f"{operation_id}: {where} documents no JSON media type ({', '.join(content)}); assert_schema validates JSON bodies only")
     media = content[media_type]
     if not isinstance(media, dict) or "schema" not in media:
         return
     ref = to_pointer([*pointer, "content", media_type, "schema"])
     validator = _compile(variant, f"op:{ref}", {"$ref": f"{DOC_ID}{ref}"})
-    _raise_on_violations(_violations(validator, snapshot.body, variant.doc), snapshot.body, f"{operation_id} HTTP {key} ({media_type})", is_strict, reason)
+    _raise_on_violations(_violations(validator, snapshot.body, variant.doc), snapshot.body, f"{operation_id} {where} ({media_type})", is_strict, reason)
 
 
 def assert_schema_ref(
@@ -165,6 +168,12 @@ def schema_violations(
     closed = is_strict and not declares_open_object({"$ref": ref}, variant.doc)
     root = {"allOf": [inner], "unevaluatedProperties": False} if closed else inner
     return _violations(_compile(variant, f"ref:{ref}", root), body, variant.doc)
+
+
+def _response_key(responses: dict[str, Any], status: int) -> str | None:
+    """The ``responses`` key documenting ``status``: exact, else ``1XX``..``5XX``, else ``default``."""
+    candidates = [str(status), f"{status // 100}XX" if 100 <= status <= 599 else None, "default"]
+    return next((key for key in candidates if key is not None and key in responses), None)
 
 
 def _strictness(strict: Any, reason: str | None) -> bool:

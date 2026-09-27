@@ -225,6 +225,21 @@ def test_operation_lookup_referenced_and_bodiless_responses() -> None:
         assert_schema({"status": 200, "body": {}}, "noSuchOperation")
 
 
+def test_operation_lookup_resolves_exact_code_then_range_then_default() -> None:
+    # 404 has its own key, so the 4XX schema's extra field is RED there.
+    assert_schema({"status": 404, "body": {"error": "no such gadget"}}, "getGadget")
+    with pytest.raises(AssertionError, match="fields"):
+        assert_schema({"status": 404, "body": {"error": "no such gadget", "fields": []}}, "getGadget")
+    # 422 falls under 4XX, which requires fields: the default Error body alone is RED.
+    assert_schema({"status": 422, "body": {"error": "invalid", "fields": ["name"]}}, "getGadget")
+    with pytest.raises(AssertionError, match="HTTP 422 via 4XX"):
+        assert_schema({"status": 422, "body": {"error": "invalid"}}, "getGadget")
+    # 500 falls under default.
+    assert_schema({"status": 500, "body": {"error": "boom"}}, "getGadget")
+    with pytest.raises(AssertionError, match="HTTP 500 via default"):
+        assert_schema({"status": 500, "body": {"error": "boom", "trace": "x"}}, "getGadget")
+
+
 def test_strict_false_with_reason_is_green_and_without_reason_raises() -> None:
     drifted = {"status": 200, "body": {"id": 1, "name": "widget", "legacyField": True}}
     assert_schema(drifted, "getWidget", strict=False, reason="legacyField is a recorded, accepted drift")

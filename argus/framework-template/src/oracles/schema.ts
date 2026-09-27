@@ -28,9 +28,11 @@ const MAX_LISTED_ERRORS = 20;
 let loaded: { path: string; stamp: string; variants: Map<string, Variant> } | undefined;
 
 /**
- * Validate a response against responses[status].content['application/json'].schema of the
- * operation. An undocumented status is RED; a status documented without content requires
- * an empty body. Accepts a Playwright response or a plain {status, body} record.
+ * Validate a response against responses[key].content['application/json'].schema of the
+ * operation, where the key is the exact status, else its NXX range, else `default` (OpenAPI
+ * 3.x); failure messages name a range or default key. A status none of them covers is RED;
+ * a status documented without content requires an empty body. Accepts a Playwright
+ * response or a plain {status, body} record.
  */
 export async function assertSchema(res: HttpResult, operationId: string, options: SchemaOptions = {}): Promise<void> {
   const strict = strictness(options);
@@ -39,35 +41,37 @@ export async function assertSchema(res: HttpResult, operationId: string, options
   const snapshot = await readResult(res);
   const responses = isObject(operation.responses) ? operation.responses : {};
   const documented = Object.keys(responses);
-  const key = String(snapshot.status);
+  const key = responseKey(responses, snapshot.status);
   expect(
-    Object.prototype.hasOwnProperty.call(responses, key),
-    `${operationId}: HTTP ${key} is not documented (documented: ${documented.join(', ') || 'none'}): ${describeResult(snapshot)}`,
+    key !== undefined,
+    `${operationId}: HTTP ${snapshot.status} is not documented (documented: ${documented.join(', ') || 'none'}): ${describeResult(snapshot)}`,
   ).toBe(true);
+  if (key === undefined) return;
+  const where = key === String(snapshot.status) ? `HTTP ${key}` : `HTTP ${snapshot.status} via ${key}`;
   let pointer = ['paths', path, method, 'responses', key];
   let response = responses[key];
   // A documented response may be a reference to components.responses (possibly chained).
   for (let hops = 0; isObject(response) && typeof response.$ref === 'string'; hops += 1) {
     const segments = refSegments(response.$ref);
-    if (!segments || hops > 10) throw new Error(`${operationId}: HTTP ${key} response reference ${response.$ref} cannot be resolved`);
+    if (!segments || hops > 10) throw new Error(`${operationId}: ${where} response reference ${response.$ref} cannot be resolved`);
     pointer = segments;
     response = resolveRef(variant.doc, response.$ref);
   }
-  if (!isObject(response)) throw new Error(`${operationId}: HTTP ${key} response is not a response object`);
+  if (!isObject(response)) throw new Error(`${operationId}: ${where} response is not a response object`);
   const content = isObject(response.content) ? response.content : {};
   const mediaTypes = Object.keys(content);
   const mediaType = mediaTypes.find((name) => name === 'application/json')
     ?? mediaTypes.find((name) => /^application\/([\w.+-]+\+)?json\s*(;.*)?$/i.test(name));
   if (mediaTypes.length === 0) {
-    expect(snapshot.empty, `${operationId}: HTTP ${key} documents no content, but the body is not empty: ${describeResult(snapshot)}`).toBe(true);
+    expect(snapshot.empty, `${operationId}: ${where} documents no content, but the body is not empty: ${describeResult(snapshot)}`).toBe(true);
     return;
   }
-  if (!mediaType) throw new Error(`${operationId}: HTTP ${key} documents no JSON media type (${mediaTypes.join(', ')}); assertSchema validates JSON bodies only`);
+  if (!mediaType) throw new Error(`${operationId}: ${where} documents no JSON media type (${mediaTypes.join(', ')}); assertSchema validates JSON bodies only`);
   const media = content[mediaType];
   if (!isObject(media) || !('schema' in media)) return;
   const ref = toPointer([...pointer, 'content', mediaType, 'schema']);
   const validate = compile(variant, `op:${ref}`, { $ref: `${DOC_ID}${ref}` });
-  check(validate, snapshot.body, `${operationId} HTTP ${key} (${mediaType})`);
+  check(validate, snapshot.body, `${operationId} ${where} (${mediaType})`);
 }
 
 /** Validate a body against a schema by reference, for example '#/components/schemas/Order'. */
@@ -91,6 +95,12 @@ export async function assertSchemaStrict(body: unknown, ref: string): Promise<vo
 /** Strict alias of assertSchemaRef, kept for existing specs: await expectMatchesSchema(body, ref). */
 export async function expectMatchesSchema(body: unknown, ref: string): Promise<void> {
   await assertSchemaRef(body, ref);
+}
+
+/** The responses key documenting `status`: the exact code, else 1XX..5XX, else `default`. */
+function responseKey(responses: Record<string, unknown>, status: number): string | undefined {
+  const range = status >= 100 && status <= 599 ? `${Math.floor(status / 100)}XX` : undefined;
+  return [String(status), range, 'default'].find((key) => key !== undefined && Object.prototype.hasOwnProperty.call(responses, key));
 }
 
 function strictness(options: SchemaOptions): boolean {

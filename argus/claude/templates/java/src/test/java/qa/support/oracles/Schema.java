@@ -70,19 +70,20 @@ public final class Schema {
     }
 
     /**
-     * Validates a body against {@code responses[status].content['application/json'].schema}
-     * of {@code operationId}. An undocumented status is RED; a status documented without
-     * content requires an empty body.
+     * Validates a body against {@code responses[key].content['application/json'].schema} of
+     * {@code operationId}, where the key is the exact status, else its {@code NXX} range, else
+     * {@code default} (OpenAPI 3.x); failure messages name a range or default key. A status
+     * none of them covers is RED; a status documented without content requires an empty body.
      */
     public static void assertSchema(OpenApi doc, int status, String body, String operationId, Options options) {
-        String label = operationId + ": HTTP " + status;
-        Optional<JsonNode> response = doc.response(operationId, status);
-        if (response.isEmpty()) {
+        Optional<String> key = doc.responseKey(operationId, status);
+        if (key.isEmpty()) {
             List<String> documented = doc.documentedStatuses(operationId);
-            throw new AssertionError(label + " is not documented (documented: "
+            throw new AssertionError(operationId + ": HTTP " + status + " is not documented (documented: "
                     + (documented.isEmpty() ? "none" : String.join(", ", documented)) + "); body excerpt: " + Http.excerpt(body));
         }
-        JsonNode content = response.get().path("content");
+        String label = operationId + ": HTTP " + status + (key.get().equals(Integer.toString(status)) ? "" : " via " + key.get());
+        JsonNode content = doc.response(operationId, status).orElseThrow().path("content");
         if (!content.isObject() || content.isEmpty()) {
             if (body != null && !body.isEmpty()) {
                 throw new AssertionError(label + " documents no content, but the body is not empty: " + Http.excerpt(body));
@@ -99,7 +100,7 @@ public final class Schema {
         }
         JsonNode media = content.get(mediaType);
         if (!media.has("schema")) return;
-        JsonSchema validator = doc.schemaFor(operationId + "|" + status + "|" + mediaType, media.get("schema"), Direction.RESPONSE, options.strict());
+        JsonSchema validator = doc.schemaFor(operationId + "|" + key.get() + "|" + mediaType, media.get("schema"), Direction.RESPONSE, options.strict());
         validate(validator, parse(body, label), body, label + " (" + mediaType + ")", options);
     }
 

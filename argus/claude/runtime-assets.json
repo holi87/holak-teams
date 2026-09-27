@@ -83,8 +83,8 @@
       "source": "argus/TEMPLATE-CONTRACT.md",
       "destination": "references/TEMPLATE-CONTRACT.md",
       "files": 1,
-      "bytes": 12640,
-      "sha256": "e369ec6373546e5786ee23170e853b00b92dae938e617447bd5c275b7e9d5d7a"
+      "bytes": 12917,
+      "sha256": "19f1867c31adfee466c624690693b882b6538cfacd82406b74cc1032fb60b611"
     },
     {
       "id": "coverage-contract",
@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 63,
-      "bytes": 453865,
-      "sha256": "a164e2cb6787c7bcd7df3a8e4ae77bd01838297e208d95ef5f24c1cac3953642"
+      "bytes": 456624,
+      "sha256": "2c00acaa57100bd0834d2fe87d76ce3f82b6e82e13f6cf5fbccbbcf57387d7ae"
     },
     {
       "id": "java-template",
@@ -281,8 +281,8 @@
       "source": "argus/framework-template-java",
       "destination": "templates/java",
       "files": 57,
-      "bytes": 457940,
-      "sha256": "2435ca8906a60676c0fec100fbb79a5a3778ce72a3083d3ae6184e13c99b15e2"
+      "bytes": 461134,
+      "sha256": "c1772cc728c83f47668f13e2cc7832d7f66063047cfe81f7d797ccac3f4c6b80"
     },
     {
       "id": "python-template",
@@ -290,8 +290,8 @@
       "source": "argus/framework-template-python",
       "destination": "templates/python",
       "files": 55,
-      "bytes": 401407,
-      "sha256": "112b62d0af4018df0b2781b9a3e25cb5f87a25a5e3f143415bc7f12c6e64d841"
+      "bytes": 404166,
+      "sha256": "4238b9c88ccd05fe0d7fe2284811771259d8e7331a3c63017d2ba48451cfea19"
     }
   ],
   "buildOnly": [
