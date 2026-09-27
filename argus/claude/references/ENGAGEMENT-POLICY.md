@@ -67,7 +67,9 @@ engineers for `solution/counterfactual/`. The guard takes the writing lane from 
 PreToolUse payload that Claude Code writes (`agent_type` `argus:<slug>` for a subagent; the
 main thread is the controller). A non-owner, the controller when it is not an owner, an
 unidentified writer, and an owned root reached through a symbolic link are denied with
-`GUARD-OWNED-ARTIFACT`. A packaged command checks its own outputs without a lane identity,
+`GUARD-OWNED-ARTIFACT`. The same identity binds `authorization check --lane` and the hunt
+driver's `--agent` to the caller, so no lane records an audited decision as another lane.
+A packaged command checks its own outputs without a lane identity,
 so it never writes an owned path: write to `reports/` and copy the result in place.
 `writePolicy.selectedTemplateRoots` adds the roots of the operator's explicit
 `ai_agents_internal/template-selection.json`, which no lane can write: its `testRoot` joins
@@ -644,7 +646,10 @@ Canonical solution JSON documents are single-owner
 `json-document` artifacts; the runner result is validated at its runner-owned report path.
 Lane-plan, evidence-reference, automation-status, and coverage-observations (keyed by
 `<lane>:<surfaceId>`) accept multiple valid collection fragments; their owner merges records
-in stable-key order and rejects duplicate keys across fragments. Coverage observations cite
+in stable-key order. Lane-plan and evidence-reference reject duplicate keys across fragments.
+An automation-status test belongs to its `owner` and a coverage observation to its `lane`:
+only that lane or the merging owner writes it, and its later fragment of the same key (by write
+sequence) supersedes the earlier record. Coverage observations cite
 evidence and ledger references only: the coverage-result merge derives each surface's
 execution, assertion, evidence, and automation flags from the canonical evidence registry,
 takes defect outcomes from the canonical bug ledger (required whenever Minos is
@@ -685,11 +690,13 @@ and a proposed status from `argus-assets engagement report-facts` (read-only, no
 merge re-derives the counts (headline = confirmed + suspected), the likely-but-unproven
 findings, the unresolved bounced and quarantined proof residuals, the automation-review
 verdict, the runner outcome, the required coverage, and the
-source schemas from the merge-verified canonical inputs and `reports/argus-runner-result.json`,
-overwrites them, and caps the status by the derived `statusReasons`: a BLOCK, STALE, or ABSENT
-review or a confirmed bug without regression blocks; an unexecuted critical surface, case-depth
-gaps, an unresolved proof residual, a non-delivery-gate runner, runner exit codes 11 to 15, or
-a non-converged deep-hunt skip degrade. It never raises a status. The merge also renders `solution/FINAL-SUMMARY.md` with an
+source schemas from the merge-verified canonical inputs and `reports/argus-runner-result.json`
+(which must be registered `runner-result` evidence, byte for byte; the coverage result must be
+merged after its latest input change), overwrites them, and caps the status by the derived
+`statusReasons`: a BLOCK, STALE, or ABSENT review or a confirmed bug without regression blocks;
+an unexecuted critical surface, case-depth gaps, an unresolved proof residual, a
+non-delivery-gate runner, runner exit codes 11 to 15, or a non-converged deep-hunt skip
+degrade. It never raises a status. The merge also renders `solution/FINAL-SUMMARY.md` with an
 explicit `Source schema:` line and one `Status reason:` line per reason, so the human-facing
 summary is traceable to the machine contract. The lane-plan `lanes`, evidence-reference
 `references`, and automation-status `tests` arrays contain unique records sorted by

@@ -47,8 +47,8 @@
       "source": "argus/AUTHORIZATION-POLICY.md",
       "destination": "references/AUTHORIZATION-POLICY.md",
       "files": 1,
-      "bytes": 12289,
-      "sha256": "08db21d194c44c4657e2547b458a6f1128da06b1375f9a69916a58f65bb18a72"
+      "bytes": 12560,
+      "sha256": "61f6ae75137ae4894e7b6132f13759bd92fb574cab309a8b7cf9e78bd4b39185"
     },
     {
       "id": "engagement-policy",
@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 54483,
-      "sha256": "ce9e1b284f2e463cf3ff4221705b534f1544df2e05fb2e7b4b25dc400b74de79"
+      "bytes": 55029,
+      "sha256": "2e615eb419c23bd08cbd457cd31e11c3c038b75289d01fedc3f5eac97a7da51d"
     },
     {
       "id": "canonical-contracts",
@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 38072,
-      "sha256": "e738fe1cb70740b0c0990ae8ca38ffbc0eecfd6273f3aa713895d2db3fc19b87"
+      "bytes": 39926,
+      "sha256": "ecc1b17551eb02b56e5d091488bbfb83ae9f0a893545d29a136b402e9e27dc2f"
     },
     {
       "id": "runner-contract",
@@ -92,8 +92,8 @@
       "source": "argus/COVERAGE-CONTRACT.md",
       "destination": "references/COVERAGE-CONTRACT.md",
       "files": 1,
-      "bytes": 11488,
-      "sha256": "b78c8a8b016e7105362442bb6616b33228c637dc8e670f2fba9f123658e29d91"
+      "bytes": 11653,
+      "sha256": "c7aa0b78488b49f0103bc1cb8b6fae26be2c459611319c600f774ff6e97ad481"
     },
     {
       "id": "raci-contract",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 42,
-      "bytes": 205271,
-      "sha256": "8ee794df94a12dfe8eac122ed375bce14937d94f46ae46b40c7d493a7fcbb34a"
+      "bytes": 205394,
+      "sha256": "74f2649655a85bac503d88649ee8f020e856507aee81eb86ecb1fe8430fed630"
     },
     {
       "id": "capability-matrix",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 415162,
-      "sha256": "1720e7fb00ca6c07a0933affb77da5f599693c0501e0c5559e833da8831fa547"
+      "bytes": 423036,
+      "sha256": "920cb332b6ab291148c222a4fd356e932b02b496648542cfed4a5d52bced6df0"
     },
     {
       "id": "common-template",

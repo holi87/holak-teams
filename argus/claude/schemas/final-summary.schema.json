@@ -355,6 +355,7 @@
         "status",
         "exitCode",
         "resultPath",
+        "evidenceId",
         "categories",
         "deliveryGate"
       ],
@@ -386,6 +387,10 @@
         },
         "resultPath": {
           "const": "reports/argus-runner-result.json"
+        },
+        "evidenceId": {
+          "type": "string",
+          "pattern": "^EVD-[0-9]{4}$"
         },
         "categories": {
           "type": "object",
