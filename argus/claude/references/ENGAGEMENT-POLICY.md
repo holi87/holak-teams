@@ -624,7 +624,10 @@ Canonical solution JSON documents are single-owner
 `json-document` artifacts; the runner result is validated at its runner-owned report path.
 Lane-plan, evidence-reference, automation-status, and coverage-observations (keyed by
 `<lane>:<surfaceId>`) accept multiple valid collection fragments; their owner merges records
-in stable-key order and rejects duplicate keys across fragments. Coverage observations cite
+in stable-key order. Lane-plan and evidence-reference reject duplicate keys across fragments.
+An automation-status test belongs to its `owner` and a coverage observation to its `lane`:
+only that lane or the merging owner writes it, and its later fragment of the same key (by write
+sequence) supersedes the earlier record. Coverage observations cite
 evidence and ledger references only: the coverage-result merge derives each surface's
 execution, assertion, evidence, and automation flags from the canonical evidence registry,
 takes defect outcomes from the canonical bug ledger (required whenever Minos is

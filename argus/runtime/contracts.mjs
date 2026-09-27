@@ -24,11 +24,15 @@ export const CONTRACT_KINDS = Object.freeze([
   'automation-review',
 ]);
 
+// A collection whose records name an `owner` field holds updatable records: each record belongs
+// to that lane, only that lane (or the canonical's merging owner) may write it, and a later
+// fragment of the same key supersedes the earlier one at merge. Every other collection record is
+// immutable once written, so its key may appear in only one fragment.
 const COLLECTION_CONTRACTS = Object.freeze({
   'lane-plan': { field: 'lanes', key: 'lane', label: 'lane' },
   'evidence-reference': { field: 'references', key: 'id', label: 'evidence reference' },
-  'automation-status': { field: 'tests', key: 'testId', label: 'automation test' },
-  'coverage-observations': { field: 'observations', key: 'observationId', label: 'coverage observation' },
+  'automation-status': { field: 'tests', key: 'testId', label: 'automation test', owner: 'owner' },
+  'coverage-observations': { field: 'observations', key: 'observationId', label: 'coverage observation', owner: 'lane' },
 });
 
 // Recon capability gates and the only proof kind that can prove each one. The keys must
@@ -139,7 +143,22 @@ export function migrateCanonicalDocument(kind, document) {
   return migrated;
 }
 
-export function mergeCanonicalDocuments(kind, documents) {
+// The records of an owned collection fragment that its writer may not submit: each record's
+// owner must be the writing lane, unless the writer is the canonical's merging owner.
+export function collectionOwnershipErrors(kind, document, writer, canonicalOwner) {
+  const contract = COLLECTION_CONTRACTS[kind];
+  if (!contract?.owner || writer === canonicalOwner) return [];
+  return (document?.[contract.field] ?? [])
+    .filter((record) => record?.[contract.owner] !== writer)
+    .map((record) => `${contract.label} ${record?.[contract.key]} belongs to ${record?.[contract.owner]}; ${writer} may write only its own records`);
+}
+
+// Collection fragments merge by key. With `writers` ({lane, sequence} per document, from the
+// engagement's fragment records), an owned collection supersedes a key record by record: every
+// fragment must respect record ownership, a key keeps one owner, and the record from the highest
+// write sequence is merged. Without writers, or for an immutable collection, a key that appears
+// in two fragments fails closed.
+export function mergeCanonicalDocuments(kind, documents, { writers = null, canonicalOwner = null } = {}) {
   if (!Array.isArray(documents) || documents.length === 0) throw new Error(`${kind} merge requires at least one document`);
   const contract = COLLECTION_CONTRACTS[kind];
   if (!contract) {
@@ -148,13 +167,32 @@ export function mergeCanonicalDocuments(kind, documents) {
     if (errors.length) throw new Error(`${kind} merged document is invalid: ${errors.join('; ')}`);
     return documents[0];
   }
+  const supersedes = Boolean(contract.owner) && writers !== null;
+  if (supersedes && (!Array.isArray(writers) || writers.length !== documents.length)) throw new Error(`${kind} merge requires one writer per fragment`);
   const engagementId = documents[0]?.engagementId;
+  const latest = new Map();
   const records = [];
-  for (const document of documents) {
+  documents.forEach((document, index) => {
     const migrated = migrateCanonicalDocument(kind, document);
     if (migrated.engagementId !== engagementId) throw new Error(`${kind} collection fragments have different engagementId values`);
-    records.push(...migrated[contract.field]);
-  }
+    if (!supersedes) {
+      records.push(...migrated[contract.field]);
+      return;
+    }
+    const { lane, sequence } = writers[index];
+    const ownership = collectionOwnershipErrors(kind, migrated, lane, canonicalOwner);
+    if (ownership.length) throw new Error(`${kind} fragment ownership is invalid: ${ownership.join('; ')}`);
+    for (const record of migrated[contract.field]) {
+      const key = record[contract.key];
+      const held = latest.get(key);
+      if (held && held.record[contract.owner] !== record[contract.owner]) {
+        throw new Error(`${kind} ${contract.label} ${key} belongs to ${held.record[contract.owner]}, not ${record[contract.owner]}`);
+      }
+      if (held && held.sequence === sequence) throw new Error(`${kind} ${contract.label} ${key} appears twice at write sequence ${sequence}`);
+      if (!held || sequence > held.sequence) latest.set(key, { record, sequence });
+    }
+  });
+  if (supersedes) records.push(...[...latest.values()].map((entry) => entry.record));
   records.sort((left, right) => compareAscii(left[contract.key], right[contract.key]));
   const merged = {
     $schema: schemaId(kind),

@@ -152,6 +152,20 @@ jq '.engagementId = "schema-fixture"' "$FIXTURES/valid/bug-ledger.json" >"$WORK/
 "$CLI" engagement fragment --manifest "$MANIFEST" --lane atalanta --token "$ATALANTA" --canonical solution/coverage-observations.json --id cases --input "$WORK/observations.json" >/dev/null
 "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/coverage-observations.json >/dev/null
 jq -e '."$schema" == "argus/coverage-observations@2" and (.observations | map(.observationId)) == ["atalanta:SRF-API-ORDER"]' "$TARGET/solution/coverage-observations.json" >/dev/null || fail 'coverage observations were not merged as a v2 collection'
+# An observation belongs to its lane: another lane cannot write it, and the owner re-records it in
+# later passes. The record from the highest write sequence is merged, whatever the fragment IDs.
+cp "$TARGET/solution/coverage-observations.json" "$WORK/observations-first.json"
+if "$CLI" engagement fragment --manifest "$MANIFEST" --lane talos --token "$TALOS" --canonical solution/coverage-observations.json --id foreign-cases --input "$WORK/observations.json" >"$WORK/observation-foreign.out" 2>&1; then
+  fail 'a lane wrote another lane coverage observation'
+fi
+grep -Fq 'coverage observation atalanta:SRF-API-ORDER belongs to atalanta; talos may write only its own records' "$WORK/observation-foreign.out" || fail "foreign observation failed for another reason: $(<"$WORK/observation-foreign.out")"
+jq '.observations[0].evidenceIds += ["EVD-0002"]' "$WORK/observations.json" >"$WORK/observations-deep-1.json"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane atalanta --token "$ATALANTA" --canonical solution/coverage-observations.json --id a-deep-1 --input "$WORK/observations-deep-1.json" >/dev/null
+"$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/coverage-observations.json >/dev/null || fail 'a re-recorded coverage observation broke the observations merge'
+jq -e '(.observations | length) == 1 and .observations[0].evidenceIds == ["EVD-0001", "EVD-0002"]' "$TARGET/solution/coverage-observations.json" >/dev/null || fail 'the later coverage observation did not supersede the earlier one'
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane atalanta --token "$ATALANTA" --canonical solution/coverage-observations.json --id b-deep-2 --input "$WORK/observations.json" >/dev/null
+"$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/coverage-observations.json >/dev/null
+cmp -s "$WORK/observations-first.json" "$TARGET/solution/coverage-observations.json" || fail 'the latest coverage observation by write sequence was not merged'
 "$CLI" coverage calculate --inventory "$WORK/inventory.json" --observations "$WORK/observations.json" \
   --evidence "$TARGET/solution/evidence-reference.json" --ledger "$WORK/proven-ledger.json" --root "$TARGET" >"$WORK/case-coverage.json"
 "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/coverage-result.json --id case-result --input "$WORK/case-coverage.json" >/dev/null
@@ -270,6 +284,19 @@ automation_fragment="$("$CLI" engagement fragment --manifest "$MANIFEST" --lane 
 jq -e '."$schema" == "argus/automation-status@2" and .schemaVersion == 2' "$TARGET/$(jq -r .path <<<"$automation_fragment")" >/dev/null || fail 'automation-status fragment was not persisted as v2'
 "$CLI" engagement merge --manifest "$MANIFEST" --owner atlas --token "$ATLAS" --canonical solution/automation-status.json >/dev/null
 jq -e '.tests | map(.testId) == ["REG-0001", "TST-0002"]' "$TARGET/solution/automation-status.json" >/dev/null || fail 'automation fragments were not merged in deterministic test ID order'
+# A test row belongs to its owner: another lane cannot write it, and the owner updates its status.
+cp "$TARGET/solution/automation-status.json" "$WORK/automation-first.json"
+if "$CLI" engagement fragment --manifest "$MANIFEST" --lane daidalos --token "$DAIDALOS" --canonical solution/automation-status.json --id foreign-automation --input "$WORK/automation-1.json" >"$WORK/automation-foreign.out" 2>&1; then
+  fail 'a lane wrote another lane automation test row'
+fi
+grep -Fq 'automation test REG-0001 belongs to talos; daidalos may write only its own records' "$WORK/automation-foreign.out" || fail "foreign automation row failed for another reason: $(<"$WORK/automation-foreign.out")"
+jq '.tests[0] |= (.status = "implemented" | .updatedAt = "2026-07-10T00:05:00.000Z")' "$WORK/automation-1.json" >"$WORK/automation-1-implemented.json"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane talos --token "$TALOS" --canonical solution/automation-status.json --id a-automation-1-update --input "$WORK/automation-1-implemented.json" >/dev/null
+"$CLI" engagement merge --manifest "$MANIFEST" --owner atlas --token "$ATLAS" --canonical solution/automation-status.json >/dev/null || fail 'an updated automation test row broke the automation-status merge'
+jq -e '(.tests | map(.testId)) == ["REG-0001", "TST-0002"] and .tests[0].status == "implemented"' "$TARGET/solution/automation-status.json" >/dev/null || fail 'the later automation test row did not supersede the earlier one'
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane talos --token "$TALOS" --canonical solution/automation-status.json --id b-automation-1-passed --input "$WORK/automation-1.json" >/dev/null
+"$CLI" engagement merge --manifest "$MANIFEST" --owner atlas --token "$ATLAS" --canonical solution/automation-status.json >/dev/null
+cmp -s "$WORK/automation-first.json" "$TARGET/solution/automation-status.json" || fail 'the latest automation test row by write sequence was not merged'
 
 # Aristarchus persists append-only review rounds bound to the test-corpus digest. The check gate
 # exits 13 until the latest round APPROVEs the corpus exactly as it is now.

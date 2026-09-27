@@ -22,7 +22,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertSupersession, isCollectionContract, mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalDocument, validateCanonicalFragment } from './contracts.mjs';
+import { assertSupersession, collectionOwnershipErrors, isCollectionContract, mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalDocument, validateCanonicalFragment } from './contracts.mjs';
 import { binaryRegistrationErrors, binaryReviewAuditErrors, isBinaryReference, loadRedactionPatterns, parseAuditLog, validateEvidenceContent } from './evidence.mjs';
 import { compileJsonSchema } from './json-schema.mjs';
 import {
@@ -417,6 +417,9 @@ export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, 
       const registration = document.references.flatMap((ref) => binaryRegistrationErrors(ref, lane));
       if (registration.length) throw new Error(registration.join('; '));
     }
+    // An owned collection record belongs to its lane, so the writer learns of a foreign record now.
+    const ownership = collectionOwnershipErrors(canonical.schema, document, lane, canonical.owner);
+    if (ownership.length) throw new Error(ownership.join('; '));
     const migrated = migrateCanonicalDocument(canonical.schema, document);
     if (migrated !== document) persistedContent = `${JSON.stringify(migrated, null, 2)}\n`;
   }
@@ -479,7 +482,9 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
         effective = supersedingFragment(manifest, canonical, records, contents);
         documents = [documents[records.indexOf(effective)]];
       }
-      const document = mergeCanonicalDocuments(canonical.schema, documents);
+      // An owned collection record is superseded by its owner's later fragment of the same key.
+      const writers = isCollectionContract(canonical.schema) ? records.map((record) => ({ lane: record.lane, sequence: fragmentSequence(canonical, record) })) : null;
+      const document = mergeCanonicalDocuments(canonical.schema, documents, { writers, canonicalOwner: canonical.owner });
       if (canonical.schema === 'evidence-reference') verifyEvidenceRegistry(manifest, records, documents, document);
       if (canonical.schema === 'automation-review') assertCurrentReviewCorpus(manifest, document);
       if (canonical.schema === 'coverage-result') {

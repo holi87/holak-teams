@@ -113,6 +113,29 @@ for (const [kind, field, key] of [
   const retired = { ...document, $schema: `argus/${kind}@${current - 1}`, schemaVersion: current - 1 };
   assert(validateCanonicalDocument(kind, retired).length > 0, `${kind}: runtime reader still accepts retired v${current - 1} input`);
 }
+// Owned collection records are superseded by write sequence, never by fragment order; a record
+// belongs to its lane (or is written by the canonical owner), and a key never changes owner.
+{
+  const document = readJson(join(fixtures, 'valid', 'coverage-observations.json'));
+  const record = document.observations[0];
+  const first = { ...document, observations: [record] };
+  const later = { ...document, observations: [{ ...record, evidenceIds: ['EVD-0002', 'EVD-0003'] }] };
+  const owners = { 'coverage-observations': 'kleio', 'automation-status': 'atlas', 'evidence-reference': 'kleio' };
+  const merge = (docs, writers, kind = 'coverage-observations') => mergeCanonicalDocuments(kind, docs, { writers, canonicalOwner: owners[kind] });
+  const superseded = merge([later, first], [{ lane: record.lane, sequence: 7 }, { lane: record.lane, sequence: 3 }]);
+  assert(superseded.observations.length === 1 && superseded.observations[0].evidenceIds.length === 2, 'owned collection merge did not keep the record with the highest write sequence');
+  assert(merge([first], [{ lane: 'kleio', sequence: 1 }]).observations.length === 1, 'the canonical owner could not write an owned collection record');
+  const refusal = (fn) => { try { fn(); return ''; } catch (error) { return error.message; } };
+  assert(refusal(() => merge([first], [{ lane: 'talos', sequence: 1 }])).includes('talos may write only its own records'), 'a foreign lane wrote an owned collection record');
+  assert(refusal(() => merge([first, later], [{ lane: record.lane, sequence: 2 }, { lane: record.lane, sequence: 2 }])).includes('appears twice at write sequence 2'), 'an owned collection merge accepted two records at one write sequence');
+  const tests = readJson(join(fixtures, 'valid', 'automation-status.json'));
+  const row = tests.tests[0];
+  const reassigned = { ...tests, tests: [{ ...row, owner: 'daidalos' }] };
+  assert(refusal(() => merge([{ ...tests, tests: [row] }, reassigned], [{ lane: row.owner, sequence: 1 }, { lane: 'atlas', sequence: 2 }], 'automation-status')).includes(`belongs to ${row.owner}, not daidalos`), 'an owned collection key changed owner');
+  const evidence = readJson(join(fixtures, 'valid', 'evidence-reference.json'));
+  const single = { ...evidence, references: [evidence.references[0]] };
+  assert(refusal(() => merge([single, single], [{ lane: 'atalanta', sequence: 1 }, { lane: 'atalanta', sequence: 2 }], 'evidence-reference')).includes('duplicate'), 'an immutable collection record was superseded');
+}
 const preflightV3Schema = schemas.get('preflight-report.schema.json');
 assert(preflightV3Schema?.properties?.schemaVersion?.const === 3, 'current preflight-report validator does not require schemaVersion 3');
 assert(['$schema', 'modelRuntime', 'orchestration', 'residualRisks'].every((field) => preflightV3Schema.required.includes(field))

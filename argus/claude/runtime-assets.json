@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 52613,
-      "sha256": "b524a008e55500920659860a3c51e97187c63df808ee96819f672e8e050a47b0"
+      "bytes": 52870,
+      "sha256": "469771b256b159813821a6894e8ef8eec038fe31ef8141008fc22301132dc620"
     },
     {
       "id": "canonical-contracts",
@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 37078,
-      "sha256": "8b2d607663d070379c186a6f5f32811b1e565eebeea22a3bb0ba1590617491cc"
+      "bytes": 37665,
+      "sha256": "d52d6ccd6908eb389a079c7d8660aeb884657658b0f2345355a642b9e10a8e60"
     },
     {
       "id": "runner-contract",
@@ -92,8 +92,8 @@
       "source": "argus/COVERAGE-CONTRACT.md",
       "destination": "references/COVERAGE-CONTRACT.md",
       "files": 1,
-      "bytes": 11488,
-      "sha256": "b78c8a8b016e7105362442bb6616b33228c637dc8e670f2fba9f123658e29d91"
+      "bytes": 11653,
+      "sha256": "c7aa0b78488b49f0103bc1cb8b6fae26be2c459611319c600f774ff6e97ad481"
     },
     {
       "id": "raci-contract",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 405097,
-      "sha256": "c0f6b8581aa9cba7ec24db3e683a5f8c9601a5124898243df4ec257be66d36b0"
+      "bytes": 408398,
+      "sha256": "2c2e90f4ec01fe33cb1ffee4edd2c54f66710cce9d3bad3bb9d9d973586a4143"
     },
     {
       "id": "common-template",
