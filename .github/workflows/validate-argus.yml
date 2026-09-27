@@ -35,5 +35,9 @@ jobs:
             --ro-bind / / --dev /dev --proc /proc \
             /bin/sh -c '/bin/true </dev/null'
 
+      - name: Install Playwright Chromium system dependencies
+        run: |
+          npx --yes playwright@$(node -p "require('./argus/framework-template/package-lock.json').packages['node_modules/playwright'].version") install-deps chromium
+
       - name: Run the documented full release validation
         run: scripts/validate-release.sh
