@@ -150,7 +150,7 @@ Engagement transitions are derived, not declared freely: they are exactly the co
 | charon | Direct-database hunter | database-hunt | candidate-file | — |
 | daidalos | UI and accessibility automation engineer | ui-automation | tests-only | — |
 | hermes | Performance hunter | performance-hunt | candidate-file | `solution/PERF-REPORT.md` |
-| kalchas | System reconnaissance analyst | recon | owned-artifact | `solution/discovery/contract-drift.json`, `solution/surface-inventory.json` |
+| kalchas | System reconnaissance analyst | recon | owned-artifact | `solution/discovery/capability-evidence.json`, `solution/discovery/contract-drift.json`, `solution/surface-inventory.json` |
 | kleio | Final reporter | reporting | owned-artifact | `README.md`, `solution/evidence-reference.json`, `solution/coverage-result.json`, `solution/final-summary.json`, `solution/FINDINGS.md`, `solution/ACCESSIBILITY-REPORT.md`, `solution/IMPLEMENTATION-REPORT.md`, `solution/TRACEABILITY.md`, `solution/coverage-observations.json` |
 | lynceus | UI presentation hunter | presentation-hunt | candidate-file | — |
 | metis | Test strategist | strategy | owned-artifact | `solution/TEST-STRATEGY.md`, `solution/ORACLES.md` |

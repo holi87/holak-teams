@@ -618,6 +618,7 @@
       ],
       "artifactPaths": [
         "ai_agents_internal/recon/",
+        "solution/discovery/capability-evidence.json",
         "solution/discovery/contract-drift.json",
         "solution/surface-inventory.json"
       ]
