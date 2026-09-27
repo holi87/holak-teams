@@ -74,6 +74,7 @@ try {
   testStandbyBlocksSuccessCleanup();
   testConditionalLaneProjection();
   testConditionalGateResolution();
+  testGateUnmetFinalSummary();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
   console.log('PASS  Argus engagement state: derived phases, standby, proof ledger gate, recorded skips, conditional lanes, one-shot gate resolution, decision-bound leases, authenticated heartbeat, and link defenses');
@@ -699,6 +700,32 @@ function testConditionalGateResolution() {
   writeFileSync(statePath, `${JSON.stringify(current, null, 2)}\n`);
   assert(getEngagementStatus(manifest).revision === current.revision, 'restored resolved state was not accepted');
   for (const lane of ['atlas', 'charon', 'hermes', 'kalchas', 'metis', 'odysseus']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
+}
+
+// A gate-unmet lane is omitted, not covered: the final-summary merge names it as a status
+// reason and caps a completed summary at degraded, while a released lane adds no reason.
+function testGateUnmetFinalSummary() {
+  const lanes = ['kalchas', 'kleio', 'odysseus', 'orion', 'tiresias'];
+  const fixture = createFixture('gate-unmet-summary', lanes);
+  const { manifest } = fixture;
+  bindDispatchableAgents(manifest, lanes, { orion: ['browser-runtime'], tiresias: ['source-access'] });
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('gate-unmet-controller') });
+  const kalchas = allocateWorker(manifest, 'kalchas', { controllerToken: controller.token, executionBinding: executionBinding('gate-unmet-kalchas') });
+  const kleio = allocateWorker(manifest, 'kleio', { controllerToken: controller.token, executionBinding: executionBinding('gate-unmet-kleio') });
+  arriveBarrier(manifest, 'kalchas', kalchas.token, 'discovery');
+  const resolved = resolveConditionalGates(manifest, controller.token, {
+    evidenceSha256: null,
+    capabilities: {
+      'browser-runtime': { status: 'unmet', basis: 'runtime-probe', reason: 'fixture verdict' },
+      'source-access': { status: 'proven', basis: 'kalchas-evidence+path-check', reason: 'fixture verdict' },
+    },
+  });
+  assert(JSON.stringify(resolved.lanes) === '{"orion":"gate-unmet","tiresias":"released"}', `unexpected gate-unmet fixture lanes: ${JSON.stringify(resolved.lanes)}`);
+  mergeFinalSummary(fixture, kleio.token);
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'degraded' && JSON.stringify(summary.statusReasons) === '["gate-unmet:orion"]',
+    `a gate-unmet lane was not a named final-summary gap: ${JSON.stringify({ status: summary.status, statusReasons: summary.statusReasons })}`);
+  for (const [lane, token] of [['kalchas', kalchas.token], ['kleio', kleio.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
 }
 
 function assertStateSchema(fixture, label) {

@@ -603,8 +603,7 @@
       "consumers": [
         "atlas",
         "kleio",
-        "minos",
-        "skill:orchestration-core"
+        "minos"
       ]
     },
     {

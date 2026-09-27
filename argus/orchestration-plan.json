@@ -73,7 +73,7 @@
     "roles": ["antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus", "orion", "perseus", "proteus", "tiresias", "tyche"],
     "rule": [
       "A hunter whose capability gates are satisfied is dispatched and returns its technique-coverage table. Time pressure is not a disposition.",
-      "A lane may be omitted only when a gate is unmet, and the unmet gate is recorded in coverage-result.json as the reason.",
+      "A lane may be omitted only when a gate is unmet; the unmet gate stays in engagement-state gateResolution as the reason, and the final summary names the lane as status reason gate-unmet:<lane>.",
       "A dispatched lane that produced no artifact is a coverage failure, not an empty result: Kleio reports it and the run verdict cannot be PARTIAL-WITH-NAMED-GAPS on that basis alone.",
       "A brief given to a lane is additive. It may set order and add targets; it may never remove a catalog row from that lane's obligation."
     ]

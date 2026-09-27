@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 53591,
-      "sha256": "7051413642b705c1baa0bfa8e9b9ade0a474a1402b1e413a3040830f570f3757"
+      "bytes": 53759,
+      "sha256": "6402537a00dc70bc5a55ac34993660c6e4928b6c2da7f0f0527cb3543c2e3671"
     },
     {
       "id": "canonical-contracts",
@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 37078,
-      "sha256": "8b2d607663d070379c186a6f5f32811b1e565eebeea22a3bb0ba1590617491cc"
+      "bytes": 37229,
+      "sha256": "a77cf6f95d8de00c8b2c71bc3ccf481b97399493ba87e4a5bbff7355c200a382"
     },
     {
       "id": "runner-contract",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 15644,
-      "sha256": "aff712b882c220bfb483b7867a78857c43434138086bec5d0001581b4b2aa956"
+      "bytes": 15731,
+      "sha256": "d5feda8e54196983a5ba55de18a580735428f7991f636dde746779b9181739e5"
     },
     {
       "id": "qa-core-skill",
@@ -200,8 +200,8 @@
       "source": "argus/orchestration-plan.json",
       "destination": "capabilities/orchestration-plan.json",
       "files": 1,
-      "bytes": 15368,
-      "sha256": "c77cab4f0a8e4ecf7c3809e2c0f6d42dc8926a7f551ad72670814e68a83a8f51"
+      "bytes": 15442,
+      "sha256": "7b5c2bf6389407556f2aa94bf835f3edb860ba6d8add65ab9fb8b17889165077"
     },
     {
       "id": "model-policy",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 405097,
-      "sha256": "c0f6b8581aa9cba7ec24db3e683a5f8c9601a5124898243df4ec257be66d36b0"
+      "bytes": 405576,
+      "sha256": "d5320c7b29529b10dd10ac657b08fe752b4828ca882eea542cf6c0f2f39673ff"
     },
     {
       "id": "common-template",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 62226,
-    "sha256": "3423fec780df28c473f03d32f7c9c72359aed1c92e79ae5d5864ca055b935056"
+    "bytes": 62190,
+    "sha256": "f1f84e5dacaa6a26b84923db2316d3f897aee718996e5bd313e3b30934bc1cb9"
   }
 }

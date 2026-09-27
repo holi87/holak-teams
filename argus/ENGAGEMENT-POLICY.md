@@ -622,7 +622,9 @@ normally. A `gate-unmet` lane is omitted: allocation fails with `<lane> was omit
 unmet (<gates>)`, and the lane leaves every phase's participants and standby lanes exactly
 like a role outside the dispatchable projection, so no barrier, standby window, or success
 cleanup waits for it. Under the `selected-dispatchable-predecessors` dependency policy it
-counts as a non-dispatched predecessor, and its unmet gates remain a named residual risk.
+counts as a non-dispatched predecessor, and its unmet gates remain a named residual risk:
+they stay in `gateResolution`, and the final-summary merge adds the status reason
+`gate-unmet:<lane>`, which caps the summary at `degraded` (`CANONICAL-CONTRACTS.md`).
 
 ## Canonical machine contracts
 
