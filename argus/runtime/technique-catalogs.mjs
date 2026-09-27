@@ -112,6 +112,14 @@ const SEMANTIC_MARKERS = Object.freeze({
   'ARI-T05': ['scope noun', 'binds on the documented scope'],
   'ARI-T12': ['independently from the requirements', 'both directions as separate candidates'],
   'ARI-T15': ['observable edge that is reachable', "never the rule it feeds"],
+  // The side-effect-channel rows pin the effect each channel owes a state event: the zero
+  // and duplicate notification, the attributed audit record, the exact export row set with
+  // its security half routed to Perseus, and a job that runs once or fails visibly.
+  'ARI-T17': ['exactly one notification per documented recipient', 'zero is a missed notification'],
+  'ARI-T18': ['real actor', 'before and after values'],
+  'ARI-T19': ['exactly the permitted rows', 'formula or CSV injection'],
+  'ARI-T20': ['within the documented window', 'exactly once per trigger'],
+  'ARI-T21': ['legitimate input that makes it fail', 'silently dropped job'],
   // Perseus markers pin the four security classes this catalog newly owns. They exist so a
   // later edit cannot quietly soften a class into a generic suggestion: removing the phrase
   // fails the catalog validator.
