@@ -76,8 +76,9 @@ Before any target probe, test, or specialist dispatch:
    with `dispatchAllowed=true`. Dispatch `ready`/`degraded` records and pass degraded actions
    verbatim. After Kalchas arrives at the discovery barrier, run
    `argus-assets engagement resolve-gates` once; dispatch a `conditional` lane only when
-   released. A `gate-unmet` lane is omitted, counts as a non-dispatched predecessor, and its
-   unmet gate goes to `solution/coverage-result.json`. Never rerun preflight after the first
+   released. A `gate-unmet` lane is omitted, counts as a non-dispatched predecessor, and stays
+   a named gap: its unmet gates remain in `engagement status` `gateResolution`, and the
+   final-summary merge records `gate-unmet:<lane>`. Never rerun preflight after the first
    allocation. Never dispatch `deferred`, `skipped`, or `blocked`; record evidence, fallback,
    and risk. No record means no dispatch. A `deferred` record with `downgradedFrom=blocked`
    failed its tool/model check: never dispatch it; report it from `residualRisks`.

@@ -10,7 +10,7 @@
     "schemaVersion": { "const": 1 },
     "engagementId": { "type": "string", "minLength": 1 },
     "status": { "enum": ["available", "unavailable", "not-probed"] },
-    "source": { "enum": ["profile", "host-provisioned", "artifact-root", "target", "workspace", "npm-global", "system-global", "npx-cache", null] },
+    "source": { "enum": ["profile", "host-provisioned", "target", "workspace", "npm-global", "system-global", "npx-cache", null] },
     "modulePath": { "type": ["string", "null"], "pattern": "^/" },
     "moduleVersion": { "type": ["string", "null"], "minLength": 1 },
     "packageJsonSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
@@ -67,7 +67,7 @@
       "additionalProperties": false,
       "required": ["source", "modulePath", "result", "evidence"],
       "properties": {
-        "source": { "enum": ["profile", "host-provisioned", "artifact-root", "target", "workspace", "npm-global", "system-global", "npx-cache"] },
+        "source": { "enum": ["profile", "host-provisioned", "target", "workspace", "npm-global", "system-global", "npx-cache"] },
         "modulePath": { "type": "string", "pattern": "^/" },
         "result": { "enum": ["launched", "failed", "invalid", "not-attempted"] },
         "evidence": { "type": "string", "minLength": 1 }

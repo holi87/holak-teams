@@ -781,6 +781,7 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   if (runner && runner.deliveryGate !== true) ceilings.set('runner-not-delivery-gate', 'degraded');
   if (runner && FINAL_SUMMARY_DEGRADING_EXIT_CODES.has(runner.exitCode)) ceilings.set(`runner-exit-${runner.exitCode}`, 'degraded');
   for (const reason of skippedPhaseStatusReasons(state)) ceilings.set(reason, 'degraded');
+  for (const reason of gateUnmetStatusReasons(state)) ceilings.set(reason, 'degraded');
   const statusReasons = [...ceilings.keys()].sort();
   const statusCeiling = [...ceilings.values()].reduce(worseFinalSummaryStatus, 'completed');
   return { counts, unproven, residuals, automationReview, runner, coverage, sourceSchemas, statusCeiling, statusReasons };
@@ -2218,6 +2219,13 @@ function skippedPhaseStatusReasons(state) {
   return [...new Set(Object.values(state.skippedPhases)
     .filter((skip) => skip.reason !== 'converged')
     .map((skip) => `deep-hunt-skipped:${skip.reason}`))].sort();
+}
+
+// Sealed lanes that gate resolution omitted. Their unmet gates stay in state.gateResolution;
+// each lane is a named gap the final summary cannot report as completed coverage.
+function gateUnmetStatusReasons(state) {
+  const lanes = state.gateResolution?.lanes ?? {};
+  return Object.keys(lanes).filter((lane) => lanes[lane] === 'gate-unmet').sort().map((lane) => `gate-unmet:${lane}`);
 }
 
 function publicAllocation(allocation) {

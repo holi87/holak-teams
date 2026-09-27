@@ -368,11 +368,15 @@ function conditionalSealScenario() {
       join(ROOT, 'scripts/lib/argus-smoke-model-control.sh'), smokeCli, manifest, target, artifacts, 'A', profile, modelHost]));
     const report = JSON.parse(readFileSync(join(artifacts, 'ai_agents_internal', 'preflight.json'), 'utf8'));
     const expectedConditional = {
-      asklepios: ['existing-suite'], charon: ['db-access'], mnemosyne: ['db-access'],
-      pistis: ['multi-service'], proteus: ['non-rest-surface'], tiresias: ['source-access'],
+      asklepios: ['existing-suite'], proteus: ['non-rest-surface'], tiresias: ['source-access'],
     };
     const conditional = Object.fromEntries(report.agents.filter((agent) => agent.status === 'conditional').map((agent) => [agent.slug, agent.pendingGates]));
     assert(stable(conditional) === stable(expectedConditional), `preflight conditional lanes differ: ${JSON.stringify(conditional)}`);
+    // Operator-feature-only gates are never sealed as conditional: recon could not release them.
+    for (const lane of ['charon', 'mnemosyne', 'pistis']) {
+      const record = report.agents.find((agent) => agent.slug === lane);
+      assert(record.status === 'skipped' && record.pendingGates.length === 0 && !record.dispatchAllowed, `${lane} must stay skipped, got ${record.status}`);
+    }
 
     const controlId = createHash('sha256').update(`${manifest}\0${JSON.parse(readFileSync(manifest, 'utf8')).engagementId}`).digest('hex').slice(0, 24);
     const controlRoot = join(modelHost, controlId);
@@ -384,6 +388,7 @@ function conditionalSealScenario() {
 
     // The seal binds every conditional lane with its own selected normal attempt-1 decision.
     const seal = JSON.parse(readFileSync(join(artifacts, 'ai_agents_internal', 'model-control-seal.json'), 'utf8'));
+    assert(!seal.dispatchableAgents.some((lane) => ['charon', 'mnemosyne', 'pistis'].includes(lane)), 'the seal bound an operator-feature-only lane');
     for (const lane of Object.keys(expectedConditional)) {
       assert(seal.dispatchableAgents.includes(lane), `seal omitted conditional lane ${lane}`);
       const decision = JSON.parse(readFileSync(decisionPath(lane), 'utf8'));
@@ -398,7 +403,7 @@ function conditionalSealScenario() {
     const statePath = join(artifacts, 'ai_agents_internal', 'engagement-state.json');
     const stateBytes = readFileSync(statePath);
     const tampered = JSON.parse(stateBytes.toString('utf8'));
-    delete tampered.conditionalAgents.pistis;
+    delete tampered.conditionalAgents.proteus;
     writeFileSync(statePath, `${JSON.stringify(tampered, null, 2)}\n`);
     refuse('tampered conditional projection', allocate('kalchas', controller), 'engagement state conditional projection differs from the sealed preflight');
     writeFileSync(statePath, stateBytes);
@@ -420,14 +425,14 @@ function conditionalSealScenario() {
     const resolution = JSON.parse(succeed('resolve-gates', run(cli, ['engagement', 'resolve-gates', '--manifest', manifest,
       '--controller-token', controller], cliEnv)));
     assert(stable({ released: resolution.released, gateUnmet: resolution.gateUnmet })
-      === stable({ released: ['tiresias'], gateUnmet: ['asklepios', 'charon', 'mnemosyne', 'pistis', 'proteus'] }),
+      === stable({ released: ['tiresias'], gateUnmet: ['asklepios', 'proteus'] }),
       `resolve-gates released the wrong lanes: ${JSON.stringify(resolution)}`);
     assert(resolution.gateResolution.evidenceSha256 === createHash('sha256').update(readFileSync(evidencePath)).digest('hex')
       && resolution.gateResolution.capabilities['source-access'].basis === 'kalchas-evidence+path-check', 'resolve-gates did not bind the capability evidence');
 
     const released = JSON.parse(succeed('released conditional allocation', allocate('tiresias', controller)));
     assert(released.lane === 'tiresias' && typeof released.token === 'string', 'the released conditional lane did not receive a lease');
-    refuse('gate-unmet allocation', allocate('charon', controller), 'charon was omitted: gate unmet (db-access)');
+    refuse('gate-unmet allocation', allocate('asklepios', controller), 'asklepios was omitted: gate unmet (existing-suite)');
   } finally {
     rmSync(work, { recursive: true, force: true });
   }

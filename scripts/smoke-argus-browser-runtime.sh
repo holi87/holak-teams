@@ -317,6 +317,27 @@ status=$?
 set -e
 [ "$status" -ne 0 ] || fail 'managed driver ran with an unavailable browser runtime record'
 grep -Fq 'browser runtime is unavailable' "$WORK/driver-unavailable.out" || { cat "$WORK/driver-unavailable.out" >&2; fail 'unavailable runtime record was not reported'; }
+# Gate resolution is one-shot, so the remedy is a named residual, never "rerun gate resolution".
+for output in driver-unavailable driver-tampered-tree; do
+  grep -Fq 'stop and report a browser-runtime residual to Odysseus' "$WORK/$output.out" && ! grep -Fq 'rerun gate resolution' "$WORK/$output.out" || \
+    { cat "$WORK/$output.out" >&2; fail "$output advised an impossible remedy instead of a browser-runtime residual"; }
+done
+
+# A record naming a copy inside the worker-writable artifact root is refused although its
+# digests match (the tree is labelled relative to the module's parent): no import happens.
+PLANTED="$ENGAGED/node_modules/playwright"
+mkdir -p "$ENGAGED/node_modules"
+cp -Rp "$MODULE" "$PLANTED"
+jq --arg planted "$PLANTED" '.modulePath = $planted | .moduleTreeRoots = [$planted]' "$WORK/browser-runtime.json.orig" >"$CONTROL/browser-runtime.json"
+set +e
+run_driver "$WORK/driver-planted.out" ARGUS_BROWSER_PROFILE="$PROFILE"
+status=$?
+set -e
+[ "$status" -ne 0 ] || fail 'managed driver ran a runtime recorded inside the artifact root'
+grep -Fq "browser runtime $PLANTED lies inside the worker-writable artifact root" "$WORK/driver-planted.out" || \
+  { cat "$WORK/driver-planted.out" >&2; fail 'a runtime inside the artifact root was not refused by location'; }
+! grep -q '^import ' "$LOG" || fail 'managed driver imported a runtime recorded inside the artifact root'
+rm -rf "$ENGAGED/node_modules"
 cp -p "$WORK/browser-runtime.json.orig" "$CONTROL/browser-runtime.json"
 
 set +e

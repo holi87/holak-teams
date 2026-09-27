@@ -4100,6 +4100,9 @@ async function preflight(argv) {
   const artifactRootCandidate = resolve(options.artifactRoot ?? targetPath ?? process.cwd());
   const artifactRootPath = statSafe(artifactRootCandidate)?.isDirectory() ? realpathSync(artifactRootCandidate) : artifactRootCandidate;
   refuseSealedPreflightRewrite(artifactRootPath, options.output);
+  // After the seal, browser lanes depend on browser-runtime.json, which only the one-shot
+  // `engagement resolve-gates` may rewrite; a diagnostic report keeps its own result.
+  const sealed = Boolean(lstatSafe(join(artifactRootPath, 'ai_agents_internal', 'model-control-seal.json')));
   const nativeLaunch = inspectNativeLaunchForPreflight({
     options,
     modelRuntime,
@@ -4326,7 +4329,7 @@ async function preflight(argv) {
   }
   const browserRuntime = recordBrowserRuntime({
     artifactRootPath,
-    persist: Boolean(artifactWritable && engagementUsable),
+    persist: Boolean(artifactWritable && engagementUsable && !sealed),
     engagementId: engagementUsable ? engagement.engagementId : null,
     probedAt: probeTimestamp,
     result: resolveBrowserRuntime({ targetPath, artifactRootPath, profile, probeAllowed, probedAt: probeTimestamp }),
@@ -4338,7 +4341,7 @@ async function preflight(argv) {
   const detectedFeatures = new Set([
     ...(Array.isArray(profile.features)
       ? profile.features
-      : (probeAllowed ? [...detectTargetFeatures(targetPath), ...detectEnvironmentFeatures()] : [])),
+      : (probeAllowed ? detectTargetFeatures(targetPath) : [])),
     ...options.features,
   ]);
 
@@ -4564,13 +4567,16 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
 
   let status = 'ready';
   const requiredFallbacks = [];
+  const releasable = reconReleasableGates();
   for (const id of missingRequired) {
     const capability = matrix.capabilities[id];
-    requiredFallbacks.push(`${id}: ${capability.fallback}`);
+    requiredFallbacks.push(capability.kind === 'target' && !releasable.has(id)
+      ? `${id}: ${capability.fallback} Recon never releases ${id}; only an operator \`--feature ${id}\` at launch makes the lane ready.`
+      : `${id}: ${capability.fallback}`);
     if (capability.missingDisposition === 'skipped') status = 'skipped';
     else if (status !== 'skipped') status = 'deferred';
   }
-  const pendingGates = conditionalPendingGates(status, missingRequired, matrix);
+  const pendingGates = conditionalPendingGates(status, missingRequired);
   if (pendingGates.length > 0) {
     status = 'conditional';
     actions.push(conditionalLaneAction(pendingGates, requiredFallbacks));
@@ -4609,13 +4615,24 @@ function evaluateAgent({ contract, mode, availableTools, capabilityState, comman
   );
 }
 
-// A lane whose only unmet requirements are target or browser capabilities is recon-provable:
-// it becomes `conditional` instead of deferred/skipped, is sealed with its model decision,
-// and allocates only after `engagement resolve-gates` proves every pending gate.
-function conditionalPendingGates(status, missingRequired, matrix) {
+// A lane whose only unmet requirements are gates `engagement resolve-gates` can re-check itself
+// is recon-provable: it becomes `conditional` instead of deferred/skipped, is sealed with its
+// model decision, and allocates only after resolution proves every pending gate. A lane that
+// also misses an operator-declared capability stays deferred/skipped with its fallback, because
+// no recon result could ever release it.
+function conditionalPendingGates(status, missingRequired) {
   if (status !== 'deferred' && status !== 'skipped') return [];
-  if (!missingRequired.every((id) => ['target', 'browser'].includes(matrix.capabilities[id]?.kind))) return [];
+  const releasable = reconReleasableGates();
+  if (!missingRequired.every((id) => releasable.has(id))) return [];
   return [...missingRequired].sort();
+}
+
+// The gates resolveCapabilityGate can prove from its own probe or path and inventory checks.
+// db-access and multi-service are never among them: the runtime cannot re-verify credentials
+// or a service topology, so only an operator --feature at launch declares them. Hoisted
+// because preflight runs before later top-level constants in this file are initialized.
+function reconReleasableGates() {
+  return new Set(['browser-runtime', 'existing-suite', 'non-rest-surface', 'source-access']);
 }
 
 function conditionalLaneAction(pendingGates, requiredFallbacks) {
@@ -4817,6 +4834,10 @@ function detectMcpServers() {
   }
 }
 
+// db-access is never inferred, not even from DATABASE_URL/PGHOST/MYSQL_HOST: argus-launch runs
+// preflight under `env -i` with a fixed allowlist that never carries database coordinates, so
+// only an operator --feature db-access declares it, and a direct-CLI diagnostic predicts the
+// same disposition as the engagement.
 function detectTargetFeatures(targetPath) {
   if (!targetPath || !existsSync(targetPath)) return [];
   const features = [];
@@ -4829,12 +4850,6 @@ function detectTargetFeatures(targetPath) {
     features.push('non-rest-surface');
   }
   return features;
-}
-
-// Database coordinates exported to preflight are evidence for db-access for URL and path
-// targets alike. Only the variable names are consulted; values never enter the report.
-function detectEnvironmentFeatures() {
-  return process.env.DATABASE_URL || process.env.PGHOST || process.env.MYSQL_HOST ? ['db-access'] : [];
 }
 
 // Browser runtime resolution never installs anything. It inspects candidate Playwright
@@ -4903,6 +4918,7 @@ function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, pro
     return browserRuntimeResult('not-probed', 'profile features are authoritative');
   }
   const { maxProbes } = browserRuntimePolicy();
+  const writableRoot = physicalBrowserRuntimeArtifactRoot(artifactRootPath);
   const candidates = [];
   const inspected = new Set();
   let scratchRoot = null;
@@ -4910,13 +4926,16 @@ function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, pro
   let attempts = 0;
   let winner = null;
   let firstFailure = null;
-  for (const location of browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profile, hostOnly })) {
+  for (const location of browserRuntimeCandidateLocations({ targetPath, profile, hostOnly })) {
     const candidate = inspectBrowserRuntimeCandidate(location);
     if (!candidate || inspected.has(candidate.modulePath)) continue;
     inspected.add(candidate.modulePath);
     const record = { source: candidate.source, modulePath: candidate.modulePath };
-    if (candidate.invalid) {
-      candidates.push({ ...record, result: 'invalid', evidence: limitBrowserRuntimeEvidence(candidate.invalid) });
+    // Lanes can write anywhere under the artifact root, so a module there (or one that resolves
+    // a dependency there) is worker-planted code: it is refused before the probe imports it.
+    const invalid = candidate.invalid ?? browserRuntimeWritableExposure(writableRoot, candidate.modulePath);
+    if (invalid) {
+      candidates.push({ ...record, result: 'invalid', evidence: limitBrowserRuntimeEvidence(invalid) });
       continue;
     }
     if (hostOnly && isWithin(artifactRootPath, candidate.modulePath)) {
@@ -4944,6 +4963,8 @@ function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, pro
       try { tree = digestBrowserRuntimeTree(candidate.modulePath); }
       catch (error) { failure = `launched, but the module tree cannot be bound: ${error.message}`; }
     }
+    const exposure = failure ? null : browserRuntimeRootsExposure(writableRoot, tree.roots);
+    if (exposure) failure = `launched, but the ${exposure}`;
     if (failure) {
       candidates.push({ ...record, result: 'failed', evidence: limitBrowserRuntimeEvidence(failure) });
       firstFailure ??= `${candidate.source} ${candidate.modulePath}: ${failure}`;
@@ -5001,10 +5022,12 @@ function limitBrowserRuntimeEvidence(text) {
 
 // Candidate order is part of the contract: an explicit profile module is probed alone;
 // otherwise host-provisioned runtimes (argus-launch --provision-browser installs them
-// outside the artifact root) come first and user-wide installs last. hostOnly drops the
-// artifact-root, target, and working-directory locations: those hold engagement-writable or
-// target code that a host-side probe would run unsandboxed as the operator.
-function browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profile, hostOnly = false }) {
+// outside the artifact root) come first and user-wide installs last. The artifact root is
+// deliberately not a candidate location (R13): lanes can write there, so any candidate that
+// resolves into it, such as a workspace equal to the artifact root, is refused unprobed.
+// hostOnly also drops the target and working-directory locations: those hold engagement-writable
+// or target code that a host-side probe would run unsandboxed as the operator.
+function browserRuntimeCandidateLocations({ targetPath, profile, hostOnly = false }) {
   if (plainObject(profile.browserRuntime)) {
     return [{ source: 'profile', path: resolve(profile.browserRuntime.modulePath), explicit: true }];
   }
@@ -5019,7 +5042,6 @@ function browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profil
     locations.push({ source: 'host-provisioned', path: join(provisionedRoot, version, 'node_modules', 'playwright') });
   }
   if (!hostOnly) {
-    locations.push({ source: 'artifact-root', path: join(artifactRootPath, 'node_modules', 'playwright') });
     if (targetPath) locations.push({ source: 'target', path: join(targetPath, 'node_modules', 'playwright') });
     locations.push({ source: 'workspace', path: join(process.cwd(), 'node_modules', 'playwright') });
   }
@@ -5159,29 +5181,8 @@ function browserProbeFailure(error) {
 // `${label}\0${kind}\0${kind === 'file' ? sha256(bytes) : linkTarget}\n`; symbolic links
 // are recorded, never followed, and directories contribute only through their entries.
 function digestBrowserRuntimeTree(modulePath) {
-  const { treeRootLimit, treeEntryLimit } = browserRuntimePolicy();
-  const roots = [modulePath];
-  const scanned = new Set();
-  const queue = [modulePath];
-  while (queue.length > 0) {
-    const packageRoot = queue.shift();
-    if (scanned.has(packageRoot)) continue;
-    scanned.add(packageRoot);
-    let manifest;
-    try { manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')); }
-    catch { manifest = null; }
-    const names = Object.keys({
-      ...(plainObject(manifest?.dependencies) ? manifest.dependencies : {}),
-      ...(plainObject(manifest?.optionalDependencies) ? manifest.optionalDependencies : {}),
-    }).sort();
-    for (const name of names) {
-      const dependency = resolveNodePackageDirectory(packageRoot, name);
-      if (!dependency) continue;
-      if (!roots.some((root) => isWithin(root, dependency))) roots.push(dependency);
-      if (roots.length > treeRootLimit) throw new Error(`module tree spans more than ${treeRootLimit} package roots`);
-      queue.push(dependency);
-    }
-  }
+  const { treeEntryLimit } = browserRuntimePolicy();
+  const roots = browserRuntimeTreeRoots(modulePath);
   const base = dirname(modulePath);
   const entries = [];
   for (const root of roots) {
@@ -5206,6 +5207,58 @@ function digestBrowserRuntimeTree(modulePath) {
   return { sha256: digest.digest('hex'), roots };
 }
 
+// The package plus every runtime dependency Node's node_modules lookup resolves from each
+// package directory, as physical paths, excluding those inside an already covered root.
+function browserRuntimeTreeRoots(modulePath) {
+  const { treeRootLimit } = browserRuntimePolicy();
+  const roots = [modulePath];
+  const scanned = new Set();
+  const queue = [modulePath];
+  while (queue.length > 0) {
+    const packageRoot = queue.shift();
+    if (scanned.has(packageRoot)) continue;
+    scanned.add(packageRoot);
+    let manifest;
+    try { manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')); }
+    catch { manifest = null; }
+    const names = Object.keys({
+      ...(plainObject(manifest?.dependencies) ? manifest.dependencies : {}),
+      ...(plainObject(manifest?.optionalDependencies) ? manifest.optionalDependencies : {}),
+    }).sort();
+    for (const name of names) {
+      const dependency = resolveNodePackageDirectory(packageRoot, name);
+      if (!dependency) continue;
+      if (!roots.some((root) => isWithin(root, dependency))) roots.push(dependency);
+      if (roots.length > treeRootLimit) throw new Error(`module tree spans more than ${treeRootLimit} package roots`);
+      queue.push(dependency);
+    }
+  }
+  return roots;
+}
+
+// The launch sandbox lets every lane write anywhere under the artifact root (R13 keeps runtimes
+// outside it), so a module there, or one whose tree resolves a dependency there, is
+// worker-planted code. Resolution refuses it before the probe would import it, and refuses a
+// winner whose bound tree reached into the root between that check and the digest.
+function physicalBrowserRuntimeArtifactRoot(artifactRootPath) {
+  try { return realpathSync(artifactRootPath); }
+  catch { return resolve(artifactRootPath); }
+}
+
+function browserRuntimeWritableExposure(writableRoot, modulePath) {
+  if (isWithin(writableRoot, modulePath)) return 'module lies inside the worker-writable artifact root';
+  let roots;
+  try { roots = browserRuntimeTreeRoots(modulePath); }
+  catch (error) { return `the module tree cannot be bound: ${error.message}`; }
+  return browserRuntimeRootsExposure(writableRoot, roots);
+}
+
+function browserRuntimeRootsExposure(writableRoot, roots) {
+  return roots.some((root) => isWithin(writableRoot, root))
+    ? 'module resolves a runtime dependency inside the worker-writable artifact root'
+    : null;
+}
+
 function resolveNodePackageDirectory(fromDirectory, name) {
   let cursor = fromDirectory;
   for (;;) {
@@ -5224,7 +5277,8 @@ function resolveNodePackageDirectory(fromDirectory, name) {
 
 // browser-runtime.json is written only when the artifact root is writable and the engagement
 // is usable; otherwise the result is returned unchanged (preflight then fails its mandatory
-// artifact-root or engagement checks and nothing is dispatched). When persistence is due but
+// artifact-root or engagement checks and nothing is dispatched). Once the model-control seal
+// exists, preflight never persists it: only gate resolution does. When persistence is due but
 // the write fails, consumers could not verify the record, so the runtime is reported
 // unavailable instead of silently trusted.
 function recordBrowserRuntime({ artifactRootPath, persist, engagementId, probedAt = new Date().toISOString(), result }) {

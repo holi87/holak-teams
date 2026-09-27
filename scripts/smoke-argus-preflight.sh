@@ -30,8 +30,8 @@ digest_file() {
   fi
 }
 
-# Database coordinates are environment evidence for db-access; only the scenario that
-# asserts that detection exports one, so every other report stays host-independent.
+# Preflight never treats database coordinates in its environment as db-access evidence; only
+# the scenario that proves it exports one, so every other report stays host-independent.
 unset DATABASE_URL PGHOST MYSQL_HOST
 
 # browser-runtime.json must satisfy argus/browser-runtime@1, repeat the report's
@@ -136,17 +136,27 @@ if (scenario === 'partial') {
   assert(bySlug.get('perseus').status === 'degraded' && bySlug.get('perseus').dispatchAllowed, 'partial: CLI security hunt must remain dispatchable without browser');
   assert(bySlug.get('perseus').actions.some(action => action.includes('Run authorized CLI request-level security checks')), 'partial: security fallback must explicitly exclude DOM checks');
   assert(report.summary.blocked === 0, 'partial: optional gaps must not block the engagement');
-  // Every lane whose only unmet requirements are target or browser gates is conditional:
-  // sealed and planned now, allocated only after resolve-gates releases it.
+  // Every lane whose only unmet requirements are gates resolve-gates can re-check itself is
+  // conditional: sealed and planned now, allocated only after resolve-gates releases it.
   const expectedConditional = {
-    antigone: ['browser-runtime'], asklepios: ['existing-suite'], charon: ['db-access'], daidalos: ['browser-runtime'],
-    lynceus: ['browser-runtime'], mnemosyne: ['db-access'], orion: ['browser-runtime'], penelope: ['browser-runtime'],
-    pistis: ['multi-service'], proteus: ['non-rest-surface'], tiresias: ['source-access'],
+    antigone: ['browser-runtime'], asklepios: ['existing-suite'], daidalos: ['browser-runtime'],
+    lynceus: ['browser-runtime'], orion: ['browser-runtime'], penelope: ['browser-runtime'],
+    proteus: ['non-rest-surface'], tiresias: ['source-access'],
   };
   const conditional = Object.fromEntries(report.agents.filter((agent) => agent.status === 'conditional').map((agent) => [agent.slug, agent.pendingGates]));
   assert(JSON.stringify(conditional) === JSON.stringify(expectedConditional), `partial: conditional lanes differ: ${JSON.stringify(conditional)}`);
-  assert(report.summary.conditional === 11 && report.summary.deferred === 0 && report.summary.skipped === 0,
-    `partial: expected 11 conditional and no deferred or skipped lane, got ${JSON.stringify(report.summary)}`);
+  assert(report.summary.conditional === 8 && report.summary.deferred === 0 && report.summary.skipped === 3,
+    `partial: expected 8 conditional, no deferred, and 3 skipped lanes, got ${JSON.stringify(report.summary)}`);
+  // Recon can never release db-access or multi-service, so those lanes stay skipped with their
+  // fallback and the only remedy that works: an operator --feature at launch.
+  const operatorOnly = { charon: 'db-access', mnemosyne: 'db-access', pistis: 'multi-service' };
+  for (const [slug, gate] of Object.entries(operatorOnly)) {
+    const agent = bySlug.get(slug);
+    assert(agent.status === 'skipped' && agent.pendingGates.length === 0 && agent.dispatchAllowed === false,
+      `partial: ${slug} must stay skipped without a pending gate, got ${agent.status} ${JSON.stringify(agent.pendingGates)}`);
+    assert(agent.actions[0].startsWith(`${gate}: `) && agent.actions[0].endsWith(`Recon never releases ${gate}; only an operator \`--feature ${gate}\` at launch makes the lane ready.`)
+      && !agent.actions.some((action) => action.includes('resolve-gates')), `partial: ${slug} lacks its operator-feature remedy: ${agent.actions[0]}`);
+  }
   for (const [slug, gates] of Object.entries(expectedConditional)) {
     const agent = bySlug.get(slug);
     assert(agent.dispatchAllowed === true && agent.stopsEngagement === false, `partial: conditional ${slug} must be dispatchable without stopping the engagement`);
@@ -155,15 +165,16 @@ if (scenario === 'partial') {
       && agent.actions[0].includes(`is recorded as residual risk: ${gates[0]}: `), `partial: ${slug} lacks its conditional action: ${agent.actions[0]}`);
     assert(!agent.actions.some((action) => gates.some((gate) => action.startsWith(`${gate}: `))), `partial: ${slug} kept a bare required-capability fallback`);
   }
-  assert(bySlug.get('mnemosyne').actions.some((action) => action.startsWith('context7: ')), 'partial: a conditional lane must keep its optional-capability fallback');
-  assert(bySlug.get('charon').actions.some((action) => action.startsWith('Authorization denied database-read')), 'partial: a conditional lane must keep its authorization denials');
+  assert(bySlug.get('daidalos').actions.some((action) => action.startsWith('context7: ')), 'partial: a conditional lane must keep its optional-capability fallback');
+  assert(bySlug.get('orion').actions.some((action) => action.startsWith('Authorization denied browser-state-change')), 'partial: a conditional lane must keep its authorization denials');
   const plannedRoles = JSON.parse(fs.readFileSync(report.orchestration.path, 'utf8')).waves.flatMap((wave) => wave.roles.map((role) => role.slug));
   assert(Object.keys(expectedConditional).every((slug) => plannedRoles.includes(slug)), 'partial: the orchestration projection must list the conditional lanes');
+  assert(Object.keys(operatorOnly).every((slug) => !plannedRoles.includes(slug)), 'partial: the orchestration projection kept an operator-feature-only lane');
   const partialRisks = new Map(report.residualRisks.map((risk) => [risk.slug, risk]));
   assert(partialRisks.get('orion')?.status === 'conditional' && partialRisks.get('orion').reason.startsWith('pending gate resolution: Conditional on browser-runtime')
     && partialRisks.get('orion').missingCapabilities.includes('browser-runtime'), 'partial: a conditional browser lane must be a named pending residual risk');
-  assert(partialRisks.get('charon')?.status === 'conditional' && partialRisks.get('charon').reason.startsWith('pending gate resolution: Conditional on db-access')
-    && partialRisks.get('charon').missingCapabilities.includes('db-access'), 'partial: a conditional DB lane must be a named pending residual risk');
+  assert(partialRisks.get('charon')?.status === 'skipped' && partialRisks.get('charon').reason.startsWith('db-access: ')
+    && partialRisks.get('charon').missingCapabilities.includes('db-access'), 'partial: a skipped DB lane must be a named residual risk with its fallback');
   assert(!partialRisks.has('perseus') && !partialRisks.has('aegis'), 'partial: degraded dispatchable lanes are not residual lane risks');
   assert(bySlug.get('aegis').status === 'degraded' && bySlug.get('aegis').dispatchAllowed, 'partial: Context7 fallback must degrade, not block');
   assert(bySlug.get('aegis').actions.some((action) => action.includes('official documentation')), 'partial: fallback action must be explicit');
@@ -376,7 +387,7 @@ browser_runtime_preflight() {
   local name="$1" filter="$2" root="$WORK/browser-runtime-$1"
   mkdir -p "$root/ai_agents_internal"
   cp "$AUTH_FIXTURES/full.json" "$root/ai_agents_internal/authorization.json"
-  jq --arg fixtures "$FIXTURES" "$filter" "$browser_profile" >"$WORK/browser-runtime-$name-profile.json"
+  jq --arg fixtures "$FIXTURES" --arg root "$root" "$filter" "$browser_profile" >"$WORK/browser-runtime-$name-profile.json"
   "$CLI" preflight \
     --target http://127.0.0.1:9/ \
     --artifact-root "$root" \
@@ -390,6 +401,16 @@ browser_runtime_preflight() {
 browser_runtime_preflight working '.browserRuntime = {modulePath: ($fixtures + "/fake-playwright")}'
 browser_runtime_preflight broken '.browserRuntime = {modulePath: ($fixtures + "/fake-playwright-broken")}'
 browser_runtime_preflight disabled '.browserRuntime = false'
+# A Playwright package planted inside the worker-writable artifact root is refused unprobed,
+# even when the profile names it: its import-time side effect must never run.
+mkdir -p "$WORK/browser-runtime-planted/node_modules"
+cp -R "$FIXTURES/fake-playwright" "$WORK/browser-runtime-planted/node_modules/playwright"
+{
+  printf 'import { writeFileSync } from "node:fs";\n'
+  printf 'writeFileSync(new URL("../../planted-module-ran", import.meta.url), "imported\\n");\n'
+  cat "$FIXTURES/fake-playwright/index.mjs"
+} >"$WORK/browser-runtime-planted/node_modules/playwright/index.mjs"
+browser_runtime_preflight planted '.browserRuntime = {modulePath: ($root + "/node_modules/playwright")}'
 DATABASE_URL=postgres://fixture browser_runtime_preflight database '.browserRuntime = false'
 [ -z "${DATABASE_URL:-}" ] || fail 'database coordinates leaked beyond their single preflight run'
 node - "$WORK" "$FIXTURES" <<'NODE'
@@ -446,15 +467,29 @@ assert(!capability(broken, 'browser-runtime').available && capability(broken, 'b
 assert(lanes(broken).get('orion').status === 'conditional' && JSON.stringify(lanes(broken).get('orion').pendingGates) === '["browser-runtime"]',
   'orion must wait on the browser-runtime gate without a functional browser runtime');
 
+const planted = load('planted');
+const plantedModule = fs.realpathSync(path.join(work, 'browser-runtime-planted', 'node_modules', 'playwright'));
+assert(planted.browserRuntime.status === 'unavailable' && planted.browserRuntime.modulePath === null
+  && JSON.stringify(planted.browserRuntime.candidates) === JSON.stringify([{ source: 'profile', modulePath: plantedModule, result: 'invalid',
+    evidence: 'module lies inside the worker-writable artifact root' }]), `a module inside the artifact root was not refused: ${JSON.stringify(planted.browserRuntime)}`);
+assert(!fs.existsSync(path.join(work, 'browser-runtime-planted', 'planted-module-ran')), 'preflight imported a module planted inside the artifact root');
+assert(lanes(planted).get('orion').status === 'conditional', 'a refused planted runtime must leave orion waiting on its browser-runtime gate');
+
 const disabled = load('disabled');
 assert(disabled.browserRuntime.status === 'not-probed' && disabled.browserRuntime.evidence === 'profile disabled browser runtime resolution'
   && disabled.browserRuntime.probedAt === null, 'browserRuntime=false must skip resolution');
-assert(!capability(disabled, 'db-access').available && lanes(disabled).get('charon').status === 'conditional'
-  && JSON.stringify(lanes(disabled).get('charon').pendingGates) === '["db-access"]', 'db-access must stay a pending gate without database coordinates');
+assert(!capability(disabled, 'db-access').available && lanes(disabled).get('charon').status === 'skipped'
+  && lanes(disabled).get('charon').pendingGates.length === 0, 'without an operator --feature db-access charon must stay skipped, never pending recon');
 
+// argus-launch runs preflight under `env -i` with a fixed allowlist, so database coordinates
+// never reach an engagement: only an operator --feature db-access declares the capability,
+// and a direct-CLI diagnostic must predict the same disposition.
 const database = load('database');
-assert(capability(database, 'db-access').available, 'DATABASE_URL did not make db-access available for a URL target');
-assert(lanes(database).get('charon').status === 'ready', `charon must be ready with database coordinates (got ${lanes(database).get('charon').status})`);
+assert(!capability(database, 'db-access').available && capability(database, 'db-access').evidence === 'target/profile feature not detected: db-access',
+  'DATABASE_URL made db-access available although only an operator --feature declares it');
+assert(lanes(database).get('charon').status === lanes(disabled).get('charon').status
+  && JSON.stringify(lanes(database).get('charon').pendingGates) === JSON.stringify(lanes(disabled).get('charon').pendingGates),
+  `database coordinates changed the charon disposition (got ${lanes(database).get('charon').status})`);
 assert(!JSON.stringify(database).includes('postgres://fixture'), 'database coordinates leaked into the preflight report');
 NODE
 
@@ -516,12 +551,12 @@ for scenario in full partial; do
     jq -e --slurpfile preflight "$target/ai_agents_internal/preflight.json" '
       ([ $preflight[0].agents[] | select(.selected and (.status == "ready" or .status == "degraded" or .status == "conditional") and (.slug == "odysseus" or .dispatchAllowed == true)) | .slug ] | sort) as $expected |
       (.dispatchableAgents | sort) == $expected and ([.decisions | keys[]] | sort) == $expected and
-      (.decisions | has("orion")) and (.decisions | has("charon"))
+      (.decisions | has("orion")) and (.decisions | has("tiresias")) and ([.dispatchableAgents[] | select(. == "charon" or . == "mnemosyne" or . == "pistis")] | length) == 0
     ' "$seal" >/dev/null || fail 'partial model-control seal differs from the exact dispatchable preflight projection'
     "$CLI" engagement status --manifest "$manifest" >"$WORK/partial-sealed-state.json"
     jq -e --slurpfile preflight "$target/ai_agents_internal/preflight.json" '
       ([ $preflight[0].agents[] | select(.status == "conditional") | {key: .slug, value: .pendingGates} ] | from_entries) as $expected |
-      .conditionalAgents == $expected and (.conditionalAgents | length) == 11 and .gateResolution == null
+      .conditionalAgents == $expected and (.conditionalAgents | length) == 8 and .gateResolution == null
     ' "$WORK/partial-sealed-state.json" >/dev/null || fail 'sealed engagement state does not carry the conditional preflight projection'
 
     # After the seal, preflight never rewrites the sealed report; a diagnostic report under
@@ -542,7 +577,7 @@ for scenario in full partial; do
     test ! -e "$WORK/escaped-preflight.json" || fail 'a refused sealed preflight wrote outside the artifact root'
     "$CLI" preflight --target "$target" --artifact-root "$target" --mode A --profile "$FIXTURES/partial.json" \
       --environment unknown --output ai_agents_internal/preflight-diagnostic.json >/dev/null || fail 'a diagnostic preflight to another output was refused after the seal'
-    jq -e '.status == "degraded" and .summary.conditional == 11' "$target/ai_agents_internal/preflight-diagnostic.json" >/dev/null || \
+    jq -e '.status == "degraded" and .summary.conditional == 8' "$target/ai_agents_internal/preflight-diagnostic.json" >/dev/null || \
       fail 'the diagnostic preflight did not report the same conditional projection'
     [ "$(digest_file "$report")" = "$sealed_report_digest" ] || fail 'a refused or diagnostic preflight changed the sealed report'
     [ "$(digest_file "$target/ai_agents_internal/orchestration-plan.json")" = "$sealed_plan_digest" ] || \
@@ -572,19 +607,37 @@ for scenario in full partial; do
     cp -R "$FIXTURES/fake-playwright" "$partial_home/.cache/argus/browser-runtime/0.0.1/node_modules/playwright"
     HOME="$partial_home" "$CLI" engagement resolve-gates --manifest "$manifest" --controller-token "$odysseus_token" >"$WORK/partial-gates.json"
     jq -e '.released == ["antigone","daidalos","lynceus","orion","penelope"]
-      and .gateUnmet == ["asklepios","charon","mnemosyne","pistis","proteus","tiresias"]
+      and .gateUnmet == ["asklepios","proteus","tiresias"]
       and .gateResolution.evidenceSha256 == null
       and .gateResolution.capabilities["browser-runtime"].status == "proven"
-      and ([.gateResolution.capabilities[] | select(.status == "unmet")] | length) == 5' "$WORK/partial-gates.json" >/dev/null || \
+      and ([.gateResolution.capabilities[] | select(.status == "unmet")] | length) == 3
+      and ([.gateResolution.capabilities[] | select(.basis == "operator-feature-required")] | length) == 0' "$WORK/partial-gates.json" >/dev/null || \
       fail "partial resolve-gates released the wrong lanes: $(cat "$WORK/partial-gates.json")"
     while IFS= read -r lane; do
       allocation="$(argus_smoke_allocate "$CLI" "$manifest" "$WORK/model-control-host" "$lane" "$odysseus_token")"
       jq -r .token <<<"$allocation" >"$WORK/partial-tokens/$lane"
     done < <(jq -r '.released[]' "$WORK/partial-gates.json")
-    if omitted_output="$(argus_smoke_allocate "$CLI" "$manifest" "$WORK/model-control-host" charon "$odysseus_token" 2>&1)"; then
+    # The released browser lanes import exactly the runtime resolve-gates recorded. A diagnostic
+    # preflight after the seal, including a Codex one that fails its own mandatory check, keeps
+    # its result in its own report and never replaces that record.
+    runtime_record="$target/ai_agents_internal/browser-runtime.json"
+    runtime_record_digest="$(digest_file "$runtime_record")"
+    jq -e '.status == "available" and .source == "host-provisioned"' "$runtime_record" >/dev/null || \
+      fail "resolve-gates did not record the host-provisioned runtime: $(cat "$runtime_record")"
+    "$CLI" preflight --target "$target" --artifact-root "$target" --mode A --profile "$FIXTURES/partial.json" \
+      --environment unknown --output ai_agents_internal/preflight-diagnostic2.json >/dev/null || fail 'a diagnostic preflight after gate resolution was refused'
+    jq -e '.browserRuntime.status == "not-probed"' "$target/ai_agents_internal/preflight-diagnostic2.json" >/dev/null || \
+      fail 'the post-resolution diagnostic preflight did not report its own browser runtime result'
+    if "$CLI" preflight --target "$target" --artifact-root "$target" --mode A --profile "$FIXTURES/partial.json" \
+      --environment unknown --model-runtime codex --output ai_agents_internal/preflight-diagnostic-codex.json >/dev/null 2>&1; then
+      fail 'a Codex diagnostic preflight passed without a native hard turn cap'
+    fi
+    [ "$(digest_file "$runtime_record")" = "$runtime_record_digest" ] || \
+      fail "a diagnostic preflight after the seal replaced browser-runtime.json: $(cat "$runtime_record")"
+    if omitted_output="$(argus_smoke_allocate "$CLI" "$manifest" "$WORK/model-control-host" asklepios "$odysseus_token" 2>&1)"; then
       fail 'a gate-unmet lane allocated after engagement resolve-gates'
     fi
-    grep -Fq 'charon was omitted: gate unmet (db-access)' <<<"$omitted_output" || \
+    grep -Fq 'asklepios was omitted: gate unmet (existing-suite)' <<<"$omitted_output" || \
       fail "gate-unmet allocation failed for the wrong reason: $omitted_output"
     "$CLI" engagement barrier status --manifest "$manifest" --phase discovery | jq -e '.participants | index("tiresias") | not' >/dev/null || \
       fail 'a gate-unmet discovery lane still holds the discovery barrier'

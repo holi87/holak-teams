@@ -938,8 +938,23 @@ if gate_output="$(HOME="$CONDITIONAL_HOME" "$CLI" engagement resolve-gates --man
   fail 'resolve-gates read capability evidence outside solution/discovery'
 fi
 grep -Fq 'capability evidence must be a file under <artifactRoot>/solution/discovery' <<<"$gate_output" || fail "misplaced evidence failed for the wrong reason: $gate_output"
-(cd "$WORK" && HOME="$CONDITIONAL_HOME" ARGUS_ENGAGEMENT_CONTROLLER_TOKEN="$GATES_CONTROLLER" \
+# A lane can plant a Playwright package anywhere under the artifact root. Run from the artifact
+# root, so the workspace candidate resolves there too: the re-probe must refuse it unimported.
+mkdir -p "$GATES/artifacts/node_modules"
+cp -R "$ROOT/scripts/fixtures/argus-preflight/fake-playwright" "$GATES/artifacts/node_modules/playwright"
+{
+  printf 'import { writeFileSync } from "node:fs";\n'
+  printf 'writeFileSync(new URL("../../planted-module-ran", import.meta.url), "imported\\n");\n'
+  cat "$ROOT/scripts/fixtures/argus-preflight/fake-playwright/index.mjs"
+} >"$GATES/artifacts/node_modules/playwright/index.mjs"
+(cd "$GATES/artifacts" && HOME="$CONDITIONAL_HOME" ARGUS_ENGAGEMENT_CONTROLLER_TOKEN="$GATES_CONTROLLER" \
   "$CLI" engagement resolve-gates --manifest "$GATES_MANIFEST") >"$WORK/resolve-gates.json"
+test ! -e "$GATES/artifacts/planted-module-ran" || fail 'resolve-gates imported a Playwright package planted inside the artifact root'
+jq -e --arg planted "$(cd "$GATES/artifacts/node_modules/playwright" && pwd -P)" '
+  ([.candidates[] | select(.modulePath == $planted)] == [{source: "workspace", modulePath: $planted, result: "invalid", evidence: "module lies inside the worker-writable artifact root"}])
+  and ([.candidates[] | select(.source == "artifact-root")] | length) == 0' \
+  "$GATES/artifacts/ai_agents_internal/browser-runtime.json" >/dev/null || \
+  fail "resolve-gates did not refuse the planted artifact-root runtime: $(jq -c .candidates "$GATES/artifacts/ai_agents_internal/browser-runtime.json")"
 jq -e '(.released == ["asklepios","orion","proteus","tiresias"]) and (.gateUnmet == ["charon","pistis"])' "$WORK/resolve-gates.json" >/dev/null \
   || fail "resolve-gates released the wrong lanes: $(cat "$WORK/resolve-gates.json")"
 jq -e --arg digest "$(digest_file "$GATES/artifacts/solution/discovery/capability-evidence.json")" '.gateResolution as $g

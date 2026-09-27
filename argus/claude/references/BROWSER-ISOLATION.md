@@ -29,8 +29,10 @@ Concurrent lanes sharing the ONE Playwright MCP `browser_*` session clobber each
   config `recon/driver.config.json`, the authorization manifest `authorization.json`, and the
   Playwright module recorded in `browser-runtime.json`. The driver recomputes that module's
   package and module-tree digests immediately before importing it; on any mismatch it stops
-  with `browser runtime changed since preflight` and the lane asks Odysseus to rerun gate
-  resolution. `ARGUS_BROWSER_PROFILE` is mandatory there. A framework that vendors the driver
+  with `browser runtime changed since preflight`, and it never imports a module whose tree
+  lies inside the worker-writable artifact root. Gate resolution runs once, so the lane then
+  reports a browser-runtime residual to Odysseus (see "If `browser-runtime.json` is not
+  `available`" below). `ARGUS_BROWSER_PROFILE` is mandatory there. A framework that vendors the driver
   runs the same flags as `node scripts/hunt-driver.mjs ...` with `scripts/driver.config.json`.
 
   The engagement controller gives each worker a unique managed `browserProfile` and
