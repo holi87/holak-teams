@@ -557,7 +557,8 @@ def counterfactual_skip(state: AdapterState, meta: CaseMeta, error: BaseExceptio
     fixture = fixture_for(state, meta.bug)
     if not isinstance(fixture, cf.Exempt) or fixture.reason != claimed or claimed not in cf.EXEMPTION_REASONS:
         return False
-    state.emit(f"{meta.case_id}.cf", ("policy", "pass", f"counterfactual-exempt.{claimed}"), "false", "n/a", meta.bug)
+    if state.pass_supported:  # an unsupported pass was counted at session start and emits nothing
+        state.emit(f"{meta.case_id}.cf", ("policy", "pass", f"counterfactual-exempt.{claimed}"), "false", "n/a", meta.bug)
     return True
 
 

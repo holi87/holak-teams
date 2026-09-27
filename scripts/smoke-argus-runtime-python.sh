@@ -424,7 +424,8 @@ expect_only_event cf-claimed-exemption tests.contract.test_claimed_exemption_fix
 
 # An exemption records one event in cf-correct and nothing in a tamper pass.
 jq '{"$schema": ."$schema", schemaVersion, bugId, exemption: {reason: "front-end-logic", justification: "The defect lives in client-side rendering."}}' \
-  "$WORK/cf-fixture.json" >"$CF_FIXTURE"
+  "$WORK/cf-fixture.json" >"$WORK/cf-exempt.json"
+cp "$WORK/cf-exempt.json" "$CF_FIXTURE"
 cf_inventory cf-exempt-inventory
 expect_plan cf-exempt-inventory exempt - front-end-logic
 cf_pass cf-exempt cf-correct
@@ -476,9 +477,11 @@ expect_exit cf-no-openapi 1
 expect_status "error 1" cf-no-openapi
 [ "$(cat reports/argus-adapter-errors/*.txt | cut -f2)" = counterfactual-plan-failed ] || fail "the unverifiable contract was not listed"
 
-# Counterfactual passes belong to defect-evidence, and only with a well-formed pass name.
-for activation in "candidate-regression cf-correct" "defect-evidence cf-tamper-0"; do
-  read -r cf_mode cf_pass_name <<<"$activation"
+# Counterfactual passes belong to defect-evidence, and only with a well-formed pass name; an
+# unsupported pass emits nothing, not even an exemption.
+for activation in "candidate-regression cf-correct cf-fixture" "defect-evidence cf-tamper-0 cf-fixture" "candidate-regression cf-correct cf-exempt"; do
+  read -r cf_mode cf_pass_name cf_source <<<"$activation"
+  cp "$WORK/$cf_source.json" "$CF_FIXTURE"
   rm -f "$WORK/cf-unsupported.tsv"
   pytest_run cf-unsupported ARGUS_RUNNER_MODE="$cf_mode" ARGUS_EVIDENCE_PASS="$cf_pass_name" "OPENAPI_PATH=$APP/tests/contract/fixtures/counterfactual-openapi.json" \
     API_URL=http://127.0.0.1:9 ARGUS_OUTCOME_FILE="$WORK/cf-unsupported.tsv" -- "$CF_TEST"
