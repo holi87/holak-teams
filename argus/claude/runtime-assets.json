@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 37486,
-      "sha256": "5b4729c44dcf15584bbd72b1ed9bb6158a77b615832f5c6738048965fe9f6efe"
+      "bytes": 38530,
+      "sha256": "85a48ca2d94322877072c66f1773bd52513fb1231bf2cf66b2d43b30db19a805"
     },
     {
       "id": "canonical-contracts",
@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 16788,
-      "sha256": "4fc851ce5e040185691e82ee18961a380b24aaed3ae8cf6afdb654a3e603836c"
+      "bytes": 20467,
+      "sha256": "8d164fe02db37e1e111679c6b02f00199b7539641b88a48b05984f9570754cdf"
     },
     {
       "id": "runner-contract",
@@ -101,8 +101,8 @@
       "source": "argus/RACI-CONTRACT.md",
       "destination": "references/RACI-CONTRACT.md",
       "files": 1,
-      "bytes": 11198,
-      "sha256": "b223cb47d1098bf87d0c28e23713d7f6809bc10e47b64278dac7d1ffd08c6c39"
+      "bytes": 11427,
+      "sha256": "2bcf4286181ab41a3488c3201d5bac56e9b613d91755c26f42919f8c067a8fa3"
     },
     {
       "id": "raci-matrix",
@@ -110,8 +110,8 @@
       "source": "argus/raci.json",
       "destination": "references/raci.json",
       "files": 1,
-      "bytes": 24644,
-      "sha256": "4b1006ee0c3492e62842ac5bd591f71816c21d2309aeb5f535a4dc710f8c5c66"
+      "bytes": 25138,
+      "sha256": "98d3790f4ad5fecd4ed54b40a39daf8e46f5fdecd490bdd840a4368d76087926"
     },
     {
       "id": "orchestration-core-skill",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 40,
-      "bytes": 169987,
-      "sha256": "81f428e41cbb3ba18ba4094e3f00941a9a3b383ca7942455425788a70aa97637"
+      "bytes": 178418,
+      "sha256": "4374682f4507d41da10e069fb01af17dacc6baa67dcd47a9eb384cef8c4b0e74"
     },
     {
       "id": "capability-matrix",
@@ -245,8 +245,8 @@
       "source": "argus/policies",
       "destination": "policies",
       "files": 4,
-      "bytes": 11400,
-      "sha256": "6edc8d1f6ea1f235dd6458740ae1172691e85ca879f430b675e919cfef70eda6"
+      "bytes": 11580,
+      "sha256": "c26534a4738f3d686eab55f98101839a2242301615757d39bf0f68115f171031"
     },
     {
       "id": "runtime-library",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 9,
-      "bytes": 295356,
-      "sha256": "f75f77da7dcc9b896e4cc5cf62138b05ec6c999df8649afc532f2000c9140006"
+      "bytes": 305832,
+      "sha256": "f47f345f17adbad448d080c608e954cf25b074b8eec93f006dbe3c9d803bf05e"
     },
     {
       "id": "common-template",
@@ -263,8 +263,8 @@
       "source": "argus/framework-template-common",
       "destination": "templates/common",
       "files": 25,
-      "bytes": 83632,
-      "sha256": "5dfdf2314965a9050edde79178e5eb1f39e0ce4bea54b12963b61c7270474c68"
+      "bytes": 88274,
+      "sha256": "de745f25e5ca39889239444dd9d94bc3bb184807e1bdea7ec9c723881e09a047"
     },
     {
       "id": "typescript-template",
