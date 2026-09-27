@@ -209,16 +209,17 @@ jq -e --arg workspace "$WORK/url-workspace" '.targetKind == "url" and .workspace
 
 # Operator-declared features ride unsigned in the launch payload and reach preflight verbatim.
 # The launcher's cleared environment hides database coordinates, so without --feature a
-# database lane can never become available; with it, preflight confirms the capability.
+# database lane stays conditional on db-access, which recon never releases; with it,
+# preflight confirms the capability.
 launch_payload_of() {
   tail -n 1 "$1/ai_agents_internal/fixture-claude-arguments.txt" | sed 's|^/argus:run authenticatedLaunch=||'
 }
 launch_payload_of "$WORK/path artifacts" | jq -e '.features == []' >/dev/null || \
   fail 'featureless launch payload did not carry an empty features array'
 jq -e '(.capabilities[] | select(.id == "db-access") | .available == false)
-  and (.agents[] | select(.slug == "charon") | .dispatchAllowed == false and (.missingCapabilities | index("db-access")) != null)' \
+  and (.agents[] | select(.slug == "charon") | .status == "conditional" and .pendingGates == ["db-access"] and (.missingCapabilities | index("db-access")) != null)' \
   "$WORK/path artifacts/ai_agents_internal/preflight.json" >/dev/null || \
-  fail 'featureless Mode B launch detected db-access or made charon dispatchable'
+  fail 'featureless Mode B launch detected db-access or released charon from its db-access gate'
 mkdir -p "$WORK/feature-target" "$WORK/feature-artifacts"
 run_authenticated_launch feature "$WORK/feature-target" "$WORK/feature-artifacts" '' --feature db-access
 launch_payload_of "$WORK/feature-artifacts" | jq -e '.features == ["db-access"]' >/dev/null || \

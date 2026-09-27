@@ -30,20 +30,21 @@ replace signed coordinates. A mandatory failure stops with evidence.
 Pin the public-only host trust store's distinct `runtime-attestation` and
 `operator-approval` IDs, then rerun preflight; never sign, access private keys, or accept
 first-use trust. Persist exactly one normal attempt-1 decision for Odysseus and every
-selected `ready`/`degraded` agent with `dispatchAllowed=true`.
-Allocate Odysseus first with its decision, then workers with their decisions and its
-controller token. Give workers only their lane token and public coordinates. Reject
-late normal routes; retries keep the dispatch/allocation and run `engagement start-attempt`
-after emitting prior-attempt telemetry. Capture its returned lane token, replace the
-consumed token, and only then start the new thread; the stale token is revoked.
+selected `ready`/`degraded`/`conditional` agent with `dispatchAllowed=true`.
+Allocate Odysseus first, then workers with their decisions and the controller token. Give
+workers only their lane token and public coordinates. Reject late normal routes; retries
+keep the dispatch/allocation and run `engagement start-attempt` after emitting
+prior-attempt telemetry. Replace the consumed token with its returned one before starting
+the new thread; the stale token is revoked.
 
-Dispatch only persisted `ready`/`degraded` roles as exact `argus:<slug>` types. Follow the
+Dispatch persisted `ready`/`degraded` roles, and `conditional` roles only after
+`engagement resolve-gates` releases them, as exact `argus:<slug>` types. Follow the
 RACI projection and W0–W4 barriers. The sealed dispatchable projection is the immutable
 barrier-participant set; worker `success` cleanup requires every declared arrival, and
 heartbeats are allocation/dispatch/attempt-generation-bound. Collect every RESULT, validate
 canonical outputs, run gates, and clean all allocations on success, failure, or interruption. Report verified
-preflight/authorization, contributions, paths, runner categories, surface-derived coverage,
-denials, residual risk, model bindings, barriers, and cleanup. Never equate defect yield
+preflight/authorization, contributions, runner categories, surface-derived coverage,
+denials, residual risk, model bindings, and cleanup. Never equate defect yield
 with coverage or claim uncollected work.
 
 For launcher-authorized input containing `scope=ARGUS_ORCHESTRATION_SMOKE`, use the signed

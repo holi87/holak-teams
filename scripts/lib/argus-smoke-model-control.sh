@@ -4,7 +4,8 @@
 # the host root outside the engagement artifact root and own its cleanup. The optional
 # ninth argument selects the initial routing: `single` (default) routes every dispatchable
 # lane with one single-lane call; `none` stops after preflight so the caller can exercise
-# batch routing itself.
+# batch routing itself. Dispatchable lanes include `conditional` records, because their
+# attempt-1 decisions are sealed before the first allocation.
 
 argus_smoke_prepare_model_control() {
   local cli="$1"
@@ -95,7 +96,7 @@ argus_smoke_prepare_model_control() {
     }
     relative_path="$(jq -r .relativePath <<<"$result")"
     printf '%s\n' "$artifact_root/$relative_path" >"$control_root/decisions/$lane.path"
-  done < <(jq -r '.agents[] | select(.selected and (.status == "ready" or .status == "degraded") and (.slug == "odysseus" or .dispatchAllowed == true)) | .slug' "$preflight_output")
+  done < <(jq -r '.agents[] | select(.selected and (.status == "ready" or .status == "degraded" or .status == "conditional") and (.slug == "odysseus" or .dispatchAllowed == true)) | .slug' "$preflight_output")
 }
 
 argus_smoke_model_decision() {

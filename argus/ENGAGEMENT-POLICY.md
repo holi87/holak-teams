@@ -263,9 +263,10 @@ it was probed, because the root becomes worker-writable once lanes run.
 ## Isolated resources and leases
 
 Before allocation, the controller persists a normal attempt-1 selected model decision for
-Odysseus and every projection-selected worker whose current preflight record is `ready` or
-`degraded` with `dispatchAllowed=true`. This exact dispatchable set is sealed; deferred,
-skipped, and blocked roles cannot allocate. The controller then runs `engagement allocate` for Odysseus
+Odysseus and every projection-selected worker whose current preflight record is `ready`,
+`degraded`, or `conditional` with `dispatchAllowed=true`. This exact dispatchable set is
+sealed; deferred, skipped, and blocked roles cannot allocate, and a conditional role
+allocates only once gate resolution releases it. The controller then runs `engagement allocate` for Odysseus
 against that exact decision and retains the returned lease token as the controller token.
 Every worker allocation is bound to its own exact selected decision and authenticated with
 that controller token. The controller passes a worker only its own token and public resource
@@ -448,6 +449,36 @@ a manifest (`schemaVersion: 1`) or state (`schemaVersion: 2`) written by Argus 4
 rejected, so an active older engagement must finish with its original runtime.
 
 ## Conditional lanes and gate resolution
+
+Preflight gives every role one disposition. The sealed dispatchable set is exactly the
+selected records whose disposition has `dispatchAllowed=true`:
+
+| Disposition | Meaning | `dispatchAllowed` | Sealed with a decision | Allocation |
+|---|---|:--:|:--:|---|
+| `ready` | Every required and optional capability is available | yes | yes | After the controller |
+| `degraded` | An optional capability, host command, or authorization grant is missing; the record carries a deterministic fallback action | yes | yes | After the controller |
+| `conditional` | Every unmet required capability is of kind `target` or `browser` and listed in `pendingGates` (sorted, non-empty); no tool is missing | yes | yes | Only after `engagement resolve-gates` releases it |
+| `deferred` | A missing required capability of another kind (recon cannot prove it) defers the lane, or a blocked non-essential lane was downgraded (`downgradedFrom=blocked`) | no | no | Never |
+| `skipped` | A missing required capability of another kind marks the lane not applicable to the target | no | no | Never |
+| `blocked` | A tool, model route, or mandatory prerequisite failed; it stops the engagement for Odysseus, an essential lane, or a mandatory lane | no | no | Never |
+| `not-selected` | The role is outside the engagement mode | no | no | Never |
+
+`pendingGates` is empty on every record that is not `conditional`. A conditional record
+replaces its required-capability fallbacks with one action naming its gates, the
+resolve-gates release, and the fallback recorded as residual risk when a gate stays unmet;
+optional-capability, host-command, and authorization actions stay. Any conditional record
+makes the report `degraded`, `summary.conditional` counts them, and `residualRisks` lists
+each with a reason that starts `pending gate resolution`.
+
+Odysseus's first allocation seals `ai_agents_internal/preflight.json` by digest, and every
+later allocation and retry re-checks it. Once `ai_agents_internal/model-control-seal.json`
+exists, preflight refuses before any probe or write when its output resolves to that report:
+``preflight.json is sealed by the model-control seal; release conditional lanes with
+`argus-assets engagement resolve-gates`, never by rerunning preflight``. A diagnostic
+report under another `--output` path stays allowed. A seal load also fails with
+`engagement state conditional projection differs from the sealed preflight` when the bound
+`conditionalAgents` map is not exactly the sealed report's conditional records and their
+`pendingGates`.
 
 A conditional lane is a dispatchable worker whose preflight record still waits on target or
 browser capability gates that recon may prove. Model-control sealing binds

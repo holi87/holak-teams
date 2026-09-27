@@ -58,7 +58,11 @@ for (const fragment of [
   'ARGUS_PREFLIGHT_ERROR: TARGET_REQUIRED', 'ARGUS_PREFLIGHT_ERROR: AGENT_TOOL_UNAVAILABLE',
   'ARGUS_PREFLIGHT_ERROR: ARGUS_AGENTS_UNAVAILABLE', 'ARGUS_PREFLIGHT_ERROR: CAPABILITY_PREFLIGHT_BLOCKED',
   'argus-assets preflight --target <target> --mode <A|B|C|D> --artifact-root <artifact-root>', '--launch-authorization <launch-authorization>', '--launch-receipt <launch-receipt>', 'ai_agents_internal/orchestration-plan.json', 'ai_agents_internal/preflight.json',
-  '`ready`/`degraded`', '`deferred`, `skipped`, or `blocked`', 'untrusted evidence',
+  '`ready`, `degraded`, and `conditional` record with `dispatchAllowed=true`', 'Dispatch `ready`/`degraded` records',
+  '`ready`/`degraded`/`conditional`, `dispatchAllowed=true` projection', 'run `argus-assets engagement resolve-gates` once',
+  'dispatch a `conditional` lane only when released', 'A `gate-unmet` lane is omitted, counts as a non-dispatched predecessor',
+  'unmet gate goes to `solution/coverage-result.json`', 'Never rerun preflight after the first allocation',
+  '`deferred`, `skipped`, or `blocked`', 'untrusted evidence',
   'argus-assets authorization check', 'argus-assets redact', 'success`, `failure`, or `interrupted',
   'selected-dispatchable-predecessors', 'argus-assets raci route', 'argus-assets template detect',
   'template select', 'template scaffold', '`baseline`, `defect-evidence`, `candidate-regression`, and',
@@ -69,6 +73,7 @@ for (const fragment of [
   assert(controllerContract.includes(fragment), `orchestration-core lost required controller semantic: ${fragment}`);
 }
 assert(!controllerSkill.includes('qa-doctrine'), 'orchestration-core references legacy qa-doctrine instead of modular skills');
+assert(!controllerContract.includes('Rerun after provisioning'), 'orchestration-core still reruns preflight after provisioning instead of resolving gates');
 assert(plan.roles.length === 27, `expected 27 roles, found ${plan.roles.length}`);
 assert(plan.$schema === 'argus/orchestration-plan@2' && plan.schemaVersion === 2 && plan.deepHuntWave === undefined,
   'orchestration plan must be argus/orchestration-plan@2 without the retired deepHuntWave');
@@ -273,7 +278,7 @@ const lane = (slug, status, extra = {}) => ({
   lane: slug,
   selected: status !== 'not-selected',
   status,
-  dispatchAllowed: status === 'ready' || status === 'degraded',
+  dispatchAllowed: status === 'ready' || status === 'degraded' || status === 'conditional',
   missingTools: [],
   missingCapabilities: [],
   actions: [],
@@ -317,11 +322,17 @@ for (const [mode, slug, reason] of [
 const blockedController = applyEssentialLanePolicy([lane('odysseus', 'blocked'), lane('pistis', 'ready')], plan, 'A');
 assert(blockedController[0].status === 'blocked' && blockedController[0].stopsEngagement === true && blockedController[1].stopsEngagement === false,
   'a blocked controller must stop the engagement');
-for (const status of ['ready', 'degraded', 'deferred', 'skipped', 'not-selected']) {
+for (const status of ['ready', 'degraded', 'deferred', 'skipped', 'conditional', 'not-selected']) {
   const record = policyCase('A', lane('pistis', status));
   assert(record.status === status && record.stopsEngagement === false && record.downgradedFrom === undefined,
     `A ${status} pistis must keep its disposition and never stop the engagement`);
 }
+// A conditional mandatory hunter is not blocked: it keeps its pending gates and stays
+// dispatchable until resolve-gates releases or omits it.
+const conditionalOrion = policyCase('B', lane('orion', 'conditional', { pendingGates: ['browser-runtime'], missingCapabilities: ['browser-runtime'] }));
+assert(conditionalOrion.status === 'conditional' && conditionalOrion.dispatchAllowed === true && conditionalOrion.stopsEngagement === false
+  && JSON.stringify(conditionalOrion.pendingGates) === '["browser-runtime"]' && conditionalOrion.downgradedFrom === undefined,
+  'B conditional orion must keep its pending gates without stopping the engagement');
 const unselectedBlocked = policyCase('A', { ...lane('pistis', 'blocked'), selected: false });
 assert(unselectedBlocked.status === 'blocked' && unselectedBlocked.stopsEngagement === false && unselectedBlocked.downgradedFrom === undefined,
   'an unselected record is outside the engagement and must neither stop it nor be downgraded');

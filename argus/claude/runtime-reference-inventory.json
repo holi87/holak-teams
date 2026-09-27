@@ -509,7 +509,8 @@
       "consumers": [
         "atlas",
         "kleio",
-        "minos"
+        "minos",
+        "skill:orchestration-core"
       ]
     },
     {
