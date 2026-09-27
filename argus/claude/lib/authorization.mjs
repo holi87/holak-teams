@@ -253,13 +253,19 @@ export function redactText(text, patterns) {
       value = value.replace(regex, pattern.replacement);
     }
   }
+  // A key matches bare (`password=x`, `password: x`) and quoted, as in a JSON body or an
+  // escaped JSON string (`"password":"x"`, `\"password\":\"x\"`). A quoted value keeps its
+  // quotes so a redacted JSON body stays JSON, and every replacement is itself a fixed point.
   for (const key of patterns.sensitiveKeys) {
     const escaped = escapeRegex(key);
-    const regex = new RegExp(`(\\b${escaped}\\b\\s*[:=]\\s*)([^\\s,;]+)`, 'gi');
+    const regex = new RegExp(`(\\b${escaped}\\b(?:\\\\?["'])?\\s*[:=]\\s*)("(?:[^"\\\\\\r\\n]|\\\\.)*"|'[^'\\r\\n]*'|[^\\s,;]+)`, 'gi');
     if (regex.test(value)) {
       findings.add(`key:${key}`);
       regex.lastIndex = 0;
-      value = value.replace(regex, '$1[REDACTED]');
+      value = value.replace(regex, (match, prefix, secret) => {
+        const quote = secret[0] === '"' || secret[0] === "'" ? secret[0] : '';
+        return quote && secret.length > 1 && secret.endsWith(quote) ? `${prefix}${quote}[REDACTED]${quote}` : `${prefix}[REDACTED]`;
+      });
     }
   }
   return { text: value, findings: [...findings].sort() };

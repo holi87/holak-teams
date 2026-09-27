@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { redactText, redactValue } from '../argus/runtime/authorization.mjs';
 import { validateCanonicalDocument, renderFinalSummary } from '../argus/runtime/contracts.mjs';
 import { calculateCoverage, validateCasePlan } from '../argus/runtime/coverage.mjs';
 import { binaryRegistrationErrors, binaryReviewAuditErrors, isBinaryReference, loadRedactionPatterns, parseAuditLog, validateEvidenceContent } from '../argus/runtime/evidence.mjs';
@@ -101,6 +102,38 @@ const har = cookie => JSON.stringify({ log: { entries: [{ request: { method: 'GE
 const rawHar = content(textRef('har', 'application/json'), har('raw-cookie-value'));
 for (const pattern of [/request header Cookie is not masked/, /request cookie sid is not masked/, /query parameter access_token is not masked/, /response header Set-Cookie is not masked/]) assert(rawHar.some(error => pattern.test(error)), `raw HAR was not rejected for ${pattern}: ${rawHar.join('; ')}`);
 assert.deepEqual(content(textRef('har', 'application/json'), har('[REDACTED]')), []);
+// Credentials in JSON bodies: quoted keys in text captures, escaped JSON in log lines, and
+// HAR bodies and form parameters. One redact pass yields a fixed point that stays JSON.
+const redactOnce = text => redactText(text, patterns).text;
+const loginBody = '{"username":"qa","password":"hunter2"}';
+for (const [kind, mediaType, capture] of [
+  ['http', 'text/plain', `POST /api/login HTTP/1.1\nContent-Type: application/json\n\n${loginBody}\n`],
+  ['http', 'message/http', `POST /api/login HTTP/1.1\nContent-Type: application/json\n\n${loginBody}\n`],
+  ['log', 'text/plain', `INFO login request body={\\"username\\":\\"qa\\",\\"password\\":\\"hunter2\\"}\n`],
+  ['text', 'text/plain', "{'username': 'qa', 'password': 'hunter2'}\n"],
+]) {
+  assert(content(textRef(kind, mediaType), capture).some(error => /redactor would change/.test(error)), `a ${mediaType} ${kind} body credential passed`);
+  const safe = redactOnce(capture);
+  assert(!safe.includes('hunter2'), `the redactor kept a ${mediaType} ${kind} body credential: ${safe}`);
+  assert.equal(redactOnce(safe), safe, `redaction of a ${mediaType} ${kind} body is not a fixed point`);
+  assert.deepEqual(content(textRef(kind, mediaType), safe), []);
+}
+assert.equal(redactOnce(`body ${loginBody}`), 'body {"username":"qa","password":"[REDACTED]"}');
+assert.deepEqual(JSON.parse(redactOnce(loginBody)), { username: 'qa', password: '[REDACTED]' });
+const bodyHar = ({ postData, content: responseContent = { mimeType: 'application/json', text: '{"id":7}' }, queryString = [] }) => ({ log: { entries: [{
+  request: { method: 'POST', url: 'https://app.test/api/login', headers: [], cookies: [], queryString, postData },
+  response: { status: 200, headers: [], cookies: [], content: responseContent },
+}] } });
+const jsonPost = { mimeType: 'application/json', text: loginBody };
+assert(content(textRef('har', 'application/json'), JSON.stringify(bodyHar({ postData: jsonPost }))).some(error => /values the packaged redactor would change/.test(error)), 'a HAR postData.text credential passed');
+assert(content(textRef('har', 'application/json'), JSON.stringify(bodyHar({ postData: { mimeType: 'text/plain', text: 'ok' }, content: { mimeType: 'application/json', text: '{"token":"opaque-session-value"}' } }))).some(error => /values the packaged redactor would change/.test(error)), 'a HAR response content.text token passed');
+const safeHar = redactValue(bodyHar({ postData: jsonPost }), patterns).value;
+assert.equal(safeHar.log.entries[0].request.postData.text, '{"username":"qa","password":"[REDACTED]"}');
+assert.deepEqual(content(textRef('har', 'application/json'), JSON.stringify(safeHar)), []);
+const formPost = secret => ({ mimeType: 'application/x-www-form-urlencoded', text: `username=qa&password=${secret}`, params: [{ name: 'username', value: 'qa' }, { name: 'password', value: secret }] });
+const formErrors = content(textRef('har', 'application/json'), JSON.stringify(bodyHar({ postData: formPost('hunter2'), queryString: [{ name: 'Password', value: 'hunter2' }] })));
+for (const pattern of [/request form parameter password is not masked/, /request query parameter Password is not masked/]) assert(formErrors.some(error => pattern.test(error)), `raw HAR pair was not rejected for ${pattern}: ${formErrors.join('; ')}`);
+assert.deepEqual(content(textRef('har', 'application/json'), JSON.stringify(bodyHar({ postData: formPost('[REDACTED]'), queryString: [{ name: 'page', value: '2' }] }))), []);
 assert(content(textRef('har', 'application/json'), '{"log":{}}').some(error => /log\.entries/.test(error)), 'a HAR without entries passed');
 assert(content(textRef('dom-snapshot', 'text/html'), '<form><input name="p" type="password" value="hunter2"></form>').some(error => /password input with a value/.test(error)), 'a DOM snapshot with a password value passed');
 assert(content(textRef('dom-snapshot', 'text/html'), "<input value='x>y' TYPE=Password>").some(error => /password input with a value/.test(error)), 'a quoted > hid a password value');

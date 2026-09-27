@@ -275,11 +275,15 @@ Every merge that reads evidence re-validates the retained bytes after the digest
   WebM, MP4 `ftyp`, or ZIP);
 - textual evidence must not be binary and must be a fixed point of the packaged redactor,
   applied as `argus-assets redact` applies it: JSON by value (each NDJSON line for
-  `application/x-ndjson`), any other text by pattern;
+  `application/x-ndjson`), any other text by pattern; a sensitive key matches bare
+  (`password=`), quoted as in a JSON body (`"password":`), and escaped inside a JSON string,
+  so a credential in a request or response body, a HAR `postData.text`, or a HAR
+  `content.text` is refused until redacted;
 - a HAR must hold `log.entries`, and every `Authorization`, `Proxy-Authorization`,
   `Cookie`, `Set-Cookie`, `X-Api-Key`, `X-Auth-Token`, `X-CSRF-Token`, and `X-XSRF-Token`
-  header, every cookie value, and every `token`, `access_token`, `api_key`, `apikey`, or
-  `session` query parameter must hold a `[REDACTED...]` placeholder;
+  header, every cookie value, and every query parameter or `postData.params` form parameter
+  named `token`, `access_token`, `api_key`, `apikey`, `session`, or any packaged sensitive
+  key must hold a `[REDACTED...]` placeholder;
 - an HTML DOM snapshot must not contain a password input with a non-empty value; and
 - a runner result must satisfy `argus/runner-result@1` and its category semantics.
 
