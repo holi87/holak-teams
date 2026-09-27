@@ -112,6 +112,11 @@ Engagement transitions are derived, not declared freely: they are exactly the co
 | defect | confirmed → quarantined | minos |
 | defect | quarantined → confirmed | minos |
 | defect | quarantined → suspected | minos |
+| defect | suspected → rejected | minos |
+| defect | needs-oracle → rejected | minos |
+| defect | suspected → duplicate | minos |
+| defect | needs-oracle → duplicate | minos |
+| defect | confirmed → duplicate | minos |
 | defect | confirmed → automated | atlas |
 | defect | automated → fixed | minos |
 | defect | fixed → closed | minos |

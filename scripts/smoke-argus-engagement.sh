@@ -201,12 +201,12 @@ second_digest="$(digest_file "$TARGET/solution/TEST-STRATEGY.md")"
 [ "$first_digest" = "$second_digest" ] || fail "repeated canonical merge is not byte-stable"
 [ "$(grep -n 'First fragment' "$TARGET/solution/TEST-STRATEGY.md" | cut -d: -f1)" -lt \
   "$(grep -n 'Second fragment' "$TARGET/solution/TEST-STRATEGY.md" | cut -d: -f1)" ] || fail "fragment merge order is not deterministic"
-printf '%s\n' '{"$schema":"argus/bug-ledger@1","schemaVersion":1,"engagementId":"phase0-smoke","bugs":[]}' >"$WORK/ledger.json"
+printf '%s\n' '{"$schema":"argus/bug-ledger@2","schemaVersion":2,"engagementId":"phase0-smoke","bugs":[]}' >"$WORK/ledger.json"
 "$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$(token_for minos)" \
   --canonical solution/bug-ledger.json --id complete-ledger --input "$WORK/ledger.json" >/dev/null
 "$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$(token_for minos)" \
   --canonical solution/bug-ledger.json >/dev/null
-jq -e '."$schema" == "argus/bug-ledger@1" and .schemaVersion == 1 and .bugs == []' "$TARGET/solution/bug-ledger.json" >/dev/null || fail "canonical JSON document merge is invalid"
+jq -e '."$schema" == "argus/bug-ledger@2" and .schemaVersion == 2 and .bugs == []' "$TARGET/solution/bug-ledger.json" >/dev/null || fail "canonical JSON document merge is invalid"
 
 parallel_merge_digest() {
   local run="$1" target="$WORK/repeat-$1" manifest controller allocation controller_token token index host="$HOST/repeat-$1"

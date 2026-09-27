@@ -67,7 +67,7 @@
       { "path": "README.md", "owner": "kleio", "format": "markdown" },
       { "path": "run-tests.sh", "owner": "atlas", "format": "text" },
       { "path": "solution/ARCHITECTURE.md", "owner": "atlas", "format": "markdown" },
-      { "path": "solution/BUG-LEDGER.md", "owner": "minos", "format": "markdown" },
+      { "path": "solution/BUG-LEDGER.md", "owner": "minos", "format": "markdown", "merge": "latest-revision" },
       { "path": "solution/bug-ledger.json", "owner": "minos", "format": "json-document", "schema": "bug-ledger" },
       { "path": "solution/lane-plan.json", "owner": "odysseus", "format": "json-document", "schema": "lane-plan" },
       { "path": "solution/evidence-reference.json", "owner": "kleio", "format": "json-document", "schema": "evidence-reference" },
@@ -86,7 +86,7 @@
       { "path": "solution/TEST-HEALTH.md", "owner": "asklepios", "format": "markdown" },
       { "path": "solution/TEST-STRATEGY.md", "owner": "metis", "format": "markdown" },
       { "path": "solution/TRACEABILITY.md", "owner": "kleio", "format": "markdown" },
-      { "path": "solution/WHITEBOX-LEADS.md", "owner": "minos", "format": "markdown" }
+      { "path": "solution/WHITEBOX-LEADS.md", "owner": "minos", "format": "markdown", "merge": "latest-revision" }
     ],
     "bypass": {
       "enabled": false,

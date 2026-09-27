@@ -1,13 +1,14 @@
 {
   "$schema": "../schemas/schema-compatibility.schema.json",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "current": 1,
   "readCompatible": [1],
-  "migration": "Contracts without an explicit override remain immutable at v1.",
+  "migration": "Contracts without an override stay at v1; overridden contracts accept only their current version; retired versions fail closed.",
   "contracts": {
     "lane-plan": { "current": 2, "readCompatible": [2] },
     "evidence-reference": { "current": 2, "readCompatible": [2] },
     "automation-status": { "current": 2, "readCompatible": [2] },
-    "preflight-report": { "current": 3, "readCompatible": [3] }
+    "preflight-report": { "current": 3, "readCompatible": [3] },
+    "bug-ledger": { "current": 2, "readCompatible": [2] }
   }
 }

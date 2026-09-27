@@ -1,5 +1,5 @@
 import { calculateCoverage } from './coverage.mjs';
-import { reconcileCaseEvidence, reconcileFindings } from './finding-quality.mjs';
+import { ledgerEvidenceIds, quarantineFindings, reconcileCaseEvidence, reconcileFindings } from './finding-quality.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import {
   chmodSync,
@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalFragment } from './contracts.mjs';
+import { mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalDocument, validateCanonicalFragment } from './contracts.mjs';
 import {
   modelAuthenticatedDocumentSha256,
   modelConfigSha256,
@@ -43,6 +43,7 @@ const LEDGER_SNAPSHOT_STATUSES = [
   ['bounced', 'bounced'], ['quarantined', 'quarantined'],
 ];
 const LEDGER_SNAPSHOT_KEYS = ['fragmentIds', ...LEDGER_SNAPSHOT_STATUSES.map(([field]) => field), 'newConfirmed', 'mergedAt'];
+const CANONICAL_MERGE_MODES = ['concatenate', 'latest-revision'];
 const HEARTBEAT_STATUSES = ['started', 'running', 'blocked', 'degraded', 'complete', 'failed'];
 const EXECUTION_BINDING_FIELDS = ['modelDecisionId', 'modelDecisionIntegritySha256', 'dispatchId', 'attempt', 'runtime'];
 const DISPATCH_AUTHORIZATION_FIELDS = [
@@ -150,6 +151,7 @@ export function validateEngagementManifest(manifest) {
         errors.push('canonical artifact path, owner, or format is invalid');
       } else if (paths.has(item.path)) errors.push(`duplicate canonical artifact: ${item.path}`);
       else paths.add(item.path);
+      errors.push(...canonicalMergeErrors(item));
     }
   }
   const bypass = policy.bypass;
@@ -394,6 +396,8 @@ export function releaseExclusive(manifest, lane, token, resource) {
 export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, content) {
   const canonical = requireCanonical(manifest, canonicalPath);
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(fragmentId)) throw new Error('fragment id must be a stable filename-safe identifier');
+  const revised = canonical.merge === 'latest-revision';
+  if (revised && lane !== canonical.owner) throw new Error(`${canonical.path} revisions are written only by ${canonical.owner}`);
   let persistedContent = String(content);
   if (canonical.schema) {
     const { errors, document } = validateCanonicalFragment(canonical.schema, content);
@@ -426,6 +430,11 @@ export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, 
     }
     const list = state.fragments[canonical.path] ?? [];
     const record = { id: fragmentId, lane, path: relative(manifest.artifactRoot, path).split(sep).join('/'), sha256: digest };
+    if (revised) {
+      const replay = list.find((item) => item.id === fragmentId && item.lane === lane);
+      if (replay) return { result: replay, changed: false };
+      record.revision = nextFragmentRevision(list);
+    }
     if (!list.some((item) => item.id === fragmentId && item.lane === lane)) list.push(record);
     state.fragments[canonical.path] = list.sort(fragmentOrder);
     return { result: record, changed: true };
@@ -445,6 +454,9 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
       if (sha256(content) !== record.sha256) throw new Error(`fragment digest drift: ${record.path}`);
       return content.toString('utf8').trimEnd();
     });
+    // Every revision stays digest-checked above; only the highest one is published.
+    const latest = canonical.merge === 'latest-revision' ? latestFragmentRevision(canonical, records) : null;
+    let quarantined = [];
     let output;
     if (canonical.format === 'json-document') {
       const documents = contents.map((content) => JSON.parse(content));
@@ -482,7 +494,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
       }
       if (canonical.schema === 'final-summary' && document.runner === null && (manifest.mode !== 'B' || document.counts.automated !== 0)) throw new Error('runner=null is only valid for Mode B without automation');
       if (canonical.schema === 'final-summary' && skippedPhaseStatusReasons(state).length > 0 && document.status === 'completed') document.status = 'degraded';
-      if (canonical.schema === 'bug-ledger' && document.bugs.some(bug => bug.status === 'confirmed')) {
+      if (canonical.schema === 'bug-ledger' && document.bugs.some(bug => ledgerEvidenceIds(bug).length > 0)) {
         const evidencePath = engagementPath(manifest, 'solution/evidence-reference.json');
         const evidenceRecords = state.fragments['solution/evidence-reference.json'] ?? [];
         // Minos runs before Kleio's reporting wave. Verify immutable contributions
@@ -494,12 +506,14 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
         }))) : readManagedFile(evidencePath, 'finding evidence registry');
         const checked = validateCanonicalFragment('evidence-reference', content);
         if (checked.errors.length) throw new Error(`invalid finding evidence registry: ${checked.errors.join('; ')}`);
-        const errors = reconcileFindings(document, checked.document,
+        const { errors, byBug } = reconcileFindings(document, checked.document,
           source => readManagedFile(engagementPath(manifest, source), 'finding evidence'));
         if (errors.length) throw new Error(`finding reconciliation failed: ${errors.join('; ')}`);
+        quarantined = quarantineLedgerFindings(document, byBug);
       }
       output = `${JSON.stringify(document, null, 2)}\n`;
     } else if (canonical.format === 'json') output = `${JSON.stringify(contents.map((content) => JSON.parse(content)), null, 2)}\n`;
+    else if (latest) output = `${contents[records.indexOf(latest)]}\n`;
     else output = `${contents.join('\n\n')}\n`;
     const destination = engagementPath(manifest, canonical.path);
     atomicWrite(destination, output);
@@ -507,6 +521,8 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
       atomicWrite(engagementPath(manifest, 'solution/FINAL-SUMMARY.md'), renderFinalSummary(JSON.parse(output), { launchAssurance: manifest.launchAssurance }));
     }
     const result = { owner, fragments: records.length, sha256: sha256(output), mergedAt: new Date().toISOString() };
+    if (latest) Object.assign(result, { revision: latest.revision, supersededFragments: records.length - 1 });
+    if (canonical.schema === 'bug-ledger') result.quarantined = quarantined;
     state.merges[canonical.path] = result;
     if (canonical.schema === 'bug-ledger') {
       state.ledgerSnapshots[state.currentPhase] = ledgerSnapshot(manifest, state, JSON.parse(output), records, result.mergedAt);
@@ -1992,6 +2008,43 @@ function within(root, candidate) {
 
 function fragmentOrder(a, b) {
   return a.id.localeCompare(b.id) || a.lane.localeCompare(b.lane) || a.path.localeCompare(b.path);
+}
+
+// A canonical artifact concatenates its fragments unless it declares latest-revision: then its
+// owner alone writes numbered revisions and a merge publishes only the highest one. Structured
+// documents keep their contract merge, so latest-revision is limited to markdown.
+function canonicalMergeErrors(item) {
+  if (!plainObject(item) || item.merge === undefined) return [];
+  if (!CANONICAL_MERGE_MODES.includes(item.merge)) return [`canonical artifact merge must be ${CANONICAL_MERGE_MODES.join(' or ')}`];
+  if (item.merge === 'latest-revision' && item.format !== 'markdown') return ['latest-revision merge is valid only for markdown artifacts'];
+  return [];
+}
+
+function nextFragmentRevision(records) {
+  return 1 + Math.max(0, ...records.map((record) => (Number.isInteger(record.revision) ? record.revision : 0)));
+}
+
+// Every revision must be an owner record with its own positive number; the highest one wins.
+function latestFragmentRevision(canonical, records) {
+  const seen = new Set();
+  let latest = null;
+  for (const record of records) {
+    if (!Number.isInteger(record.revision) || record.revision < 1) throw new Error(`${canonical.path} fragment ${record.id} has no revision`);
+    if (record.lane !== canonical.owner) throw new Error(`${canonical.path} revisions are written only by ${canonical.owner}`);
+    if (seen.has(record.revision)) throw new Error(`${canonical.path} has more than one fragment at revision ${record.revision}`);
+    seen.add(record.revision);
+    if (!latest || record.revision > latest.revision) latest = record;
+  }
+  return latest;
+}
+
+// A per-bug reconciliation failure quarantines that row instead of failing the merge. The
+// demoted document must still satisfy the ledger contract, or the merge fails closed.
+function quarantineLedgerFindings(document, byBug) {
+  const quarantined = quarantineFindings(document, byBug);
+  const errors = validateCanonicalDocument('bug-ledger', document);
+  if (errors.length) throw new Error(`quarantined bug ledger is invalid: ${errors.join('; ')}`);
+  return quarantined;
 }
 
 function atomicWriteJson(path, value) {

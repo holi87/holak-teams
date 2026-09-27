@@ -15,7 +15,7 @@ match with the engagement manifest.
 | Contract | Canonical path | Canonical owner | Required purpose |
 |---|---|---|---|
 | `argus/lane-plan@2` | `solution/lane-plan.json` | Odysseus | Deterministically ordered lane phases, dependencies, expected outputs, and audited state transitions. |
-| `argus/bug-ledger@1` | `solution/bug-ledger.json` | Minos | Confirmed/suspected defects, stable bug IDs, severity, oracle, wiring, evidence links. |
+| `argus/bug-ledger@2` | `solution/bug-ledger.json` | Minos | Every defect candidate with its status (`confirmed`, `suspected`, `needs-oracle`, `bounced`, `quarantined`, `duplicate`, `rejected`), stable bug IDs, severity, oracle, wiring, causal merges, and evidence links. |
 | `argus/evidence-reference@2` | `solution/evidence-reference.json` | Kleio | Deterministically ordered redacted evidence identities, sources, integrity digests, collection metadata, and defect links. |
 | `argus/automation-status@2` | `solution/automation-status.json` | Atlas | Deterministically ordered stable test IDs, owners, runner results, covered bugs, and evidence links. |
 | `argus/runner-result@1` | `reports/argus-runner-result.json` | Atlas | Runner mode, strict gate status, standardized exit code, and separate outcome categories. |
@@ -134,7 +134,7 @@ credentials. Keep credentials, tokens, and connection strings out of `summary` a
 | Record | Owner-controlled fields | Allowed state transitions | Evidence of transition |
 |---|---|---|---|
 | Lane plan | `lanes[]`: `lane`, `owner`, `phase`, `dependsOn`, `outputContracts`, `status`, `transitions` | Per lane: `planned → running → completed`, or `planned/running → blocked` | Unique, sorted `lane`; append-only transition records with `to`, `at`, `by`; phase barrier state remains in `engagement-state.json`. |
-| Bug ledger | `id`, `origin`, `title`, `severity`, `priority`, `lane`, `oracleId`, `status`, `wired`, `testId`, `evidenceIds` | `needs-oracle → suspected → confirmed`; `wired: false → true` | Stable `BUG-NNNN` from Minos's identity allocation; oracle/test/evidence references. |
+| Bug ledger | `id`, `origin`, `title`, `severity`, `priority`, `lane`, `oracleId`, `status`, `wired`, `testId`, `evidenceIds`, `verification`, `merge`, `missingProof`, `repair`, `duplicateOf`, `rejection`, `quarantine` | `candidate → bounced/needs-oracle/suspected/confirmed`; `bounced → needs-oracle/suspected/confirmed`; `needs-oracle → suspected → confirmed`; `confirmed → quarantined → confirmed/suspected`; `suspected/needs-oracle → rejected`; `suspected/needs-oracle/confirmed → duplicate`; `wired: false → true` | Stable `BUG-NNNN` from Minos's identity allocation; oracle/test/evidence references. The canonical merge also quarantines any row whose cited evidence fails reconciliation. |
 | Evidence reference | `references[]`: `id`, `kind`, `source`, `collectedBy`, `capturedAt`, `redaction`, `sha256`, `relatedBugIds` | Each reference is immutable after merge | Unique, sorted `EVD-NNNN`, redaction class, and SHA-256 of retained safe evidence. |
 | Automation status | `tests[]`: `testId`, `owner`, `runner`, `status`, `coversBugIds`, `evidenceIds`, `updatedAt` | Per test: `planned → implemented → passed/failed/skipped` | Unique, sorted `TST/REG-NNNN`, runner output reference, linked bugs/evidence. |
 | Runner result | `mode`, `status`, `exitCode`, `categories`, `events` | Terminal `pass` or `fail` for one named mode | Raw adapter events classified by the portable evaluator. |
@@ -157,16 +157,24 @@ corresponding canonical artifact.
 
 ## Compatibility and migration
 
-`policies/schema-compatibility.json` owns versions per contract. Contracts without an
-override keep their current v1 definition. The three collection contracts and preflight
-report accept only v2. Unknown, unversioned, or retired shapes fail closed.
+`policies/schema-compatibility.json` (policy `schemaVersion` 4) owns versions per
+contract. Contracts without an override stay at v1. Every override accepts exactly its
+current version: the three collection contracts and the bug ledger read only v2, and the
+preflight report reads only v3. The runtime loads the policy against one table of expected
+contract versions and refuses to start when an override is missing, drifts, or names an
+unknown contract.
+
+Argus 5 reads only current versions. Unknown, unversioned, or retired shapes, including an
+`argus/bug-ledger@1` document, fail closed; there is no in-place migration of an active
+engagement's artifacts. A 4.x engagement finishes on the 4.9.x runtime that started it.
 A future version must:
 
 1. add a new schema with valid and invalid fixtures;
-2. preserve the previously installed schema while consumers migrate;
-3. ship an explicit deterministic migration with a before/after fixture pair;
+2. bump its row in the expected-version table and in `policies/schema-compatibility.json`
+   in the same change, and move every packaged consumer and fixture to it;
+3. state in the release notes that the retired version fails closed;
 4. record the source version in generated human reports; and
-5. update `policies/schema-compatibility.json` and this registry.
+5. update this registry.
 
 Run `argus-assets schema validate --kind <contract> --input <file>` before submitting a
 canonical structured fragment. Validation failure is a stop condition, not a warning.
@@ -175,12 +183,45 @@ above; successful validation does not make a report eligible for fragment submis
 
 ## Finding quality and case depth in 4.9.1
 
-The release repairs previously permissive validation of the existing proof requirements. A `confirmed` ledger entry now needs nonempty evidence and `verification`: build identity, a conditional sourced oracle (kind/sourceRef/evidenceId/applicability/exceptions), reproduction (initialState/steps/attempts/occurrences/evidenceIds), disputedOracle, and independent verification (status/executor/evidenceIds/reason). Multiple origin IDs require a causal mergeRationale. Hypotheses cannot confirm defects. Intermittent reproduction may record fewer occurrences than attempts; never fabricate a second success.
+The release repairs previously permissive validation of the existing proof requirements. A `confirmed` ledger entry now needs nonempty evidence and `verification`: build identity, a conditional sourced oracle (kind/sourceRef/evidenceId/applicability/exceptions), reproduction (initialState/steps/attempts/occurrences/evidenceIds), disputedOracle, and independent verification (status/executor/evidenceIds/reason). Multiple origin IDs require a causal merge (in bug-ledger@2, `merge.causalEvidence`). Hypotheses cannot confirm defects. Intermittent reproduction may record fewer occurrences than attempts; never fabricate a second success.
 
 Critical/Blocker or disputed-oracle findings require either a different executor's independently collected reproduction evidence, or an explicit unavailable limitation. Unavailable independence is reported honestly and does not invent an independent pass. Similar class/entity keys identify related candidates, not proven identical causes. The same requirement applies to an intermittent (occurrences < attempts) or single-attempt (attempts = 1) confirmation: validation rejects its `not-required` independent status.
 
-Hunters submit immutable evidence-reference fragments as they collect proof. Minos validates those digest-bound contributions when merging confirmed findings; he does not wait for Kleio's later final registry merge. The merge rejects unresolved, changed, missing, or out-of-boundary files and foreign engagement registries. The oracle citation and runtime proof must be archived as redacted evidence inside the boundary; a remote URL alone is not a reproducible proof artifact.
+Hunters submit immutable evidence-reference fragments as they collect proof. Minos validates those digest-bound contributions when merging the ledger; he does not wait for Kleio's later final registry merge. A foreign engagement registry fails the merge; since 5.0 an unresolved, changed, missing, or out-of-boundary evidence file quarantines the rows that cite it (see "Bug ledger v2 in 5.0"). The oracle citation and runtime proof must be archived as redacted evidence inside the boundary; a remote URL alone is not a reproducible proof artifact.
 
-Existing unconfirmed records remain readable. When resuming a pre-4.9.1 ledger, supply real verification evidence before confirming; otherwise keep it suspected or finish it with the original runtime. Never auto-fill historical proof. Contract identifiers stay at their current versions because this patch enforces documented validity requirements and adds optional depth fields rather than replacing artifact identities.
+Never auto-fill historical proof. The 4.9.1 patch kept contract identifiers at their versions because it enforced documented validity requirements; Argus 5 replaces the ledger identity with `argus/bug-ledger@2`, so a 4.x ledger is finished on 4.9.x rather than resumed.
 
 Mode B without funded automation can use `runner: null` in its final summary with zero automated tests. Other modes cannot merge a null runner. The rendered report explicitly says no framework runner was executed.
+
+## Bug ledger v2 in 5.0
+
+`argus/bug-ledger@2` records every defect candidate Minos triages, not only confirmed ones.
+Each status carries its own block:
+
+| Status | Required block | Meaning |
+|---|---|---|
+| `confirmed` | `verification`, non-empty `evidenceIds`, string `oracleId` | Proven defect; the only status that may be wired to a regression (`wired`, `testId`). |
+| `suspected` | `missingProof` {`elements`, `detail`, `owner`}, string `oracleId` | Likely defect; `detail` states what would confirm it. Without evidence, `elements` includes `evidence`. |
+| `needs-oracle` | `missingProof` whose `elements` include `oracle`, `oracleId: null` | Observed behavior with no cited oracle yet; routed to the oracle desk. |
+| `bounced` | `repair` {`round` 0–3, `missing`, optional `assignedTo`, `note`} | Returned to its lane for a proof repair round. |
+| `quarantined` | `quarantine` {`reasons`} | Frozen by an integrity failure; it keeps its submitted blocks and never counts as confirmed. |
+| `duplicate` | `duplicateOf`, `merge`, string `oracleId` | Same cause as a live row (`confirmed`, `suspected`, `needs-oracle`, or `quarantined`); never another duplicate or itself. |
+| `rejected` | `rejection` {`reason`, `rationale`, `evidenceIds`} | Not a defect; evidence is required unless the reason is `out-of-scope`. |
+
+`missingProof`, `rejection`, `duplicateOf`, and `quarantine` are valid only on their own
+status, `repair` never on a confirmed row, and a justified-invariant oracle names its
+`invariantClass` (`server-error`, `crash`, `data-loss`, `authz-breach`, or
+`layer-disagreement`), which no other oracle kind may carry. Every origin ID belongs to one
+row. A row with several origins, and every duplicate, carries `merge` {`rationale`,
+`causalEvidence`}: one entry per origin (plus the duplicate target) with its own disjoint
+evidence IDs; it replaces the 4.x `verification.mergeRationale`.
+
+The canonical merge reconciles every row's cited evidence (row, proof, merge, and rejection
+IDs) against the digest-bound evidence fragments. A merge across lanes must cite evidence
+collected by each merged lane, and an independent executor may not be the collector of the
+reproduction evidence it re-checks. A foreign registry, a tampered ledger fragment, or a
+tampered evidence fragment still fails the merge. Any other failure is per row: the merge
+sets that row to `quarantined` with the failures as `quarantine.reasons`, re-validates the
+document, records the quarantined IDs in the merge record, and snapshots the post-quarantine
+ledger. The immutable fragment keeps the submitted status, so restoring the evidence and
+merging again restores it.

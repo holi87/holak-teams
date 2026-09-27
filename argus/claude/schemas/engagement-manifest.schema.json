@@ -182,8 +182,15 @@
               "path": { "$ref": "#/$defs/relativePath" },
               "owner": { "$ref": "#/$defs/slug" },
               "format": { "enum": ["markdown", "text", "json", "json-document"] },
-              "schema": { "type": ["string", "null"], "enum": [null, "bug-ledger", "lane-plan", "evidence-reference", "automation-status", "surface-inventory", "coverage-observations", "coverage-result", "final-summary"] }
-            }
+              "schema": { "type": ["string", "null"], "enum": [null, "bug-ledger", "lane-plan", "evidence-reference", "automation-status", "surface-inventory", "coverage-observations", "coverage-result", "final-summary"] },
+              "merge": { "enum": ["concatenate", "latest-revision"] }
+            },
+            "allOf": [
+              {
+                "if": { "required": ["merge"], "properties": { "merge": { "const": "latest-revision" } } },
+                "then": { "properties": { "format": { "const": "markdown" } } }
+              }
+            ]
           }
         },
         "bypass": {

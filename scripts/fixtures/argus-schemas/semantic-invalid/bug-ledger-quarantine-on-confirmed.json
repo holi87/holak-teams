@@ -1,0 +1,57 @@
+{
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
+  "engagementId": "fixture-1",
+  "bugs": [
+    {
+      "id": "BUG-0001",
+      "origin": [
+        "ATA-001"
+      ],
+      "title": "Order endpoint returns another account's order",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-001",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0001",
+      "evidenceIds": [
+        "EVD-0001"
+      ],
+      "verification": {
+        "build": "synthetic-fixture",
+        "disputedOracle": false,
+        "oracle": {
+          "kind": "requirement",
+          "sourceRef": "Synthetic requirement 1",
+          "evidenceId": "EVD-0001",
+          "applicability": "Synthetic authorized test accounts",
+          "exceptions": []
+        },
+        "reproduction": {
+          "initialState": "Fresh synthetic fixture",
+          "steps": [
+            "Execute the synthetic reproduction request."
+          ],
+          "attempts": 2,
+          "occurrences": 2,
+          "evidenceIds": [
+            "EVD-0001"
+          ]
+        },
+        "independent": {
+          "status": "not-required",
+          "executor": null,
+          "evidenceIds": [],
+          "reason": "Synthetic example; no independent runtime executor was run."
+        }
+      },
+      "quarantine": {
+        "reasons": [
+          "A confirmed entry must not carry quarantine reasons."
+        ]
+      }
+    }
+  ]
+}

@@ -47,6 +47,7 @@ const requiredTransitions = [
   'defect:bounced:needs-oracle', 'defect:bounced:suspected', 'defect:bounced:confirmed', 'defect:needs-oracle:confirmed',
   'defect:confirmed:quarantined', 'defect:quarantined:confirmed', 'defect:quarantined:suspected',
   'defect:needs-oracle:suspected', 'defect:suspected:confirmed', 'defect:confirmed:automated', 'defect:automated:fixed', 'defect:fixed:closed',
+  'defect:suspected:rejected', 'defect:needs-oracle:rejected', 'defect:suspected:duplicate', 'defect:needs-oracle:duplicate', 'defect:confirmed:duplicate',
   'runner-lifecycle:discovered:reproduced', 'runner-lifecycle:reproduced:automated', 'runner-lifecycle:automated:fixed', 'runner-lifecycle:fixed:closed',
   'automation:planned:implemented', 'automation:implemented:passed', 'automation:implemented:failed', 'automation:implemented:skipped',
   'evidence:collected:immutable', 'coverage-observations:collected:merged', 'coverage-result:inputs-ready:calculated',

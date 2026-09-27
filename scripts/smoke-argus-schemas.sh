@@ -64,11 +64,12 @@ for rule in \
   fi
 done
 
-for kind in lane-plan evidence-reference automation-status; do
-  jq --arg schema "argus/$kind@1" '."$schema"=$schema | .schemaVersion=1' \
-    "$FIXTURES/valid/$kind.json" >"$WORK/$kind-retired-v1.json"
-  if "$CLI" schema validate --kind "$kind" --input "$WORK/$kind-retired-v1.json" >/dev/null 2>&1; then
-    fail "$kind runtime reader accepted retired v1 input"
+for retired in lane-plan:1 evidence-reference:1 automation-status:1 bug-ledger:1; do
+  kind="${retired%%:*}" version="${retired#*:}"
+  jq --arg schema "argus/$kind@$version" --argjson version "$version" '."$schema"=$schema | .schemaVersion=$version' \
+    "$FIXTURES/valid/$kind.json" >"$WORK/$kind-retired-v$version.json"
+  if "$CLI" schema validate --kind "$kind" --input "$WORK/$kind-retired-v$version.json" >/dev/null 2>&1; then
+    fail "$kind runtime reader accepted retired v$version input"
   fi
 done
 
@@ -135,18 +136,69 @@ jq -e '.references | map(.id) == ["EVD-0001", "EVD-0002"]' "$TARGET/solution/evi
 
 # Exercise the actual canonical merge gate, not only the standalone validator.
 jq '.engagementId = "schema-fixture"' "$FIXTURES/valid/bug-ledger.json" >"$WORK/proven-ledger.json"
-"$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$MINOS" --canonical solution/bug-ledger.json --id proven-ledger --input "$WORK/proven-ledger.json" >/dev/null
+ledger_fragment="$("$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$MINOS" --canonical solution/bug-ledger.json --id proven-ledger --input "$WORK/proven-ledger.json")"
 # The triager must not wait for the reporter's later canonical registry.
 mv "$TARGET/solution/evidence-reference.json" "$WORK/published-registry.json"
 "$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$MINOS" --canonical solution/bug-ledger.json >/dev/null
 mv "$WORK/published-registry.json" "$TARGET/solution/evidence-reference.json"
+jq -e --slurpfile submitted "$WORK/proven-ledger.json" '. == $submitted[0]' "$TARGET/solution/bug-ledger.json" >/dev/null || fail 'an intact bug-ledger merge changed the submitted ledger'
+"$CLI" engagement status --manifest "$MANIFEST" | jq -e '.merges["solution/bug-ledger.json"].quarantined == []' >/dev/null || fail 'an intact bug-ledger merge recorded quarantined rows'
+# Evidence drift quarantines every row that cites the changed capture instead of failing the merge.
 cp "$TARGET/reports/request-1.txt" "$WORK/original-proof.txt"
 printf 'changed evidence' >"$TARGET/reports/request-1.txt"
-if "$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$MINOS" --canonical solution/bug-ledger.json >/dev/null 2>&1; then
-  fail 'confirmed ledger merge accepted evidence digest drift'
-fi
+"$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$MINOS" --canonical solution/bug-ledger.json >/dev/null || fail 'evidence drift failed the whole ledger merge'
+jq -e '.bugs[0].status == "quarantined" and (.bugs[0].quarantine.reasons | index("evidence digest drift EVD-0001")) != null
+  and ([.bugs[] | select(.status == "confirmed")] | length) == 0
+  and ([.bugs[] | select(.id == "BUG-0003" or .id == "BUG-0005" or .id == "BUG-0006") | .status] == ["needs-oracle", "rejected", "bounced"])' \
+  "$TARGET/solution/bug-ledger.json" >/dev/null || fail 'evidence drift did not quarantine exactly the rows that cite it'
+"$CLI" engagement status --manifest "$MANIFEST" | jq -e '.merges["solution/bug-ledger.json"].quarantined == ["BUG-0001", "BUG-0002", "BUG-0004", "BUG-0007"]
+  and (.ledgerSnapshots[.currentPhase] | (.confirmed == []) and (.quarantined | index("BUG-0001")) != null)' >/dev/null || \
+  fail 'the quarantined merge was not recorded in the merge record and ledger snapshot'
 cp "$WORK/original-proof.txt" "$TARGET/reports/request-1.txt"
 "$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$MINOS" --canonical solution/bug-ledger.json >/dev/null
+jq -e '.bugs[0].status == "confirmed" and (.bugs[0] | has("quarantine") | not)' "$TARGET/solution/bug-ledger.json" >/dev/null || fail 'restored evidence did not restore the submitted confirmed status'
+# Tampering with an immutable fragment, the ledger's or a finding-evidence contribution, still aborts the merge.
+for tampered in "$(jq -r .path <<<"$ledger_fragment")" "$(jq -r .path <<<"$evidence_fragment")"; do
+  cp "$TARGET/$tampered" "$WORK/tampered-original"
+  printf ' ' >>"$TARGET/$tampered"
+  if "$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$MINOS" --canonical solution/bug-ledger.json >"$WORK/tampered.out" 2>&1; then
+    fail "bug-ledger merge accepted a tampered fragment $tampered"
+  fi
+  grep -Fq 'digest drift' "$WORK/tampered.out" || fail "tampered fragment $tampered did not fail with digest drift"
+  cp "$WORK/tampered-original" "$TARGET/$tampered"
+done
+"$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$MINOS" --canonical solution/bug-ledger.json >/dev/null
+
+# Minos's markdown ledgers are latest-revision canonicals: only the owner writes numbered
+# revisions and the merge publishes the highest one.
+printf '# Bug ledger\n\nRevision one.\n' >"$WORK/ledger-r1.md"
+printf '# Bug ledger\n\nRevision two.\n' >"$WORK/ledger-r2.md"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$MINOS" --canonical solution/BUG-LEDGER.md --id ledger-r1 --input "$WORK/ledger-r1.md" | jq -e '.revision == 1' >/dev/null || fail 'the first markdown ledger revision is not revision 1'
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$MINOS" --canonical solution/BUG-LEDGER.md --id ledger-r2 --input "$WORK/ledger-r2.md" | jq -e '.revision == 2' >/dev/null || fail 'the second markdown ledger revision is not revision 2'
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$MINOS" --canonical solution/BUG-LEDGER.md --id ledger-r1 --input "$WORK/ledger-r1.md" | jq -e '.revision == 1' >/dev/null || fail 'an idempotent revision replay minted a new revision'
+if "$CLI" engagement fragment --manifest "$MANIFEST" --lane atalanta --token "$ATALANTA" --canonical solution/BUG-LEDGER.md --id foreign-ledger --input "$WORK/ledger-r1.md" >"$WORK/foreign-ledger.out" 2>&1; then
+  fail 'a non-owner wrote a latest-revision ledger fragment'
+fi
+grep -Fq 'solution/BUG-LEDGER.md revisions are written only by minos' "$WORK/foreign-ledger.out" || fail 'the non-owner ledger revision was not rejected by the owner rule'
+"$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$MINOS" --canonical solution/BUG-LEDGER.md >/dev/null
+cmp -s "$WORK/ledger-r2.md" "$TARGET/solution/BUG-LEDGER.md" || fail 'the markdown ledger merge did not publish only the latest revision'
+"$CLI" engagement status --manifest "$MANIFEST" | jq -e '.merges["solution/BUG-LEDGER.md"] | .revision == 2 and .supersededFragments == 1 and .fragments == 2' >/dev/null || \
+  fail 'the markdown ledger merge record does not name its revision'
+node --input-type=module - "$ROOT/argus/runtime/engagement.mjs" "$MANIFEST" <<'NODE'
+import { readFileSync } from 'node:fs';
+const [runtime, manifestPath] = process.argv.slice(2);
+const { validateEngagementManifest } = await import(runtime);
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+const withMerge = (path, merge) => {
+  const copy = structuredClone(manifest);
+  copy.writePolicy.canonicalArtifacts.find(item => item.path === path).merge = merge;
+  return validateEngagementManifest(copy);
+};
+if (validateEngagementManifest(manifest).length) throw new Error('the initialized manifest is invalid');
+if (!withMerge('solution/bug-ledger.json', 'latest-revision').includes('latest-revision merge is valid only for markdown artifacts')) throw new Error('a JSON canonical accepted latest-revision');
+if (!withMerge('solution/BUG-LEDGER.md', 'append').includes('canonical artifact merge must be concatenate or latest-revision')) throw new Error('an unknown canonical merge mode was accepted');
+if (withMerge('solution/TEST-STRATEGY.md', 'concatenate').length) throw new Error('an explicit concatenate merge was rejected');
+NODE
 
 
 jq '.engagementId = "schema-fixture" | .tests = [.tests[1]]' "$FIXTURES/valid/automation-status.json" >"$WORK/automation-2.json"
@@ -189,4 +241,4 @@ jq '.engagementId = "schema-fixture"' "$FIXTURES/valid/final-summary.json" >"$WO
 grep -Fq 'Source schema: argus/final-summary@1' "$TARGET/solution/FINAL-SUMMARY.md" || fail "rendered summary has no source schema"
 grep -Fq 'Required-case depth: 50%' "$TARGET/solution/FINAL-SUMMARY.md" || fail "rendered summary has no surface-derived coverage"
 
-printf 'PASS  Argus schemas: current fixtures, retired v1 rejection, deterministic collection merges, fragment rejection, stable IDs, runner results, and source-versioned summary\n'
+printf 'PASS  Argus schemas: current fixtures, retired v1 rejection, deterministic collection merges, fragment rejection, per-bug ledger quarantine, latest-revision ledgers, stable IDs, runner results, and source-versioned summary\n'

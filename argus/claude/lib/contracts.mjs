@@ -50,15 +50,23 @@ if (compatibilityErrors.length > 0) {
 if (compatibility.current !== CONTRACT_VERSION || !compatibility.readCompatible.includes(CONTRACT_VERSION)) {
   throw new Error(`default schema compatibility policy does not permit contract version ${CONTRACT_VERSION}`);
 }
-for (const [kind, contract] of Object.entries(COLLECTION_CONTRACTS)) {
+// The only contract overrides the runtime reads, each at exactly its current version. A
+// subtask that bumps a contract edits its own row here and in the compatibility policy.
+const EXPECTED_CONTRACT_VERSIONS = Object.freeze({
+  'lane-plan': 2,
+  'evidence-reference': 2,
+  'automation-status': 2,
+  'preflight-report': 3,
+  'bug-ledger': 2,
+});
+for (const [kind, version] of Object.entries(EXPECTED_CONTRACT_VERSIONS)) {
   const policy = compatibility.contracts?.[kind];
-  if (policy?.current !== 2 || !sameNumbers(policy.readCompatible, [2])) {
-    throw new Error(`${kind} compatibility policy must accept only the current v2 contract`);
+  if (policy?.current !== version || !sameNumbers(policy.readCompatible, [version])) {
+    throw new Error(`${kind} compatibility policy must accept only v${version}`);
   }
 }
-const preflightCompatibility = compatibility.contracts?.['preflight-report'];
-if (preflightCompatibility?.current !== 3 || !sameNumbers(preflightCompatibility.readCompatible, [3])) {
-  throw new Error('preflight-report compatibility policy must accept only v3');
+for (const kind of Object.keys(compatibility.contracts ?? {})) {
+  if (!Object.hasOwn(EXPECTED_CONTRACT_VERSIONS, kind)) throw new Error(`schema compatibility policy overrides unexpected contract ${kind}`);
 }
 
 export function schemaId(kind, version = contractPolicy(kind).current) {
