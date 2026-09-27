@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Clean-room validation of the Java runtime adapter: the JUnit Platform outcome listener,
 # the Launcher-discovery inventory, and the SD-4 ledger join, run against a
-# target-independent fixture in a freshly copied Java template; then the contract and data
-# oracle self-tests in a second copy, the counterfactual evidence passes (SD-10) in a third,
+# target-independent fixture in a freshly copied Java template; then the contract, data and
+# behaviour oracle self-tests and the exact-oracle anchors of the ADAPT-ME examples in a
+# second copy, the counterfactual evidence passes (SD-10) in a third,
 # and an end-to-end run of run-tests.sh (runner-lib.sh, lane plan, environment baseline,
 # evidence passes) in a scaffold against scripts/fixtures/argus-runtime/faulty-target.mjs.
 # Only that local 127.0.0.1 target is ever contacted; no browser is needed.
@@ -296,6 +297,38 @@ awk -F'\t' 'NF != 7 || index($1, "qa.contract.OraclesDataSelfTest.") != 1 || $2 
 [ "$(cat "$ORACLES/reports/argus-adapter-status.txt" 2>/dev/null)" = "ok $data_oracle_cases" ] || fail "data oracle self-test adapter status is not 'ok $data_oracle_cases'"
 if grep -Eq '127[.]0[.]0[.]1|Qa7' "$D"; then fail "a data oracle self-test event carried test details"; fi
 
+# Behaviour oracle self-tests in the same copy: the pure bounds and scaling analyses, and the
+# soft-delete sweep, double submit, and concurrent race against 127.0.0.1 stubs. A list that
+# still serves a deleted id, a double submit with two effects, and a race that overbooks are
+# RED while their correct twins are GREEN, so a healthy run is `product pass` for every
+# case; no browser starts.
+B="$WORK/oracles-behavior.tsv"
+behavior_oracle_cases="$(grep -Ec '^[[:space:]]*@Test[[:space:]]*$' "$ORACLES/src/test/java/qa/contract/OraclesBehaviorSelfTest.java")"
+[ "$behavior_oracle_cases" -gt 0 ] || fail "the behaviour oracle self-test class declares no cases"
+rm -f "$ORACLES/reports/argus-adapter-status.txt"
+run_logged oracles-behavior in_dir "$ORACLES" env ARGUS_RUNNER_MODE=baseline ARGUS_OUTCOME_FILE="$B" "${MVN[@]}" test -Dtest=OraclesBehaviorSelfTest
+expect_lines "$B" "$behavior_oracle_cases"
+awk -F'\t' 'NF != 7 || index($1, "qa.contract.OraclesBehaviorSelfTest.") != 1 || $2 != "product" || $3 != "pass" { bad = 1 } END { exit bad }' "$B" \
+  || { cat "$B" >&2; fail "a behaviour oracle self-test event is not a product pass"; }
+[ "$(cat "$ORACLES/reports/argus-adapter-status.txt" 2>/dev/null)" = "ok $behavior_oracle_cases" ] || fail "behaviour oracle self-test adapter status is not 'ok $behavior_oracle_cases'"
+if grep -Eq '127[.]0[.]0[.]1|overbooked|still serves' "$B"; then fail "a behaviour oracle self-test event carried test details"; fi
+
+# The ADAPT-ME examples (compiled in section 1) teach exact oracles: one documented status,
+# never a class or a presence-only body check, a strict schema by operationId, a read-back
+# with cleanup, and a measured p95 instead of a polling wait.
+EXAMPLES="$ORACLES/src/test/java/qa"
+if grep -Eq 'anyOf\(|notNullValue|assumeTrue|EnabledIf' "$EXAMPLES/api/ExampleApiTest.java" "$EXAMPLES/perf/BudgetSmokeTest.java"; then
+  fail "an ADAPT-ME example accepts a status class, a presence-only body, or skips itself"
+fi
+for anchor in 'Http.expectStatus(res, SPEC_ANONYMOUS_STATUS)' 'Schema.assertSchema(res, OP_GET_ME)' 'Http.assertRestStatus(res, RestState.CREATED)' \
+  'created.register(user, location)' 'Boundary.boundary3(' 'Partitions.invalidObjectPartitions('; do
+  grep -Fq -- "$anchor" "$EXAMPLES/api/ExampleApiTest.java" || fail "ExampleApiTest lost its exact oracle: $anchor"
+done
+if grep -Fq 'Awaitility' "$EXAMPLES/perf/BudgetSmokeTest.java"; then fail "BudgetSmokeTest polls instead of measuring a p95"; fi
+grep -Fq 'nearestRank(samples, 95)' "$EXAMPLES/perf/BudgetSmokeTest.java" && grep -Fq 'Scaling.n1Scaling(' "$EXAMPLES/perf/BudgetSmokeTest.java" \
+  || fail "BudgetSmokeTest lost its p95 or n1Scaling oracle"
+if grep -Fq 'Pattern.compile("dashboard|home' "$EXAMPLES/ui/ExampleUiTest.java"; then fail "ExampleUiTest asserts a URL pattern instead of the exact URL"; fi
+
 # (5) Counterfactual evidence (SD-6, SD-10) in a clean copy: the plan, every cf pass, and the
 # evidence gate over the adapter's own events. API_URL is a refused loopback port, so a case
 # that escaped the stub would report target-unreachable instead of its verdict.
@@ -582,4 +615,4 @@ cp "$WORK/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
 expect_event "$E2E_EV" environment infrastructure fail false n/a - environment-not-at-baseline
 stop_target
 
-printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, inert activation, contract and data oracle self-tests, the SD-10 counterfactual plan, passes and evidence, and an end-to-end runner against a faulty target\n'
+printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, inert activation, contract, data and behaviour oracle self-tests, exact-oracle examples, the SD-10 counterfactual plan, passes and evidence, and an end-to-end runner against a faulty target\n'
