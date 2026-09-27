@@ -505,6 +505,18 @@ if grep -Eq '^counterfactual[.]BUG-000[14]'$'\t' "$WORK/cf-proof.tsv"; then
   fail "the evidence gate rejected the adapter's counterfactual proof"
 fi
 expect_event "$WORK/cf-proof.tsv" counterfactual.BUG-0003 policy denied false n/a BUG-0003 counterfactual-missing
+# Every case of a bug reports its own proof: with both BUG-0001 regressions, two correct passes
+# are no denial, and the weakened one's survived tamper stays the failing verdict.
+awk -F'\t' -v a="$CFC.widget_matches_the_contract." -v b="$CFC.widget_status_only." 'index($1, a) == 1 || index($1, b) == 1' \
+  "$C1" "$T1" "$T2" >"$WORK/cf-two.tsv"
+printf 'BUG-0001\n' >"$WORK/cf-two-bugs.txt"
+bash "$CF/scripts/evidence-gate.sh" --expected-bugs "$WORK/cf-two-bugs.txt" --plan "$CF_PLAN" --events "$WORK/cf-two.tsv" \
+  || fail "the evidence gate failed on two regressions of one bug"
+if grep -Eq '^counterfactual[.]BUG-0001'$'\t' "$WORK/cf-two.tsv"; then
+  grep -E '^counterfactual[.]' "$WORK/cf-two.tsv" >&2
+  fail "the evidence gate denied a bug whose two regressions each reported their own proof"
+fi
+expect_event "$WORK/cf-two.tsv" "$CFC.widget_status_only.cf-missing-field" automation fail false n/a BUG-0001 counterfactual-tamper-survived
 
 # (6) End-to-end runner against a local faulty target. A scaffold from `template select` +
 # `template scaffold` (non-default layout) runs ./run-tests.sh end to end: runner-lib.sh, the

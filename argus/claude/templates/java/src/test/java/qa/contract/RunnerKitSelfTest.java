@@ -11,6 +11,7 @@ import qa.support.argus.ArgusRestoreError;
 import qa.support.argus.FaultInjector;
 import qa.support.argus.FaultInjector.Fault;
 import qa.support.argus.FaultInjector.Scope;
+import qa.support.argus.Reproduction;
 import qa.support.argus.StubServer;
 import qa.support.argus.StubServer.Exchange;
 import qa.support.argus.StubServer.ExchangeRequest;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,9 +33,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Self-tests for the runner-kit helpers {@link FaultInjector} and {@link CreatedResources}, the
- * Java port of runner-kit.selftest.spec.ts. Nothing contacts a real target: faults are
- * recorded calls, and cleanup DELETEs go to a 127.0.0.1 stub. Negative cases assert the
+ * Self-tests for the runner-kit helpers {@link FaultInjector}, {@link CreatedResources}, and
+ * {@link Reproduction}, the Java port of runner-kit.selftest.spec.ts. Nothing contacts a real
+ * target: faults are recorded calls, and cleanup DELETEs go to a 127.0.0.1 stub. Negative cases assert the
  * rejection itself, so a healthy run reports {@code product pass} for every case.
  */
 @Tag("contract-smoke")
@@ -82,6 +84,21 @@ class RunnerKitSelfTest {
         }));
         assertSame(bodyError, thrown);
         assertEquals(List.of("inject", "body", "restore", "verify"), calls);
+    }
+
+    @Test
+    void reproduce_repeats_the_attempt_and_stops_at_the_first_violation() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        Reproduction.reproduce(3, attempts::incrementAndGet);
+        assertEquals(3, attempts.get());
+        attempts.set(0);
+        AssertionError violation = assertThrows(AssertionError.class, () -> Reproduction.reproduce(5, () -> {
+            if (attempts.incrementAndGet() == 2) throw new AssertionError("synthetic violation");
+        }));
+        assertEquals("synthetic violation", violation.getMessage());
+        assertEquals(2, attempts.get());
+        assertThrows(IllegalArgumentException.class, () -> Reproduction.reproduce(0, () -> {}));
+        assertThrows(IllegalArgumentException.class, () -> Reproduction.reproduce(201, () -> {}));
     }
 
     @Test

@@ -368,10 +368,11 @@ evidence-live-red-missing` or `evidence-repeat-red-missing`, and a usable plan r
 else `counterfactual.<B> policy denied counterfactual-plan-missing`; a plan with an
 unparseable row or two rows for one bug is unusable. A `missing` row gives
 `counterfactual-missing`, an `invalid` row `automation fail
-counterfactual-fixture-invalid.<reason>`. A `fixture` needs exactly one
-`counterfactual-correct-pass` and a `counterfactual-tamper-red` whose case id ends in
-`.cf-<t>` for every tamper `t`; an `exempt` row needs `counterfactual-exempt.<reason>` with
-the plan's reason; otherwise `counterfactual-incomplete`. A missing proof is not denied when
+counterfactual-fixture-invalid.<reason>`. A `fixture` needs a
+`counterfactual-correct-pass`, at most one per case id (each invocation of a template or
+parametrized regression is its own case), and a `counterfactual-tamper-red` whose case id
+ends in `.cf-<t>` for every tamper `t`; an `exempt` row needs `counterfactual-exempt.<reason>`
+with the plan's reason; otherwise `counterfactual-incomplete`. A missing proof is not denied when
 the same pass (by SD-2 case-id suffix) already gave `B` a failing verdict such as `flaky-red`
 or `counterfactual-tamper-survived`, so that verdict keeps its own exit code.
 

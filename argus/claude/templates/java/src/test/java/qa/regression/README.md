@@ -36,7 +36,10 @@ lane. `@Tag("regression")` selects it in `defect-evidence` and `candidate-regres
   defect. Every request the test makes (a login included) must be one of the fixture's
   exchanges. Authoring rules and the exemption set: `solution/counterfactual/README.md`.
 - An intermittent defect declares `@Tag("repetition:<n>")` from the ledger's reproduction
-  record (RUNNER-CONTRACT.md SD-6).
+  record (RUNNER-CONTRACT.md SD-6), and its one test repeats the reproduction in its body:
+  `Reproduction.reproduce(n, () -> { ... })` (`qa.support.argus`) runs up to n attempts, each
+  from fresh state, and fails at the first violation. Never use `@RepeatedTest` or
+  `@ParameterizedTest` for it: each of their invocations is a separate case, not an attempt.
 
 ```java
 // src/test/java/qa/api/OrdersRegressionTest.java
