@@ -511,6 +511,35 @@ cf_pass cf-repetition cf-correct -- tests/contract/test_cf_repetition_fixture.py
 rm -f tests/contract/test_cf_repetition_fixture.py
 expect_only_event cf-repetition tests.contract.test_cf_repetition_fixture.py::test_verdict_ignores_repetition.cf-correct product pass false reproduced BUG-0001 counterfactual-correct-pass
 
+# A suite without the plugin's counterfactual fixture (here overridden by a no-op, as after a
+# port that dropped it) runs its tests against the real target: no verdict, adapter failures.
+cat >tests/contract/test_cf_unloaded_fixture.py <<'PY'
+import pytest
+
+pytestmark = pytest.mark.contract_smoke
+
+
+@pytest.fixture
+def _argus_counterfactual():
+    yield None
+
+
+@pytest.mark.regression
+@pytest.mark.bug("ATA-001")
+def test_regression_without_its_variant():
+    assert True
+
+
+def test_unbound_test_without_the_fixture():
+    assert True
+PY
+cf_pass cf-unloaded cf-correct -- tests/contract/test_cf_unloaded_fixture.py
+rm -f tests/contract/test_cf_unloaded_fixture.py
+expect_exit cf-unloaded 1
+[ ! -s "$WORK/cf-unloaded.tsv" ] || { cat "$WORK/cf-unloaded.tsv" >&2; fail "cf-unloaded: a verdict without a loaded variant was credited"; }
+expect_status "error 2" cf-unloaded
+[ "$(cut -f2 reports/argus-adapter-errors/*.txt | sort -u)" = counterfactual-variant-not-loaded ] || fail "cf-unloaded: the missing variant was not listed"
+
 # An exemption records one event in cf-correct and nothing in a tamper pass.
 jq '{"$schema": ."$schema", schemaVersion, bugId, exemption: {reason: "front-end-logic", justification: "The defect lives in client-side rendering."}}' \
   "$WORK/cf-fixture.json" >"$WORK/cf-exempt.json"

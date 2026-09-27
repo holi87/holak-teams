@@ -17,7 +17,7 @@ from qa.config import ENV
 
 @pytest.fixture(autouse=True)
 def _ui_counterfactual_route(_argus_counterfactual, page):
-    # _argus_counterfactual (root conftest) is None outside a cf-* pass, and a test without a
+    # _argus_counterfactual (qa.argus_plugin) is None outside a cf-* pass, and a test without a
     # variant has already skipped before a page exists.
     if _argus_counterfactual is not None:
         stub = _argus_counterfactual.stub

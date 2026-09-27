@@ -118,7 +118,8 @@
         "src/test/java/qa/contract/OraclesDataSelfTest.java",
         "src/test/java/qa/contract/OraclesBehaviorSelfTest.java",
         "src/test/resources/openapi.selftest.json",
-        "src/test/resources/META-INF/services/"
+        "src/test/resources/META-INF/services/",
+        "src/test/resources/junit-platform.properties"
       ]
     },
     "python": {

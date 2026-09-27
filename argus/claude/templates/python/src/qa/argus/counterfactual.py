@@ -3,8 +3,8 @@
 A fixture proves that a regression distinguishes correct from defective behaviour without
 contacting the target: the ``cf-correct`` pass serves the subject exchange as specified, and
 each ``cf-tamper-<k>`` pass replaces the subject response with ``tampers[k-1]``. The outcome
-adapter (qa.argus_plugin) uses this module for the inventory plan and for cf-* passes; the
-root conftest's ``_argus_counterfactual`` fixture uses it inside each test.
+adapter (qa.argus_plugin) uses this module for the inventory plan and for cf-* passes; its
+``_argus_counterfactual`` fixture uses it inside each test.
 
 Only the standard library is imported at load time. ``load_fixture`` imports the strict
 schema oracle (jsonschema) lazily, and only for a fixture that declares a ``contract``.

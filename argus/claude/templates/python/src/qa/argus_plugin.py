@@ -15,6 +15,10 @@ only ``scripts/runner-lib.sh`` exports.
   the case suffix is ``.cf-correct`` or ``.cf-<tamperId>`` (recomputed from the bug's
   fixture), and a skip with a counterfactual sentinel reason reports nothing, or in
   cf-correct the ``.cf`` exemption event (qa.argus.counterfactual, imported lazily).
+* The counterfactual fixtures ``_argus_stub`` and ``_argus_counterfactual`` live here too, so
+  every suite that loads the adapter has them. A pass or assertion verdict counts only for
+  the variant ``_argus_counterfactual`` loaded for that test; without it the body ran against
+  the real target, so the adapter records a failure instead of an event.
 
 Events go only through ``bash <root>/scripts/outcome-event.sh`` (atomic, so safe under
 pytest-xdist workers) and carry sanitized case ids and closed-vocabulary reasons — never
@@ -33,6 +37,7 @@ import re
 import socket
 import subprocess
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -180,6 +185,8 @@ STATE_KEY = pytest.StashKey[AdapterState]()
 META_KEY = pytest.StashKey[CaseMeta]()
 PHASES_KEY = pytest.StashKey[dict]()
 DONE_KEY = pytest.StashKey[bool]()
+#: The counterfactual variant id _argus_counterfactual loaded into the stub for this test.
+VARIANT_KEY = pytest.StashKey[str]()
 
 
 # ------------------------------------------------------------------------------ hooks
@@ -374,6 +381,11 @@ def compose(state: AdapterState, item: pytest.Item, phases: dict[str, Phase]) ->
         # SD-6: repetition-invalid takes the place of a regression's product event only; other
         # outcomes are reported unchanged, and counterfactual verdicts do not depend on n.
         primary = REPETITION_INVALID
+    if state.counterfactual and state.pass_supported and primary in (PRODUCT, PASSED) and not variant_loaded(state, item, meta):
+        # A verdict without the variant _argus_counterfactual loaded came from the real target
+        # (a suite that dropped or overrode the fixture): never evidence, an adapter failure.
+        state.record_failure(meta.case_id, "counterfactual-variant-not-loaded", "no-event")
+        return
     emit_outcome(state, item, meta, primary)
     if cleanup:
         emit_outcome(state, item, meta, classify_teardown(teardown.error), suffix=".cleanup")
@@ -537,6 +549,19 @@ def fixture_for(state: AdapterState, bug: str) -> Any:
     return state.fixtures[bug]
 
 
+def variant_loaded(state: AdapterState, item: pytest.Item, meta: CaseMeta) -> bool:
+    """Whether _argus_counterfactual loaded this pass's variant of the test's bug for this test."""
+    loaded = item.stash.get(VARIANT_KEY, None)
+    if loaded is None or meta.bug == "-":
+        return False
+    cf = counterfactual_module()
+    fixture = fixture_for(state, meta.bug)
+    if not isinstance(fixture, cf.CounterfactualFixture):
+        return False
+    variant = cf.variant_for(fixture, state.evidence_pass)
+    return isinstance(variant, cf.CounterfactualVariant) and variant.id == loaded
+
+
 def counterfactual_skip(state: AdapterState, meta: CaseMeta, error: BaseException | None) -> bool:
     """SD-6 sentinel skips of the counterfactual fixture; True when handled here.
 
@@ -571,6 +596,75 @@ def unmatched_request(error: BaseException | None) -> bool:
     if argus_outcome(error) == ARGUS_ERRORS["ArgusCounterfactualError"]:
         return True
     return isinstance(error, BaseExceptionGroup) and any(unmatched_request(member) for member in error.exceptions)
+
+
+# Counterfactual fixtures (TEMPLATE-CONTRACT.md SD-10). Inert unless ARGUS_EVIDENCE_PASS
+# starts with cf-. Then each session (each xdist worker) runs one 127.0.0.1 stub, and each
+# test bound to a bug with a fixture runs against the pass's variant of
+# solution/counterfactual/<bug>.json: ARGUS_COUNTERFACTUAL_API_URL points the suite's clients
+# (qa.config.current_api_url) at the stub, and the ui lane routes the browser's API requests
+# to it (tests/ui/conftest.py). No request reaches the target API; an undeclared one fails the
+# test with ArgusCounterfactualError. Every other test skips with a sentinel reason.
+
+
+def counterfactual_pass() -> str | None:
+    evidence_pass = os.environ.get("ARGUS_EVIDENCE_PASS", "")
+    return evidence_pass if evidence_pass.startswith("cf-") else None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _argus_stub() -> Iterator[Any]:
+    """One loopback counterfactual stub per session in a cf-* pass; None otherwise."""
+    if counterfactual_pass() is None:
+        yield None
+        return
+    from qa.argus.stub_server import StubServer  # noqa: PLC0415 - only a cf-* pass starts a stub
+
+    stub = StubServer.start()
+    try:
+        yield stub
+    finally:
+        stub.stop()
+
+
+@pytest.fixture(autouse=True)
+def _argus_counterfactual(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, _argus_stub: Any) -> Iterator[Any]:
+    """Load this test's counterfactual variant into the stub, or skip with a sentinel reason."""
+    evidence_pass = counterfactual_pass()
+    if _argus_stub is None or evidence_pass is None:
+        yield None
+        return
+    cf = counterfactual_module()
+    # The stub outlives the test: drop the previous test's exchanges and request log.
+    _argus_stub.load([])
+    root = Path(request.config.rootpath)
+    bug_id = cf.bound_bug(root, request.node)
+    # The same validation as the inventory plan, contract check included, so a fixture the
+    # plan lists as invalid never runs.
+    fixture = cf.load_fixture(root, bug_id) if bug_id else None
+    if isinstance(fixture, cf.Exempt) and evidence_pass == "cf-correct":
+        pytest.skip(f"{cf.EXEMPT_PREFIX}{fixture.reason}")
+    # Unbound tests, missing or invalid fixtures, exempt bugs in tamper passes, tamper passes
+    # beyond the fixture's tampers, and malformed pass names have no variant; the evidence
+    # gate reports missing and invalid fixtures.
+    variant = cf.NO_VARIANT
+    if isinstance(fixture, cf.CounterfactualFixture) and cf.is_counterfactual_pass(evidence_pass):
+        variant = cf.variant_for(fixture, evidence_pass)
+    if bug_id is None or not isinstance(fixture, cf.CounterfactualFixture) or not isinstance(variant, cf.CounterfactualVariant):
+        pytest.skip(cf.NOT_APPLICABLE)
+    _argus_stub.load(cf.variant_exchanges(fixture, variant))
+    monkeypatch.setenv("ARGUS_COUNTERFACTUAL_API_URL", _argus_stub.url)
+    request.node.stash[VARIANT_KEY] = variant.id
+    yield cf.CounterfactualContext(bug_id=bug_id, variant=variant.id, stub=_argus_stub)
+    unmatched = _argus_stub.unmatched()
+    _argus_stub.load([])
+    if unmatched:
+        from qa.argus.errors import ArgusCounterfactualError  # noqa: PLC0415
+
+        listed = ", ".join(f"{record['method']} {record['path']}" for record in unmatched[:5])
+        raise ArgusCounterfactualError(
+            f"the counterfactual stub received {len(unmatched)} request(s) the fixture does not declare: {listed}"
+        )
 
 
 # -------------------------------------------------------------- inventory and ledger

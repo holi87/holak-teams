@@ -270,6 +270,12 @@ for runtime in typescript java python; do
 done
 test -f "$WORK/kit-java/src/test/resources/META-INF/services/org.junit.platform.launcher.TestExecutionListener" || fail "Java runner kit omitted the listener registration"
 test -f "$WORK/kit-python/src/qa/argus_plugin.py" && test ! -e "$WORK/kit-python/src/qa/config.py" || fail "Python runner kit selected the wrong files"
+# The counterfactual wiring travels with the kit: the switch that loads Java's extension and
+# the Python fixtures that load each test's variant.
+grep -Eq '^junit\.jupiter\.extensions\.autodetection\.enabled *= *true$' "$WORK/kit-java/src/test/resources/junit-platform.properties" ||
+  fail "Java runner kit omitted the counterfactual extension's autodetection switch"
+grep -Eq '^def _argus_counterfactual\(' "$WORK/kit-python/src/qa/argus_plugin.py" && grep -Eq '^def _argus_stub\(' "$WORK/kit-python/src/qa/argus_plugin.py" ||
+  fail "Python runner kit omitted the counterfactual fixtures"
 
 # The kit copy fails closed before writing: a non-empty or symlinked destination, an
 # unknown runtime, and a contract entry that selects no composed file leave nothing behind.

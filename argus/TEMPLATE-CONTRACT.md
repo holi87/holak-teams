@@ -94,7 +94,7 @@ package, oracle library, and oracle self-tests:
 | Runtime | Adds |
 |---|---|
 | TypeScript | `scripts/argus-playwright-reporter.mjs`, `src/argus/`, `src/oracles/`, the three `tests/contract/oracles-*.selftest.spec.ts`, `tests/contract/fixtures/` |
-| Java | under `src/test/`: `java/qa/support/argus/`, `java/qa/support/oracles/`, `java/qa/support/CreatedResources.java`, the three `java/qa/contract/Oracles*SelfTest.java`, `resources/openapi.selftest.json`, `resources/META-INF/services/` |
+| Java | under `src/test/`: `java/qa/support/argus/`, `java/qa/support/oracles/`, `java/qa/support/CreatedResources.java`, the three `java/qa/contract/Oracles*SelfTest.java`, `resources/openapi.selftest.json`, `resources/META-INF/services/`, `resources/junit-platform.properties` |
 | Python | `src/qa/argus_plugin.py`, `src/qa/argus/`, `src/qa/oracles/`, the three `tests/contract/test_oracles_*_selftest.py`, `tests/contract/fixtures/` |
 
 The command validates both template layers, fails with `runner kit entry missing: <entry>`
@@ -115,6 +115,17 @@ the `qa.support.SummaryListener` line of the launcher service file; Python's
 `qa.schema_oracle` (one contract self-test) and the root-conftest
 `pytest_plugins = ["qa.argus_plugin"]` registration. Map each seam to the suite's
 equivalent or remove the reference; never leave one dangling.
+
+Counterfactual passes need the kit's in-test wiring. The Java and Python adapters fail
+closed without it: a pass or assertion verdict counts only for the variant the wiring loaded
+for that test, and any other is an adapter failure. Java's
+`ArgusCounterfactualExtension` runs only with
+`junit.jupiter.extensions.autodetection.enabled=true`; merge that key from the kit's
+`junit-platform.properties` into the suite's own file, because JUnit reads only one.
+Python's `qa.argus_plugin` carries the `_argus_stub` and `_argus_counterfactual` fixtures, so
+registering the adapter registers them. In every runtime the suite's API clients must use
+`ARGUS_COUNTERFACTUAL_API_URL` (Java `argus.counterfactual.apiUrl`) as their base URL during
+a `cf-*` pass, and a ui-lane test needs the browser route to the stub.
 
 ## Template contract v2 declarations (SD-8 to SD-11)
 
