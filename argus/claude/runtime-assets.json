@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 40,
-      "bytes": 169732,
-      "sha256": "818eca1c1a13a15afca4bfee47ce9885f61dbb9c42178313d83c9eb6401a0dba"
+      "bytes": 169987,
+      "sha256": "81f428e41cbb3ba18ba4094e3f00941a9a3b383ca7942455425788a70aa97637"
     },
     {
       "id": "capability-matrix",
@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 56,
-      "bytes": 346862,
-      "sha256": "f611f192b3199ad3117af2f3e864e690401e079ed737f531212fb49ffcbfedd6"
+      "bytes": 383119,
+      "sha256": "7dc92f8629f5cacd1bf62bc16f7ceb08927b02abaf8c1fc35dbf57a2c76a08ec"
     },
     {
       "id": "java-template",
