@@ -94,7 +94,9 @@ provisioning failure stops the launch; --dry-run only reports browserProvisionin
 --feature <capability-id> is repeatable and forwards operator-declared capability evidence
 (for example db-access, source-access, non-rest-surface, or multi-service, which the sandbox's
 cleared environment cannot reveal) to preflight as --feature. Each id must be a key of the
-packaged capabilities/capability-matrix.json; ids are deduplicated and sorted. Features only
+packaged capabilities/capability-matrix.json whose kind is target; browser-runtime and the MCP
+capabilities are refused because preflight proves them with its own probes. Ids are
+deduplicated and sorted. Features only
 widen which lanes preflight marks available: every action remains governed by the
 authorization manifest. They are not part of the signed launch request: an attested launch
 carries them in the unsigned launch payload, an unattested launch in its prompt, and --dry-run
@@ -210,19 +212,22 @@ verify_artifact_tree() {
 }
 
 # Adds one operator-declared preflight feature to the sorted, deduplicated JSON array in
-# launch_features_json. The id must be a key of the packaged capability matrix, the same
-# set preflight --feature accepts. Features only widen which lanes preflight marks
-# available; the authorization manifest still governs every action.
+# launch_features_json. The id must be a target-kind key of the packaged capability matrix,
+# the same set preflight --feature accepts: browser and MCP capabilities are proven only by
+# preflight's own probes, so a declaration can never stand in for them. Features only widen
+# which lanes preflight marks available; the authorization manifest still governs every action.
 add_launch_feature() {
-  local feature="$1" matrix="$RUNTIME_ROOT/capabilities/capability-matrix.json" features status=0
+  local feature="$1" matrix="$RUNTIME_ROOT/capabilities/capability-matrix.json" kind status=0
   [[ "$feature" =~ ^[a-z][a-z0-9-]*$ ]] || fail "unknown capability feature: $feature"
   [ -f "$matrix" ] || fail 'packaged capability matrix is unavailable'
-  features="$(jq -ce --arg feature "$feature" --argjson features "$launch_features_json" \
-    'if (.capabilities | type) == "object" and (.capabilities | has($feature)) then $features + [$feature] | unique else false end' \
+  kind="$(jq -er --arg feature "$feature" \
+    'if (.capabilities | type) == "object" and (.capabilities | has($feature)) then .capabilities[$feature].kind | tostring else false end' \
     "$matrix" 2>/dev/null)" || status=$?
   [ "$status" -ne 1 ] || fail "unknown capability feature: $feature"
   [ "$status" -eq 0 ] || fail 'packaged capability matrix is unreadable'
-  launch_features_json="$features"
+  [ "$kind" = target ] || \
+    fail "capability feature $feature is not operator-declarable: preflight proves $kind capabilities with its own probes; --feature takes only target capabilities"
+  launch_features_json="$(jq -cn --arg feature "$feature" --argjson features "$launch_features_json" '$features + [$feature] | unique')"
 }
 
 # Binds the operator's --authorization manifest, or the default-deny manifest for

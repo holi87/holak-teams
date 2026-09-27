@@ -661,6 +661,21 @@ for bad_feature in bogus DB-ACCESS 'db-access,source-access' '-db-access' ''; do
     { cat "$WORK/unattested-bad-feature.stderr" >&2; fail "feature '$bad_feature' refusal did not report an unknown capability feature"; }
   [ ! -e "$WORK/unattested-artifacts-bad-feature" ] || fail "feature '$bad_feature' refusal created the artifact root"
 done
+# Browser and MCP capabilities are proven only by preflight's own probes, so a declaration
+# can never release browser lanes whose runtime failed its probe.
+for probed_feature in browser-runtime playwright-mcp context7; do
+  set +e
+  env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-features" PATH="$FIXTURE_BIN:$PATH" \
+    "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-bad-feature" \
+    --mode A --engagement-id launcher-unattested-bad-feature --unattested --dry-run --feature db-access --feature "$probed_feature" \
+    >"$WORK/unattested-bad-feature.stdout" 2>"$WORK/unattested-bad-feature.stderr"
+  unattested_status=$?
+  set -e
+  [ "$unattested_status" -ne 0 ] || fail "launcher accepted the probe-only capability feature '$probed_feature'"
+  grep -Fq "capability feature $probed_feature is not operator-declarable" "$WORK/unattested-bad-feature.stderr" || \
+    { cat "$WORK/unattested-bad-feature.stderr" >&2; fail "probe-only feature '$probed_feature' was not refused as not operator-declarable"; }
+  [ ! -e "$WORK/unattested-artifacts-bad-feature" ] || fail "feature '$probed_feature' refusal created the artifact root"
+done
 set +e
 env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-features" PATH="$FIXTURE_BIN:$PATH" \
   "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-bad-feature" \

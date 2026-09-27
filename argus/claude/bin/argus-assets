@@ -4079,8 +4079,14 @@ async function preflight(argv) {
   if (!['claude', 'codex'].includes(modelRuntime)) fail('preflight --model-runtime must be claude or codex');
   if (!options.target) fail('preflight requires --target <url-or-path>');
   const selectedSlugs = new Set(matrix.agents.filter((agent) => agent.modes.includes(mode)).map((agent) => agent.slug));
+  // Operator-declared features cover only target capabilities the sandbox cannot observe.
+  // Browser and MCP capabilities come from preflight's own probes, never from a declaration.
   for (const feature of options.features) {
     if (!Object.hasOwn(matrix.capabilities, feature)) fail(`unknown preflight feature: ${feature}`);
+    const { kind } = matrix.capabilities[feature];
+    if (kind !== 'target') {
+      fail(`preflight --feature ${feature} is not operator-declarable: ${kind} capabilities are proven only by preflight's own probes`);
+    }
   }
 
   const targetDescriptor = identifyTarget(options.target);
