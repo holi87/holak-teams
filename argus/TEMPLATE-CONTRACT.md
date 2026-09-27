@@ -73,6 +73,49 @@ Gradle, uv, Poetry, Jest, Vitest, TestNG, unittest, and other languages. Those a
 as explicit adaptation requirements, never silently converted to a supported tool. Add a
 template-specific adapter at the named extension point; do not duplicate shared doctrine.
 
+## ADAPT: the runner kit
+
+An `action: adapt` selection never scaffolds. To port the shared runner into the detected
+suite, copy the runtime's runner kit into an empty staging directory:
+
+```bash
+argus-assets copy-runner-kit <typescript|java|python> <empty-destination>
+```
+
+`templates.<runtime>.runnerKit` lists the kit as composed-template relative paths. An entry
+ending in `/` selects every file below that directory; any other entry names exactly one
+file; there are no other globs. Every kit carries the shared runner (`scripts/runner-lib.sh`,
+`runner-contract.sh`, `outcome-event.sh`, `quarantine-contract.sh`, `lane-plan.sh`, and the
+environment, inventory, and evidence gates) and the target-owned declarations
+(`solution/test-lanes.tsv`, `solution/environment.tsv`, `solution/quarantine.tsv`,
+`solution/counterfactual/`). Each runtime adds its outcome adapter, runner-kit support
+package, oracle library, and oracle self-tests:
+
+| Runtime | Adds |
+|---|---|
+| TypeScript | `scripts/argus-playwright-reporter.mjs`, `src/argus/`, `src/oracles/`, the three `tests/contract/oracles-*.selftest.spec.ts`, `tests/contract/fixtures/` |
+| Java | under `src/test/`: `java/qa/support/argus/`, `java/qa/support/oracles/`, `java/qa/support/CreatedResources.java`, the three `java/qa/contract/Oracles*SelfTest.java`, `resources/openapi.selftest.json`, `resources/META-INF/services/` |
+| Python | `src/qa/argus_plugin.py`, `src/qa/argus/`, `src/qa/oracles/`, the three `tests/contract/test_oracles_*_selftest.py`, `tests/contract/fixtures/` |
+
+The command validates both template layers, fails with `runner kit entry missing: <entry>`
+when an entry selects no composed file, and refuses a non-empty or symlinked destination,
+all before it writes. The copy keeps the composed layout and every byte and file mode, and
+it passes the active-engagement write guard like `copy-template`.
+
+The kit is not a runnable framework. Port each file into the existing suite's test and
+harness roots, rewrite imports for those roots, wire the adapter into the suite's own
+runner, and declare the libraries the kit imports in the suite's manifest (`copy-template`
+shows the reference versions). The ported `scripts/runner-lib.sh` still requires the
+ADAPT selection record at `ai_agents_internal/template-selection.json` and a suite entry
+point that sets `ARGUS_RUNTIME`, `ARGUS_PACKAGE_MANAGER`, and `TEST_ROOT` and defines the
+four `argus_native_*` hooks; the scaffold's `run-tests.sh` is the reference. The kit relies
+on seams it does not ship: Java's
+`qa.support.Config` (target URL), `qa.support.SchemaOracle` (one contract self-test), and
+the `qa.support.SummaryListener` line of the launcher service file; Python's
+`qa.schema_oracle` (one contract self-test) and the root-conftest
+`pytest_plugins = ["qa.argus_plugin"]` registration. Map each seam to the suite's
+equivalent or remove the reference; never leave one dangling.
+
 ## Template contract v2 declarations (SD-8 to SD-11)
 
 These sections are normative for `argus/template-contract@2`. SD-1 to SD-7 live in

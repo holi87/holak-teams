@@ -319,6 +319,14 @@ fi
 grep -Fq 'authorization check --at is a test-only clock override and is refused while an engagement is active' "$WORK/authorization-at.out" || fail "authorization check --at was not refused by the engagement rule: $(<"$WORK/authorization-at.out")"
 atlas_tmp="$(jq -r .temporaryDirectory "$ALLOCATIONS/atlas.json")"
 guard_shell "argus-assets copy-template typescript $atlas_tmp/template" allow
+guard_shell "argus-assets copy-runner-kit typescript $atlas_tmp/runner-kit" allow
+guard_shell "argus-assets copy-runner-kit java $WORK/outside-target" GUARD-TARGET-IMMUTABLE
+guard_shell "argus-assets copy-runner-kit python" GUARD-SHELL-AMBIGUOUS
+if (cd "$TARGET" && "$CLI" copy-runner-kit python app/runner-kit) >"$WORK/runner-kit-guard.out" 2>&1; then
+  fail 'copy-runner-kit bypassed its active-engagement write guard'
+fi
+grep -Fq 'copy-runner-kit denied by active engagement rule GUARD-TARGET-IMMUTABLE' "$WORK/runner-kit-guard.out" || fail "copy-runner-kit was not denied by the write guard: $(<"$WORK/runner-kit-guard.out")"
+test ! -e "$TARGET/app/runner-kit" || fail 'self-guarded copy-runner-kit created a target-source directory'
 guard_shell "argus-assets template detect --target $TARGET" allow
 guard_shell "argus-assets template select --target $TARGET --runtime typescript --package-manager npm --test-root tests --harness-root qa-support --output ai_agents_internal/reports/template-selection.json" allow
 guard_shell "argus-assets template scaffold --selection ai_agents_internal/reports/template-selection.json --destination $atlas_tmp/scaffold" allow

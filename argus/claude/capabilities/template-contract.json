@@ -67,7 +67,28 @@
       "extensionPoints": ["package-manager-adapter", "test-root", "harness-root", "ci-command"],
       "adapter": "scripts/argus-playwright-reporter.mjs",
       "provenanceMarker": "@bug:<canonical-or-origin>",
-      "laneMarker": "playwright-project"
+      "laneMarker": "playwright-project",
+      "runnerKit": [
+        "scripts/runner-lib.sh",
+        "scripts/runner-contract.sh",
+        "scripts/outcome-event.sh",
+        "scripts/quarantine-contract.sh",
+        "scripts/lane-plan.sh",
+        "scripts/environment-gate.sh",
+        "scripts/inventory-gate.sh",
+        "scripts/evidence-gate.sh",
+        "solution/test-lanes.tsv",
+        "solution/environment.tsv",
+        "solution/quarantine.tsv",
+        "solution/counterfactual/",
+        "scripts/argus-playwright-reporter.mjs",
+        "src/argus/",
+        "src/oracles/",
+        "tests/contract/oracles-contract.selftest.spec.ts",
+        "tests/contract/oracles-data.selftest.spec.ts",
+        "tests/contract/oracles-behavior.selftest.spec.ts",
+        "tests/contract/fixtures/"
+      ]
     },
     "java": {
       "framework": "junit-playwright-restassured",
@@ -76,7 +97,29 @@
       "extensionPoints": ["build-tool-adapter", "test-root", "harness-root", "ci-command"],
       "adapter": "qa.support.argus.ArgusOutcomeListener",
       "provenanceMarker": "@Tag(\"bug:<canonical-or-origin>\")",
-      "laneMarker": "@Tag(\"<lane>\")"
+      "laneMarker": "@Tag(\"<lane>\")",
+      "runnerKit": [
+        "scripts/runner-lib.sh",
+        "scripts/runner-contract.sh",
+        "scripts/outcome-event.sh",
+        "scripts/quarantine-contract.sh",
+        "scripts/lane-plan.sh",
+        "scripts/environment-gate.sh",
+        "scripts/inventory-gate.sh",
+        "scripts/evidence-gate.sh",
+        "solution/test-lanes.tsv",
+        "solution/environment.tsv",
+        "solution/quarantine.tsv",
+        "solution/counterfactual/",
+        "src/test/java/qa/support/argus/",
+        "src/test/java/qa/support/oracles/",
+        "src/test/java/qa/support/CreatedResources.java",
+        "src/test/java/qa/contract/OraclesContractSelfTest.java",
+        "src/test/java/qa/contract/OraclesDataSelfTest.java",
+        "src/test/java/qa/contract/OraclesBehaviorSelfTest.java",
+        "src/test/resources/openapi.selftest.json",
+        "src/test/resources/META-INF/services/"
+      ]
     },
     "python": {
       "framework": "pytest-playwright-httpx",
@@ -85,7 +128,28 @@
       "extensionPoints": ["environment-manager-adapter", "test-root", "harness-root", "ci-command"],
       "adapter": "qa.argus_plugin",
       "provenanceMarker": "@pytest.mark.bug(\"<canonical-or-origin>\")",
-      "laneMarker": "pytest.mark.<lane>"
+      "laneMarker": "pytest.mark.<lane>",
+      "runnerKit": [
+        "scripts/runner-lib.sh",
+        "scripts/runner-contract.sh",
+        "scripts/outcome-event.sh",
+        "scripts/quarantine-contract.sh",
+        "scripts/lane-plan.sh",
+        "scripts/environment-gate.sh",
+        "scripts/inventory-gate.sh",
+        "scripts/evidence-gate.sh",
+        "solution/test-lanes.tsv",
+        "solution/environment.tsv",
+        "solution/quarantine.tsv",
+        "solution/counterfactual/",
+        "src/qa/argus_plugin.py",
+        "src/qa/argus/",
+        "src/qa/oracles/",
+        "tests/contract/test_oracles_contract_selftest.py",
+        "tests/contract/test_oracles_data_selftest.py",
+        "tests/contract/test_oracles_behavior_selftest.py",
+        "tests/contract/fixtures/"
+      ]
     }
   }
 }

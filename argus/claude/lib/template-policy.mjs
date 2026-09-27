@@ -13,6 +13,9 @@ const RUNNER_ARTIFACTS = {
 const LANE_PLAN = { file: 'solution/test-lanes.tsv', undecided: 'not-yet-planned' };
 const ENVIRONMENT = { file: 'solution/environment.tsv', resetOptIn: 'ARGUS_ENVIRONMENT_RESET=execute', resetAuthorizationAction: 'destructive', undecided: 'not-yet-planned' };
 const COUNTERFACTUAL = { directory: 'solution/counterfactual', fixtureSchema: 'argus/counterfactual-fixture@1', requiredTamper: 'observed-defect' };
+// Every runtime's runner kit ships the declarations the shared contract names.
+const RUNNER_KIT_SHARED = [RUNNER_ARTIFACTS.library, LANE_PLAN.file, ENVIRONMENT.file, 'solution/quarantine.tsv', `${COUNTERFACTUAL.directory}/`];
+const RUNNER_KIT_SEGMENT = /^[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?$/;
 
 export function validateTemplateContract(contract) {
   const errors = [];
@@ -33,6 +36,7 @@ export function validateTemplateContract(contract) {
     const template = contract.templates?.[runtime];
     if (!object(template) || !string(template.framework) || !string(template.runner) || !list(template.packageManagers) || !list(template.extensionPoints)) errors.push(`${runtime} template contract is invalid`);
     else if (!string(template.adapter) || !string(template.provenanceMarker) || !string(template.laneMarker)) errors.push(`${runtime} template adapter or marker contract is invalid`);
+    if (object(template) && !validRunnerKit(template.runnerKit)) errors.push(`${runtime} template runner kit contract is invalid`);
   }
   return [...new Set(errors)];
 }
@@ -172,6 +176,31 @@ export function materializeTemplateLayout(destination, selection) {
 
 export function stable(value) { return `${JSON.stringify(value, null, 2)}\n`; }
 
+// Narrows a validated template composition to its runner kit. An entry with a trailing '/'
+// selects every file below that directory; any other entry selects exactly one file. The
+// result keeps the composition order and every ancestor directory of a selected file, and
+// names each kit entry that matched no file so the caller can fail before writing.
+export function selectRunnerKitEntries(entries, runnerKit) {
+  if (!runnerKitList(runnerKit)) throw new Error('runner kit contract is invalid');
+  const files = entries.filter((entry) => entry.type === 'file');
+  const selected = new Set();
+  const missing = [];
+  for (const item of runnerKit) {
+    const matches = item.endsWith('/')
+      ? files.filter((entry) => entry.relativePath.startsWith(item))
+      : files.filter((entry) => entry.relativePath === item);
+    if (!matches.length) missing.push(item);
+    for (const entry of matches) selected.add(entry.relativePath);
+  }
+  const ancestors = new Set();
+  for (const path of selected) {
+    const parts = path.split('/');
+    for (let index = 1; index < parts.length; index += 1) ancestors.add(parts.slice(0, index).join('/'));
+  }
+  const kept = entries.filter((entry) => (entry.type === 'file' ? selected.has(entry.relativePath) : entry.type === 'directory' && ancestors.has(entry.relativePath)));
+  return { entries: kept, missing };
+}
+
 function materializeTypeScript(root, testRoot, harnessRoot, selection) {
   const oldTests = join(root, 'tests');
   const oldHarness = join(root, 'src');
@@ -292,3 +321,10 @@ function canonicalLayoutPath(value) {
   return normalized === value && normalized !== '.' && !normalized.startsWith('../') ? normalized : null;
 }
 function withinPath(parent, child) { return child.startsWith(`${parent.replace(/\/$/, '')}/`); }
+function runnerKitEntry(value) {
+  if (typeof value !== 'string') return false;
+  const path = value.endsWith('/') ? value.slice(0, -1) : value;
+  return canonicalLayoutPath(path) === path && path.split('/').every((part) => RUNNER_KIT_SEGMENT.test(part));
+}
+function runnerKitList(value) { return list(value) && value.every(runnerKitEntry); }
+function validRunnerKit(value) { return runnerKitList(value) && RUNNER_KIT_SHARED.every((path) => value.includes(path)); }

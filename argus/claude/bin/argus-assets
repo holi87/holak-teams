@@ -94,6 +94,7 @@ import {
   detectTemplateCapabilities,
   materializeTemplateLayout,
   resolveDetectedPackageManager,
+  selectRunnerKitEntries,
   selectTemplate,
   stable as stableTemplateJson,
   validateTemplateContract,
@@ -228,6 +229,9 @@ switch (command) {
   case 'copy-template':
     copyTemplate(args[0], args[1]);
     break;
+  case 'copy-runner-kit':
+    copyRunnerKit(args[0], args[1]);
+    break;
   case 'copy-browser-driver':
     copyBrowserDriver(args[0]);
     break;
@@ -271,6 +275,7 @@ Usage:
   argus-assets guard
   argus-assets redact --input <text-file|-> --output <safe-file|->
   argus-assets copy-template <typescript|java|python> <empty-destination>
+  argus-assets copy-runner-kit <typescript|java|python> <empty-destination>
   argus-assets copy-browser-driver <target-repo>
 
 Preflight options:
@@ -5447,6 +5452,33 @@ function copyTemplate(runtime, destination) {
     fail(error.message);
   }
   console.log(`COPIED  ${runtime} template -> ${target}`);
+}
+
+// ADAPT path: copies only the runner kit that the shared template contract names for the
+// runtime, byte- and mode-exact from the validated composition, so the kit can be ported
+// into an existing suite. Every kit entry must match before the destination is touched.
+function copyRunnerKit(runtime, destination) {
+  const runnerKit = Object.hasOwn(templateContract.templates, String(runtime)) ? templateContract.templates[runtime].runnerKit : null;
+  if (!runnerKit) fail('copy-runner-kit runtime must be typescript, java, or python');
+  const composition = prepareTemplateComposition(runtime);
+  if (!destination) fail('copy-runner-kit requires an empty destination path');
+  let selection;
+  try {
+    selection = selectRunnerKitEntries(composition, runnerKit);
+  } catch (error) {
+    fail(error.message);
+  }
+  if (selection.missing.length) fail(`runner kit entry missing: ${selection.missing.join(', ')}`);
+  const target = resolve(destination);
+  try {
+    assertActiveEngagementWrites([target], 'copy-runner-kit');
+    inspectEmptyDestination(target);
+    writeTemplateEntries(selection.entries, target);
+  } catch (error) {
+    fail(error.message);
+  }
+  console.log(`COPIED  ${runtime} runner kit -> ${target}`);
+  console.log('Integrate into the existing suite; the kit is not a runnable framework.');
 }
 
 function prepareTemplateComposition(runtime) {

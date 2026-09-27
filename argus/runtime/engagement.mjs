@@ -1976,6 +1976,10 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     const destination = tokens[index + 3];
     return destination ? { paths: [destination] } : deny('copy-template destination is missing');
   }
+  if (primary === 'copy-runner-kit') {
+    const destination = tokens[index + 3];
+    return destination ? { paths: [destination] } : deny('copy-runner-kit destination is missing');
+  }
   if (primary === 'copy-browser-driver') {
     const destination = tokens[index + 2];
     return destination ? { paths: [

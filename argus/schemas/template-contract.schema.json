@@ -63,10 +63,11 @@
     "token": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
     "tokens": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/token" } },
     "path": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*(/[a-z0-9][a-z0-9_.-]*)+$" },
+    "runnerKitPath": { "type": "string", "pattern": "^[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?(?:/[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)*/?$" },
     "template": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["framework", "runner", "packageManagers", "extensionPoints", "adapter", "provenanceMarker", "laneMarker"],
+      "required": ["framework", "runner", "packageManagers", "extensionPoints", "adapter", "provenanceMarker", "laneMarker", "runnerKit"],
       "properties": {
         "framework": { "type": "string", "minLength": 1 },
         "runner": { "type": "string", "minLength": 1 },
@@ -74,7 +75,8 @@
         "extensionPoints": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
         "adapter": { "type": "string", "minLength": 1 },
         "provenanceMarker": { "type": "string", "minLength": 1 },
-        "laneMarker": { "type": "string", "minLength": 1 }
+        "laneMarker": { "type": "string", "minLength": 1 },
+        "runnerKit": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/runnerKitPath" } }
       }
     }
   }
