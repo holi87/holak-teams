@@ -3,6 +3,7 @@
 // reporter entry in playwright.config.ts changes nothing for a plain `playwright test`.
 //
 // - ARGUS_INVENTORY_ONLY=1 (a `--list` pass) writes reports/test-inventory.tsv (SD-3),
+//   reports/test-case-ids.tsv (its SD-2 ids, which executed runs reuse),
 //   reports/expected-bugs.txt (SD-4), and reports/counterfactual-plan.tsv (SD-10), and
 //   emits the SD-4 ledger events.
 // - Otherwise every final test attempt becomes one SD-5/SD-6 event, plus a `.cleanup`
@@ -28,6 +29,10 @@ const OUTCOME_EVENT = join(ROOT, 'scripts', 'outcome-event.sh');
 // The harness root; `template scaffold` rewrites this anchor to the selected layout.
 const HARNESS = join(ROOT, 'src');
 const COUNTERFACTUAL_MODULE = join(HARNESS, 'argus', 'counterfactual.ts');
+// The inventory pass's SD-2 ids, keyed by each test's unsanitized identity digest.
+const CASE_IDS_NAME = 'reports/test-case-ids.tsv';
+const CASE_IDS = join(REPORTS, 'test-case-ids.tsv');
+const CASE_ID_ROW = /^([0-9a-f]{64})\t([A-Za-z0-9_.:-]+)$/;
 
 const MODES = new Set(['baseline', 'defect-evidence', 'candidate-regression', 'full-suite']);
 // Passes other than live exist only in defect-evidence; any other pass fails the adapter
@@ -97,6 +102,31 @@ export function loadLedger(path = LEDGER) {
   return { state: 'valid', tokens, bugs, confirmed };
 }
 
+/**
+ * Read reports/test-case-ids.tsv: null when the inventory pass never wrote it, { ids } for a
+ * well-formed map, and { error } for anything else (a malformed row, a repeated key or id).
+ */
+export function loadCaseIds(path = CASE_IDS) {
+  if (!existsSync(path)) return null;
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    return { error: error?.code ?? 'read failed' };
+  }
+  const ids = new Map();
+  const seen = new Set();
+  const lines = text.split('\n');
+  if (lines.pop() !== '') return { error: 'the last row is not terminated' };
+  for (const [index, line] of lines.entries()) {
+    const match = CASE_ID_ROW.exec(line);
+    if (!match || ids.has(match[1]) || seen.has(match[2])) return { error: `row ${index + 1} is malformed or repeated` };
+    ids.set(match[1], match[2]);
+    seen.add(match[2]);
+  }
+  return { ids };
+}
+
 let counterfactualLoad;
 
 /** Import src/argus/counterfactual.ts once; resolves to { module } or { error }. */
@@ -144,14 +174,30 @@ export default class ArgusPlaywrightReporter {
     const described = suite.allTests().map((test, index) => ({ test, index, ...this.describe(test, config.rootDir) }));
     described.sort((left, right) => compareText(left.file, right.file)
       || left.line - right.line || left.column - right.column || left.index - right.index);
+    // SD-2 suffixes follow declaration order over the full collection, which only the
+    // inventory pass sees: --grep, --grep-invert, and --project have already narrowed an
+    // executed run's suite. An executed run therefore reuses the inventory pass's ids through
+    // reports/test-case-ids.tsv; runner-lib.sh runs that pass before every executed one. Only
+    // a run with no map at all (a plain `playwright test` outside the runner) numbers its own
+    // suite.
+    const joined = this.inventoryOnly ? null : loadCaseIds();
+    if (joined?.error) this.fail(`${CASE_IDS_NAME} is unreadable: ${joined.error}`);
     const used = new Set();
+    let unjoined = 0;
     for (const entry of described) {
       let id = entry.baseId;
-      for (let suffix = 2; used.has(id); suffix += 1) id = `${entry.baseId}.${suffix}`;
-      used.add(id);
+      if (joined) {
+        id = joined.ids?.get(entry.key) ?? null;
+        if (id === null) unjoined += 1;
+      } else {
+        for (let suffix = 2; used.has(id); suffix += 1) id = `${entry.baseId}.${suffix}`;
+        used.add(id);
+      }
       entry.id = id;
       this.byTest.set(entry.test, entry);
     }
+    // A test the map does not name emits nothing rather than an event under a guessed id.
+    if (unjoined > 0 && !joined.error) this.fail(`${unjoined} collected test(s) have no case id in ${CASE_IDS_NAME}; rerun the inventory pass`);
     this.entries = described;
   }
 
@@ -163,6 +209,7 @@ export default class ArgusPlaywrightReporter {
       this.fail('a test ended that was not part of the collected suite');
       return;
     }
+    if (entry.id === null) return;
     // cf-* classification needs the counterfactual module, which loads asynchronously;
     // onEnd classifies these results once it has loaded.
     if (this.counterfactual) this.pending.push({ entry, test, result });
@@ -202,6 +249,9 @@ export default class ArgusPlaywrightReporter {
     }
     titles.push(test.title);
     const baseId = sanitizeCaseId(`${project}:${toPosix(relative(rootDir, file))}:${titles.join(' > ')}`);
+    // The unsanitized identity, unique per test because Playwright refuses duplicate titles
+    // within one file; it keys the case-id map without carrying a title into reports.
+    const key = createHash('sha256').update([project, toPosix(relative(rootDir, file)), ...titles].join('\u0000'), 'utf8').digest('hex');
     const tags = test.tags;
     const tokens = tags.filter((tag) => tag.startsWith('@bug:') && tag.length > '@bug:'.length).map((tag) => tag.slice('@bug:'.length));
     const resolved = [];
@@ -219,6 +269,7 @@ export default class ArgusPlaywrightReporter {
     const source = `${toPosix(relative(ROOT, file))}:${test.location.line}`;
     return {
       baseId,
+      key,
       file: toPosix(relative(rootDir, file)),
       line: test.location.line,
       column: test.location.column,
@@ -387,11 +438,16 @@ export default class ArgusPlaywrightReporter {
     const inventory = join(REPORTS, 'test-inventory.tsv');
     const expectedBugs = join(REPORTS, 'expected-bugs.txt');
     const counterfactualPlan = join(REPORTS, 'counterfactual-plan.tsv');
-    const unpublish = () => [inventory, expectedBugs, counterfactualPlan].forEach((path) => rmSync(path, { force: true }));
+    const unpublish = () => [CASE_IDS, inventory, expectedBugs, counterfactualPlan].forEach((path) => rmSync(path, { force: true }));
     if (!this.entries || this.globalErrors > 0) {
       // An incomplete collection must never be published as the inventory.
       unpublish();
       this.fail('the test collection is incomplete; no inventory was written');
+      return;
+    }
+    if (new Set(this.entries.map((entry) => entry.key)).size !== this.entries.length) {
+      unpublish();
+      this.fail('two collected tests share one identity; no inventory was written');
       return;
     }
     let plan;
@@ -413,10 +469,12 @@ export default class ArgusPlaywrightReporter {
       entry.source,
     ].join('\t'));
     try {
+      writeAtomic(CASE_IDS, this.entries.map((entry) => `${entry.key}\t${entry.id}\n`).join(''));
       writeAtomic(inventory, rows.map((row) => `${row}\n`).join(''));
       writeAtomic(expectedBugs, ledger.confirmed.map((id) => `${id}\n`).join(''));
       writeAtomic(counterfactualPlan, plan);
     } catch {
+      unpublish();
       this.fail('cannot write the inventory artifacts');
     }
   }

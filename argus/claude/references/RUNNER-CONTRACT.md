@@ -150,7 +150,10 @@ leading and trailing `-`. Above 200 characters it keeps the first 187 characters
 | Python | `item.nodeid` with `/` replaced by `.` |
 | Java | `<fqcn>.<method>`, plus `(<param simple names>)` only for overloads; template and dynamic invocations become `<id>.i<N>` |
 
-Collisions get `.2`, `.3`, … in declaration order. Pass suffixes are `.repeat`,
+Collisions get `.2`, `.3`, … in declaration order over the full collection, so a mode- or
+lane-filtered run never renumbers them: it reuses the inventory pass's ids (TypeScript
+joins each test to `reports/test-case-ids.tsv`, `<sha256 of the raw identity><TAB><id>`,
+and a test it cannot join fails the adapter status). Pass suffixes are `.repeat`,
 `.cf-correct`, `.cf-<tamperId>`, and `.cf` (exemption); a secondary cleanup event uses
 `.cleanup`.
 
