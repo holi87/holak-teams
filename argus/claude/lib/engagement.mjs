@@ -2558,7 +2558,8 @@ function huntDriverLaneDenial(command, lane) {
 function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256, lane) {
   const value = command.trim();
   if (PACKAGED_COMMAND_METACHARACTER.test(value)) return null;
-  const tokens = shellTokens(value);
+  const words = shellWords(value);
+  const tokens = words.map((word) => word.text);
   const index = tokens.findIndex((token) => token === 'argus-assets' || token.endsWith('/argus-assets'));
   if (index !== 0) return null;
   const primary = tokens[index + 1];
@@ -2566,6 +2567,11 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
   const allow = (reason) => ({ decision: guardDecision('allow', 'GUARD-ALLOW', reason, [], commandSha256) });
   const deny = (reason) => ({ decision: guardDecision('deny', 'GUARD-SHELL-AMBIGUOUS', reason, [], commandSha256) });
   const optionNames = tokens.filter((token) => token.startsWith('--'));
+  // Every later check reads these words, so each must be exactly the argv word the shell builds.
+  if (words.some((word) => word.ambiguous)) {
+    return deny(inlineBatchInputDenial(tokens, optionNames) ??
+      'packaged command words must be literal: a word joins quoted and unquoted text, leaves a quote open, or uses shell expansion, glob, escape, or tilde syntax; single-quote each whole word that needs quoting');
+  }
   if (new Set(optionNames).size !== optionNames.length) return deny('duplicate command options are forbidden');
   if (['help', '--help', '-h', 'list', 'path', 'inventory', 'verify'].includes(primary)) return allow('packaged read-only command');
   if (primary === 'engagement') {
@@ -2815,7 +2821,8 @@ function inlineBatchInputDenial(tokens, optionNames) {
 
 function collectShellWritePaths(command) {
   const paths = [];
-  for (const match of command.matchAll(/(?:^|\s)(?:[0-9]*>>?|&>)\s*(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/g)) paths.push(match[1] ?? match[2] ?? match[3]);
+  // A redirection target is one whole shell word: 'reports'/../app joins into reports/../app.
+  for (const match of command.matchAll(/(?:^|\s)(?:[0-9]*>>?|&>)\s*((?:"[^"]*"|'[^']*'|[^\s;&|"'])+)/g)) paths.push(shellTokens(match[1])[0]);
   for (const match of command.matchAll(/\b(?:writeFileSync|writeFile|appendFileSync|appendFile|unlinkSync|unlink|renameSync|rename|chmodSync|chmod|rmSync|rm|rmdirSync|rmdir|rmtree|remove|open)\s*\(\s*[rbuf]*["']([^"']+)["']/gi)) paths.push(match[1]);
   for (const match of command.matchAll(/\bPath\s*\(\s*[rbuf]*["']([^"']+)["']\s*\)\s*\.write_(?:text|bytes)/gi)) paths.push(match[1]);
   const segments = command.split(/&&|\|\||;|\n/);
@@ -2834,7 +2841,52 @@ function collectShellWritePaths(command) {
 }
 
 function shellTokens(value) {
-  return [...value.matchAll(/"([^"]*)"|'([^']*)'|([^\s]+)/g)].map((match) => match[1] ?? match[2] ?? match[3]);
+  return shellWords(value).map((word) => word.text);
+}
+
+// Unquoted characters every shell passes through literally. Anything else is expansion, glob,
+// brace, tilde, escape, comment, history, subshell, or redirection syntax.
+const SHELL_LITERAL_CHARACTERS = /^[A-Za-z0-9_.\/:@%+,=-]*$/;
+
+// Splits a command into words the way bash and zsh build argv: adjacent unquoted,
+// single-quoted, and double-quoted pieces join into one word without their quotes. A word is
+// ambiguous when the guard cannot be sure it is the literal argv word: it joins a quoted piece
+// to any other piece, leaves a quote open, carries an unquoted character outside the literal
+// set or a leading `=` (zsh equals expansion), or holds `$`, a backslash, a backtick, or `!`
+// inside double quotes. Single-quoted text is always literal.
+function shellWords(value) {
+  const words = [];
+  let word = null;
+  let cursor = 0;
+  while (cursor < value.length) {
+    const character = value[cursor];
+    if (/\s/.test(character)) {
+      if (word) words.push(word);
+      word = null;
+      cursor += 1;
+      continue;
+    }
+    word ??= { text: '', pieces: 0, quoted: false, ambiguous: false };
+    if (character === "'" || character === '"') {
+      const close = value.indexOf(character, cursor + 1);
+      const text = value.slice(cursor + 1, close < 0 ? value.length : close);
+      if (close < 0 || (character === '"' && /[$\\`!]/.test(text))) word.ambiguous = true;
+      word.quoted = true;
+      cursor = close < 0 ? value.length : close + 1;
+      word.text += text;
+    } else {
+      let end = cursor;
+      while (end < value.length && !/[\s'"]/.test(value[end])) end += 1;
+      const text = value.slice(cursor, end);
+      if (!SHELL_LITERAL_CHARACTERS.test(text) || (word.pieces === 0 && text.startsWith('='))) word.ambiguous = true;
+      cursor = end;
+      word.text += text;
+    }
+    word.pieces += 1;
+    if (word.quoted && word.pieces > 1) word.ambiguous = true;
+  }
+  if (word) words.push(word);
+  return words.map(({ text, ambiguous }) => ({ text, ambiguous }));
 }
 
 function looksLikePath(value) {

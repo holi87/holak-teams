@@ -1365,6 +1365,10 @@ function loadModelEngagement(explicitPath, requiredAgent) {
   if (!locatedManifestPath) fail(`model routing engagement manifest is missing: ${resolve(explicitPath)}`);
   if (lstatSync(locatedManifestPath).isSymbolicLink()) fail('model routing engagement manifest may not be a symbolic link');
   const manifestPath = realpathSync(locatedManifestPath);
+  let active;
+  try { active = activeEngagementManifest(); }
+  catch (error) { fail(`model routing engagement is ambiguous: ${error.message}`); }
+  if (active && active !== manifestPath) fail(`model routing engagement manifest ${manifestPath} is not the active engagement manifest ${active}`);
   const engagement = readSecureJson(manifestPath, 'model routing engagement manifest');
   const errors = validateEngagementManifest(engagement);
   if (errors.length) fail(`model routing engagement manifest invalid: ${errors.join('; ')}`);
@@ -5611,6 +5615,8 @@ function loadEngagement(options) {
   const candidate = resolve(options.manifest ?? process.env.ARGUS_ENGAGEMENT_MANIFEST ?? 'ai_agents_internal/engagement.json');
   if (!statSafe(candidate)?.isFile() || lstatSync(candidate).isSymbolicLink()) throw new Error(`engagement manifest must be a real file: ${candidate}`);
   const path = realpathSync(candidate);
+  const active = activeEngagementManifest();
+  if (active && active !== path) throw new Error(`engagement manifest ${path} is not the active engagement manifest ${active}`);
   const engagement = readSecureJson(path, 'engagement manifest');
   const errors = validateEngagementManifest(engagement);
   if (errors.length > 0) throw new Error(`invalid manifest ${path}: ${errors.join('; ')}`);
@@ -6003,6 +6009,32 @@ function atomicPrivateAppend(path, content, validateCurrent = undefined) {
   } finally {
     rmSync(lockPath, { recursive: true, force: true });
   }
+}
+
+// The physical manifest of the engagement this process runs inside, or null outside one: a
+// non-empty ARGUS_ENGAGEMENT_MANIFEST, the engagement.json beside the argus-launch receipt
+// (the controller's working directory may be the target), and the first
+// ai_agents_internal/engagement.json at or above the working directory. A named manifest that
+// does not exist, or two sources that name different files, throw. A command that names a
+// manifest inside an active engagement must name exactly this one: any lane can write a copy
+// elsewhere in the artifact root, and that copy would bring its own owners and exclusive
+// operations to the shared state.
+function activeEngagementManifest() {
+  const sources = [];
+  if (process.env.ARGUS_ENGAGEMENT_MANIFEST) {
+    const named = locateEngagementManifest(process.cwd(), process.env.ARGUS_ENGAGEMENT_MANIFEST);
+    if (!named) throw new Error('ARGUS_ENGAGEMENT_MANIFEST does not name an existing engagement manifest');
+    sources.push(named);
+  }
+  if (process.env.ARGUS_NATIVE_LAUNCH_RECEIPT) {
+    const beside = join(dirname(resolve(process.env.ARGUS_NATIVE_LAUNCH_RECEIPT)), 'engagement.json');
+    if (existsSync(beside)) sources.push(beside);
+  }
+  const discovered = locateEngagementManifest(process.cwd());
+  if (discovered) sources.push(discovered);
+  const physical = [...new Set(sources.map((path) => realpathSync(path)))];
+  if (physical.length > 1) throw new Error(`the named and working-tree engagement manifests differ: ${physical.join(', ')}`);
+  return physical[0] ?? null;
 }
 
 function assertActiveEngagementWrites(paths, label) {

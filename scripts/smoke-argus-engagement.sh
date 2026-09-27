@@ -427,6 +427,69 @@ test -f "$TARGET/reports/self-guard-allowed.json" || fail 'self-guard denied an 
 guard_shell "argus-assets engagement init --target app --artifact-root app --mode A" GUARD-SHELL-AMBIGUOUS
 cp "$MANIFEST" "$WORK/alternate-engagement.json"
 guard_shell "argus-assets engagement validate --manifest $WORK/alternate-engagement.json" GUARD-SHELL-AMBIGUOUS
+# The guard reads whole shell words, as bash and zsh build argv. A quote joined to unquoted
+# text, an open quote, and expansion, glob, brace, escape, or tilde syntax make a packaged
+# command ambiguous, so the manifest binding and every destination check see the real word.
+LITERAL_WORDS='GUARD-SHELL-AMBIGUOUS: packaged command words must be literal'
+for quote in "'" '"'; do
+  concatenated="${quote}ai_agents_internal/engagement.json${quote}/../../reports/alt/ai_agents_internal/engagement.json"
+  guard_as argus:hermes Bash "argus-assets engagement status --manifest $concatenated" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "argus-assets engagement merge --manifest $concatenated --owner hermes --token x --canonical solution/BUG-LEDGER.md" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "argus-assets engagement claim --manifest $concatenated --lane hermes --token x --resource fault" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "argus-assets engagement fragment --manifest $concatenated --lane hermes --token x --canonical solution/BUG-LEDGER.md --id forged --input reports/x.md" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "argus-assets model telemetry --manifest $concatenated --decision reports/decision.json" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "argus-assets redact --input reports/result.txt --output ${quote}reports${quote}/../app/escape.txt" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "printf x > ${quote}reports${quote}/../app/escape.txt" GUARD-TARGET-IMMUTABLE
+  guard_as argus:hermes Bash "printf x > reports/${quote}../app/escape.txt${quote}" GUARD-TARGET-IMMUTABLE
+done
+guard_as argus:hermes Bash 'argus-assets engagement status --manifest ${X:-reports/alt/ai_agents_internal/engagement.json}' "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets engagement status --manifest {reports/alt/,}ai_agents_internal/engagement.json' "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets engagement status --manifest ai_agents_internal/engagement.jso?' "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets engagement status --manifest ~/ai_agents_internal/engagement.json' "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets engagement status --manifest ai_agents_internal/engagement.json\ x' "$LITERAL_WORDS"
+guard_as argus:hermes Bash "argus-assets engagement status --manifest 'ai_agents_internal/engagement.json" "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets redact --input reports/result.txt --output "reports/$HOME.txt"' "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets redact --input reports/result.txt --output =reports' "$LITERAL_WORDS"
+guard_as argus:hermes Bash "argus-assets redact --input reports/result.txt --output 'reports/quoted output.txt'" allow
+guard_as argus:hermes Bash "argus-assets engagement status --manifest \"ai_agents_internal/engagement.json\"" allow
+guard_as argus:hermes Bash "rm -rf reports/'../app'" GUARD-TARGET-IMMUTABLE
+# The CLI binds --manifest to the active engagement on its own, so a manifest copy that a lane
+# writes under reports/ never lends its owners or exclusive operations to the shared state.
+mkdir -p "$TARGET/reports/alt/ai_agents_internal"
+FORGED="$TARGET/reports/alt/ai_agents_internal/engagement.json"
+jq '(.writePolicy.canonicalArtifacts[] | select(.path == "solution/BUG-LEDGER.md") | .owner) = "hermes"
+  | .resourcePolicy.exclusiveOperations.fault = "hermes"' "$MANIFEST" >"$FORGED"
+chmod 600 "$FORGED"
+printf '# BUG ledger forged by hermes\n' >"$TARGET/reports/forged-ledger.md"
+state_before_forgery="$(digest_file "$STATE")"
+solution_before_forgery="$(ls -la "$TARGET/solution")"
+forged_operations=(
+  "fragment --lane hermes --token $(token_for hermes) --canonical solution/BUG-LEDGER.md --id forged --input reports/forged-ledger.md"
+  "merge --owner hermes --token $(token_for hermes) --canonical solution/BUG-LEDGER.md"
+  "claim --lane hermes --token $(token_for hermes) --resource fault"
+  "status"
+  "validate"
+)
+for operation in "${forged_operations[@]}"; do
+  # shellcheck disable=SC2086 # each entry is a word list of fixed, space-free arguments
+  if (cd "$TARGET" && "$CLI" engagement $operation --manifest reports/alt/ai_agents_internal/engagement.json) >"$WORK/forged.out" 2>&1; then
+    fail "engagement ${operation%% *} accepted a lane-written manifest copy"
+  fi
+  grep -Fq 'is not the active engagement manifest' "$WORK/forged.out" || fail "forged-manifest ${operation%% *} failed for the wrong reason: $(<"$WORK/forged.out")"
+done
+if ARGUS_NATIVE_LAUNCH_RECEIPT="$TARGET/ai_agents_internal/native-launch-receipt.json" \
+  "$CLI" engagement claim --manifest "$FORGED" --lane hermes --token "$(token_for hermes)" --resource fault >"$WORK/forged.out" 2>&1; then
+  fail 'a lane-written manifest copy was accepted outside the artifact root of a launched engagement'
+fi
+grep -Fq 'is not the active engagement manifest' "$WORK/forged.out" || fail "receipt-bound forged claim failed for the wrong reason: $(<"$WORK/forged.out")"
+if (cd "$TARGET" && "$CLI" model telemetry --manifest reports/alt/ai_agents_internal/engagement.json --decision reports/decision.json \
+  --input-tokens 1 --output-tokens 1 --duration-ms 1 --success true) >"$WORK/forged.out" 2>&1; then
+  fail 'model telemetry accepted a lane-written manifest copy'
+fi
+grep -Fq 'is not the active engagement manifest' "$WORK/forged.out" || fail "forged-manifest telemetry failed for the wrong reason: $(<"$WORK/forged.out")"
+[ "$(digest_file "$STATE")" = "$state_before_forgery" ] || fail 'a forged-manifest operation changed the real engagement state'
+[ "$(ls -la "$TARGET/solution")" = "$solution_before_forgery" ] || fail 'a forged-manifest merge changed the canonical artifacts'
+rm -rf "$TARGET/reports/alt" "$TARGET/reports/forged-ledger.md"
 guard_shell "argus-assets engagement heartbeat --manifest $MANIFEST --lane odysseus --token $(token_for odysseus) --phase hunting --completed 1 --total 4 --status running" allow
 guard_shell "argus-assets engagement barrier skip --manifest $MANIFEST --lane odysseus --token $(token_for odysseus) --reason converged" allow
 guard_shell "argus-assets engagement barrier skip --manifest $WORK/alternate-engagement.json --lane odysseus --token $(token_for odysseus) --reason converged" GUARD-SHELL-AMBIGUOUS

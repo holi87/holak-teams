@@ -53,6 +53,18 @@ denial returns a `GUARD-*` rule and appends a redacted event to
 `ai_agents_internal/immutability-audit.jsonl`. Audit records contain a command digest,
 never raw command or file content.
 
+The guard reads a command as whole shell words, the way bash and zsh build argv: adjacent
+quoted and unquoted pieces join, so `'reports'/../app` is the word `reports/../app`. A
+packaged command whose every word is not literal is denied with `GUARD-SHELL-AMBIGUOUS`: a
+word that joins quoted and unquoted text, leaves a quote open, uses expansion, glob, brace,
+escape, or tilde syntax outside single quotes, or holds `$`, a backslash, a backtick, or `!`
+inside double quotes. Single-quote each whole word that needs quoting. Independently of the
+guard, every engagement and model command binds `--manifest` to the active engagement (a
+non-empty `ARGUS_ENGAGEMENT_MANIFEST`, the `engagement.json` beside the launch receipt, or the
+first `ai_agents_internal/engagement.json` at or above the working directory) and refuses any
+other file, so a manifest copy a lane writes under `reports/` never lends its owners or
+exclusive operations to the shared state.
+
 The default generated-test allowlist is deliberately conservative: unambiguous test
 directories plus the exact isolated-driver files. It never broadly allows `src/`, all of
 `scripts/`, or root build configuration because those are application source/config in
