@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 52613,
-      "sha256": "b524a008e55500920659860a3c51e97187c63df808ee96819f672e8e050a47b0"
+      "bytes": 52802,
+      "sha256": "55372f9f99bf9a32d6585949c37f68a866b655be7d99199167ffe57eed61662b"
     },
     {
       "id": "canonical-contracts",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 405097,
-      "sha256": "c0f6b8581aa9cba7ec24db3e683a5f8c9601a5124898243df4ec257be66d36b0"
+      "bytes": 405326,
+      "sha256": "61c3173e7fc259956ffbcd55d8dd4d10d04740f51862a8c3c642173370cf7b57"
     },
     {
       "id": "common-template",

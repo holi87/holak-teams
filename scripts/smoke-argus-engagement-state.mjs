@@ -70,6 +70,7 @@ try {
   testDerivedPhasePlan();
   testProofPhaseRequiresLedgerMerge();
   testLedgerSnapshotNewConfirmed();
+  testWorkPhaseMergeKeepsNewConfirmed();
   testConvergedSkip();
   testStandbyBlocksSuccessCleanup();
   testConditionalLaneProjection();
@@ -454,6 +455,51 @@ function testLedgerSnapshotNewConfirmed() {
   advanceBarrier(manifest, 'odysseus', controller.token);
   const skip = skipPhases(manifest, 'odysseus', controller.token, 'converged');
   assert(skip.currentPhase === 'automation', 'converged skip was refused although deep-proof-1 confirmed nothing new');
+  for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
+// A ledger merge outside a proof phase (rolling triage during a deep hunt) records its own
+// snapshot, but convergence compares only against earlier proof phases: a defect first
+// confirmed during deep-hunt-1 is still new at deep-proof-1 and blocks the converged skip.
+function testWorkPhaseMergeKeepsNewConfirmed() {
+  const fixture = createFixture('ledger-work-phase-merge', ['hermes', 'minos', 'odysseus']);
+  const { manifest, root } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('work-merge-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('work-merge-minos') });
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: controller.token, executionBinding: executionBinding('work-merge-hermes') });
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  mergeEmptyLedger(fixture, minos.token, 'work-merge-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'deep-hunt-1', 'phase did not reach deep-hunt-1');
+  const evidenceBytes = 'synthetic reproduction request\n';
+  mkdirSync(join(root, 'reports'), { recursive: true });
+  writeFileSync(join(root, 'reports/request-1.txt'), evidenceBytes);
+  const evidence = structuredClone(evidenceFixture);
+  evidence.engagementId = manifest.engagementId;
+  evidence.references = [{ ...evidence.references[0], sha256: createHash('sha256').update(evidenceBytes).digest('hex') }];
+  writeFragment(manifest, 'hermes', hermes.token, 'solution/evidence-reference.json', 'hermes-evidence', `${JSON.stringify(evidence)}\n`);
+  const ledger = { ...structuredClone(bugLedgerFixture), engagementId: manifest.engagementId };
+  writeFragment(manifest, 'minos', minos.token, 'solution/bug-ledger.json', 'work-merge-confirmed', `${JSON.stringify(ledger)}\n`);
+  mergeCanonical(manifest, 'minos', minos.token, 'solution/bug-ledger.json');
+  const hunt = getEngagementStatus(manifest).ledgerSnapshots['deep-hunt-1'];
+  assert(JSON.stringify(hunt?.newConfirmed) === '["BUG-0001"]', `deep-hunt-1 merge did not record BUG-0001 as newly confirmed: ${JSON.stringify(hunt)}`);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'deep-hunt-1');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'deep-proof-1');
+  mergeCanonical(manifest, 'minos', minos.token, 'solution/bug-ledger.json');
+  const deepProof = getEngagementStatus(manifest).ledgerSnapshots['deep-proof-1'];
+  assert(JSON.stringify(deepProof.confirmed) === '["BUG-0001"]' && JSON.stringify(deepProof.newConfirmed) === '["BUG-0001"]',
+    `a deep-hunt merge masked a defect first confirmed in pass 1: ${JSON.stringify(deepProof)}`);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => skipPhases(manifest, 'odysseus', controller.token, 'converged'),
+    'converged skip requires deep-proof-1 to record zero new confirmed defects',
+    'converged skip after a pass whose defect was merged during the deep hunt',
+  );
+  assert(getEngagementStatus(manifest).currentPhase === 'deep-hunt-2', 'refused converged skip moved the phase cursor');
   for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
 }
 

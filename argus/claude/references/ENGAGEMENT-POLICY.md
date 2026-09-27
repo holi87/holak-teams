@@ -472,7 +472,9 @@ A proof phase whose projected participants include Minos cannot advance until Mi
 merged `solution/bug-ledger.json` during that phase. Each bug-ledger merge records
 `ledgerSnapshots[<current phase>]`: the merged fragment ids, the sorted bug ids per status
 (`confirmed`, `suspected`, `needsOracle`, `bounced`, `quarantined`), `newConfirmed` (the
-confirmed ids that no earlier phase's snapshot had confirmed), and `mergedAt`. The snapshot
+confirmed ids that no earlier proof-kind phase's snapshot had confirmed), and `mergedAt`. A
+merge in a work or deep-hunt phase keeps its own snapshot but never counts as earlier, so
+rolling triage cannot hide a proof pass's new confirmations from the converged check. The snapshot
 is taken from the merged ledger after reconciliation, so a row the merge quarantined for an
 evidence failure counts as `quarantined`, never as confirmed.
 

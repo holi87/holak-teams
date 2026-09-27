@@ -2183,9 +2183,11 @@ function ledgerSnapshot(manifest, state, ledger, records, mergedAt) {
   const byStatus = (status) => [...new Set(ledger.bugs.filter((bug) => bug.status === status).map((bug) => bug.id))].sort();
   const snapshot = { fragmentIds: records.map((record) => record.id) };
   for (const [field, status] of LEDGER_SNAPSHOT_STATUSES) snapshot[field] = byStatus(status);
-  // Convergence counts only defects no earlier phase had already confirmed.
+  // Convergence counts only defects no earlier proof phase had already confirmed. A merge in a
+  // work or deep-hunt phase (rolling triage) keeps its own snapshot but is never "earlier", so it
+  // cannot hide the next proof pass's new confirmations.
   const earlier = new Set(Object.entries(state.ledgerSnapshots)
-    .filter(([phase]) => phases.indexOf(phase) < currentIndex)
+    .filter(([phase]) => phases.indexOf(phase) < currentIndex && phaseDefinition(manifest, phase).kind === 'proof')
     .flatMap(([, previous]) => previous.confirmed));
   snapshot.newConfirmed = snapshot.confirmed.filter((id) => !earlier.has(id));
   snapshot.mergedAt = mergedAt;
