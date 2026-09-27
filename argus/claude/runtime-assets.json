@@ -281,8 +281,8 @@
       "source": "argus/framework-template-java",
       "destination": "templates/java",
       "files": 42,
-      "bytes": 242161,
-      "sha256": "f733aff96045c6d87b34ce0875e73b18ac669ff71c8b9091a144b6490e2b5e7d"
+      "bytes": 242412,
+      "sha256": "f5100158e970c721020d7dafebfa5411dc0debb42e485f63b74e4e7c26b8b428"
     },
     {
       "id": "python-template",

@@ -37,9 +37,9 @@ import java.util.regex.Pattern;
  * recomputed from the test's own fixture through {@link Counterfactual#decide}. A test aborted
  * with {@code argus-counterfactual-not-applicable} for a variant that is indeed not applicable
  * reports nothing; {@code argus-counterfactual-exempt:<reason>} for an indeed exempt bug reports
- * the exemption; any other skip is an ordinary one. A test that completed without
- * {@link ArgusCounterfactualExtension} having loaded its variant would have reached the real
- * target, so it is an adapter error, never a verdict.
+ * the exemption; any other skip is an ordinary one. A test that passed or failed its assertion
+ * without {@link ArgusCounterfactualExtension} having loaded its variant would have reached the
+ * real target, so it is an adapter error, never a verdict.
  */
 public class ArgusOutcomeListener implements TestExecutionListener {
 
@@ -212,7 +212,10 @@ public class ArgusOutcomeListener implements TestExecutionListener {
             events.emit(caseId, "policy", "denied", false, "n/a", bug, "regression-skipped");
             return caseId;
         }
-        if (!(decision instanceof Counterfactual.Variant variant) || !loaded.map(variant.tag()::equals).orElse(false)) {
+        // A verdict counts only for the variant the extension loaded; an automation or
+        // infrastructure failure (for example before the extension ran) is never evidence.
+        if (!(decision instanceof Counterfactual.Variant variant)
+                || (outcome.kind() != Kind.OTHER && !loaded.map(variant.tag()::equals).orElse(false))) {
             events.recordFailure();
             return null;
         }
