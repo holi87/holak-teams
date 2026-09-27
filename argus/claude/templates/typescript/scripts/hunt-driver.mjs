@@ -1051,7 +1051,9 @@ function bodyCaptureSettings(config) {
 }
 
 // Auth endpoints (login, me, refresh, and bodyCaptureExclude globs) never expose a body or
-// request body: they carry credentials and session tokens.
+// request body: they carry credentials and session tokens. An auth path covers itself and the
+// path segments below it, never a sibling that only shares its string prefix (api.me=/api/me
+// omits /api/me/ and /api/me/settings but not /api/messages); a trailing slash is ignored.
 function isOmittedEndpoint(url) {
   let pathname;
   try {
@@ -1059,7 +1061,10 @@ function isOmittedEndpoint(url) {
   } catch {
     return true;
   }
-  return bodyCapture.authPaths.some((path) => pathname.startsWith(path)) || bodyCapture.exclude.some((pattern) => pattern.test(url));
+  return bodyCapture.authPaths.some((path) => {
+    const base = path.replace(/\/+$/, '');
+    return pathname === base || pathname.startsWith(`${base}/`);
+  }) || bodyCapture.exclude.some((pattern) => pattern.test(url));
 }
 
 function mediaType(value) {

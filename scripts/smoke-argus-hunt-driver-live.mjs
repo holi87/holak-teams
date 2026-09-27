@@ -2,7 +2,7 @@
 // Live browser smoke for hunt-driver v2. The framework template's pinned dependencies are
 // installed into a temporary directory next to a copy of the driver, Chromium is installed for
 // that exact Playwright version, and each driver feature is exercised against a loopback
-// node:http fixture: response-body capture with auth-endpoint omission, client-side faults
+// node:http fixture: response-body capture with path-segment auth-endpoint omission, client-side faults
 // (fail, abort, delay, offline), a second actor with its own profile, concurrent race clicks,
 // clock advance and timezone emulation, uncaught page errors, and the aria snapshot.
 //
@@ -44,6 +44,8 @@ const STATUS = "document.querySelector('#status').textContent";
 const WHO = "document.querySelector('#who').textContent";
 
 const ITEMS_BODY = JSON.stringify({ items: [{ id: 1, name: 'a', internalNote: 'visible-only-in-payload' }] });
+const MESSAGES_BODY = JSON.stringify({ messages: [{ id: 1, text: 'sibling-of-me-payload-visible' }] });
+const ME_SETTINGS_BODY = JSON.stringify({ theme: 'auth-sub-path-payload' });
 // Each buy is counted on arrival and held long enough that two race clicks overlap at the
 // server even on a loaded runner; the hold stays below the case's --wait-ms 500.
 const BUY_HOLD_MS = 400;
@@ -104,6 +106,25 @@ Promise.allSettled([loadItems(), loadWho()]).then(() => { document.querySelector
 </html>
 `;
 
+// /capture fetches two auth-boundary neighbours of api.me=/api/me: /api/messages shares its
+// string prefix and must be captured, /api/me/settings sits below it and must stay omitted.
+// #ready appears once every body has been read.
+const CAPTURE_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Argus hunt-driver capture fixture</title></head>
+<body>
+<p id="ready" hidden>ready</p>
+<script>
+const read = (path, init) => fetch(path, { cache: 'no-store', ...init }).then((response) => response.text());
+Promise.allSettled([
+  read('/api/messages'),
+  read('/api/me/settings'),
+]).then(() => { document.querySelector('#ready').hidden = false; });
+</script>
+</body>
+</html>
+`;
+
 // The driver's own environment: argus-assets on PATH for the authorization gate and the
 // redactor, the live manifest, and no caller value that would select a managed engagement,
 // another config, or different capture and authorization inputs.
@@ -146,6 +167,16 @@ try {
   assert.deepEqual(netEntries(a.stdout, '/api/items').map(({ status, captured }) => [status, captured]), [['200', items.n]],
     `(a) the /api/items network line does not reference its capture:\n${a.output}`);
   assert(!a.output.includes(`tok-${PRIMARY}`), `(a) the access token leaked into the driver output:\n${a.output}`);
+
+  // (k) The auth-endpoint boundary: /api/messages only shares a string prefix with api.me and
+  // is captured, while /api/me/settings is below it and stays omitted.
+  const k = await driveCase('k', ['--agent', 'live-k', '--capture-bodies', '**/api/**', '--goto', '/capture', '--bodies']);
+  const captured = capturedBodies(k.stdout);
+  const messages = captured.find((entry) => entry.url.endsWith('/api/messages'));
+  assert(messages?.body.includes('sibling-of-me-payload-visible'), `(k) /api/messages was omitted as if it were api.me:\n${messages?.body}`);
+  const settings = captured.find((entry) => entry.url.endsWith('/api/me/settings'));
+  assert.equal(settings?.body, OMITTED_AUTH_BODY, '(k) /api/me/settings, below api.me, was not omitted');
+  assert.equal(settings.requestBody, null, '(k) the /api/me/settings request body was recorded');
 
   // (b) --fail-next answers the first matching request with the chosen status.
   const b = await driveCase('b', ['--agent', 'live-b', '--role', PRIMARY, '--fail-next', '**/api/items::503', '--goto', '/', '--eval', STATUS, '--net']);
@@ -236,7 +267,7 @@ try {
   rmSync(WORK, { recursive: true, force: true });
 }
 
-console.log(`PASS  Argus hunt driver v2 live (Playwright ${PLAYWRIGHT_VERSION}, Chromium): body capture with auth omission, fail/abort/delay/offline faults, actors with lane profiles, race clicks, clock advance and timezone, page errors, and aria snapshot`);
+console.log(`PASS  Argus hunt driver v2 live (Playwright ${PLAYWRIGHT_VERSION}, Chromium): body capture with path-segment auth omission, fail/abort/delay/offline faults, actors with lane profiles, race clicks, clock advance and timezone, page errors, and aria snapshot`);
 
 // ---- setup ------------------------------------------------------------------------
 // The driver runs from its own copy of the template's scripts/ directory, so it resolves
@@ -329,6 +360,9 @@ async function handleFixture(request, response) {
     return match ? sendJson(response, 200, { name: `user:${match[1]}` }) : sendJson(response, 401, { error: 'unauthenticated' });
   }
   if (route === 'GET /api/items') return send(response, 200, 'application/json', ITEMS_BODY);
+  if (route === 'GET /capture') return send(response, 200, 'text/html; charset=utf-8', CAPTURE_PAGE);
+  if (route === 'GET /api/messages') return send(response, 200, 'application/json', MESSAGES_BODY);
+  if (route === 'GET /api/me/settings') return send(response, 200, 'application/json', ME_SETTINGS_BODY);
   if (route === 'POST /api/buy') {
     const { qty } = JSON.parse((await readBody(request)) || '{}');
     if (qty !== 1) return sendJson(response, 400, { error: 'qty must be 1' });
