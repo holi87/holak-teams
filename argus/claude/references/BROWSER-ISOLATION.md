@@ -211,8 +211,11 @@ engagement cleanup can neither see nor remove them.
 
 - **Host, before launch.** The operator runs `argus-launch claude ... --provision-browser`, or
   `argus-assets browser provision --artifact-root <root>` on the host before the launch. It
-  reuses a host Playwright outside the artifact root that already launches headless Chromium,
-  or installs the pinned release (the TypeScript template lockfile version) into
+  reuses a Playwright that already launches headless Chromium from a host-only location
+  (host-provisioned, npm global, Homebrew or system global, or the npx cache). Because this
+  step runs unsandboxed, it never considers the artifact root, a target, or the working
+  directory, and never probes a candidate whose physical path lies inside the artifact root.
+  Otherwise it installs the pinned release (the TypeScript template lockfile version) into
   `~/.cache/argus/browser-runtime/<x.y.z>` and Chromium into Playwright's host default cache.
   That directory lies outside the artifact root, so sandboxed lanes can read the module but
   never modify it. The command is host/operator-only: it refuses whenever launch-attestation

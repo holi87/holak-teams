@@ -100,6 +100,59 @@ grep -Fxq "BROWSER_PROVISION  reused host-provisioned $MODULE 0.1.0" "$WORK/prov
   { cat "$WORK/provision-reuse.out" >&2; fail 'a launching host runtime was not reused'; }
 [ "$(grep -c '^cli ' "$HOST_HOME/fake-playwright-cli.log")" -eq 1 ] || fail 'reuse reran the Chromium installer'
 
+# Provisioning runs unsandboxed as the operator, so its reuse step probes only host locations:
+# marker-writing Playwright packages planted in the artifact root, in the working directory,
+# or behind a host-provisioned version entry that resolves into the artifact root never run.
+plant_marker_module() {
+  local directory="$1/node_modules/playwright" marker="$WORK/planted-$2.marker"
+  mkdir -p "$directory"
+  printf '{"name":"playwright","version":"9.9.9"}\n' >"$directory/package.json"
+  printf 'import { writeFileSync } from "node:fs";\nwriteFileSync(%s, "planted module ran on the host\\n");\nexport const chromium = {};\n' \
+    "$(jq -n --arg path "$marker" '$path')" >"$directory/index.mjs"
+}
+plant_provision() {
+  local name="$1" home="$WORK/plant-$1-home" artifact="$WORK/plant-$1-artifact" cwd="$WORK/plant-$1-cwd" status=0 markers
+  mkdir -p "$home/.cache/argus/browser-runtime" "$artifact" "$cwd"
+  chmod 700 "$home" "$home/.cache/argus/browser-runtime" "$artifact"
+  # An unreachable registry without retries bounds any fallback install to a quick failure.
+  printf 'fetch-retries=0\n' >"$home/.npmrc"
+  plant_marker_module "$artifact" "$name-artifact-root"
+  plant_marker_module "$cwd" "$name-workspace"
+  plant_marker_module "$artifact/alias-runtime" "$name-artifact-alias"
+  ln -s "$artifact/alias-runtime" "$home/.cache/argus/browser-runtime/9.9.9"
+  if [ "$name" = reuse ]; then
+    mkdir -p "$home/.cache/argus/browser-runtime/1.0.0/node_modules"
+    cp -R "$ROOT/scripts/fixtures/argus-preflight/fake-playwright" "$home/.cache/argus/browser-runtime/1.0.0/node_modules/playwright"
+  fi
+  (cd "$cwd" && host_assets env HOME="$home" npm_config_registry=http://127.0.0.1:9/ \
+    "$CLI" browser provision --artifact-root "$artifact" --json) >"$WORK/provision-plant-$name.json" 2>"$WORK/provision-plant-$name.err" || status=$?
+  markers="$(find "$WORK" -maxdepth 1 -name 'planted-*.marker' -print | sort | tr '\n' ' ')"
+  [ -z "$markers" ] || { cat "$WORK/provision-plant-$name.err" >&2; fail "browser provision ran engagement-writable or working-directory code on the host: $markers"; }
+  return "$status"
+}
+# (1) The newest host-provisioned entry resolves into the artifact root: it is recorded invalid
+# without being probed, the next host runtime is reused, and the artifact-root and
+# working-directory locations are not candidates at all.
+plant_provision reuse || { cat "$WORK/provision-plant-reuse.err" >&2; fail 'browser provision did not reuse the next host-provisioned runtime'; }
+jq -e --arg home "$WORK/plant-reuse-home" --arg alias "$WORK/plant-reuse-artifact/alias-runtime/node_modules/playwright" '
+  .action == "reused" and .runtime.source == "host-provisioned" and
+  .runtime.modulePath == ($home + "/.cache/argus/browser-runtime/1.0.0/node_modules/playwright") and
+  ([.runtime.candidates[].source] | index("artifact-root") == null and index("target") == null and index("workspace") == null) and
+  .runtime.candidates[0] == {source:"host-provisioned",modulePath:$alias,result:"invalid",evidence:.runtime.candidates[0].evidence} and
+  (.runtime.candidates[0].evidence | contains("inside the artifact root"))
+' "$WORK/provision-plant-reuse.json" >/dev/null || { cat "$WORK/provision-plant-reuse.json" >&2; fail 'provision reuse considered a non-host candidate or probed one inside the artifact root'; }
+# (2) Without a launching host runtime ahead of them the planted packages still never run.
+# Whatever the host's global installs do, the outcome is a host reuse or a failed install.
+plant_status=0
+plant_provision fallback || plant_status=$?
+if [ "$plant_status" -eq 0 ]; then
+  jq -e '.action == "reused" and ([.runtime.candidates[].source] | index("artifact-root") == null and index("workspace") == null)' \
+    "$WORK/provision-plant-fallback.json" >/dev/null || { cat "$WORK/provision-plant-fallback.json" >&2; fail 'fallback provisioning reused a non-host candidate'; }
+else
+  grep -Fq 'browser provisioning failed' "$WORK/provision-plant-fallback.err" || \
+    { cat "$WORK/provision-plant-fallback.err" >&2; fail "fallback provisioning exited $plant_status without its failure report"; }
+fi
+
 # Invalid requests fail closed before anything is installed.
 expect_provision_failure bad-version 1 'plain x.y.z release' \
   host_assets "$CLI" browser provision --artifact-root "$ARTIFACT" --version 1.61

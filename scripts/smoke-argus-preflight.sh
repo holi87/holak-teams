@@ -468,6 +468,23 @@ fi
 grep -Fq 'preflight profile browserRuntime must be false or' "$WORK/browser-runtime-invalid.stderr" || \
   fail 'invalid browserRuntime profile was not rejected with its contract'
 
+# An operator --feature can declare only target capabilities. Browser and MCP capabilities are
+# proven by preflight's own probes, so declaring one never overrides a failed runtime probe.
+for probed_feature in browser-runtime playwright-mcp context7; do
+  probed_root="$WORK/browser-runtime-declared-$probed_feature"
+  mkdir -p "$probed_root/ai_agents_internal"
+  cp "$AUTH_FIXTURES/full.json" "$probed_root/ai_agents_internal/authorization.json"
+  if "$CLI" preflight --target http://127.0.0.1:9/ --artifact-root "$probed_root" --mode B \
+    --authorization "$probed_root/ai_agents_internal/authorization.json" \
+    --profile "$WORK/browser-runtime-broken-profile.json" --feature db-access --feature "$probed_feature" \
+    >/dev/null 2>"$probed_root.stderr"; then
+    fail "preflight accepted the probe-only --feature $probed_feature"
+  fi
+  grep -Fq "preflight --feature $probed_feature is not operator-declarable" "$probed_root.stderr" || \
+    { cat "$probed_root.stderr" >&2; fail "probe-only --feature $probed_feature was not refused as not operator-declarable"; }
+  [ ! -e "$probed_root/ai_agents_internal/preflight.json" ] || fail "refused --feature $probed_feature still wrote a preflight report"
+done
+
 for scenario in full partial; do
   target="$WORK/$scenario-target"
   mkdir -p "$target"

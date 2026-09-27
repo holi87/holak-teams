@@ -661,6 +661,21 @@ for bad_feature in bogus DB-ACCESS 'db-access,source-access' '-db-access' ''; do
     { cat "$WORK/unattested-bad-feature.stderr" >&2; fail "feature '$bad_feature' refusal did not report an unknown capability feature"; }
   [ ! -e "$WORK/unattested-artifacts-bad-feature" ] || fail "feature '$bad_feature' refusal created the artifact root"
 done
+# Browser and MCP capabilities are proven only by preflight's own probes, so a declaration
+# can never release browser lanes whose runtime failed its probe.
+for probed_feature in browser-runtime playwright-mcp context7; do
+  set +e
+  env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-features" PATH="$FIXTURE_BIN:$PATH" \
+    "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-bad-feature" \
+    --mode A --engagement-id launcher-unattested-bad-feature --unattested --dry-run --feature db-access --feature "$probed_feature" \
+    >"$WORK/unattested-bad-feature.stdout" 2>"$WORK/unattested-bad-feature.stderr"
+  unattested_status=$?
+  set -e
+  [ "$unattested_status" -ne 0 ] || fail "launcher accepted the probe-only capability feature '$probed_feature'"
+  grep -Fq "capability feature $probed_feature is not operator-declarable" "$WORK/unattested-bad-feature.stderr" || \
+    { cat "$WORK/unattested-bad-feature.stderr" >&2; fail "probe-only feature '$probed_feature' was not refused as not operator-declarable"; }
+  [ ! -e "$WORK/unattested-artifacts-bad-feature" ] || fail "feature '$probed_feature' refusal created the artifact root"
+done
 set +e
 env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-features" PATH="$FIXTURE_BIN:$PATH" \
   "$LAUNCHER" claude --target "$WORK/unattested-target" --artifact-root "$WORK/unattested-artifacts-bad-feature" \
@@ -965,6 +980,27 @@ unattested_status=$?
 set -e
 expect_unattested_refusal host-trust-store "$unattested_status" 'a host model trust store exists'
 
+# (e) The guard applies preflight's lstat semantics: a dangling symbolic link is key material,
+# and a store path that cannot be probed is never mistaken for absence.
+mkdir -p "$WORK/unattested-home-dangling-trust-store/.config/argus"
+ln -s "$WORK/missing-trust-store.json" "$WORK/unattested-home-dangling-trust-store/.config/argus/model-trust.json"
+set +e
+run_unattested_case dangling-trust-store
+unattested_status=$?
+set -e
+expect_unattested_refusal dangling-trust-store "$unattested_status" \
+  "a host model trust store exists at $WORK/unattested-home-dangling-trust-store/.config/argus/model-trust.json; --unattested is for hosts with no key material"
+if [ "$(id -u)" -ne 0 ]; then
+  mkdir -p "$WORK/unattested-home-unreadable-trust-store/.config/argus"
+  chmod 000 "$WORK/unattested-home-unreadable-trust-store/.config/argus"
+  set +e
+  run_unattested_case unreadable-trust-store
+  unattested_status=$?
+  set -e
+  chmod 700 "$WORK/unattested-home-unreadable-trust-store/.config/argus"
+  expect_unattested_refusal unreadable-trust-store "$unattested_status" 'model-trust.json is not provably absent (EACCES); --unattested is for hosts with no key material'
+fi
+
 if "$LAUNCHER" codex >/dev/null 2>&1; then fail 'launcher accepted Codex without a native turn cap'; fi
 if PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" claude --target "$WORK/path target" --artifact-root "$WORK/invalid-mode" \
   --mode Z --engagement-id invalid-mode --trust-store "$WORK/path-operator/model-trust.json" \
@@ -1002,6 +1038,31 @@ case "$probe_browser_status" in
     ;;
   *) cat "$WORK/probe-browser.stderr" >&2; fail "probe-browser returned unexpected status $probe_browser_status" ;;
 esac
+
+# probe-browser follows preflight's host order: the runtimes --provision-browser installs come
+# before every global module, newest x.y.z release first (numerically, so 1.10.0 beats 1.2.0).
+# A non-release entry and an entry that is not a Playwright package are skipped. The recording
+# stand-in writes a real PNG, so the probe passes without a browser.
+PROVISIONED_HOME="$WORK/probe-provisioned-home"
+PROVISIONED_ROOT="$PROVISIONED_HOME/.cache/argus/browser-runtime"
+for provisioned_version in 1.2.0 1.10.0 9.0.0 latest; do
+  mkdir -p "$PROVISIONED_ROOT/$provisioned_version/node_modules"
+  cp -R "$ROOT/scripts/fixtures/argus-browser/fake-playwright-recording" "$PROVISIONED_ROOT/$provisioned_version/node_modules/playwright"
+  jq --arg version "$provisioned_version" '.version = $version' "$ROOT/scripts/fixtures/argus-browser/fake-playwright-recording/package.json" \
+    >"$PROVISIONED_ROOT/$provisioned_version/node_modules/playwright/package.json"
+done
+jq '.name = "not-playwright"' "$ROOT/scripts/fixtures/argus-browser/fake-playwright-recording/package.json" \
+  >"$PROVISIONED_ROOT/9.0.0/node_modules/playwright/package.json"
+# The real node binary leads PATH: a version-manager shim would need state under the real HOME.
+NODE_BIN_DIR="$(dirname "$(node -p process.execPath)")"
+set +e
+HOME="$PROVISIONED_HOME" PATH="$NODE_BIN_DIR:$PATH" "$LAUNCHER" probe-browser >"$WORK/probe-provisioned.stdout" 2>"$WORK/probe-provisioned.stderr"
+probe_provisioned_status=$?
+set -e
+[ "$probe_provisioned_status" -eq 0 ] || \
+  { cat "$WORK/probe-provisioned.stdout" "$WORK/probe-provisioned.stderr" >&2; fail "probe-browser did not pass with a host-provisioned runtime (status $probe_provisioned_status)"; }
+grep -Fxq "PASS  headless Chromium runs inside os-native-target-readonly@3 (module=$PROVISIONED_ROOT/1.10.0/node_modules/playwright version=1.10.0)" \
+  "$WORK/probe-provisioned.stdout" || { cat "$WORK/probe-provisioned.stdout" >&2; fail 'probe-browser did not prove the newest host-provisioned runtime first'; }
 
 # An explicit module is validated before any browser starts.
 mkdir -p "$WORK/not-playwright"

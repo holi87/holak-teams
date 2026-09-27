@@ -77,11 +77,13 @@ The resulting engagement is reported as UNATTESTED — a named residual risk wit
 cryptographic proof of sandbox/turn-cap/model-dispatch integrity — in every downstream
 report, never silently. Default behavior (no --unattested) is unchanged and stays fail-closed.
 
-probe-browser needs no Claude CLI. It resolves a host Playwright package (--module, else
-`npm root -g`, then the Homebrew and system global node_modules), runs its headless Chromium
-shell inside the launch sandbox with the launch HOME/PATH/TMPDIR, and takes one screenshot.
-Exit 0 is PASS, 2 is FAIL, 3 is SKIP (no Playwright module). doctor --browser runs it after
-the sandbox probes: a SKIP only warns, a FAIL fails doctor.
+probe-browser needs no Claude CLI. It resolves a host Playwright package in preflight's host
+order (--module, else the newest runtimes --provision-browser installed under
+~/.cache/argus/browser-runtime, then `npm root -g`, then the Homebrew and system global
+node_modules), runs its headless Chromium shell inside the launch sandbox with the launch
+HOME/PATH/TMPDIR, and takes one screenshot. Exit 0 is PASS, 2 is FAIL, 3 is SKIP (no
+Playwright module). doctor --browser runs it after the sandbox probes: a SKIP only warns, a
+FAIL fails doctor.
 
 --provision-browser prepares the host before the sandbox starts, for attested and unattested
 launches alike: `argus-assets browser provision` reuses a host Playwright that already
@@ -94,7 +96,9 @@ provisioning failure stops the launch; --dry-run only reports browserProvisionin
 --feature <capability-id> is repeatable and forwards operator-declared capability evidence
 (for example db-access, source-access, non-rest-surface, or multi-service, which the sandbox's
 cleared environment cannot reveal) to preflight as --feature. Each id must be a key of the
-packaged capabilities/capability-matrix.json; ids are deduplicated and sorted. Features only
+packaged capabilities/capability-matrix.json whose kind is target; browser-runtime and the MCP
+capabilities are refused because preflight proves them with its own probes. Ids are
+deduplicated and sorted. Features only
 widen which lanes preflight marks available: every action remains governed by the
 authorization manifest. They are not part of the signed launch request: an attested launch
 carries them in the unsigned launch payload, an unattested launch in its prompt, and --dry-run
@@ -209,20 +213,48 @@ verify_artifact_tree() {
   [ -z "$alias" ] || fail "artifact root contains a hard-link alias: $alias"
 }
 
+# Prints why the default host trust store path holds operator key material, or nothing. It
+# applies argus-assets hostAttestationMaterial() semantics, which preflight enforces inside the
+# sandbox: the passwd home directory's ~/.config/argus/model-trust.json is checked with lstat,
+# so a dangling symbolic link counts as present and any probe error other than ENOENT (an
+# unreadable parent directory, for example) is never mistaken for absence. $HOME is checked too.
+default_trust_store_material() {
+  node -e '
+const { lstatSync } = require("node:fs");
+const { join } = require("node:path");
+const { userInfo } = require("node:os");
+const homes = [process.argv[1], userInfo().homedir].filter((home) => home.startsWith("/"));
+for (const home of new Set(homes)) {
+  const path = join(home, ".config", "argus", "model-trust.json");
+  try {
+    lstatSync(path);
+    process.stdout.write(`a host model trust store exists at ${path}`);
+    break;
+  } catch (error) {
+    if (error.code === "ENOENT") continue;
+    process.stdout.write(`the host model trust store path ${path} is not provably absent (${error.code ?? error.message})`);
+    break;
+  }
+}' "${HOME:-}"
+}
+
 # Adds one operator-declared preflight feature to the sorted, deduplicated JSON array in
-# launch_features_json. The id must be a key of the packaged capability matrix, the same
-# set preflight --feature accepts. Features only widen which lanes preflight marks
-# available; the authorization manifest still governs every action.
+# launch_features_json. The id must be a target-kind key of the packaged capability matrix,
+# the same set preflight --feature accepts: browser and MCP capabilities are proven only by
+# preflight's own probes, so a declaration can never stand in for them. Features only widen
+# which lanes preflight marks available; the authorization manifest still governs every action.
 add_launch_feature() {
-  local feature="$1" matrix="$RUNTIME_ROOT/capabilities/capability-matrix.json" features status=0
+  local feature="$1" matrix="$RUNTIME_ROOT/capabilities/capability-matrix.json" kind status=0
   [[ "$feature" =~ ^[a-z][a-z0-9-]*$ ]] || fail "unknown capability feature: $feature"
   [ -f "$matrix" ] || fail 'packaged capability matrix is unavailable'
-  features="$(jq -ce --arg feature "$feature" --argjson features "$launch_features_json" \
-    'if (.capabilities | type) == "object" and (.capabilities | has($feature)) then $features + [$feature] | unique else false end' \
+  kind="$(jq -er --arg feature "$feature" \
+    'if (.capabilities | type) == "object" and (.capabilities | has($feature)) then .capabilities[$feature].kind | tostring else false end' \
     "$matrix" 2>/dev/null)" || status=$?
   [ "$status" -ne 1 ] || fail "unknown capability feature: $feature"
   [ "$status" -eq 0 ] || fail 'packaged capability matrix is unreadable'
-  launch_features_json="$features"
+  [ "$kind" = target ] || \
+    fail "capability feature $feature is not operator-declarable: preflight proves $kind capabilities with its own probes; --feature takes only target capabilities"
+  launch_features_json="$(jq -cn --arg feature "$feature" --argjson features "$launch_features_json" '$features + [$feature] | unique')"
 }
 
 # Binds the operator's --authorization manifest, or the default-deny manifest for
@@ -478,15 +510,25 @@ playwright_module_version() {
   jq -er 'select(.name == "playwright") | (.version // "unknown") | tostring' "$directory/package.json" 2>/dev/null
 }
 
+# Follows preflight's host candidate order (browserRuntimeCandidateLocations in argus-assets):
+# the five newest x.y.z runtimes that --provision-browser installs under
+# ~/.cache/argus/browser-runtime come first, then the npm, Homebrew, and system global modules.
 resolve_playwright_module() {
-  local npm_root='' candidate
+  local npm_root='' candidate version provisioned_root="${HOME:-}/.cache/argus/browser-runtime"
+  local provisioned=()
+  if [ -n "${HOME:-}" ] && [ -d "$provisioned_root" ]; then
+    while IFS= read -r version; do
+      provisioned+=("$provisioned_root/$version/node_modules/playwright")
+    done < <(ls -1 "$provisioned_root" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
+      sort -t . -k 1,1nr -k 2,2nr -k 3,3nr | head -n 5)
+  fi
   if command -v npm >/dev/null 2>&1; then
     npm_root="$(run_with_deadline 10 npm root -g 2>/dev/null)" || npm_root=''
     case "$npm_root" in /*) ;; *) npm_root='' ;; esac
     case "$npm_root" in *$'\n'*) npm_root='' ;; esac
   fi
-  for candidate in ${npm_root:+"$npm_root/playwright"} /opt/homebrew/lib/node_modules/playwright \
-    /usr/local/lib/node_modules/playwright /usr/lib/node_modules/playwright; do
+  for candidate in ${provisioned[@]+"${provisioned[@]}"} ${npm_root:+"$npm_root/playwright"} \
+    /opt/homebrew/lib/node_modules/playwright /usr/local/lib/node_modules/playwright /usr/lib/node_modules/playwright; do
     if playwright_module_version "$candidate" >/dev/null; then
       (cd "$candidate" && pwd -P)
       return
@@ -616,7 +658,7 @@ case "${1:-}" in
       "$LAUNCHER_PATH" probe-browser || browser_status=$?
       case "$browser_status" in
         0) ;;
-        3) printf 'WARN  no Playwright module is resolvable on this host; browser lanes will be unavailable\n' ;;
+        3) printf 'WARN  no Playwright module is resolvable on this host; launch with --provision-browser, or browser lanes may be unavailable\n' ;;
         *) fail 'headless Chromium does not run inside the launch sandbox (see the probe-browser output above)' ;;
       esac
     fi
@@ -705,9 +747,9 @@ if $unattested; then
   # host trust store is the operator's kill switch for an in-flight unattested engagement.
   [ -z "${ARGUS_MODEL_TRUST_STORE:-}" ] || \
     fail 'ARGUS_MODEL_TRUST_STORE is set; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id'
-  default_trust_store="${HOME:-}/.config/argus/model-trust.json"
-  [ ! -e "$default_trust_store" ] || \
-    fail "a host model trust store exists at $default_trust_store; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id"
+  trust_store_material="$(default_trust_store_material)" || fail 'cannot check the default host model trust store path'
+  [ -z "$trust_store_material" ] || \
+    fail "$trust_store_material; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id"
 else
   [ -n "$runtime_key_id" ] || fail '--runtime-key-id is required (or pass --unattested to skip signed attestation)'
   [[ "$wait_seconds" =~ ^[0-9]+$ ]] && [ "$wait_seconds" -ge 30 ] && [ "$wait_seconds" -le 300 ] || fail '--wait-seconds must be between 30 and 300'

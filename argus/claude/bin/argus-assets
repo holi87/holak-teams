@@ -4079,8 +4079,14 @@ async function preflight(argv) {
   if (!['claude', 'codex'].includes(modelRuntime)) fail('preflight --model-runtime must be claude or codex');
   if (!options.target) fail('preflight requires --target <url-or-path>');
   const selectedSlugs = new Set(matrix.agents.filter((agent) => agent.modes.includes(mode)).map((agent) => agent.slug));
+  // Operator-declared features cover only target capabilities the sandbox cannot observe.
+  // Browser and MCP capabilities come from preflight's own probes, never from a declaration.
   for (const feature of options.features) {
     if (!Object.hasOwn(matrix.capabilities, feature)) fail(`unknown preflight feature: ${feature}`);
+    const { kind } = matrix.capabilities[feature];
+    if (kind !== 'target') {
+      fail(`preflight --feature ${feature} is not operator-declarable: ${kind} capabilities are proven only by preflight's own probes`);
+    }
   }
 
   const targetDescriptor = identifyTarget(options.target);
@@ -4887,7 +4893,10 @@ function assertBrowserRuntimeProfile(profile) {
   }
 }
 
-function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, probeAllowed, probedAt = new Date().toISOString() }) {
+// hostOnly is for host-side callers that run outside the launch sandbox (browser provision):
+// they consider only locations an engagement cannot write, and never probe a candidate whose
+// physical path lies inside the artifact root, because probing imports and runs its code.
+function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, probeAllowed, probedAt = new Date().toISOString(), hostOnly = false }) {
   if (!probeAllowed) return browserRuntimeResult('not-probed', 'target probe skipped: browser runtime resolution needs an allowed, audited target probe');
   if (profile.browserRuntime === false) return browserRuntimeResult('not-probed', 'profile disabled browser runtime resolution');
   if (profile.browserRuntime === undefined && Array.isArray(profile.features)) {
@@ -4901,13 +4910,17 @@ function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, pro
   let attempts = 0;
   let winner = null;
   let firstFailure = null;
-  for (const location of browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profile })) {
+  for (const location of browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profile, hostOnly })) {
     const candidate = inspectBrowserRuntimeCandidate(location);
     if (!candidate || inspected.has(candidate.modulePath)) continue;
     inspected.add(candidate.modulePath);
     const record = { source: candidate.source, modulePath: candidate.modulePath };
     if (candidate.invalid) {
       candidates.push({ ...record, result: 'invalid', evidence: limitBrowserRuntimeEvidence(candidate.invalid) });
+      continue;
+    }
+    if (hostOnly && isWithin(artifactRootPath, candidate.modulePath)) {
+      candidates.push({ ...record, result: 'invalid', evidence: 'resolves inside the artifact root, which the launch sandbox lets an engagement write; never probed on the host' });
       continue;
     }
     if (!winner && attempts < maxProbes && scratchRoot === null && scratchError === null) {
@@ -4988,8 +5001,10 @@ function limitBrowserRuntimeEvidence(text) {
 
 // Candidate order is part of the contract: an explicit profile module is probed alone;
 // otherwise host-provisioned runtimes (argus-launch --provision-browser installs them
-// outside the artifact root) come first and user-wide installs last.
-function browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profile }) {
+// outside the artifact root) come first and user-wide installs last. hostOnly drops the
+// artifact-root, target, and working-directory locations: those hold engagement-writable or
+// target code that a host-side probe would run unsandboxed as the operator.
+function browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profile, hostOnly = false }) {
   if (plainObject(profile.browserRuntime)) {
     return [{ source: 'profile', path: resolve(profile.browserRuntime.modulePath), explicit: true }];
   }
@@ -5003,9 +5018,11 @@ function browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profil
     .slice(0, cacheCandidateLimit)) {
     locations.push({ source: 'host-provisioned', path: join(provisionedRoot, version, 'node_modules', 'playwright') });
   }
-  locations.push({ source: 'artifact-root', path: join(artifactRootPath, 'node_modules', 'playwright') });
-  if (targetPath) locations.push({ source: 'target', path: join(targetPath, 'node_modules', 'playwright') });
-  locations.push({ source: 'workspace', path: join(process.cwd(), 'node_modules', 'playwright') });
+  if (!hostOnly) {
+    locations.push({ source: 'artifact-root', path: join(artifactRootPath, 'node_modules', 'playwright') });
+    if (targetPath) locations.push({ source: 'target', path: join(targetPath, 'node_modules', 'playwright') });
+    locations.push({ source: 'workspace', path: join(process.cwd(), 'node_modules', 'playwright') });
+  }
   const npmRoot = npmGlobalRoot();
   if (npmRoot) locations.push({ source: 'npm-global', path: join(npmRoot, 'playwright') });
   for (const root of systemRoots) locations.push({ source: 'system-global', path: join(root, 'playwright') });
@@ -5231,8 +5248,9 @@ function recordBrowserRuntime({ artifactRootPath, persist, engagementId, probedA
 
 // `browser provision` is host preparation that runs before the launch sandbox exists (from
 // argus-launch --provision-browser or an operator shell); it is not part of the signed launch
-// request because preflight re-probes the runtime inside the sandbox. It reuses a host runtime
-// outside the artifact root that already launches headless Chromium, or installs the pinned
+// request because preflight re-probes the runtime inside the sandbox. It reuses a runtime from a
+// host-only location (never the artifact root, a target, or the working directory) that
+// already launches headless Chromium, or installs the pinned
 // Playwright release into ~/.cache/argus/browser-runtime/<x.y.z>, the first preflight candidate
 // location. That directory lies outside the artifact root, so sandboxed lanes can read the
 // module but never modify it. Chromium goes to Playwright's host default cache. The launch and
@@ -5291,8 +5309,12 @@ function provisionBrowserRuntime(options) {
   assertBrowserProvisionAliasFree(artifactRoot);
 
   if (options.version === undefined && options.package === undefined) {
-    const existing = resolveBrowserRuntime({ targetPath: null, artifactRootPath: artifactRoot, profile: {}, probeAllowed: true });
-    if (existing.status === 'available' && !isWithin(artifactRoot, existing.modulePath)) {
+    // This runs unsandboxed as the operator, so only host candidates are probed: never the
+    // artifact root, a target, or the working directory, whose code an engagement or the
+    // target itself controls.
+    const existing = resolveBrowserRuntime({ targetPath: null, artifactRootPath: artifactRoot, profile: {}, probeAllowed: true, hostOnly: true });
+    if (existing.status === 'available') {
+      if (isWithin(artifactRoot, existing.modulePath)) fail(`browser provisioning failed: host runtime ${existing.modulePath} resolves inside the artifact root`);
       assertBrowserProvisionAliasFree(artifactRoot);
       return reportBrowserProvision(options.json, {
         action: 'reused',
