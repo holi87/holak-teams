@@ -2,8 +2,8 @@
 # Clean-room validation of the TypeScript outcome adapter (RUNNER-CONTRACT.md SD-1 to SD-7):
 # collection inventory, ledger join for ledger v1 and v2, expected bugs, SD-4 ledger events,
 # SD-5 classification, SD-6 pass mapping including declared repetition, the adapter status,
-# and inertness without ARGUS_RUNNER_MODE. Nothing contacts a real target; no browser is
-# needed.
+# inertness without ARGUS_RUNNER_MODE, and the contract oracle self-tests. Nothing contacts
+# a real target; no browser is needed.
 
 set -euo pipefail
 
@@ -234,4 +234,20 @@ for activation in "ARGUS_RUNNER_MODE=defect-evidence ARGUS_EVIDENCE_PASS=bogus" 
   expect_status 'error [0-9]+' "unsupported evidence pass ($activation)"
 done
 
-printf 'PASS  Argus TypeScript runtime adapter: full-collection inventory, v1/v2 ledger join, ledger policy events, SD-5 classification, SD-6 live/repeat/strict/intermittent mapping, adapter status, and inert default\n'
+# --- Contract oracle self-tests ----------------------------------------------------------
+# Each oracle passes on a correct stub and fails on a faulty one; every negative case
+# asserts its own rejection, so a healthy run is `product pass` for every case. The stub
+# binds 127.0.0.1 only; no target is contacted.
+ORACLE_SPEC=tests/contract/oracles-contract.selftest.spec.ts
+pw oracles-list npx playwright test --list --project=contract-smoke "$ORACLE_SPEC"
+oracle_cases="$(sed -n 's/^Total: \([0-9][0-9]*\) tests\{0,1\} in .*/\1/p' "$WORK/oracles-list.log")"
+[ -n "$oracle_cases" ] && [ "$oracle_cases" -gt 0 ] || { tail -20 "$WORK/oracles-list.log" >&2; fail "the oracle self-tests were not collected"; }
+pw oracles ARGUS_RUNNER_MODE=baseline npx playwright test --project=contract-smoke "--reporter=list,$REPORTER" "$ORACLE_SPEC"
+[ "$PW_CODE" -eq 0 ] || { tail -80 "$WORK/oracles.log" >&2; fail "the oracle self-tests exited $PW_CODE"; }
+expect_count "$EV" "$oracle_cases" "one event per oracle self-test"
+awk -F'\t' -v prefix='contract-smoke:contract-oracles-contract.selftest.spec.ts:' \
+  'index($1, prefix) != 1 || $2 != "product" || $3 != "pass" { print "not an oracle product pass: " $0; bad = 1 } END { exit bad }' \
+  "$EV" >&2 || fail "an oracle self-test event is not product pass"
+expect_status "ok $oracle_cases" "oracle self-tests"
+
+printf 'PASS  Argus TypeScript runtime adapter: full-collection inventory, v1/v2 ledger join, ledger policy events, SD-5 classification, SD-6 live/repeat/strict/intermittent mapping, adapter status, inert default, and contract oracle self-tests\n'
