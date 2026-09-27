@@ -4335,7 +4335,7 @@ async function preflight(argv) {
   const detectedFeatures = new Set([
     ...(Array.isArray(profile.features)
       ? profile.features
-      : (probeAllowed ? [...detectTargetFeatures(targetPath), ...detectEnvironmentFeatures()] : [])),
+      : (probeAllowed ? detectTargetFeatures(targetPath) : [])),
     ...options.features,
   ]);
 
@@ -4814,6 +4814,10 @@ function detectMcpServers() {
   }
 }
 
+// db-access is never inferred, not even from DATABASE_URL/PGHOST/MYSQL_HOST: argus-launch runs
+// preflight under `env -i` with a fixed allowlist that never carries database coordinates, so
+// only an operator --feature db-access declares it, and a direct-CLI diagnostic predicts the
+// same disposition as the engagement.
 function detectTargetFeatures(targetPath) {
   if (!targetPath || !existsSync(targetPath)) return [];
   const features = [];
@@ -4826,12 +4830,6 @@ function detectTargetFeatures(targetPath) {
     features.push('non-rest-surface');
   }
   return features;
-}
-
-// Database coordinates exported to preflight are evidence for db-access for URL and path
-// targets alike. Only the variable names are consulted; values never enter the report.
-function detectEnvironmentFeatures() {
-  return process.env.DATABASE_URL || process.env.PGHOST || process.env.MYSQL_HOST ? ['db-access'] : [];
 }
 
 // Browser runtime resolution never installs anything. It inspects candidate Playwright

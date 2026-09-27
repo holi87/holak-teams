@@ -115,8 +115,8 @@ environment=(
   "ARGUS_NATIVE_LAUNCH_RECEIPT=$receipt"
   "ARGUS_NATIVE_LAUNCH_CAPABILITY=$capability"
 )
-# Database coordinates feed preflight's environment feature detection; a smoke exports them
-# only around the single run that asserts db-access.
+# Deliberately wider than argus-launch's allowlist, which never passes database coordinates: a
+# smoke exports them only around the single run that proves preflight ignores them.
 for name in DATABASE_URL PGHOST MYSQL_HOST; do
   if [ -n "${!name:-}" ]; then environment+=("$name=${!name}"); fi
 done

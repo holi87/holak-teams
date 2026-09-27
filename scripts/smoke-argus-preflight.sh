@@ -30,8 +30,8 @@ digest_file() {
   fi
 }
 
-# Database coordinates are environment evidence for db-access; only the scenario that
-# asserts that detection exports one, so every other report stays host-independent.
+# Preflight never treats database coordinates in its environment as db-access evidence; only
+# the scenario that proves it exports one, so every other report stays host-independent.
 unset DATABASE_URL PGHOST MYSQL_HOST
 
 # browser-runtime.json must satisfy argus/browser-runtime@1, repeat the report's
@@ -470,9 +470,15 @@ assert(disabled.browserRuntime.status === 'not-probed' && disabled.browserRuntim
 assert(!capability(disabled, 'db-access').available && lanes(disabled).get('charon').status === 'conditional'
   && JSON.stringify(lanes(disabled).get('charon').pendingGates) === '["db-access"]', 'db-access must stay a pending gate without database coordinates');
 
+// argus-launch runs preflight under `env -i` with a fixed allowlist, so database coordinates
+// never reach an engagement: only an operator --feature db-access declares the capability,
+// and a direct-CLI diagnostic must predict the same disposition.
 const database = load('database');
-assert(capability(database, 'db-access').available, 'DATABASE_URL did not make db-access available for a URL target');
-assert(lanes(database).get('charon').status === 'ready', `charon must be ready with database coordinates (got ${lanes(database).get('charon').status})`);
+assert(!capability(database, 'db-access').available && capability(database, 'db-access').evidence === 'target/profile feature not detected: db-access',
+  'DATABASE_URL made db-access available although only an operator --feature declares it');
+assert(lanes(database).get('charon').status === lanes(disabled).get('charon').status
+  && JSON.stringify(lanes(database).get('charon').pendingGates) === JSON.stringify(lanes(disabled).get('charon').pendingGates),
+  `database coordinates changed the charon disposition (got ${lanes(database).get('charon').status})`);
 assert(!JSON.stringify(database).includes('postgres://fixture'), 'database coordinates leaked into the preflight report');
 NODE
 
