@@ -1,0 +1,132 @@
+{
+  "$schema": "argus/technique-catalog@1",
+  "schemaVersion": 1,
+  "catalogId": "argus/technique-catalog/charon@1",
+  "role": "charon",
+  "catalogType": "hunter",
+  "valuePolicy": "discover-never-assume",
+  "executionRule": "each-applicable-entry-covered-or-gap",
+  "absentSurfaceDisposition": "not-applicable-with-evidence",
+  "entries": [
+    {
+      "id": "CHA-T01",
+      "title": "Declared constraints against persisted rows",
+      "scope": ["constraints", "uniqueness"],
+      "techniques": ["specification-based testing", "boundary value analysis", "equivalence partitioning"],
+      "appliesWhen": "always",
+      "construct": ["Open every session read-only before the first query: default_transaction_read_only=on for PostgreSQL, SET SESSION TRANSACTION READ ONLY for MySQL, or a mode=ro URI for SQLite", "Introspect every table through information_schema, pg_catalog, or sqlite_master for primary-key, UNIQUE, NOT NULL, CHECK, and default declarations", "List every uniqueness, required-field, and range rule the requirements and the OpenAPI document state for persisted data, and pair each rule with the constraint that should enforce it", "Through the API with a provided account, submit a duplicate, a null or blank value, and the B-minus-step, B, and B-plus-step values at the column's declared step for each rule, then SELECT the persisted rows"],
+      "oracles": ["The database holds no row that a declared constraint forbids, and every documented uniqueness, required-field, or range rule has an enforcing constraint; a documented rule with no enforcing constraint and a persisted violating row is a defect citing the requirement clause", "A persisted duplicate, null, or out-of-range value is a defect even when the API answered with an error, because the row on disk is the oracle target"],
+      "routes": ["data-direct"]
+    },
+    {
+      "id": "CHA-T02",
+      "title": "Referential integrity, cascade rules, and orphan rows",
+      "scope": ["foreign-keys", "cascade", "orphan-rows"],
+      "techniques": ["state transition", "specification-based testing"],
+      "appliesWhen": "always",
+      "construct": ["Introspect every declared foreign key with its ON DELETE and ON UPDATE rule, and list the implicit relations: id and join columns that reference another table without a declared foreign key", "Through the API, delete, soft-delete, archive, and reassign a parent that has children, then run a read-only anti-join for child rows whose parent is missing or no longer live"],
+      "oracles": ["Each declared cascade, restrict, or set-null rule is honoured and no child row references a missing parent; an implicit relation without a declared foreign key that leaves an orphan row is a defect citing the data model", "A parent delete the API reports as successful while children stay dangling, or a cascade that removes rows the requirement says must survive, is a defect"],
+      "routes": ["data-direct"]
+    },
+    {
+      "id": "CHA-T03",
+      "title": "Soft-delete resurrection at the row level",
+      "scope": ["soft-delete"],
+      "techniques": ["state transition", "error guessing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Identify every soft-delete marker, such as a deleted_at or is_deleted column, an archived status, or a tombstone table, together with every unique index and view over those tables", "Soft-delete an entity through the API, then SELECT it through each live read path the requirement defines: list and search queries, joins from child tables, aggregates and counts, and exports", "Through the API, re-create an entity with the soft-deleted entity's unique key and read whether the unique index is a partial unique index that excludes deleted rows"],
+      "oracles": ["A soft-deleted row is excluded from every live read path, including joins and aggregates, and only the documented restore path brings it back; a soft-deleted row that reappears in a listing, still counts in a total, or stays joinable is a defect", "Reuse of a unique key after a soft delete behaves as the requirement states, either admitted by the partial unique index or rejected consistently; deleted personal data that stays readable is flagged security-class"],
+      "routes": ["data-direct"]
+    },
+    {
+      "id": "CHA-T04",
+      "title": "Money and numeric precision at rest",
+      "scope": ["money-precision", "numeric-type"],
+      "techniques": ["boundary value analysis", "equivalence partitioning"],
+      "appliesWhen": "surface-present",
+      "construct": ["Read the declared type, precision, and scale of every monetary, rate, and quantity column from the catalog, and source the business precision and rounding rule from the requirement or the OpenAPI document", "Through the API, write amounts at the documented scale boundaries: the smallest unit, one step below, at, and above each half-unit rounding boundary, one pair of boundaries that separates half-up from half-even rounding (0.005 and 0.015 at a two-decimal scale), the largest documented magnitude, and an amount split three ways", "SELECT the stored bytes, not the API echo, with a text cast of each written column, and recompute every derived amount from its stored parts"],
+      "oracles": ["Money is stored as exact decimal or integer minor units at the documented scale and never loses a cent between the request, the stored value, and every derived amount; float, real, double, or free-text storage of money is a defect", "Rounding follows the documented rule at every boundary value; a stored value that differs from the API echo is a defect even when the API response looks correct"],
+      "routes": ["data-direct"]
+    },
+    {
+      "id": "CHA-T05",
+      "title": "Temporal and enumerated type drift at rest",
+      "scope": ["temporal-type", "enum-type"],
+      "techniques": ["equivalence partitioning", "boundary value analysis"],
+      "appliesWhen": "surface-present",
+      "construct": ["Read the declared type of every timestamp, date, and enumerated column: timestamp with or without time zone, integer epoch or ISO text, and native enum, CHECK list, lookup foreign key, or free text", "Through the API, write an instant just before and just after midnight UTC from a non-UTC client offset, and a local time on a daylight-saving transition, then SELECT the raw stored value", "Through the API, submit each documented enumerated value plus case, whitespace, and unknown variants, then SELECT DISTINCT over the column"],
+      "oracles": ["Every instant is stored unambiguously in UTC or with its offset, and one field never mixes epoch and ISO representations; a timezone-naive value that shifts the calendar date or the order of events is a defect", "An enumerated column holds only the documented values; free-text storage that accepted a case, whitespace, or unknown variant is a defect citing the specification's value list"],
+      "routes": ["data-direct"]
+    },
+    {
+      "id": "CHA-T06",
+      "title": "Lost update and duplicate effect under concurrent writes",
+      "scope": ["concurrency", "idempotency"],
+      "techniques": ["state transition", "pairwise interleaving", "repetition"],
+      "appliesWhen": "surface-present",
+      "construct": ["Discover the write endpoints that update a shared row: counters, balances, stock, versioned documents, and single-use claims", "Through the API with provided accounts, fire concurrent read-modify-write updates on the same row within the authorization manifest's concurrency ceiling, and repeated double-submits of one intent with and without the documented idempotency key", "SELECT the final row values, the version columns, and the number of rows created for each intent, and record attempts and occurrences"],
+      "oracles": ["Where the requirement says at most one succeeds, exactly one effect persists; a duplicate row for one intent or an exclusive unit claimed twice is a defect", "The final stored value reflects every committed update, or each losing writer received the documented conflict; a silently lost update is a defect even when every API call returned success"],
+      "routes": ["data-direct", "resilience"]
+    },
+    {
+      "id": "CHA-T07",
+      "title": "Atomicity and aggregate invariants after a failed mid-transaction step",
+      "scope": ["atomicity", "aggregate-invariant"],
+      "techniques": ["decision table", "state verification"],
+      "appliesWhen": "surface-present",
+      "construct": ["Identify every business write that spans several rows or tables, such as an order with line items and stock, a transfer with two ledger entries, or a parent with required children", "Through the API, make a later step of the unit fail with a documented invalid input, such as an invalid last line item or an unknown counter-account; never inject a fault, because fault injection belongs to the resilience lane's exclusive fault window", "SELECT the header and every child row of the unit, then recompute total == sum(line_items) and every balance from its ledger entries"],
+      "oracles": ["All rows of the unit persist or none do; a header without its lines, a debit without its credit, or a stock decrement for a rejected order is a defect", "Every stored aggregate equals its recomputation from the stored parts; a stored total that breaks total == sum(line_items) is a defect citing the business rule"],
+      "routes": ["data-direct", "resilience"]
+    },
+    {
+      "id": "CHA-T08",
+      "title": "Write skew and phantom rows behind application-level checks",
+      "scope": ["transaction-isolation", "write-skew"],
+      "techniques": ["error guessing", "pairwise interleaving"],
+      "appliesWhen": "surface-present",
+      "construct": ["Read the configured default isolation level and list every invariant the requirement states over a set of rows, such as no overlapping bookings, one active subscription per account, or a unique name that has no unique index", "For each set-level invariant without an enforcing constraint, exclusion constraint, or lock, fire two concurrent creates through the API that each pass the application's check-then-insert, then SELECT the rows that jointly violate it", "While a documented slow or failing write is in flight, read the affected resource through the API and compare the response with the rows committed afterwards"],
+      "oracles": ["A set-level invariant holds under concurrency; two committed rows that each passed the application check but jointly violate the invariant are a write-skew defect citing the requirement", "No reader observes state from a transaction that later rolled back; a dirty or phantom read visible through the API is a defect"],
+      "routes": ["data-direct", "resilience"]
+    },
+    {
+      "id": "CHA-T09",
+      "title": "Index coverage of documented filters, sorts, and joins",
+      "scope": ["query-plan", "indexing"],
+      "techniques": ["specification-based testing", "static analysis"],
+      "appliesWhen": "surface-present",
+      "construct": ["For each list, filter, sort, and search endpoint Kalchas flagged, map the request to its WHERE, ORDER BY, and JOIN columns from the documented parameters, the statement log, or readable source", "Run EXPLAIN without ANALYZE on the equivalent SELECT, because ANALYZE executes the statement, and read the table's indexes with their composite column order plus every foreign-key column used in a join or cascade"],
+      "oracles": ["A documented filter or sort on a growing table is backed by an index whose leading columns match the predicate; a sequential scan on an indexable predicate, or a missing composite index behind a documented filter combination, is a structural defect citing the plan", "A foreign-key column used in a join or cascade without an index is a defect candidate whose evidence is the plan and the index list, never a timing measurement"],
+      "routes": ["data-direct"]
+    },
+    {
+      "id": "CHA-T10",
+      "title": "Database-side N+1 and unbounded statements",
+      "scope": ["query-plan", "query-volume"],
+      "techniques": ["metamorphic testing", "boundary value analysis"],
+      "appliesWhen": "surface-present",
+      "construct": ["Where read access to statement statistics such as pg_stat_statements or performance_schema is granted, snapshot the counters, call one paginated list endpoint at page size 1 and at the documented maximum page size, and diff the snapshots; never reset the counters", "Count only the statement fingerprints that touch the endpoint's tables and repeat each snapshot pair, because concurrent lanes share the counters, then read the executed statements for a LIMIT that matches the requested page size and for a lookup repeated once per returned item"],
+      "oracles": ["The number of statements per request stays constant as the page size grows; a per-item statement pattern is a database-side N+1 defect citing the counter diff", "A paginated endpoint issues a bounded statement; a statement without a LIMIT behind a documented page size is a defect"],
+      "routes": ["data-direct"]
+    },
+    {
+      "id": "CHA-T11",
+      "title": "Seed data and migration history integrity",
+      "scope": ["seed-data", "migration"],
+      "techniques": ["checklist-based testing", "specification review"],
+      "appliesWhen": "surface-present",
+      "construct": ["Compare the documented fixtures or seed files with the stored rows: per-table counts, natural keys, and the contents of lookup and enum tables", "Read the migration history table, such as schema_migrations, flyway_schema_history, alembic_version, or knex_migrations, against the readable migration files for missing, duplicate, failed, dirty, or checksum-mismatched entries", "Compare every column default and lookup value with the schema and the specification"],
+      "oracles": ["Seed rows match the documented fixtures, every migration is applied exactly once in order with no failed or dirty entry, and defaults and lookup values match the specification; each drift is a defect citing the fixture, migration, or specification line", "Orphaned, duplicate, or stale rows left by a migration are a defect, never accepted as legacy data"],
+      "routes": ["data-direct"]
+    },
+    {
+      "id": "CHA-T12",
+      "title": "Deterministic reset baseline and teardown leftovers",
+      "scope": ["reset-determinism", "test-data-hygiene"],
+      "techniques": ["repetition", "state verification"],
+      "appliesWhen": "documented-control",
+      "construct": ["Ask Odysseus to run Kalchas's verified reset command inside the controller's exclusive reset window, the one sanctioned state mutation and never SQL of your own", "Immediately after the reset, capture per-table row counts and an ordered checksum over each table's primary keys and business columns with read-only SELECT statements, excluding only columns the seed documents as generated at reset time", "Compare that capture with the capture recorded after the previous reset, from Kalchas's recon baseline or an earlier reset window, never with the pre-reset state that other lanes have mutated","After a full suite run, SELECT the rows in the argus-* test namespace and every entity the engagement's accounts created that teardown should have removed"],
+      "oracles": ["The documented reset restores identical row counts and checksums on every run; a drifted baseline is a defect citing both captures", "A leftover argus-* test entity after teardown is a defect candidate, never noise"],
+      "routes": ["data-direct"]
+    }
+  ]
+}

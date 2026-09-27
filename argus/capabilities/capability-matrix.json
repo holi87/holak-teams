@@ -94,6 +94,17 @@
       "selectionInput": "argus/surface-inventory@1",
       "fallback": "full-catalog"
     },
+    "charon": {
+      "catalogId": "argus/technique-catalog/charon@1",
+      "catalogType": "hunter",
+      "idPrefix": "CHA",
+      "entryCount": 12,
+      "sha256": "72789c6d8347148ae7b4394a2397ce53a4af0934fc09fc9e6b1275fa180acd89",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    },
     "proteus": {
       "catalogId": "argus/technique-catalog/proteus@1",
       "catalogType": "hunter",
@@ -480,7 +491,9 @@
       "doctrineProfiles": [
         "qa-core"
       ],
-      "techniqueCatalogs": [],
+      "techniqueCatalogs": [
+        "charon"
+      ],
       "requiredTools": [
         "Read",
         "Grep",

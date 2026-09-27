@@ -138,6 +138,16 @@ const SEMANTIC_MARKERS = Object.freeze({
   'ANG-T21': ['3.3.8 Accessible Authentication (Minimum)', 'cognitive function test'],
   'ANG-T22': ['1.4.10 Reflow', 'without scrolling in two dimensions'],
   'ANG-T23': ['1.4.12 Text Spacing', '0.12 times the font size'],
+  // Charon's markers pin the read-only session guard and the data-layer oracles a softened
+  // row would lose first: stored bytes over the API echo, exact money storage, all-or-nothing
+  // units with recomputed aggregates, and plan evidence that never executes the statement.
+  'CHA-T01': ['default_transaction_read_only', 'the row on disk is the oracle target'],
+  'CHA-T03': ['every live read path', 'partial unique index'],
+  'CHA-T04': ['stored bytes, not the API echo', 'exact decimal or integer minor units'],
+  'CHA-T06': ['at most one succeeds', 'silently lost update'],
+  'CHA-T07': ['total == sum(line_items)', 'all rows of the unit persist or none do'],
+  'CHA-T09': ['EXPLAIN without ANALYZE', 'sequential scan on an indexable predicate'],
+  'CHA-T12': ['identical row counts and checksums', 'never SQL of your own'],
   // Orion markers pin the functional-UI escape classes and the lane-split clauses that keep
   // them honest: contract-bound effect counts, field-bound messages, the one server-bypass
   // replay, and the routes to Lynceus and Perseus. Removing a phrase fails the validator.

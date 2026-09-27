@@ -486,6 +486,12 @@
       ]
     },
     {
+      "value": "solution/charon-ledger.json",
+      "consumers": [
+        "charon"
+      ]
+    },
+    {
       "value": "solution/contracts/",
       "consumers": [
         "pistis"
@@ -2045,6 +2051,12 @@
           "kind": "agent",
           "mechanism": "technique-catalog-assignment",
           "reference": "atalanta"
+        },
+        {
+          "consumer": "charon",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "charon"
         },
         {
           "consumer": "lynceus",
