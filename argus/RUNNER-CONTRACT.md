@@ -323,7 +323,8 @@ The steps run in this order; a denial finishes the run through `scripts/runner-c
     otherwise `lane.<lane> skip skipped lane-not-executed` (exit 15). Then, in every mode,
     `scripts/inventory-gate.sh executed`, and in `defect-evidence` `scripts/evidence-gate.sh`
     (below).
-13. `scripts/runner-contract.sh` with `--quarantine` and `--expected-bugs` when those files
+13. In `full-suite`, except under a contract smoke, the automation review gate (below).
+14. `scripts/runner-contract.sh` with `--quarantine` and `--expected-bugs` when those files
     exist and `--contract-smoke` under a contract smoke.
 
 **Inventory and evidence gates.** `scripts/inventory-gate.sh static` checks the inventory
@@ -357,6 +358,24 @@ counterfactual-fixture-invalid.<reason>`. A `fixture` needs exactly one
 the plan's reason; otherwise `counterfactual-incomplete`. A missing proof is not denied when
 the same pass (by SD-2 case-id suffix) already gave `B` a failing verdict such as `flaky-red`
 or `counterfactual-tamper-survived`, so that verdict keeps its own exit code.
+
+**Automation review gate.** The last step of a `full-suite` run reads Aristarchus's
+`solution/automation-review.json` (`argus/automation-review@1`, see `CANONICAL-CONTRACTS.md`
+"Automation review in 5.0") when it exists, and its latest round decides. `BLOCK` gives
+`automation-review.<REV-NN> policy denied automation-review-blocked` (exit 13), and the
+runner prints the blocking round and its blocker count. `APPROVE` records
+`automation-review.<REV-NN> policy pass automation-review-approved` and leaves the exit code
+unchanged. An absent record changes nothing, so a suite delivered without it runs as before.
+The gate fails closed with `automation-review policy denied automation-review-invalid`
+(exit 13) for a record that is a symbolic link or not a regular file, is not JSON, is not an
+`argus/automation-review@1` document, or has rounds that do not run contiguously from
+`REV-01` with an `APPROVE` or `BLOCK` verdict that is `BLOCK` exactly when blockers remain.
+It reads the record with `node`, or with `python3` when `node` is absent; both apply the same
+checks, and with neither a present record is invalid. The gate judges only the persisted
+verdict: the corpus binding (`STALE`) and a missing review (`ABSENT`) need the engagement
+manifest and belong to `argus-assets automation-review check`. Other modes and contract
+smokes skip the gate: only a `full-suite` result carries `deliveryGate: true`, and
+`defect-evidence` and `candidate-regression` runs are the repair loop a `BLOCK` asks for.
 
 **Engagement opt-ins.** Inside an Argus engagement (`ARGUS_ENGAGEMENT_MANIFEST` set),
 `ARGUS_ENVIRONMENT_RESET=execute` and `ARGUS_FAULT_INJECTION=authorized` are requests, not
