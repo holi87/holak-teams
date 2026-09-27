@@ -384,9 +384,14 @@ manifest and belong to `argus-assets automation-review check`. Other modes and c
 smokes skip the gate: only a `full-suite` result carries `deliveryGate: true`, and
 `defect-evidence` and `candidate-regression` runs are the repair loop a `BLOCK` asks for.
 
-**Engagement opt-ins.** Inside an Argus engagement (`ARGUS_ENGAGEMENT_MANIFEST` set),
-`ARGUS_ENVIRONMENT_RESET=execute` and `ARGUS_FAULT_INJECTION=authorized` are requests, not
-permissions. When the reset opt-in is set, before the environment gate (action
+**Engagement opt-ins.** Inside an Argus engagement, `ARGUS_ENVIRONMENT_RESET=execute` and
+`ARGUS_FAULT_INJECTION=authorized` are requests, not permissions. The library locates the
+engagement manifest the way `argus-assets` does, because `argus-launch` never exports
+`ARGUS_ENGAGEMENT_MANIFEST`: a non-empty `ARGUS_ENGAGEMENT_MANIFEST`, the `engagement.json`
+next to the launch receipt (`ARGUS_NATIVE_LAUNCH_RECEIPT`), and the first
+`ai_agents_internal/engagement.json` at or above the physical harness root. A named
+manifest that does not exist, or two sources that name different files, refuse the
+opt-in. When the reset opt-in is set, before the environment gate (action
 `destructive`, exclusive window `reset`), and when the fault opt-in is set, before any
 native hook (action `chaos`, exclusive window `fault`), the library reads
 `argus-assets engagement status` and requires the window to be held, then requires an

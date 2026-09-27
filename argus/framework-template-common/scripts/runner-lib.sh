@@ -141,10 +141,11 @@ argus_readiness() {
   done
 }
 
-# Inside an Argus engagement (ARGUS_ENGAGEMENT_MANIFEST set) an environment reset or a
-# server-side fault injection needs both the exclusive engagement window and an explicit
-# authorization decision; the opt-in variable alone is never enough. Every missing input
-# refuses. Outside an engagement the opt-in of the operator who owns the target stands.
+# Inside an Argus engagement (an engagement manifest is located, see
+# argus_engagement_manifest) an environment reset or a server-side fault injection needs
+# both the exclusive engagement window and an explicit authorization decision; the opt-in
+# variable alone is never enough. Every missing input refuses. Outside an engagement the
+# opt-in of the operator who owns the target stands.
 argus_engagement_authorized() {
   local resource="$1" action="$2" label="$3" cli lane target authorization holder state
   local args=()
@@ -205,18 +206,60 @@ argus_engagement_authorized() {
   return 0
 }
 
+# Prints the engagement manifest that governs this harness, found the way argus-assets finds
+# it, and prints nothing outside an engagement. A non-empty ARGUS_ENGAGEMENT_MANIFEST and the
+# argus-launch receipt (ARGUS_NATIVE_LAUNCH_RECEIPT, whose directory holds engagement.json)
+# name it explicitly; otherwise it is the first ai_agents_internal/engagement.json at or
+# above the physical harness root. A named manifest that does not exist, or two sources that
+# name different files, fail: the run is inside an engagement it cannot read.
+argus_engagement_manifest() {
+  local cursor candidate physical found="" found_physical=""
+  local named=()
+  if [ -n "${ARGUS_ENGAGEMENT_MANIFEST:-}" ]; then named+=("$ARGUS_ENGAGEMENT_MANIFEST"); fi
+  if [ -n "${ARGUS_NATIVE_LAUNCH_RECEIPT:-}" ]; then named+=("$(dirname "$ARGUS_NATIVE_LAUNCH_RECEIPT")/engagement.json"); fi
+  cursor="$(cd "$ARGUS_ROOT" && pwd -P)" || return 1
+  while :; do
+    if [ -e "$cursor/ai_agents_internal/engagement.json" ]; then named+=("$cursor/ai_agents_internal/engagement.json"); break; fi
+    [ "$cursor" != / ] || break
+    cursor="$(dirname "$cursor")"
+  done
+  for candidate in ${named[@]+"${named[@]}"}; do
+    if [ ! -f "$candidate" ] || ! physical="$(cd "$(dirname "$candidate")" && pwd -P)/$(basename "$candidate")"; then
+      echo "ARGUS AUTHORIZATION: the engagement manifest $candidate does not exist" >&2
+      return 1
+    fi
+    if [ -z "$found" ]; then
+      found="$candidate" found_physical="$physical"
+    elif [ "$physical" != "$found_physical" ]; then
+      echo "ARGUS AUTHORIZATION: $found and $candidate are different engagement manifests" >&2
+      return 1
+    fi
+  done
+  [ -z "$found" ] || printf '%s\n' "$found"
+}
+
+# One opt-in request: refused when an engagement is indicated but its manifest cannot be
+# located, checked by argus_engagement_authorized against a located manifest, and allowed
+# outside an engagement.
+argus_engagement_request() {
+  local manifest
+  manifest="$(argus_engagement_manifest)" || return 1
+  [ -n "$manifest" ] || return 0
+  ARGUS_ENGAGEMENT_MANIFEST="$manifest"
+  argus_engagement_authorized "$@"
+}
+
 argus_engagement_optin() {
-  [ -n "${ARGUS_ENGAGEMENT_MANIFEST:-}" ] || return 0
   case "$1" in
     reset)
       [ "${ARGUS_ENVIRONMENT_RESET:-}" = execute ] || return 0
-      argus_call argus_engagement_authorized reset destructive environment-reset
+      argus_call argus_engagement_request reset destructive environment-reset
       [ "$ARGUS_CALL_STATUS" -ne 0 ] || return 0
       argus_emit environment policy denied false n/a - environment-reset-unauthorized
       ;;
     fault)
       [ "${ARGUS_FAULT_INJECTION:-}" = authorized ] || return 0
-      argus_call argus_engagement_authorized fault chaos fault-injection
+      argus_call argus_engagement_request fault chaos fault-injection
       [ "$ARGUS_CALL_STATUS" -ne 0 ] || return 0
       argus_emit fault-injection policy denied false n/a - fault-injection-unauthorized
       ;;
