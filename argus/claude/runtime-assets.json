@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 28090,
-      "sha256": "174b72e2cffe279dfb6c8065d641ec3a869a37db55f6ad795177cdcdc5f482fa"
+      "bytes": 30794,
+      "sha256": "3e16b1ad7c39fdae57430493738a35b5d8a4fffbfe0f4bc2c274d20b542bdb27"
     },
     {
       "id": "canonical-contracts",
@@ -172,9 +172,9 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 38,
-      "bytes": 151364,
-      "sha256": "c2c4ab70e982a21526d2d771ad1d6c8edfd14a09c7d7f42e50856ecb5e63e90a"
+      "files": 39,
+      "bytes": 158638,
+      "sha256": "5dc4495bcf94e74b232a375d475ebb1df13684cfb18ab04a9fa699e1d7e6a9ca"
     },
     {
       "id": "capability-matrix",
@@ -182,8 +182,8 @@
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
-      "bytes": 24820,
-      "sha256": "13385f57d26e3ffddfdf4bad9ba94abe1bd06282dccc286e2b2a6713ed5a9c9d"
+      "bytes": 24963,
+      "sha256": "a55b8ebe489c271be4757a391cfb8f6581a6562294e8bb1d8cbcb663966ea6ba"
     },
     {
       "id": "technique-catalogs-bundle",

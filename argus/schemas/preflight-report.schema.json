@@ -4,7 +4,7 @@
   "title": "Argus runtime preflight report v3",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "generatedAt", "mode", "modelRuntime", "status", "target", "artifactRoot", "authorization", "engagement", "orchestration", "checks", "capabilities", "agents", "summary", "residualRisks"],
+  "required": ["$schema", "schemaVersion", "generatedAt", "mode", "modelRuntime", "status", "target", "artifactRoot", "authorization", "engagement", "orchestration", "browserRuntime", "checks", "capabilities", "agents", "summary", "residualRisks"],
   "properties": {
     "$schema": { "const": "https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/preflight-report.schema.json" },
     "schemaVersion": { "const": 3 },
@@ -78,6 +78,7 @@
         "specialists": { "type": "integer", "minimum": 0, "maximum": 26 }
       }
     },
+    "browserRuntime": { "$ref": "#/$defs/browserRuntime" },
     "checks": {
       "type": "array",
       "items": { "$ref": "#/$defs/check" }
@@ -223,6 +224,75 @@
         "id": { "type": "string", "minLength": 1 },
         "mandatory": { "type": "boolean" },
         "status": { "enum": ["pass", "fail", "degraded"] },
+        "evidence": { "type": "string", "minLength": 1 }
+      }
+    },
+    "browserRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "source", "modulePath", "moduleVersion", "packageJsonSha256", "moduleTreeSha256", "moduleTreeRoots", "executablePath", "probedAt", "evidence", "candidates"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable", "not-probed"] },
+        "source": { "enum": ["profile", "host-provisioned", "artifact-root", "target", "workspace", "npm-global", "system-global", "npx-cache", null] },
+        "modulePath": { "type": ["string", "null"], "pattern": "^/" },
+        "moduleVersion": { "type": ["string", "null"], "minLength": 1 },
+        "packageJsonSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "moduleTreeSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "moduleTreeRoots": { "type": "array", "maxItems": 16, "uniqueItems": true, "items": { "type": "string", "pattern": "^/" } },
+        "executablePath": { "type": ["string", "null"], "minLength": 1 },
+        "probedAt": { "type": ["string", "null"], "format": "date-time" },
+        "evidence": { "type": "string", "minLength": 1 },
+        "candidates": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/browserRuntimeCandidate" } }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["status"], "properties": { "status": { "const": "available" } } },
+          "then": {
+            "properties": {
+              "source": { "type": "string" },
+              "modulePath": { "type": "string" },
+              "moduleVersion": { "type": "string" },
+              "packageJsonSha256": { "type": "string" },
+              "moduleTreeSha256": { "type": "string" },
+              "moduleTreeRoots": { "minItems": 1 },
+              "executablePath": { "type": "string" },
+              "probedAt": { "type": "string" },
+              "candidates": { "minItems": 1 }
+            }
+          }
+        },
+        {
+          "if": { "required": ["status"], "properties": { "status": { "enum": ["unavailable", "not-probed"] } } },
+          "then": {
+            "properties": {
+              "source": { "const": null },
+              "modulePath": { "const": null },
+              "moduleVersion": { "const": null },
+              "packageJsonSha256": { "const": null },
+              "moduleTreeSha256": { "const": null },
+              "moduleTreeRoots": { "maxItems": 0 },
+              "executablePath": { "const": null }
+            }
+          }
+        },
+        {
+          "if": { "required": ["status"], "properties": { "status": { "const": "unavailable" } } },
+          "then": { "properties": { "probedAt": { "type": "string" } } }
+        },
+        {
+          "if": { "required": ["status"], "properties": { "status": { "const": "not-probed" } } },
+          "then": { "properties": { "probedAt": { "const": null }, "candidates": { "maxItems": 0 } } }
+        }
+      ]
+    },
+    "browserRuntimeCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "modulePath", "result", "evidence"],
+      "properties": {
+        "source": { "enum": ["profile", "host-provisioned", "artifact-root", "target", "workspace", "npm-global", "system-global", "npx-cache"] },
+        "modulePath": { "type": "string", "pattern": "^/" },
+        "result": { "enum": ["launched", "failed", "invalid", "not-attempted"] },
         "evidence": { "type": "string", "minLength": 1 }
       }
     }

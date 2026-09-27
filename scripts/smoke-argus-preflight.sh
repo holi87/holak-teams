@@ -24,6 +24,37 @@ fail() {
   exit 1
 }
 
+# Database coordinates are environment evidence for db-access; only the scenario that
+# asserts that detection exports one, so every other report stays host-independent.
+unset DATABASE_URL PGHOST MYSQL_HOST
+
+# browser-runtime.json must satisfy argus/browser-runtime@1, repeat the report's
+# browserRuntime verbatim, bind the engagement, and leave no probe scratch behind.
+validate_browser_runtime_record() {
+  local artifact_root="$1"
+  node --input-type=module - "$ROOT/argus/runtime/json-schema.mjs" "$ROOT/argus/schemas/browser-runtime.schema.json" "$artifact_root" <<'NODE'
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const [runtimePath, schemaPath, artifactRoot] = process.argv.slice(2);
+const { compileJsonSchema } = await import(pathToFileURL(runtimePath));
+const control = join(artifactRoot, 'ai_agents_internal');
+const recordPath = join(control, 'browser-runtime.json');
+if (!existsSync(recordPath)) throw new Error(`${artifactRoot}: browser-runtime.json was not persisted`);
+const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+const errors = compileJsonSchema(JSON.parse(readFileSync(schemaPath, 'utf8')))(record);
+if (errors.length > 0) throw new Error(`browser-runtime@1 schema rejected ${recordPath}: ${JSON.stringify(errors)}`);
+const report = JSON.parse(readFileSync(join(control, 'preflight.json'), 'utf8'));
+const engagement = JSON.parse(readFileSync(join(control, 'engagement.json'), 'utf8'));
+const { $schema, schemaVersion, engagementId, ...result } = record;
+if (engagementId !== engagement.engagementId) throw new Error(`${recordPath}: engagementId is not bound to the engagement manifest`);
+if (JSON.stringify(result) !== JSON.stringify(report.browserRuntime)) throw new Error(`${recordPath}: record differs from the preflight report browserRuntime`);
+const scratch = join(control, 'tmp');
+const leftovers = existsSync(scratch) ? readdirSync(scratch).filter((name) => name.startsWith('browser-probe-')) : [];
+if (leftovers.length > 0) throw new Error(`${artifactRoot}: browser probe scratch remained: ${leftovers.join(', ')}`);
+NODE
+}
+
 validate_report_schema() {
   local report="$1"
   "$CLI" schema validate --kind preflight-report --input "$report" >/dev/null
@@ -83,6 +114,8 @@ if (scenario !== 'insufficient') {
 if (scenario === 'full' || scenario === 'partial') {
   assert(report.summary.downgraded === 0, `${scenario}: no lane may be downgraded`);
   assert(report.agents.every((agent) => agent.stopsEngagement === false && agent.downgradedFrom === undefined), `${scenario}: no lane may stop the engagement`);
+  assert(report.browserRuntime.status === 'not-probed' && report.browserRuntime.evidence === 'profile features are authoritative'
+    && report.browserRuntime.candidates.length === 0, `${scenario}: an authoritative profile feature list must not probe the host browser runtime`);
 }
 if (scenario === 'full') {
   assert(report.summary.ready === 27 && report.summary.dispatchable === 26, 'full: 26 specialists must be dispatchable');
@@ -131,7 +164,15 @@ if (!report.target.reachable || report.status === 'blocked') throw new Error('au
 if (!report.checks.some((check) => check.id === 'artifact-paths-safe' && check.status === 'pass')) throw new Error('automatic artifact-path check failed');
 if (!report.checks.some((check) => check.id === 'engagement-manifest' && check.status === 'pass')) throw new Error('automatic engagement manifest check failed');
 if (!report.checks.some((check) => check.id === 'path-immutability-hook' && check.status === 'pass')) throw new Error('automatic immutability hook check failed');
+// Without a profile the host runtime is resolved for real; its outcome depends on the host,
+// but it must be probed, and the capability must follow the functional result.
+const runtime = report.browserRuntime;
+const capability = report.capabilities.find((item) => item.id === 'browser-runtime');
+if (!['available', 'unavailable'].includes(runtime.status) || typeof runtime.probedAt !== 'string') throw new Error(`automatic preflight did not resolve the browser runtime: ${runtime.status}`);
+if (capability.available !== (runtime.status === 'available')) throw new Error('automatic browser-runtime capability disagrees with the functional probe');
+if (runtime.candidates.filter((candidate) => candidate.result === 'launched' || candidate.result === 'failed').length > 3) throw new Error('automatic preflight probed more than three browser runtime candidates');
 NODE
+validate_browser_runtime_record "$target"
 initial_heartbeat_lines="$(wc -l <"$target/ai_agents_internal/heartbeat/odysseus.log")"
 "$CLI" preflight --target "$target" --mode B >/dev/null
 [ "$(wc -l <"$target/ai_agents_internal/heartbeat/odysseus.log")" -eq "$initial_heartbeat_lines" ] || \
@@ -270,9 +311,127 @@ for (const id of ['source-access', 'existing-suite', 'non-rest-surface', 'browse
   if (byId.get(id)?.available !== false) throw new Error(`denied preflight read target-derived capability ${id}`);
 }
 if (!String(report.target.evidence).startsWith('target probe skipped:')) throw new Error('denied target probe was not reported as skipped');
+if (report.browserRuntime.status !== 'not-probed' || !report.browserRuntime.evidence.startsWith('target probe skipped')
+  || report.browserRuntime.candidates.length !== 0) throw new Error('denied preflight resolved or probed a browser runtime');
 const boundary = report.checks.find((check) => check.id === 'authorization-target-boundary');
 if (report.status !== 'blocked' || boundary?.status !== 'fail') throw new Error('denied authorization boundary did not fail closed');
 NODE
+
+# The report inlines the browser-runtime@1 result shape; the two definitions must not drift.
+node - "$ROOT/argus/schemas/browser-runtime.schema.json" "$ROOT/argus/schemas/preflight-report.schema.json" <<'NODE'
+const fs = require('fs');
+const [recordPath, reportPath] = process.argv.slice(2);
+const record = JSON.parse(fs.readFileSync(recordPath, 'utf8'));
+const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+const meta = new Set(['$schema', 'schemaVersion', 'engagementId']);
+const inline = report.$defs.browserRuntime;
+const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+if (report.properties.browserRuntime?.$ref !== '#/$defs/browserRuntime' || !report.required.includes('browserRuntime')) throw new Error('preflight report does not require browserRuntime');
+if (!same(Object.fromEntries(Object.entries(record.properties).filter(([key]) => !meta.has(key))), inline.properties)
+  || !same(record.required.filter((key) => !meta.has(key)), inline.required)
+  || !same(record.allOf, inline.allOf)
+  || !same(record.$defs.browserRuntimeCandidate, report.$defs.browserRuntimeCandidate)) {
+  throw new Error('preflight-report browserRuntime drifted from argus/browser-runtime@1');
+}
+NODE
+
+# Browser runtime resolution against a URL target whose profile has no authoritative
+# feature list: fixture Playwright packages stand in for a working and a broken install.
+browser_profile="$WORK/browser-runtime-base-profile.json"
+jq 'del(.features) | .commands += ["make", "psql"]' "$FIXTURES/partial.json" >"$browser_profile"
+browser_runtime_preflight() {
+  local name="$1" filter="$2" root="$WORK/browser-runtime-$1"
+  mkdir -p "$root/ai_agents_internal"
+  cp "$AUTH_FIXTURES/full.json" "$root/ai_agents_internal/authorization.json"
+  jq --arg fixtures "$FIXTURES" "$filter" "$browser_profile" >"$WORK/browser-runtime-$name-profile.json"
+  "$CLI" preflight \
+    --target http://127.0.0.1:9/ \
+    --artifact-root "$root" \
+    --mode B \
+    --authorization "$root/ai_agents_internal/authorization.json" \
+    --profile "$WORK/browser-runtime-$name-profile.json" \
+    >/dev/null
+  validate_report_schema "$root/ai_agents_internal/preflight.json"
+  validate_browser_runtime_record "$root"
+}
+browser_runtime_preflight working '.browserRuntime = {modulePath: ($fixtures + "/fake-playwright")}'
+browser_runtime_preflight broken '.browserRuntime = {modulePath: ($fixtures + "/fake-playwright-broken")}'
+browser_runtime_preflight disabled '.browserRuntime = false'
+DATABASE_URL=postgres://fixture browser_runtime_preflight database '.browserRuntime = false'
+[ -z "${DATABASE_URL:-}" ] || fail 'database coordinates leaked beyond their single preflight run'
+node - "$WORK" "$FIXTURES" <<'NODE'
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const [work, fixtures] = process.argv.slice(2);
+const load = (name) => JSON.parse(fs.readFileSync(path.join(work, `browser-runtime-${name}`, 'ai_agents_internal', 'preflight.json'), 'utf8'));
+const assert = (condition, message) => { if (!condition) throw new Error(`browser runtime: ${message}`); };
+const lanes = (report) => new Map(report.agents.map((agent) => [agent.slug, agent]));
+const capability = (report, id) => report.capabilities.find((item) => item.id === id);
+const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
+
+const working = load('working');
+const module = fs.realpathSync(path.join(fixtures, 'fake-playwright'));
+const runtime = working.browserRuntime;
+assert(runtime.status === 'available' && runtime.source === 'profile' && runtime.modulePath === module, `working fixture was not resolved from the profile: ${runtime.status} ${runtime.evidence}`);
+assert(runtime.moduleVersion === '0.0.0-argus-fixture' && runtime.executablePath === '/argus-fixture/chromium/headless-shell', 'working fixture version or executable path was not recorded');
+assert(runtime.packageJsonSha256 === sha256(fs.readFileSync(path.join(module, 'package.json'))), 'packageJsonSha256 is not the digest of package.json bytes');
+assert(runtime.candidates.length === 1 && runtime.candidates[0].result === 'launched', 'an explicit profile module must be the only probed candidate');
+// Recompute moduleTreeSha256 exactly as ENGAGEMENT-POLICY.md documents it.
+const entries = [];
+for (const root of runtime.moduleTreeRoots) {
+  const pending = [root];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const name of fs.readdirSync(directory)) {
+      const entryPath = path.join(directory, name);
+      const stat = fs.lstatSync(entryPath);
+      const label = path.relative(path.dirname(runtime.modulePath), entryPath).split(path.sep).join('/');
+      if (stat.isSymbolicLink()) entries.push([label, 'symlink', fs.readlinkSync(entryPath)]);
+      else if (stat.isDirectory()) pending.push(entryPath);
+      else entries.push([label, 'file', sha256(fs.readFileSync(entryPath))]);
+    }
+  }
+}
+entries.sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0));
+const tree = crypto.createHash('sha256');
+for (const [label, kind, payload] of entries) tree.update(`${label}\0${kind}\0${payload}\n`);
+assert(runtime.moduleTreeRoots[0] === module && runtime.moduleTreeSha256 === tree.digest('hex'), 'moduleTreeSha256 does not follow the documented algorithm');
+const workingCapability = capability(working, 'browser-runtime');
+assert(workingCapability.available && workingCapability.evidence.includes('from profile') && workingCapability.evidence.includes('0.0.0-argus-fixture')
+  && workingCapability.evidence.includes('/argus-fixture/chromium/headless-shell'), 'browser-runtime evidence must name the source, version, and executable');
+for (const slug of ['orion', 'lynceus', 'antigone']) {
+  assert(lanes(working).get(slug).status === 'ready', `${slug} must be ready once the runtime launches (got ${lanes(working).get(slug).status})`);
+}
+
+const broken = load('broken');
+assert(broken.browserRuntime.status === 'unavailable' && broken.browserRuntime.modulePath === null, 'broken fixture was reported available');
+assert(broken.browserRuntime.candidates[0]?.result === 'failed' && broken.browserRuntime.candidates[0].evidence.includes('fixture: browser executable missing'),
+  'broken fixture launch failure was not recorded as candidate evidence');
+assert(!capability(broken, 'browser-runtime').available && capability(broken, 'browser-runtime').evidence.includes('fixture: browser executable missing'),
+  'broken fixture capability does not carry the first failure');
+assert(lanes(broken).get('orion').status !== 'ready' && !lanes(broken).get('orion').dispatchAllowed, 'orion must not be dispatchable without a functional browser runtime');
+
+const disabled = load('disabled');
+assert(disabled.browserRuntime.status === 'not-probed' && disabled.browserRuntime.evidence === 'profile disabled browser runtime resolution'
+  && disabled.browserRuntime.probedAt === null, 'browserRuntime=false must skip resolution');
+assert(!capability(disabled, 'db-access').available && lanes(disabled).get('charon').status === 'skipped', 'db-access must stay unavailable without database coordinates');
+
+const database = load('database');
+assert(capability(database, 'db-access').available, 'DATABASE_URL did not make db-access available for a URL target');
+assert(lanes(database).get('charon').status === 'ready', `charon must be ready with database coordinates (got ${lanes(database).get('charon').status})`);
+assert(!JSON.stringify(database).includes('postgres://fixture'), 'database coordinates leaked into the preflight report');
+NODE
+
+invalid_browser_root="$WORK/browser-runtime-invalid"
+mkdir -p "$invalid_browser_root"
+jq '.browserRuntime = {modulePath: "relative/playwright"}' "$browser_profile" >"$WORK/browser-runtime-invalid-profile.json"
+if "$CLI" preflight --target http://127.0.0.1:9/ --artifact-root "$invalid_browser_root" --mode B \
+  --profile "$WORK/browser-runtime-invalid-profile.json" >/dev/null 2>"$WORK/browser-runtime-invalid.stderr"; then
+  fail 'preflight accepted a relative browserRuntime.modulePath'
+fi
+grep -Fq 'preflight profile browserRuntime must be false or' "$WORK/browser-runtime-invalid.stderr" || \
+  fail 'invalid browserRuntime profile was not rejected with its contract'
 
 for scenario in full partial; do
   target="$WORK/$scenario-target"

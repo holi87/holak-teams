@@ -207,6 +207,42 @@ in every decision file, and an `## Attestation: UNATTESTED` section rendered int
 `solution/FINAL-SUMMARY.md`. Carry that residual risk verbatim into every report; never
 present an unattested run as attested.
 
+## Browser runtime record
+
+`ai_agents_internal/browser-runtime.json` (`argus/browser-runtime@1`) names the Playwright
+runtime that browser lanes may use. Writers: preflight and controller gate resolution; each
+run replaces the whole record atomically, and only when the artifact root is writable and
+the engagement is usable. Readers: the managed hunt driver and browser lanes. No lane edits it.
+The preflight report carries the same result as `browserRuntime`.
+
+Preflight never installs a runtime. Once the audited target probe is allowed, it inspects
+candidates read-only, deduplicated by physical path, in this order: the profile's
+`browserRuntime.modulePath` (probed alone when set); host-provisioned
+`~/.cache/argus/browser-runtime/<x.y.z>/node_modules/playwright`, newest first
+(`argus-launch --provision-browser` installs there, outside the artifact root, so the
+sandbox can read but not modify it); `<artifact-root>/node_modules/playwright`;
+`<target>/node_modules/playwright` for path targets; `<cwd>/node_modules/playwright`;
+`$(npm root -g)/playwright`; the Homebrew and system global `node_modules`; and the five
+newest `~/.npm/_npx/*` caches. A valid candidate is a directory whose `package.json` names
+`playwright` and that has an `index.mjs`. Up to three valid candidates are proven by a real
+headless Chromium launch (45 s each, environment limited to `HOME`, `PATH`, and `TMPDIR`,
+throwaway profile under `ai_agents_internal/tmp/browser-probe-*` that is always removed);
+the first launch wins. `status` is `available`, `unavailable` (evidence names the first
+failure), or `not-probed` (the target probe was skipped, the profile set
+`browserRuntime: false`, or a profile `features` list is authoritative). Without an
+operator-declared feature, only `available` makes the `browser-runtime` capability available.
+
+An `available` record binds the winner with `packageJsonSha256` and `moduleTreeSha256`. The
+tree digest covers every directory in `moduleTreeRoots`: the package plus each runtime
+dependency found by Node's `node_modules` lookup outside an already covered root. Entries
+are labelled by their path relative to the directory that holds `modulePath` with `/`
+separators, sorted by code unit, and hashed in order as `label NUL kind NUL payload LF`,
+where `file` entries carry the SHA-256 hex of their bytes and `symlink` entries their link
+text (links are never followed). Directories contribute only through their entries. A
+consumer recomputes the digest immediately before importing the module and refuses on any
+mismatch. A candidate inside the artifact root is only as trustworthy as that root was when
+it was probed, because the root becomes worker-writable once lanes run.
+
 ## Isolated resources and leases
 
 Before allocation, the controller persists a normal attempt-1 selected model decision for

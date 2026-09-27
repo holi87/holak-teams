@@ -18,6 +18,7 @@ import {
   readSync,
   readFileSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
   renameSync,
   rmdirSync,
@@ -115,6 +116,7 @@ const NATIVE_LAUNCH_RECEIPT_SCHEMA_PATH = join(ROOT, 'schemas', 'native-launch-r
 const MODEL_TRUST_STORE_SCHEMA_PATH = join(ROOT, 'schemas', 'model-trust-store.schema.json');
 const MODEL_TELEMETRY_SCHEMA_PATH = join(ROOT, 'schemas', 'model-telemetry-event.schema.json');
 const PREFLIGHT_REPORT_SCHEMA_PATH = join(ROOT, 'schemas', 'preflight-report.schema.json');
+const BROWSER_RUNTIME_SCHEMA_PATH = join(ROOT, 'schemas', 'browser-runtime.schema.json');
 const ORCHESTRATION_PLAN_PATH = join(ROOT, 'capabilities', 'orchestration-plan.json');
 const TEMPLATE_CONTRACT_PATH = join(ROOT, 'capabilities', 'template-contract.json');
 const AUTHORIZATION_TEMPLATE_PATH = join(ROOT, 'policies', 'authorization.template.json');
@@ -144,6 +146,7 @@ const validateModelTrustStoreSchema = compileJsonSchema(readJson(MODEL_TRUST_STO
 const validateModelTelemetrySchema = compileJsonSchema(readJson(MODEL_TELEMETRY_SCHEMA_PATH));
 const preflightReportSchema = readJson(PREFLIGHT_REPORT_SCHEMA_PATH);
 const validatePreflightReportSchema = compileJsonSchema(preflightReportSchema);
+const validateBrowserRuntimeSchema = compileJsonSchema(readJson(BROWSER_RUNTIME_SCHEMA_PATH));
 const orchestrationPlan = readJson(ORCHESTRATION_PLAN_PATH);
 const orchestrationPlanErrors = validateOrchestrationPlan(orchestrationPlan, matrix, raciContract);
 if (orchestrationPlanErrors.length) fail(`orchestration plan invalid: ${orchestrationPlanErrors.join('; ')}`);
@@ -2981,6 +2984,7 @@ async function preflight(argv) {
     fail(error.message);
   }
   const profile = options.profile ? readJson(resolve(options.profile)) : {};
+  assertBrowserRuntimeProfile(profile);
   const mode = options.mode ?? 'A';
   const modelRuntime = options.modelRuntime ?? 'claude';
   if (!['A', 'B', 'C', 'D'].includes(mode)) fail('preflight --mode must be A, B, C, or D');
@@ -3225,12 +3229,21 @@ async function preflight(argv) {
       : 'authorization or engagement controls are unavailable');
     target.evidence = `target probe skipped: ${reason}`;
   }
+  const browserRuntime = recordBrowserRuntime({
+    artifactRootPath,
+    persist: Boolean(artifactWritable && engagementUsable),
+    engagementId: engagementUsable ? engagement.engagementId : null,
+    probedAt: probeTimestamp,
+    result: resolveBrowserRuntime({ targetPath, artifactRootPath, profile, probeAllowed, probedAt: probeTimestamp }),
+  });
 
   const availableTools = new Set(profile.availableTools ?? matrix.supportedBuiltinTools);
   const commandAvailability = detectCommands(inventory, profile);
   const mcpServers = profile.mcpServers ?? detectMcpServers();
   const detectedFeatures = new Set([
-    ...(Array.isArray(profile.features) ? profile.features : (probeAllowed ? detectTargetFeatures(targetPath) : [])),
+    ...(Array.isArray(profile.features)
+      ? profile.features
+      : (probeAllowed ? [...detectTargetFeatures(targetPath), ...detectEnvironmentFeatures()] : [])),
     ...options.features,
   ]);
 
@@ -3243,11 +3256,13 @@ async function preflight(argv) {
       available = Boolean(match);
       evidence = match ? `connected MCP server: ${match}` : `no connected MCP server matched ${definition.serverPatterns.join(', ')}`;
     }
-    if (id === 'browser-runtime' && !available && probeAllowed) {
-      available = hasBrowserRuntime(targetPath);
-      evidence = available
-        ? 'target has an installed Playwright runtime and packaged isolated driver is available'
-        : 'no installed Playwright runtime detected at target root';
+    if (id === 'browser-runtime') {
+      if (browserRuntime.status === 'available') {
+        available = true;
+        evidence = `functional Playwright runtime: ${browserRuntime.evidence}`;
+      } else if (!available) {
+        evidence = `no functional Playwright runtime (${browserRuntime.status}): ${browserRuntime.evidence}`;
+      }
     }
     capabilityState[id] = { available, evidence };
   }
@@ -3400,6 +3415,7 @@ async function preflight(argv) {
     authorization: authorizationSummary,
     engagement: engagementSummary,
     orchestration,
+    browserRuntime,
     checks,
     capabilities: Object.entries(capabilityState).map(([id, state]) => ({ id, ...state })),
     agents,
@@ -3688,13 +3704,411 @@ function detectTargetFeatures(targetPath) {
   if (manifests.some((path) => /graphql|grpc|websocket|socket\.io|kafka|rabbitmq|nats/i.test(readFileSync(join(targetPath, path), 'utf8')))) {
     features.push('non-rest-surface');
   }
-  if (process.env.DATABASE_URL || process.env.PGHOST || process.env.MYSQL_HOST) features.push('db-access');
   return features;
 }
 
-function hasBrowserRuntime(targetPath) {
-  if (!targetPath || !existsSync(targetPath)) return false;
-  return existsSync(join(targetPath, 'node_modules', 'playwright')) || existsSync(join(targetPath, 'node_modules', '@playwright', 'test'));
+// Database coordinates exported to preflight are evidence for db-access for URL and path
+// targets alike. Only the variable names are consulted; values never enter the report.
+function detectEnvironmentFeatures() {
+  return process.env.DATABASE_URL || process.env.PGHOST || process.env.MYSQL_HOST ? ['db-access'] : [];
+}
+
+// Browser runtime resolution never installs anything. It inspects candidate Playwright
+// packages read-only, then proves at most three of them by launching headless Chromium from
+// a throwaway profile under the artifact root's private tmp directory. The winner is bound
+// by a digest over its whole module tree so a later consumer can detect any change.
+// The policy is a hoisted function because preflight runs before later top-level
+// constants in this file are initialized.
+function browserRuntimePolicy() {
+  return {
+    probeTimeoutMs: 45000,
+    maxProbes: 3,
+    cacheCandidateLimit: 5,
+    evidenceLimit: 600,
+    treeRootLimit: 16,
+    treeEntryLimit: 20000,
+    systemRoots: ['/opt/homebrew/lib/node_modules', '/usr/local/lib/node_modules', '/usr/lib/node_modules'],
+  };
+}
+
+// Runs as an ES module through `node -e`, so its arguments start at argv[1]. The watchdog
+// fires before the parent's 45 s kill so a hung launch still reports a readable reason; a
+// close that Chromium ignores is bounded, and Playwright's exit handler kills the browser.
+function browserRuntimeProbeScript() {
+  return String.raw`import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+const [moduleDir, profileDir] = process.argv.slice(1);
+const watchdog = setTimeout(() => {
+  process.stderr.write("browser runtime probe watchdog expired after 40 s\n");
+  process.exit(1);
+}, 40000);
+let context;
+let executablePath = null;
+try {
+  const { chromium } = await import(pathToFileURL(join(moduleDir, "index.mjs")).href);
+  context = await chromium.launchPersistentContext(profileDir, { headless: true });
+  const page = context.pages()[0] ?? await context.newPage();
+  await page.setContent("<p>argus</p>");
+  executablePath = String(chromium.executablePath());
+} catch (error) {
+  process.stderr.write(String(error?.message ?? error) + "\n");
+  process.exitCode = 1;
+}
+if (context) await Promise.race([context.close().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 5000))]);
+clearTimeout(watchdog);
+if (!process.exitCode) process.stdout.write(JSON.stringify({ ok: true, executablePath }) + "\n");
+process.exit(process.exitCode ?? 0);`;
+}
+
+function assertBrowserRuntimeProfile(profile) {
+  const value = profile.browserRuntime;
+  if (value === undefined || value === false) return;
+  if (!plainObject(value) || Object.keys(value).some((key) => key !== 'modulePath') ||
+      typeof value.modulePath !== 'string' || !value.modulePath.startsWith('/')) {
+    fail('preflight profile browserRuntime must be false or {"modulePath": "<absolute Playwright package directory>"}');
+  }
+}
+
+function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, probeAllowed, probedAt = new Date().toISOString() }) {
+  if (!probeAllowed) return browserRuntimeResult('not-probed', 'target probe skipped: browser runtime resolution needs an allowed, audited target probe');
+  if (profile.browserRuntime === false) return browserRuntimeResult('not-probed', 'profile disabled browser runtime resolution');
+  if (profile.browserRuntime === undefined && Array.isArray(profile.features)) {
+    return browserRuntimeResult('not-probed', 'profile features are authoritative');
+  }
+  const { maxProbes } = browserRuntimePolicy();
+  const candidates = [];
+  const inspected = new Set();
+  let scratchRoot = null;
+  let scratchError = null;
+  let attempts = 0;
+  let winner = null;
+  let firstFailure = null;
+  for (const location of browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profile })) {
+    const candidate = inspectBrowserRuntimeCandidate(location);
+    if (!candidate || inspected.has(candidate.modulePath)) continue;
+    inspected.add(candidate.modulePath);
+    const record = { source: candidate.source, modulePath: candidate.modulePath };
+    if (candidate.invalid) {
+      candidates.push({ ...record, result: 'invalid', evidence: limitBrowserRuntimeEvidence(candidate.invalid) });
+      continue;
+    }
+    if (!winner && attempts < maxProbes && scratchRoot === null && scratchError === null) {
+      try { scratchRoot = ensureBrowserProbeScratch(artifactRootPath); }
+      catch (error) { scratchError = error.message; }
+    }
+    if (winner || attempts >= maxProbes || scratchRoot === null) {
+      const reason = winner
+        ? `${winner.source} launched first`
+        : attempts >= maxProbes
+          ? `the ${maxProbes}-probe limit was reached`
+          : `the probe scratch directory is unavailable: ${scratchError}`;
+      candidates.push({ ...record, result: 'not-attempted', evidence: limitBrowserRuntimeEvidence(`not attempted: ${reason}`) });
+      continue;
+    }
+    attempts += 1;
+    const probe = probeBrowserRuntime(candidate.modulePath, scratchRoot);
+    let failure = probe.launched ? null : probe.evidence;
+    let tree = null;
+    if (!failure) {
+      try { tree = digestBrowserRuntimeTree(candidate.modulePath); }
+      catch (error) { failure = `launched, but the module tree cannot be bound: ${error.message}`; }
+    }
+    if (failure) {
+      candidates.push({ ...record, result: 'failed', evidence: limitBrowserRuntimeEvidence(failure) });
+      firstFailure ??= `${candidate.source} ${candidate.modulePath}: ${failure}`;
+      continue;
+    }
+    candidates.push({ ...record, result: 'launched', evidence: limitBrowserRuntimeEvidence(`launched headless Chromium: ${probe.executablePath}`) });
+    winner = { ...candidate, executablePath: probe.executablePath, tree };
+  }
+  if (winner) {
+    return {
+      status: 'available',
+      source: winner.source,
+      modulePath: winner.modulePath,
+      moduleVersion: winner.moduleVersion,
+      packageJsonSha256: winner.packageJsonSha256,
+      moduleTreeSha256: winner.tree.sha256,
+      moduleTreeRoots: winner.tree.roots,
+      executablePath: winner.executablePath,
+      probedAt,
+      evidence: limitBrowserRuntimeEvidence(
+        `Playwright ${winner.moduleVersion} from ${winner.source} (${winner.modulePath}) launched headless Chromium (${winner.executablePath})`,
+      ),
+      candidates,
+    };
+  }
+  const evidence = firstFailure
+    ?? (scratchError ? `the probe scratch directory is unavailable: ${scratchError}` : null)
+    ?? (candidates.length > 0
+      ? `no valid Playwright package among ${candidates.length} inspected candidate location(s)`
+      : 'no Playwright package found in any candidate location');
+  return { ...browserRuntimeResult('unavailable', evidence), probedAt, candidates };
+}
+
+function browserRuntimeResult(status, evidence) {
+  return {
+    status,
+    source: null,
+    modulePath: null,
+    moduleVersion: null,
+    packageJsonSha256: null,
+    moduleTreeSha256: null,
+    moduleTreeRoots: [],
+    executablePath: null,
+    probedAt: null,
+    evidence: limitBrowserRuntimeEvidence(evidence),
+    candidates: [],
+  };
+}
+
+function limitBrowserRuntimeEvidence(text) {
+  const { evidenceLimit } = browserRuntimePolicy();
+  const value = String(text);
+  return value.length > evidenceLimit ? `${value.slice(0, evidenceLimit - 3)}...` : value;
+}
+
+// Candidate order is part of the contract: an explicit profile module is probed alone;
+// otherwise host-provisioned runtimes (argus-launch --provision-browser installs them
+// outside the artifact root) come first and user-wide installs last.
+function browserRuntimeCandidateLocations({ targetPath, artifactRootPath, profile }) {
+  if (plainObject(profile.browserRuntime)) {
+    return [{ source: 'profile', path: resolve(profile.browserRuntime.modulePath), explicit: true }];
+  }
+  const { cacheCandidateLimit, systemRoots } = browserRuntimePolicy();
+  const home = process.env.HOME || userInfo().homedir;
+  const locations = [];
+  const provisionedRoot = join(home, '.cache', 'argus', 'browser-runtime');
+  for (const version of listDirectorySafe(provisionedRoot)
+    .filter((name) => /^\d+\.\d+\.\d+$/.test(name))
+    .sort((left, right) => compareVersionsDescending(left, right))
+    .slice(0, cacheCandidateLimit)) {
+    locations.push({ source: 'host-provisioned', path: join(provisionedRoot, version, 'node_modules', 'playwright') });
+  }
+  locations.push({ source: 'artifact-root', path: join(artifactRootPath, 'node_modules', 'playwright') });
+  if (targetPath) locations.push({ source: 'target', path: join(targetPath, 'node_modules', 'playwright') });
+  locations.push({ source: 'workspace', path: join(process.cwd(), 'node_modules', 'playwright') });
+  const npmRoot = npmGlobalRoot();
+  if (npmRoot) locations.push({ source: 'npm-global', path: join(npmRoot, 'playwright') });
+  for (const root of systemRoots) locations.push({ source: 'system-global', path: join(root, 'playwright') });
+  const npxRoot = join(home, '.npm', '_npx');
+  locations.push(...listDirectorySafe(npxRoot)
+    .map((name) => join(npxRoot, name, 'node_modules', 'playwright'))
+    .map((path) => ({ path, modified: statSafe(path)?.mtimeMs }))
+    .filter((entry) => entry.modified !== undefined)
+    .sort((left, right) => right.modified - left.modified || (left.path < right.path ? -1 : 1))
+    .slice(0, cacheCandidateLimit)
+    .map((entry) => ({ source: 'npx-cache', path: entry.path })));
+  return locations;
+}
+
+function listDirectorySafe(path) {
+  try { return statSafe(path)?.isDirectory() ? readdirSync(path) : []; }
+  catch { return []; }
+}
+
+function compareVersionsDescending(left, right) {
+  const leftParts = left.split('.').map(Number);
+  const rightParts = right.split('.').map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    if (leftParts[index] !== rightParts[index]) return rightParts[index] - leftParts[index];
+  }
+  return 0;
+}
+
+function browserRuntimeChildEnvironment(extra = {}) {
+  const environment = { PATH: process.env.PATH || '/usr/bin:/bin' };
+  if (process.env.HOME) environment.HOME = process.env.HOME;
+  return { ...environment, ...extra };
+}
+
+function npmGlobalRoot() {
+  try {
+    const output = execFileSync('npm', ['root', '-g'], {
+      encoding: 'utf8',
+      timeout: 10000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: browserRuntimeChildEnvironment({ npm_config_update_notifier: 'false' }),
+    }).trim();
+    return output.startsWith('/') && !output.includes('\n') ? output : null;
+  } catch {
+    return null;
+  }
+}
+
+// A location that does not exist is skipped unless the profile named it explicitly. Anything
+// that exists but is not a Playwright package with an ESM entry point is recorded as invalid.
+function inspectBrowserRuntimeCandidate({ source, path, explicit = false }) {
+  if (!lstatSafe(path)) return explicit ? { source, modulePath: path, invalid: 'module directory does not exist' } : null;
+  let modulePath;
+  try { modulePath = realpathSync(path); }
+  catch (error) { return { source, modulePath: path, invalid: `module path cannot be resolved: ${error.message}` }; }
+  if (!statSafe(modulePath)?.isDirectory()) return { source, modulePath, invalid: 'module path is not a directory' };
+  let manifestBytes;
+  let manifest;
+  try {
+    manifestBytes = readFileSync(join(modulePath, 'package.json'));
+    manifest = JSON.parse(manifestBytes.toString('utf8'));
+  } catch {
+    return { source, modulePath, invalid: 'package.json is missing, unreadable, or not JSON' };
+  }
+  if (!plainObject(manifest) || manifest.name !== 'playwright') {
+    return { source, modulePath, invalid: limitBrowserRuntimeEvidence(`package.json names ${JSON.stringify(plainObject(manifest) ? manifest.name ?? null : null)}, not playwright`) };
+  }
+  if (!statSafe(join(modulePath, 'index.mjs'))?.isFile()) return { source, modulePath, invalid: 'index.mjs entry point is missing' };
+  return {
+    source,
+    modulePath,
+    moduleVersion: nonEmptyString(manifest.version) ? manifest.version : 'unknown',
+    packageJsonSha256: createHash('sha256').update(manifestBytes).digest('hex'),
+  };
+}
+
+function ensureBrowserProbeScratch(artifactRootPath) {
+  const scratch = join(artifactRootPath, 'ai_agents_internal', 'tmp');
+  if (!safePhysicalPath(artifactRootPath, scratch)) throw new Error('ai_agents_internal/tmp escapes the physical artifact root or crosses a symbolic link');
+  mkdirSync(scratch, { recursive: true, mode: 0o700 });
+  if (lstatSync(scratch).isSymbolicLink() || !statSafe(scratch)?.isDirectory()) throw new Error('ai_agents_internal/tmp is not a real directory');
+  return scratch;
+}
+
+// Chromium's profile and Playwright's temporary artifacts both live under the artifact root's
+// private tmp directory; each probe gets its own pair so a crashed launch leaves nothing behind.
+function probeBrowserRuntime(modulePath, scratchRoot) {
+  const { probeTimeoutMs } = browserRuntimePolicy();
+  const profileDir = join(scratchRoot, `browser-probe-${randomBytes(8).toString('hex')}`);
+  const temporaryDir = `${profileDir}-tmp`;
+  try {
+    mkdirSync(temporaryDir, { mode: 0o700 });
+    const stdout = execFileSync(process.execPath, ['--input-type=module', '-e', browserRuntimeProbeScript(), modulePath, profileDir], {
+      encoding: 'utf8',
+      timeout: probeTimeoutMs,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 1024 * 1024,
+      env: browserRuntimeChildEnvironment({ TMPDIR: temporaryDir }),
+    });
+    const line = stdout.split('\n').map((item) => item.trim()).filter((item) => item.startsWith('{')).at(-1);
+    let confirmation = null;
+    try { confirmation = line ? JSON.parse(line) : null; }
+    catch { confirmation = null; }
+    if (confirmation?.ok !== true || !nonEmptyString(confirmation.executablePath)) {
+      return { launched: false, evidence: 'probe exited without a launch confirmation' };
+    }
+    return { launched: true, executablePath: confirmation.executablePath };
+  } catch (error) {
+    return { launched: false, evidence: browserProbeFailure(error) };
+  } finally {
+    rmSync(profileDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    rmSync(temporaryDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+}
+
+// Evidence keeps Playwright's headline plus the first fatal browser line (a crash signal or a
+// Chromium FATAL/Check failure), never the full launch command line.
+function browserProbeFailure(error) {
+  if (error?.code === 'ETIMEDOUT') return `probe was killed after ${browserRuntimePolicy().probeTimeoutMs / 1000} s`;
+  const lines = String(error?.stderr ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /[A-Za-z0-9]/.test(line));
+  const cause = lines.slice(1).find((line) => /Received signal|FATAL|Check failed/i.test(line));
+  const parts = [lines[0], cause?.replace(/^(?:-\s*)?\[pid=\d+\]\[err\]\s*/, '')].filter(Boolean);
+  if (parts.length > 0) return `launch failed: ${parts.join('; ')}`;
+  return error?.status != null ? `probe exited with status ${error.status}` : `probe could not run: ${error?.message ?? error}`;
+}
+
+// moduleTreeSha256 binds the package and every runtime dependency it resolves (Node's
+// node_modules lookup from each package directory) that lies outside an already covered
+// root. Entries are labelled by their path relative to the directory holding modulePath
+// with "/" separators, sorted by code unit, and hashed as
+// `${label}\0${kind}\0${kind === 'file' ? sha256(bytes) : linkTarget}\n`; symbolic links
+// are recorded, never followed, and directories contribute only through their entries.
+function digestBrowserRuntimeTree(modulePath) {
+  const { treeRootLimit, treeEntryLimit } = browserRuntimePolicy();
+  const roots = [modulePath];
+  const scanned = new Set();
+  const queue = [modulePath];
+  while (queue.length > 0) {
+    const packageRoot = queue.shift();
+    if (scanned.has(packageRoot)) continue;
+    scanned.add(packageRoot);
+    let manifest;
+    try { manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')); }
+    catch { manifest = null; }
+    const names = Object.keys({
+      ...(plainObject(manifest?.dependencies) ? manifest.dependencies : {}),
+      ...(plainObject(manifest?.optionalDependencies) ? manifest.optionalDependencies : {}),
+    }).sort();
+    for (const name of names) {
+      const dependency = resolveNodePackageDirectory(packageRoot, name);
+      if (!dependency) continue;
+      if (!roots.some((root) => isWithin(root, dependency))) roots.push(dependency);
+      if (roots.length > treeRootLimit) throw new Error(`module tree spans more than ${treeRootLimit} package roots`);
+      queue.push(dependency);
+    }
+  }
+  const base = dirname(modulePath);
+  const entries = [];
+  for (const root of roots) {
+    const pending = [root];
+    while (pending.length > 0) {
+      const directory = pending.pop();
+      for (const name of readdirSync(directory)) {
+        const path = join(directory, name);
+        const entry = lstatSync(path);
+        const label = relative(base, path).split(sep).join('/');
+        if (entry.isSymbolicLink()) entries.push([label, 'symlink', readlinkSync(path)]);
+        else if (entry.isDirectory()) pending.push(path);
+        else if (entry.isFile()) entries.push([label, 'file', sha256File(path)]);
+        else throw new Error(`module tree holds an unsupported filesystem entry: ${label}`);
+        if (entries.length > treeEntryLimit) throw new Error(`module tree holds more than ${treeEntryLimit} entries`);
+      }
+    }
+  }
+  entries.sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0));
+  const digest = createHash('sha256');
+  for (const [label, kind, payload] of entries) digest.update(`${label}\0${kind}\0${payload}\n`);
+  return { sha256: digest.digest('hex'), roots };
+}
+
+function resolveNodePackageDirectory(fromDirectory, name) {
+  let cursor = fromDirectory;
+  for (;;) {
+    if (basename(cursor) !== 'node_modules') {
+      const candidate = join(cursor, 'node_modules', name);
+      if (statSafe(join(candidate, 'package.json'))?.isFile()) {
+        try { return realpathSync(candidate); }
+        catch { return null; }
+      }
+    }
+    const parent = dirname(cursor);
+    if (parent === cursor) return null;
+    cursor = parent;
+  }
+}
+
+// browser-runtime.json is written only when the artifact root is writable and the engagement
+// is usable; otherwise the result is returned unchanged (preflight then fails its mandatory
+// artifact-root or engagement checks and nothing is dispatched). When persistence is due but
+// the write fails, consumers could not verify the record, so the runtime is reported
+// unavailable instead of silently trusted.
+function recordBrowserRuntime({ artifactRootPath, persist, engagementId, probedAt = new Date().toISOString(), result }) {
+  if (!persist) return result;
+  try {
+    const path = join(artifactRootPath, 'ai_agents_internal', 'browser-runtime.json');
+    if (!safePhysicalPath(artifactRootPath, path)) throw new Error('ai_agents_internal/browser-runtime.json escapes the physical artifact root or crosses a symbolic link');
+    const record = { $schema: 'argus/browser-runtime@1', schemaVersion: 1, engagementId, ...result };
+    const errors = validateBrowserRuntimeSchema(record);
+    if (errors.length > 0) throw new Error(`record violates argus/browser-runtime@1: ${formatSchemaErrors(errors)}`);
+    atomicPrivateWrite(path, `${JSON.stringify(record, null, 2)}\n`);
+    return result;
+  } catch (error) {
+    return {
+      ...browserRuntimeResult('unavailable', `browser runtime record could not be persisted: ${error.message}`),
+      probedAt: result.probedAt ?? probedAt,
+      candidates: result.candidates,
+    };
+  }
 }
 
 function isWritableDirectory(path) {
