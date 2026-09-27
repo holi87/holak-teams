@@ -182,8 +182,8 @@
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
-      "bytes": 23091,
-      "sha256": "e1765de52b33ceba74db702ee2d406dce4676a4d5a3b16be7e8932ad1a9fdfb4"
+      "bytes": 23527,
+      "sha256": "421b37c36c293b7f11f6b2c7308e3d5c16a1b91bd2e01a905d0ce58a8cacb052"
     },
     {
       "id": "technique-catalogs-bundle",
@@ -191,8 +191,8 @@
       "source": "argus/technique-catalogs.bundle.b64",
       "destination": "capabilities/technique-catalogs.bundle.b64",
       "files": 1,
-      "bytes": 16349,
-      "sha256": "cd60fe68db77a81f83335666922496894e66bd09c95412106189bac95253cfac"
+      "bytes": 25589,
+      "sha256": "035677c6971b0a9cc81ca581c3c668defa2b4e54a46bee7fd9ba26e4b4389d31"
     },
     {
       "id": "orchestration-plan",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 55968,
-    "sha256": "5d32f9b5f3835fd6b56681fedfc79424314554c36cad8fa2213e3b438bb5d458"
+    "bytes": 56248,
+    "sha256": "8cb56bce9215700e6087e7982b2b8713a25218caa26f077292c5dba4d459034f"
   }
 }

@@ -448,6 +448,12 @@
       ]
     },
     {
+      "value": "solution/antigone-ledger.json",
+      "consumers": [
+        "antigone"
+      ]
+    },
+    {
       "value": "solution/ARCHITECTURE.md",
       "consumers": [
         "atlas",
@@ -2004,6 +2010,12 @@
       "assetId": "technique-catalogs-bundle",
       "destination": "capabilities/technique-catalogs.bundle.b64",
       "consumers": [
+        {
+          "consumer": "antigone",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "antigone"
+        },
         {
           "consumer": "ariadne",
           "kind": "agent",

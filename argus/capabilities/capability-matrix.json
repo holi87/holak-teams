@@ -83,6 +83,17 @@
       "selectionInput": "argus/surface-inventory@1",
       "fallback": "full-catalog"
     },
+    "antigone": {
+      "catalogId": "argus/technique-catalog/antigone@1",
+      "catalogType": "hunter",
+      "idPrefix": "ANG",
+      "entryCount": 23,
+      "sha256": "7444ebe61ef432015f28690d14243fef87f916e4ee6d4b53e780aad90073bd82",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    },
     "proteus": {
       "catalogId": "argus/technique-catalog/proteus@1",
       "catalogType": "hunter",
@@ -242,7 +253,9 @@
         "qa-core",
         "qa-browser"
       ],
-      "techniqueCatalogs": [],
+      "techniqueCatalogs": [
+        "antigone"
+      ],
       "requiredTools": [
         "Read",
         "Grep",

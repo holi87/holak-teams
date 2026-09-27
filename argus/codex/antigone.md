@@ -3,15 +3,15 @@ schema: argus/codex-provenance@1
 slug: antigone
 display_name: Antigone
 runtime_config: argus/codex/antigone.toml
-runtime_config_sha256: 2cbffb3f3e373f3617fe17f2de1042c82f178b141fcebe17487fb23e6695c996
-developer_instructions_sha256: 3b422b8a082f283792bcb521e924c711a1cd90b640f3a88c987eb37f12005943
+runtime_config_sha256: 5a035b7aed58b8b034eb89125757c15e20ee96645d6e5c5e1272eed9ba1e223c
+developer_instructions_sha256: 49c254159c23b79bf1e6cd1ccde730bec89db002b632d8bc6f113c4dcabe5091
 canonical_source: argus/roles/antigone.md
-canonical_source_sha256: 1b41722b9b291f5d35d2023b818ba9766faec7c8d71c6dc50e4fec5b2553ecda
+canonical_source_sha256: db76d59dcd65e5f81fc5733d9f8e65a8644892718f83d557d0f35c6053b4191b
 model: sol
 model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 doctrine_profiles: ["qa-core","qa-browser"]
-technique_catalogs: []
+technique_catalogs: ["antigone"]
 generated_by: scripts/sync-argus-role-variants.mjs
 runtime_consumed: false
 ---
