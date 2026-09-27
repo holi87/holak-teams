@@ -164,6 +164,20 @@
             "root": { "type": ["string", "null"], "pattern": "^(?:\\.|[^/\\u0000]+(?:/[^/\\u0000]+){0,3})$" },
             "candidates": { "$ref": "#/$defs/count" }
           }
+        },
+        "laneOutcomes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "errors", "document"],
+          "properties": {
+            "state": { "enum": ["present", "missing", "invalid"] },
+            "errors": { "$ref": "#/$defs/strings" },
+            "document": { "type": ["object", "null"] }
+          },
+          "allOf": [
+            { "if": { "properties": { "state": { "const": "present" } } }, "then": { "properties": { "document": { "type": "object" } } } },
+            { "if": { "properties": { "state": { "enum": ["missing", "invalid"] } } }, "then": { "properties": { "document": { "type": "null" } } } }
+          ]
         }
       }
     },

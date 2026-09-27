@@ -8,6 +8,8 @@ import { isDeepStrictEqual } from 'node:util';
 
 export const CRITICAL_SEVERITIES = Object.freeze(['Critical', 'Blocker']);
 const OUTCOMES = Object.freeze(['real', 'false-positive', 'duplicate']);
+const LANE_FINDING_COUNTS = Object.freeze(['reported', 'real', 'falsePositive', 'duplicate', 'seedsDetected']);
+const LANE_OUTCOME_COSTS = Object.freeze(['turnLimit', 'totalTokens']);
 
 const total = values => values.reduce((sum, value) => sum + value, 0);
 const ratio = (numerator, denominator) => (denominator ? numerator / denominator : null);
@@ -95,7 +97,21 @@ export function scoreRun(run, verdicts, replaySummary = null) {
     } else if (outcome === 'false-positive') entry.falsePositive += 1;
     else entry.duplicate += 1;
   }
-  const perLane = sortedObject([...lanes].map(([lane, { seeds, ...counts }]) => [lane, { ...counts, seedsDetected: seeds.size }]));
+  // A lane's turn-limit decisions and telemetry tokens come from the controller's lane-outcomes
+  // report when the run produced a valid one, and are null otherwise: a missing report cannot
+  // honestly claim zero. Lookups go through a Map because lane names are run output.
+  const laneOutcomes = run.extraction.laneOutcomes?.state === 'present'
+    ? new Map(run.extraction.laneOutcomes.document.lanes.map(outcome => [outcome.agent, outcome]))
+    : new Map();
+  const perLane = sortedObject([...lanes].map(([lane, { seeds, ...counts }]) => {
+    const outcome = laneOutcomes.get(lane);
+    return [lane, {
+      ...counts,
+      seedsDetected: seeds.size,
+      turnLimit: outcome ? outcome.decisions.turnLimit : null,
+      totalTokens: outcome ? outcome.telemetry.totalTokens : null,
+    }];
+  }));
 
   // A bug's regression is fail-to-pass when it failed on every faulty repeat, passed on every
   // corrected repeat, and never changed outcome between repeats of one case.
@@ -197,11 +213,17 @@ export function aggregateRuns(results, { mode, judgeReliability }) {
   }
   const perSurfaceRecall = sortedObject([...surfaces].map(([surface, counts]) => [surface, { ...counts, recall: ratio(counts.detected, counts.seeded) }]));
 
+  // Finding counts always sum; the lane-outcomes costs sum over the runs that measured them and
+  // stay null when none did.
   const lanes = new Map();
   for (const run of metrics) {
     for (const [lane, counts] of Object.entries(run.perLane)) {
-      const entry = tally(lanes, lane, () => ({ reported: 0, real: 0, falsePositive: 0, duplicate: 0, seedsDetected: 0 }));
-      for (const key of Object.keys(entry)) entry[key] += counts[key];
+      const entry = tally(lanes, lane, () => ({ reported: 0, real: 0, falsePositive: 0, duplicate: 0, seedsDetected: 0, turnLimit: null, totalTokens: null }));
+      for (const key of LANE_FINDING_COUNTS) entry[key] += counts[key];
+      for (const key of LANE_OUTCOME_COSTS) {
+        const value = counts[key] ?? null;
+        if (value !== null) entry[key] = (entry[key] ?? 0) + value;
+      }
     }
   }
   const perLane = sortedObject([...lanes].map(([lane, counts]) => [lane, { ...counts, precision: ratio(counts.real, counts.reported) }]));

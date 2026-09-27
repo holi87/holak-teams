@@ -809,6 +809,191 @@ function readRunnerResult(manifest) {
   return document;
 }
 
+const LANE_OUTCOMES_SCHEMA_ID = 'argus/lane-outcomes@1';
+const LANE_OUTCOMES_SCHEMA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas');
+const LANE_OUTCOMES_DECISION_FILE = /^MDR-[a-f0-9]{24}\.json$/;
+const LANE_OUTCOMES_LEDGER = 'solution/bug-ledger.json';
+const LANE_OUTCOMES_AUTOMATION = 'solution/automation-status.json';
+const LANE_OUTCOMES_LEDGER_STATUSES = Object.freeze({
+  confirmed: 'confirmed',
+  suspected: 'suspected',
+  'needs-oracle': 'needsOracle',
+  bounced: 'bounced',
+  quarantined: 'quarantined',
+  duplicate: 'duplicate',
+  rejected: 'rejected',
+});
+const LANE_OUTCOMES_HEADLINE_STATUSES = new Set(['confirmed', 'suspected']);
+const LANE_OUTCOMES_SEVERE = new Set(['Blocker', 'Critical']);
+let laneOutcomeValidators = null;
+
+// The count-only per-lane outcome report (argus/lane-outcomes@1) the controller cites at
+// closeout. It never writes: it reads the immutable model decisions, the telemetry log, and the
+// merged, digest-checked bug ledger and automation status. Only the active Odysseus controller
+// token, re-checked against the live lease under the state lock, may compute it. Every decision
+// and telemetry event must be schema-valid, bound to this engagement, and name a selected lane,
+// so one inconsistent record fails the report instead of undercounting it. A ledger row or test
+// attributed to an unselected lane is counted under sources, never dropped.
+export function computeLaneOutcomes(manifest, policy, { controllerToken, generatedAt = new Date().toISOString() } = {}) {
+  const decisionDirectory = policy?.routing?.decisionDirectory;
+  const telemetryPath = policy?.telemetry?.defaultPath;
+  if (!safeRelative(decisionDirectory) || !String(decisionDirectory).startsWith('ai_agents_internal/')) {
+    throw new Error('lane outcomes require a model policy decision directory under ai_agents_internal/');
+  }
+  if (!safeRelative(telemetryPath) || !String(telemetryPath).startsWith('ai_agents_internal/')) {
+    throw new Error('lane outcomes require a model policy telemetry path under ai_agents_internal/');
+  }
+  laneOutcomeValidators ??= {
+    decision: compileJsonSchema(JSON.parse(readFileSync(join(LANE_OUTCOMES_SCHEMA_DIR, 'model-decision.schema.json'), 'utf8'))),
+    telemetry: compileJsonSchema(JSON.parse(readFileSync(join(LANE_OUTCOMES_SCHEMA_DIR, 'model-telemetry-event.schema.json'), 'utf8'))),
+  };
+  return withStateLock(manifest, () => {
+    const state = readState(manifest);
+    requireControllerAllocation(manifest, state, 'odysseus', controllerToken);
+    const lanes = new Map(manifest.selectedAgents.map((agent) => [agent, emptyLaneOutcome(agent)]));
+    const selectedLane = (agent, label) => {
+      if (!lanes.has(agent)) throw new Error(`${label} names ${agent}, which is not selected for engagement ${manifest.engagementId}`);
+      return lanes.get(agent);
+    };
+
+    const decisions = readLaneOutcomeDecisions(manifest, decisionDirectory, laneOutcomeValidators.decision);
+    for (const decision of decisions.values()) {
+      const counts = selectedLane(decision.agent, `model decision ${decision.decisionId}`).decisions;
+      counts.total += 1;
+      if (decision.signal === 'normal') counts.normal += 1;
+      else counts.escalations += 1;
+      if (decision.signal === 'turn-limit') counts.turnLimit += 1;
+      if (decision.signal === 'no-artifact') counts.noArtifact += 1;
+      if (decision.signal === 'zero-candidates') counts.zeroCandidates += 1;
+      if (decision.reasonCode === 'AUTO_CONTINUE_SELECTED') counts.autoContinued += 1;
+      if (decision.reasonCode === 'BACKOFF_RETRY_SELECTED') counts.backoffRetries += 1;
+      if (decision.status === 'blocked') counts.blocked += 1;
+    }
+
+    const events = readLaneOutcomeTelemetry(manifest, telemetryPath, laneOutcomeValidators.telemetry, decisions);
+    for (const event of events) {
+      const telemetry = selectedLane(event.agent, `model telemetry event ${event.eventId}`).telemetry;
+      telemetry.events += 1;
+      if (event.success) telemetry.successes += 1;
+      else telemetry.failures += 1;
+      telemetry.totalTokens += event.totalTokens;
+      if (typeof event.reportedCostUsd === 'number') telemetry.reportedCostUsd = (telemetry.reportedCostUsd ?? 0) + event.reportedCostUsd;
+    }
+
+    let unattributedLedgerRows = 0;
+    const ledger = readMergedCanonical(manifest, state, LANE_OUTCOMES_LEDGER, 'bug-ledger');
+    for (const bug of ledger?.bugs ?? []) {
+      const counts = lanes.get(bug.lane)?.ledger;
+      if (!counts) {
+        unattributedLedgerRows += 1;
+        continue;
+      }
+      if (!Object.hasOwn(LANE_OUTCOMES_LEDGER_STATUSES, bug.status)) throw new Error(`${LANE_OUTCOMES_LEDGER} ${bug.id} has unknown status ${bug.status}`);
+      counts.reported += 1;
+      counts[LANE_OUTCOMES_LEDGER_STATUSES[bug.status]] += 1;
+      if (bug.wired === true) counts.wired += 1;
+      if (LANE_OUTCOMES_HEADLINE_STATUSES.has(bug.status) && LANE_OUTCOMES_SEVERE.has(bug.severity)) counts.severe += 1;
+    }
+
+    let unattributedTests = 0;
+    const automationStatus = readMergedCanonical(manifest, state, LANE_OUTCOMES_AUTOMATION, 'automation-status');
+    for (const test of automationStatus?.tests ?? []) {
+      const counts = lanes.get(test.owner)?.automation;
+      if (!counts) {
+        unattributedTests += 1;
+        continue;
+      }
+      counts.tests += 1;
+      if (test.coversBugIds.length > 0) counts.coveringBugs += 1;
+      if (test.status === 'failed') counts.failed += 1;
+    }
+
+    const mergedDigest = (path, document) => (document ? state.merges[requireCanonical(manifest, path).path].sha256 : null);
+    return {
+      schema: LANE_OUTCOMES_SCHEMA_ID,
+      schemaVersion: 1,
+      engagementId: manifest.engagementId,
+      generatedAt,
+      sources: {
+        bugLedgerSha256: mergedDigest(LANE_OUTCOMES_LEDGER, ledger),
+        automationStatusSha256: mergedDigest(LANE_OUTCOMES_AUTOMATION, automationStatus),
+        decisions: decisions.size,
+        telemetryEvents: events.length,
+        unattributedLedgerRows,
+        unattributedTests,
+      },
+      // Costs are summed in micro-dollars so repeated recomputation never drifts in the last digit.
+      lanes: [...lanes.values()].map((lane) => ({
+        ...lane,
+        telemetry: {
+          ...lane.telemetry,
+          reportedCostUsd: lane.telemetry.reportedCostUsd === null ? null : Math.round(lane.telemetry.reportedCostUsd * 1e6) / 1e6,
+        },
+      })),
+    };
+  });
+}
+
+function emptyLaneOutcome(agent) {
+  return {
+    agent,
+    decisions: { total: 0, normal: 0, turnLimit: 0, escalations: 0, noArtifact: 0, zeroCandidates: 0, autoContinued: 0, backoffRetries: 0, blocked: 0 },
+    telemetry: { events: 0, successes: 0, failures: 0, totalTokens: 0, reportedCostUsd: null },
+    ledger: { reported: 0, confirmed: 0, suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, wired: 0, severe: 0 },
+    automation: { tests: 0, coveringBugs: 0, failed: 0 },
+  };
+}
+
+// Every MDR file directly under the decision directory, keyed by decision ID. Operator records
+// and selection locks share the directory and are skipped by name; a decision must be a
+// single-link regular file whose identity, path, engagement, and integrity digest all agree.
+function readLaneOutcomeDecisions(manifest, decisionDirectory, validate) {
+  const directory = engagementPath(manifest, decisionDirectory);
+  const entry = lstatEntry(directory);
+  const decisions = new Map();
+  if (!entry) return decisions;
+  if (entry.isSymbolicLink() || !entry.isDirectory()) throw new Error(`${decisionDirectory} must be a real directory`);
+  for (const name of readdirSync(directory).filter((item) => LANE_OUTCOMES_DECISION_FILE.test(item)).sort()) {
+    const relativePath = `${decisionDirectory}/${name}`;
+    let decision;
+    try { decision = JSON.parse(readManagedFile(join(directory, name), `model decision ${relativePath}`).toString('utf8')); }
+    catch (error) { throw new Error(`model decision ${relativePath} is unreadable: ${error.message}`); }
+    const errors = validate(decision);
+    if (errors.length) throw new Error(`model decision ${relativePath} is invalid: ${errors.map((item) => `${item.instancePath || '/'} ${item.message}`).join('; ')}`);
+    if (`${decision.decisionId}.json` !== name || decision.relativePath !== relativePath) throw new Error(`model decision ${relativePath} does not match its file name`);
+    if (decision.engagementId !== manifest.engagementId) throw new Error(`model decision ${relativePath} belongs to another engagement`);
+    if (modelDecisionIntegritySha256(decision) !== decision.integritySha256) throw new Error(`model decision ${relativePath} failed its integrity digest`);
+    decisions.set(decision.decisionId, decision);
+  }
+  return decisions;
+}
+
+// The append-only telemetry log: one schema-valid event per immutable decision, each bound to
+// that decision's integrity digest, lane, dispatch, and attempt.
+function readLaneOutcomeTelemetry(manifest, telemetryPath, validate, decisions) {
+  const path = engagementPath(manifest, telemetryPath);
+  if (!lstatEntry(path)) return [];
+  const lines = readManagedFile(path, `model telemetry ${telemetryPath}`).toString('utf8').split('\n').filter((line) => line.trim() !== '');
+  const seen = new Set();
+  return lines.map((line, index) => {
+    const label = `${telemetryPath} line ${index + 1}`;
+    let event;
+    try { event = JSON.parse(line); }
+    catch { throw new Error(`${label} is not valid JSON`); }
+    const errors = validate(event);
+    if (errors.length) throw new Error(`${label} is invalid: ${errors.map((item) => `${item.instancePath || '/'} ${item.message}`).join('; ')}`);
+    if (event.engagementId !== manifest.engagementId) throw new Error(`${label} belongs to another engagement`);
+    const decision = decisions.get(event.decisionId);
+    if (!decision || decision.integritySha256 !== event.decisionIntegritySha256 || decision.agent !== event.agent ||
+        decision.dispatchId !== event.dispatchId || decision.attempt !== event.attempt || decision.runtime !== event.runtime) {
+      throw new Error(`${label} is not bound to an immutable decision of this engagement`);
+    }
+    if (seen.has(event.decisionId)) throw new Error(`${label} repeats telemetry for ${event.decisionId}`);
+    seen.add(event.decisionId);
+    return event;
+  });
+}
+
 export function allocateId(manifest, lane, token, kind, identity) {
   const allocator = manifest.idAllocators[kind];
   if (!allocator) throw new Error(`unknown ID allocator: ${kind}`);
@@ -2292,6 +2477,7 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
   if (primary === 'engagement') {
     if (operation === 'init') return deny('engagement init cannot run inside an active engagement');
     if (operation === 'report-facts') return classifyReportFactsCommand(tokens.slice(index + 3), manifest, manifestPath, cwd, allow, deny);
+    if (operation === 'lane-outcomes') return classifyLaneOutcomesCommand(tokens.slice(index + 3), manifest, manifestPath, cwd, allow, deny);
     if (['validate', 'allocate', 'start-attempt', 'status', 'claim', 'release', 'fragment', 'merge', 'id', 'checkpoint', 'heartbeat', 'barrier', 'cleanup', 'resolve-gates'].includes(operation)) {
       const requestedManifest = optionValue(tokens, '--manifest');
       const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
@@ -2418,6 +2604,30 @@ function classifyReportFactsCommand(args, manifest, manifestPath, cwd, allow, de
   }
   const output = optionValue(args, '--output') ?? '-';
   return output === '-' ? allow('engagement report-facts to stdout is read-only') : { paths: [output] };
+}
+
+// `engagement lane-outcomes` writes only its fixed control artifact,
+// ai_agents_internal/lane-outcomes.json, and has no output option. It must name the active
+// manifest and carry the controller token, and accepts exactly those two options, so a
+// smuggled --output or lease token fails closed here.
+function classifyLaneOutcomesCommand(args, manifest, manifestPath, cwd, allow, deny) {
+  for (let cursor = 0; cursor < args.length; cursor += 2) {
+    const value = args[cursor + 1];
+    if (!['--manifest', '--controller-token'].includes(args[cursor]) || !value || value.startsWith('--')) {
+      return deny('engagement lane-outcomes accepts only --manifest <path> and --controller-token <odysseus-token>');
+    }
+  }
+  if (!optionValue(args, '--controller-token')) return deny('engagement lane-outcomes requires --controller-token');
+  const requestedManifest = optionValue(args, '--manifest');
+  const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
+  try {
+    if (!requestedManifest || resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
+      return deny('engagement lane-outcomes must bind to the active engagement manifest');
+    }
+  } catch {
+    return deny('engagement lane-outcomes manifest cannot be resolved safely');
+  }
+  return allow('packaged engagement controller owns the idempotent lane-outcomes control artifact');
 }
 
 // Automation review commands only read the engagement and the test corpus. They must name the

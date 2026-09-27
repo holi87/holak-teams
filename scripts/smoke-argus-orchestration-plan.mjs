@@ -70,6 +70,7 @@ for (const fragment of [
   'product, automation,', 'infrastructure, skip, and policy outcomes', 'Never claim an agent ran',
   '`deferred` record with `downgradedFrom=blocked`', 'report it from `residualRisks`',
   'proofLoop', 'deepHunt', 'engagement barrier skip', 'at most one thread per lane', 'maxRepairRounds', '--activity reproduce',
+  'argus-assets engagement lane-outcomes --manifest <manifest> --controller-token <odysseus-token>',
 ]) {
   assert(controllerContract.includes(fragment), `orchestration-core lost required controller semantic: ${fragment}`);
 }

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holak-teams.local/argus/lane-outcomes.schema.json",
+  "title": "Count-only per-lane outcome report computed by the controller from canonical artifacts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schemaVersion", "engagementId", "generatedAt", "sources", "lanes"],
+  "properties": {
+    "schema": { "const": "argus/lane-outcomes@1" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bugLedgerSha256", "automationStatusSha256", "decisions", "telemetryEvents",
+        "unattributedLedgerRows", "unattributedTests"
+      ],
+      "properties": {
+        "bugLedgerSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "automationStatusSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "decisions": { "$ref": "#/$defs/count" },
+        "telemetryEvents": { "$ref": "#/$defs/count" },
+        "unattributedLedgerRows": { "$ref": "#/$defs/count" },
+        "unattributedTests": { "$ref": "#/$defs/count" }
+      }
+    },
+    "lanes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/lane" }
+    }
+  },
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "decisions", "telemetry", "ledger", "automation"],
+      "properties": {
+        "agent": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "decisions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "total", "normal", "turnLimit", "escalations", "noArtifact", "zeroCandidates",
+            "autoContinued", "backoffRetries", "blocked"
+          ],
+          "properties": {
+            "total": { "$ref": "#/$defs/count" },
+            "normal": { "$ref": "#/$defs/count" },
+            "turnLimit": { "$ref": "#/$defs/count" },
+            "escalations": { "$ref": "#/$defs/count" },
+            "noArtifact": { "$ref": "#/$defs/count" },
+            "zeroCandidates": { "$ref": "#/$defs/count" },
+            "autoContinued": { "$ref": "#/$defs/count" },
+            "backoffRetries": { "$ref": "#/$defs/count" },
+            "blocked": { "$ref": "#/$defs/count" }
+          }
+        },
+        "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["events", "successes", "failures", "totalTokens", "reportedCostUsd"],
+          "properties": {
+            "events": { "$ref": "#/$defs/count" },
+            "successes": { "$ref": "#/$defs/count" },
+            "failures": { "$ref": "#/$defs/count" },
+            "totalTokens": { "type": "number", "minimum": 0 },
+            "reportedCostUsd": { "type": ["number", "null"], "minimum": 0 }
+          }
+        },
+        "ledger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reported", "confirmed", "suspected", "needsOracle", "bounced", "quarantined",
+            "duplicate", "rejected", "wired", "severe"
+          ],
+          "properties": {
+            "reported": { "$ref": "#/$defs/count" },
+            "confirmed": { "$ref": "#/$defs/count" },
+            "suspected": { "$ref": "#/$defs/count" },
+            "needsOracle": { "$ref": "#/$defs/count" },
+            "bounced": { "$ref": "#/$defs/count" },
+            "quarantined": { "$ref": "#/$defs/count" },
+            "duplicate": { "$ref": "#/$defs/count" },
+            "rejected": { "$ref": "#/$defs/count" },
+            "wired": { "$ref": "#/$defs/count" },
+            "severe": { "$ref": "#/$defs/count" }
+          }
+        },
+        "automation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tests", "coveringBugs", "failed"],
+          "properties": {
+            "tests": { "$ref": "#/$defs/count" },
+            "coveringBugs": { "$ref": "#/$defs/count" },
+            "failed": { "$ref": "#/$defs/count" }
+          }
+        }
+      }
+    }
+  }
+}
