@@ -3,7 +3,8 @@
 # In a clean-room copy of the Python template, the qa.argus_plugin pytest plugin must write
 # the SD-3 inventory and SD-4 expected bugs from a collect-only pass, turn every SD-5/SD-6
 # outcome into exactly the expected events (identically under pytest-xdist), fail closed on
-# emission problems, and stay inert without ARGUS_RUNNER_MODE. No browser and no target.
+# emission problems, and stay inert without ARGUS_RUNNER_MODE. The qa.oracles self-tests must
+# report a product pass for every case against loopback stubs. No browser and no target.
 
 set -euo pipefail
 
@@ -275,4 +276,24 @@ for artifact in "$WORK/inert.tsv" "$STATUS" reports/argus-adapter-errors "$INVEN
   [ ! -e "$artifact" ] || fail "the inert adapter wrote $artifact"
 done
 
-printf 'PASS  Argus Python runtime adapter: collect-only inventory, ledger join, SD-5/SD-6 events, xdist parity, repetition, fail-closed status, and inert default\n'
+# (8) Contract oracle self-tests: a baseline run with the plugin active where every case is a product pass.
+ORACLE_TEST=tests/contract/test_oracles_contract_selftest.py
+ORACLE_CASE='tests.contract.test_oracles_contract_selftest.py::'
+cmp -s "$ROOT/argus/framework-template/tests/contract/fixtures/openapi.selftest.json" tests/contract/fixtures/openapi.selftest.json \
+  || fail "the Python oracle self-test OpenAPI fixture drifted from the TypeScript fixture"
+pytest_run oracles-list -- --collect-only -m contract_smoke "$ORACLE_TEST"
+expect_exit oracles-list 0
+oracle_cases="$(grep -c '::' "$WORK/oracles-list.log" || true)"
+[ "$oracle_cases" -gt 0 ] || fail "the oracle self-tests were not collected"
+pytest_run oracles ARGUS_RUNNER_MODE=baseline ARGUS_OUTCOME_FILE="$WORK/oracles.tsv" -- -m contract_smoke "$ORACLE_TEST"
+expect_exit oracles 0
+[ -f "$WORK/oracles.tsv" ] || fail "the oracle self-tests emitted no events"
+[ "$(wc -l <"$WORK/oracles.tsv" | tr -d ' ')" = "$oracle_cases" ] || fail "expected one event per oracle self-test ($oracle_cases)"
+awk -F'\t' -v prefix="$ORACLE_CASE" \
+  'NF != 7 || index($1, prefix) != 1 || $2 != "product" || $3 != "pass" || $4 != "false" || $5 != "n/a" || $6 != "-" || $7 != "passed" { print "not an oracle product pass: " $0; bad = 1 } END { exit bad }' \
+  "$WORK/oracles.tsv" >&2 || fail "an oracle self-test event is not a product pass"
+[ -z "$(cut -f1 "$WORK/oracles.tsv" | sort | uniq -d)" ] || fail "oracle self-test case ids are not unique"
+if grep -Eq '127[.]0[.]0[.]1|argus-never-print-me|hunter2' "$WORK/oracles.tsv"; then fail "an oracle self-test event carried test details"; fi
+expect_status "ok $oracle_cases" oracles
+
+printf 'PASS  Argus Python runtime adapter: collect-only inventory, ledger join, SD-5/SD-6 events, xdist parity, repetition, fail-closed status, inert default, and contract oracle self-tests\n'
