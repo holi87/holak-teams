@@ -152,6 +152,15 @@ fi
 grep -Fq -- '--reason' <<<"$skip_output" || fail "reasonless skip failed for the wrong reason: $skip_output"
 [ "$("$CLI" engagement status --manifest "$MANIFEST" | jq -r '.currentPhase + ":" + (.skippedPhases | length | tostring)')" = hunting:0 ] \
   || fail "refused skip changed the phase cursor or recorded a skip"
+# The top-level help advertises every operation the barrier dispatcher accepts, and skip's reasons.
+if barrier_usage="$("$CLI" engagement barrier unknown-operation --manifest "$MANIFEST" 2>&1)"; then
+  fail "unknown barrier operation was accepted"
+fi
+barrier_operations="$(sed -nE 's/.*engagement barrier <([a-z|]+)>.*/\1/p' <<<"$barrier_usage")"
+[ -n "$barrier_operations" ] || fail "barrier usage does not name its operations: $barrier_usage"
+cli_help="$("$CLI" --help)"
+grep -Fq -- "barrier $barrier_operations --manifest" <<<"$cli_help" || fail "argus-assets --help does not list barrier $barrier_operations"
+grep -Fq -- '--reason converged|controller-budget' <<<"$cli_help" || fail "argus-assets --help does not document the barrier skip reasons"
 
 # Reset/fault windows are owner-restricted and exclusive.
 "$CLI" engagement claim --manifest "$MANIFEST" --lane tyche --token "$(token_for tyche)" --resource fault >/dev/null
