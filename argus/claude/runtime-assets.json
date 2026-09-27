@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 47941,
-      "sha256": "af58bb75c040c1b642de8c33b1bf4a611378637920c525900616026aa6fc553a"
+      "bytes": 48044,
+      "sha256": "e8f658d8ad42d07de56259a3fa8db07b67c50d8cb8ac856fcac3a5a15f517399"
     },
     {
       "id": "canonical-contracts",
@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 25170,
-      "sha256": "d5007b8395222c5f1ff03abced31512c83afed0ba96ac2842ac1c1491e87abdb"
+      "bytes": 26032,
+      "sha256": "2308520273700241dc96f98a65c2b8c5465277144e5f519e92bb16f61c87d4ed"
     },
     {
       "id": "runner-contract",
@@ -92,8 +92,8 @@
       "source": "argus/COVERAGE-CONTRACT.md",
       "destination": "references/COVERAGE-CONTRACT.md",
       "files": 1,
-      "bytes": 4186,
-      "sha256": "064b512a55b4c349cb9a95834a582f191c8202da8d551df8c48798192b4ce839"
+      "bytes": 10965,
+      "sha256": "17f3e99586dcc27943083dae06d36a532aaeb83b83820fdf1355a517154869ad"
     },
     {
       "id": "raci-contract",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 40,
-      "bytes": 186403,
-      "sha256": "ba4d7c68cd9995b9feb8a5c16fea133ab71bc49ec9fa53ccf243420a8d7eeab4"
+      "bytes": 186804,
+      "sha256": "5c0bdc4b9530d65626d2f03a4cc26b067e5b9dc9ba3135d92bc72ec1adec7943"
     },
     {
       "id": "capability-matrix",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 348384,
-      "sha256": "c5449cc87f207c86ae4ffbfcfe93e9ae84070958da62511d54d28ce58efaadfc"
+      "bytes": 351069,
+      "sha256": "124f0f6da579855a73d133ddac23bf21be3662aadd05bc191453af441ac52a42"
     },
     {
       "id": "common-template",
@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 61,
-      "bytes": 442863,
-      "sha256": "1aa8d856284aedd20d597bc29b254b86aef6196ef421292e027f9bb4e01febd5"
+      "bytes": 443159,
+      "sha256": "eb9ac0b9dc321eddf01cef8acee483b8947952eb1ef3a7a5f4227e2e51d43f43"
     },
     {
       "id": "java-template",

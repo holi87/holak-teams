@@ -9,6 +9,7 @@ const inventory = join(ROOT, 'solution', 'surface-inventory.json');
 const observations = join(ROOT, 'solution', 'coverage-observations.json');
 const evidence = join(ROOT, 'solution', 'evidence-reference.json');
 const ledger = join(ROOT, 'solution', 'bug-ledger.json');
+const automationStatus = join(ROOT, 'solution', 'automation-status.json');
 const output = join(ROOT, 'solution', 'coverage-result.json');
 const summaryPath = join(ROOT, 'reports', 'summary.json');
 const executable = process.env.ARGUS_ASSETS ?? 'argus-assets';
@@ -21,10 +22,12 @@ for (const required of [inventory, observations]) {
 }
 
 // Execution is derived from registered evidence and defect outcomes from the ledger; evidence
-// sources resolve against this project root.
+// sources resolve against this project root. The automation status, when present, must map
+// every credited runner case to its surface.
 const args = ['coverage', 'calculate', '--inventory', inventory, '--observations', observations];
 if (existsSync(evidence)) args.push('--evidence', evidence);
 if (existsSync(ledger)) args.push('--ledger', ledger);
+if (existsSync(automationStatus)) args.push('--automation-status', automationStatus);
 args.push('--root', ROOT, '--output', output);
 const run = spawnSync(executable, args, { encoding: 'utf8' });
 if (run.error) {
@@ -42,6 +45,6 @@ if (existsSync(summaryPath)) {
   try { summary = JSON.parse(readFileSync(summaryPath, 'utf8')); } catch { summary = {}; }
 }
 writeFileSync(summaryPath, `${JSON.stringify({ ...summary, surface_coverage: coverage, generated_at: new Date().toISOString() }, null, 2)}\n`);
-console.log(`surface_coverage: execution=${format(coverage.overall.executionCoverage)} assertion=${format(coverage.overall.assertionQuality)} evidence=${format(coverage.overall.evidenceQuality)} automated=${format(coverage.overall.automatedExecution)} scoped=${coverage.overall.scopedItems}`);
+console.log(`surface_coverage: execution=${format(coverage.overall.executionCoverage)} assertion=${format(coverage.overall.assertionQuality)} evidence=${format(coverage.overall.evidenceQuality)} automated=${format(coverage.overall.automatedExecution)} runner-cases=${coverage.runnerCaseMapping} scoped=${coverage.overall.scopedItems}`);
 
 function format(value) { return value === null ? 'n/a' : `${Math.round(value * 10000) / 100}%`; }

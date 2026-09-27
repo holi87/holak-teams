@@ -1,0 +1,11 @@
+{
+  "$schema": "argus/automation-status@2", "schemaVersion": 2, "engagementId": "coverage-fixture",
+  "tests": [
+    { "testId": "TST-0001", "owner": "atlas", "status": "passed", "runner": "npm test", "updatedAt": "2026-07-10T10:05:30.000Z",
+      "coversBugIds": [], "evidenceIds": ["EVD-0104"],
+      "caseIds": ["api:orders.spec.ts:creates-a-charged-order"], "surfaceIds": ["SRF-API-ORDERS-POST"] },
+    { "testId": "TST-0002", "owner": "atlas", "status": "skipped", "runner": "npm test", "updatedAt": "2026-07-10T10:05:30.000Z",
+      "coversBugIds": [], "evidenceIds": ["EVD-0104"],
+      "caseIds": ["ui:checkout.spec.ts:webkit-checkout"], "surfaceIds": ["SRF-UI-CHECKOUT"] }
+  ]
+}

@@ -15,7 +15,8 @@
       "properties": {
         "testId": { "type": "string", "pattern": "^(?:TST|REG)-[0-9]{4}$" }, "owner": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }, "status": { "enum": ["planned", "implemented", "passed", "failed", "skipped"] },
         "runner": { "type": "string", "minLength": 1 }, "updatedAt": { "type": "string", "format": "date-time" },
-        "coversBugIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^BUG-[0-9]{4}$" } }, "evidenceIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^EVD-[0-9]{4}$" } }
+        "coversBugIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^BUG-[0-9]{4}$" } }, "evidenceIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^EVD-[0-9]{4}$" } },
+        "caseIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$" } }, "surfaceIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^SRF-[A-Z0-9][A-Z0-9-]*$" } }
       }
     }
   }

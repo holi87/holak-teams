@@ -606,7 +606,8 @@ in stable-key order and rejects duplicate keys across fragments. Coverage observ
 evidence and ledger references only: the coverage-result merge derives each surface's
 execution, assertion, evidence, and automation flags from the canonical evidence registry,
 takes defect outcomes from the canonical bug ledger (required whenever Minos is
-dispatchable), and rejects a Kleio result that differs from that recalculation. The controller validates
+dispatchable), credits a runner case only to a surface the merged automation status maps it
+to (`runnerCaseMapping`), and rejects a Kleio result that differs from that recalculation. The controller validates
 every fragment before it is persisted, verifies its `engagementId`, then validates the
 deterministic merged document again; malformed, incompatible, duplicate, or
 cross-engagement content cannot reach a canonical file.
