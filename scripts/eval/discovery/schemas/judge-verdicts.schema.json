@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/scripts/eval/discovery/schemas/judge-verdicts.schema.json",
+  "title": "Argus discovery evaluation first-pass judge verdicts v1 (provisional until human spot-check)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "createdAt", "runsSha256", "judge", "runs"],
+  "properties": {
+    "schema": { "const": "argus-eval/judge-verdicts@1" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "runsSha256": { "$ref": "#/$defs/sha256" },
+    "judge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "effort", "claudeVersion", "resolvedModels", "systemPromptSha256", "passes", "bare", "tools", "includeSuspected", "invocations", "totalCostUsd"],
+      "properties": {
+        "model": { "const": "opus" },
+        "effort": { "const": "max" },
+        "claudeVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$" },
+        "resolvedModels": { "$ref": "#/$defs/names" },
+        "systemPromptSha256": { "$ref": "#/$defs/sha256" },
+        "passes": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "bare": { "const": true },
+        "tools": { "const": "none" },
+        "includeSuspected": { "type": "boolean" },
+        "invocations": { "$ref": "#/$defs/count" },
+        "totalCostUsd": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "names": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "bugId": { "type": "string", "pattern": "^BUG-[0-9]{4}$" },
+    "seedId": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]*$" },
+    "outcome": { "enum": ["real", "false-positive", "duplicate", null] },
+    "confidence": { "enum": ["high", "medium", "low", null] },
+    "text": { "type": ["string", "null"], "minLength": 1 },
+    "pass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "attempts", "outcome", "seedId", "duplicateOf", "confidence", "criterionEvidence", "reason", "error", "costUsd", "models"],
+      "properties": {
+        "pass": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "attempts": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "outcome": { "$ref": "#/$defs/outcome" },
+        "seedId": { "$ref": "#/$defs/seedId" },
+        "duplicateOf": { "type": ["string", "null"], "pattern": "^BUG-[0-9]{4}$" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "criterionEvidence": { "$ref": "#/$defs/text" },
+        "reason": { "$ref": "#/$defs/text" },
+        "error": { "$ref": "#/$defs/text" },
+        "costUsd": { "type": ["number", "null"], "minimum": 0 },
+        "models": { "$ref": "#/$defs/names" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "error": { "type": "string" } } },
+          "then": { "properties": { "outcome": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "error": { "type": "null" } } },
+          "then": { "properties": { "outcome": { "type": "string" }, "confidence": { "type": "string" }, "reason": { "type": "string" }, "criterionEvidence": { "type": "string" } } }
+        }
+      ]
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findingId", "status", "outcome", "seedId", "duplicateOf", "confidence", "agreement", "judgeFailed", "seedProbeConfirmed", "seedProbeError", "reason", "criterionEvidence", "packetPath", "packetSha256", "passes"],
+      "properties": {
+        "findingId": { "$ref": "#/$defs/bugId" },
+        "status": { "enum": ["confirmed", "suspected", "needs-oracle", "bounced", "quarantined"] },
+        "outcome": { "$ref": "#/$defs/outcome" },
+        "seedId": { "$ref": "#/$defs/seedId" },
+        "duplicateOf": { "type": ["string", "null"], "pattern": "^BUG-[0-9]{4}$" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "agreement": { "type": "boolean" },
+        "judgeFailed": { "type": "boolean" },
+        "seedProbeConfirmed": { "type": ["boolean", "null"] },
+        "seedProbeError": { "$ref": "#/$defs/text" },
+        "reason": { "type": "string", "minLength": 1 },
+        "criterionEvidence": { "$ref": "#/$defs/text" },
+        "packetPath": { "type": "string", "pattern": "^/(?:[^/\\u0000]+/)*judge-packets/[^/\\u0000]+/BUG-[0-9]{4}\\.json$" },
+        "packetSha256": { "$ref": "#/$defs/sha256" },
+        "passes": { "type": "array", "minItems": 1, "maxItems": 5, "items": { "$ref": "#/$defs/pass" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "judgeFailed": { "const": true } } },
+          "then": {
+            "properties": {
+              "outcome": { "type": "null" },
+              "seedId": { "type": "null" },
+              "duplicateOf": { "type": "null" },
+              "confidence": { "type": "null" },
+              "agreement": { "const": false },
+              "seedProbeConfirmed": { "type": "null" },
+              "criterionEvidence": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "judgeFailed": { "const": false } } },
+          "then": { "properties": { "outcome": { "type": "string" }, "confidence": { "type": "string" }, "criterionEvidence": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "agreement": { "const": false } } },
+          "then": { "properties": { "confidence": { "enum": ["low", null] } } }
+        },
+        {
+          "if": { "properties": { "seedProbeConfirmed": { "const": false } } },
+          "then": { "properties": { "confidence": { "const": "low" } } }
+        },
+        {
+          "if": { "properties": { "seedId": { "type": "null" } } },
+          "then": { "properties": { "seedProbeConfirmed": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "outcome": { "enum": ["false-positive", "duplicate"] } } },
+          "then": { "properties": { "seedId": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "outcome": { "const": "duplicate" } } },
+          "then": { "properties": { "duplicateOf": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "outcome": { "enum": ["real", "false-positive"] } } },
+          "then": { "properties": { "duplicateOf": { "type": "null" } } }
+        }
+      ]
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "skipped", "verdicts"],
+      "properties": {
+        "runId": { "type": "string", "pattern": "^r[0-9]{1,2}-[AB]-(?:faulty|corrected)-[a-z][a-z0-9-]{0,31}$" },
+        "skipped": { "enum": [null, "invalid-run", "contaminated"] },
+        "verdicts": { "type": "array", "items": { "$ref": "#/$defs/verdict" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "skipped": { "type": "string" } } },
+          "then": { "properties": { "verdicts": { "maxItems": 0 } } }
+        }
+      ]
+    }
+  }
+}

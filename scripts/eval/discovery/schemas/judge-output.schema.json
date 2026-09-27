@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/scripts/eval/discovery/schemas/judge-output.schema.json",
+  "title": "Argus discovery evaluation judge output v1 (template; judge.mjs narrows outcome, seedId and duplicateOf per finding)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["outcome", "seedId", "duplicateOf", "confidence", "criterionEvidence", "reason"],
+  "properties": {
+    "outcome": { "type": "string", "enum": ["real", "false-positive", "duplicate"] },
+    "seedId": { "type": ["string", "null"], "enum": [null] },
+    "duplicateOf": { "type": ["string", "null"], "enum": [null] },
+    "confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+    "criterionEvidence": { "type": "string", "minLength": 1, "pattern": "^[\\s\\S]{1,1000}$" },
+    "reason": { "type": "string", "minLength": 1, "pattern": "^[\\s\\S]{1,1000}$" }
+  }
+}
