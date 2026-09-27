@@ -2,13 +2,16 @@ package qa.support;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.restassured.module.jsv.JsonSchemaValidator;
+import org.hamcrest.BaseMatcher;
+import org.hamcrest.Description;
 import org.hamcrest.Matcher;
+import qa.support.oracles.OpenApi;
+import qa.support.oracles.Schema;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.util.function.Supplier;
 
 /**
  * Contract testing mechanised: validate live responses against the OpenAPI schema
@@ -22,70 +25,77 @@ import java.nio.file.Paths;
  *     .then().body(SchemaOracle.matchesSchema("#/components/schemas/Order"));
  * }</pre>
  *
+ * <p>The matcher delegates to the strict {@link Schema#assertSchemaRef} (JSON Schema draft
+ * 2020-12, undocumented fields are RED). Prefer {@link Schema#assertSchema} with an
+ * operationId when the response status is part of the contract.
+ *
  * <p>ADAPT-ME: point {@code OPENAPI_PATH} at the spec file Kalchas found (JSON; convert
  * YAML first), or fetch it from the live Swagger endpoint at setup and save it locally.
- * Default location: {@code ./openapi.json}. Tests should guard with
- * {@link #specAvailable()} so they self-skip when no spec is present.
+ * Default location: {@code ./openapi.json}.
  */
 public final class SchemaOracle {
 
     private SchemaOracle() {}
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static JsonNode doc; // cached parsed OpenAPI document
 
     /** Configured OpenAPI doc location ({@code OPENAPI_PATH} env, default {@code ./openapi.json}). */
     public static Path openApiPath() {
-        String p = System.getenv("OPENAPI_PATH");
-        return Paths.get((p == null || p.isBlank()) ? "openapi.json" : p);
+        return OpenApi.defaultPath();
     }
 
-    /** True when the OpenAPI doc exists on disk — gate schema assertions on this. */
+    /** True when the OpenAPI doc exists on disk. */
     public static boolean specAvailable() {
         return Files.exists(openApiPath());
     }
 
-    private static synchronized JsonNode doc() {
-        if (doc == null) {
-            try {
-                doc = MAPPER.readTree(openApiPath().toFile());
-            } catch (Exception e) {
-                throw new IllegalStateException(
-                        "cannot read OpenAPI spec at " + openApiPath()
-                                + " (set OPENAPI_PATH, or guard the test with SchemaOracle.specAvailable()): "
-                                + e.getMessage(), e);
-            }
-        }
-        return doc;
-    }
-
     /**
-     * Build a Hamcrest matcher asserting the response body conforms to a named OpenAPI
-     * component, e.g. {@code "#/components/schemas/Order"}.
-     *
-     * <p>OpenAPI keeps reusable schemas under {@code components/schemas}; the JSON-Schema
-     * validator wants a self-contained schema with a root {@code $ref}. We assemble one:
-     * the component subtree under standard {@code definitions}, with all internal
-     * {@code #/components/schemas/...} pointers rewritten to {@code #/definitions/...}.
+     * A Hamcrest matcher asserting the body strictly conforms to a named OpenAPI component,
+     * e.g. {@code "#/components/schemas/Order"}, of the configured document.
      */
     public static Matcher<?> matchesSchema(String componentRef) {
-        JsonNode schemas = doc().path("components").path("schemas");
-        if (schemas.isMissingNode() || !schemas.isObject()) {
-            throw new IllegalStateException("OpenAPI doc has no components.schemas at " + openApiPath());
-        }
-        ObjectNode root = MAPPER.createObjectNode();
-        root.put("$schema", "http://json-schema.org/draft-04/schema#");
-        root.set("definitions", schemas);
-        root.put("$ref", componentRef);
+        return new StrictSchemaMatcher(OpenApi::configured, componentRef);
+    }
 
-        String schema;
-        try {
-            schema = MAPPER.writeValueAsString(root);
-        } catch (Exception e) {
-            throw new IllegalStateException("could not serialise generated schema for " + componentRef, e);
+    /** As {@link #matchesSchema(String)} against an explicit document. */
+    public static Matcher<?> matchesSchema(OpenApi document, String componentRef) {
+        return new StrictSchemaMatcher(() -> document, componentRef);
+    }
+
+    private static final class StrictSchemaMatcher extends BaseMatcher<Object> {
+        private final Supplier<OpenApi> document;
+        private final String ref;
+        private String failure;
+
+        StrictSchemaMatcher(Supplier<OpenApi> document, String ref) {
+            this.document = document;
+            this.ref = ref;
         }
-        // Rewrite OpenAPI's #/components/schemas/X pointers to the standalone #/definitions/X scope.
-        schema = schema.replace("#/components/schemas/", "#/definitions/");
-        return JsonSchemaValidator.matchesJsonSchema(schema);
+
+        @Override
+        public boolean matches(Object body) {
+            try {
+                OpenApi doc = document.get();
+                if (body instanceof String text) Schema.assertSchemaStrict(doc, text, ref);
+                else if (body instanceof byte[] bytes) Schema.assertSchemaStrict(doc, new String(bytes, StandardCharsets.UTF_8), ref);
+                else if (body instanceof JsonNode node) Schema.assertSchemaStrict(doc, node, ref);
+                else Schema.assertSchemaStrict(doc, (JsonNode) MAPPER.valueToTree(body), ref);
+                failure = null;
+                return true;
+            } catch (AssertionError e) {
+                failure = e.getMessage();
+                return false;
+            }
+        }
+
+        @Override
+        public void describeTo(Description description) {
+            description.appendText("a body strictly matching " + ref);
+        }
+
+        @Override
+        public void describeMismatch(Object item, Description description) {
+            description.appendText(failure == null ? "did not match " + ref : failure);
+        }
     }
 }
