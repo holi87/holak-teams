@@ -112,6 +112,13 @@ const SEMANTIC_MARKERS = Object.freeze({
   'ARI-T05': ['scope noun', 'binds on the documented scope'],
   'ARI-T12': ['independently from the requirements', 'both directions as separate candidates'],
   'ARI-T15': ['observable edge that is reachable', "never the rule it feeds"],
+  // Perseus markers pin the four security classes this catalog newly owns. They exist so a
+  // later edit cannot quietly soften a class into a generic suggestion: removing the phrase
+  // fails the catalog validator.
+  'PER-T18': ['sniffed content', 'content-sniffing bypass'],
+  'PER-T19': ['anti-forgery token', 'persisted query or mutation'],
+  'PER-T20': ['validated against an allowlist', '//host redirect'],
+  'PER-T21': ['per-object authorization', 'idor on a download endpoint'],
 });
 
 const TOP_LEVEL = Object.freeze([

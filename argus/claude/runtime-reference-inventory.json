@@ -656,6 +656,12 @@
       ]
     },
     {
+      "value": "solution/perseus-ledger.json",
+      "consumers": [
+        "perseus"
+      ]
+    },
+    {
       "value": "solution/RESILIENCE-REPORT.md",
       "consumers": [
         "tyche"
@@ -2021,6 +2027,12 @@
           "kind": "agent",
           "mechanism": "technique-catalog-assignment",
           "reference": "metis"
+        },
+        {
+          "consumer": "perseus",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "perseus"
         },
         {
           "consumer": "proteus",
