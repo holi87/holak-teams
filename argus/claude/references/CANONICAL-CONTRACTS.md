@@ -35,6 +35,16 @@ the named owner merges them by stable key (`lane`, `id`, `testId`, or `observati
 Duplicate keys fail closed, and the canonical arrays are sorted by that key so fragment
 arrival order cannot change the resulting bytes.
 
+Bug-ledger, surface-inventory, coverage-result, and final-summary documents are single
+documents. Only the registry owner submits their fragments, and a newer fragment (a higher
+write `sequence`) supersedes the earlier ones: the merge validates every fragment but
+publishes only the latest. Each fragment must keep its contract's stability invariants
+against the one it supersedes. The bug ledger keeps every earlier `BUG-NNNN` ID and each of
+its earlier origins, so IDs stay stable once assigned while their status changes; the surface
+inventory keeps every earlier `SRF-*` ID and never lowers `discovery.candidates`. Coverage
+result and final summary carry no supersession invariant. See `ENGAGEMENT-POLICY.md`
+"Canonical machine contracts".
+
 Argus 5 accepts only the current forms of these four collections: lane-plan,
 automation-status, and coverage-observations `@2`, evidence-reference `@3`. The retired
 single-record `@1` schemas, `argus/evidence-reference@2`, and their migrations are absent.

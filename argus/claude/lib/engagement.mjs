@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalDocument, validateCanonicalFragment } from './contracts.mjs';
+import { assertSupersession, isCollectionContract, mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalDocument, validateCanonicalFragment } from './contracts.mjs';
 import { binaryRegistrationErrors, binaryReviewAuditErrors, isBinaryReference, loadRedactionPatterns, parseAuditLog, validateEvidenceContent } from './evidence.mjs';
 import {
   modelAuthenticatedDocumentSha256,
@@ -401,6 +401,9 @@ export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, 
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(fragmentId)) throw new Error('fragment id must be a stable filename-safe identifier');
   const revised = canonical.merge === 'latest-revision';
   if (revised && lane !== canonical.owner) throw new Error(`${canonical.path} revisions are written only by ${canonical.owner}`);
+  if (isSingleDocumentCanonical(canonical) && lane !== canonical.owner) {
+    throw new Error(`${canonical.path} is a single-document contract; only ${canonical.owner} may submit fragments`);
+  }
   let persistedContent = String(content);
   if (canonical.schema) {
     const { errors, document } = validateCanonicalFragment(canonical.schema, content);
@@ -436,13 +439,12 @@ export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, 
       chmodSync(path, 0o600);
     }
     const list = state.fragments[canonical.path] ?? [];
-    const record = { id: fragmentId, lane, path: relative(manifest.artifactRoot, path).split(sep).join('/'), sha256: digest };
-    if (revised) {
-      const replay = list.find((item) => item.id === fragmentId && item.lane === lane);
-      if (replay) return { result: replay, changed: false };
-      record.revision = nextFragmentRevision(list);
-    }
-    if (!list.some((item) => item.id === fragmentId && item.lane === lane)) list.push(record);
+    // An identical replay keeps the record, and with it the sequence, it was first given.
+    const replay = list.find((item) => item.id === fragmentId && item.lane === lane);
+    if (replay) return { result: replay, changed: false };
+    const record = { id: fragmentId, lane, path: relative(manifest.artifactRoot, path).split(sep).join('/'), sha256: digest, sequence: nextFragmentSequence(state.fragments) };
+    if (revised) record.revision = nextFragmentRevision(list);
+    list.push(record);
     state.fragments[canonical.path] = list.sort(fragmentOrder);
     return { result: record, changed: true };
   });
@@ -464,9 +466,15 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     // Every revision stays digest-checked above; only the highest one is published.
     const latest = canonical.merge === 'latest-revision' ? latestFragmentRevision(canonical, records) : null;
     let quarantined = [];
+    let effective = null;
     let output;
     if (canonical.format === 'json-document') {
-      const documents = contents.map((content) => JSON.parse(content));
+      let documents = contents.map((content) => JSON.parse(content));
+      // A superseded single document stays digest-checked and valid; only the latest one is merged.
+      if (isSingleDocumentCanonical(canonical) && records.length > 1) {
+        effective = supersedingFragment(manifest, canonical, records, contents);
+        documents = [documents[records.indexOf(effective)]];
+      }
       const document = mergeCanonicalDocuments(canonical.schema, documents);
       if (canonical.schema === 'evidence-reference') verifyEvidenceRegistry(manifest, records, documents, document);
       if (canonical.schema === 'coverage-result') {
@@ -543,6 +551,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     }
     const result = { owner, fragments: records.length, sha256: sha256(output), mergedAt: new Date().toISOString() };
     if (latest) Object.assign(result, { revision: latest.revision, supersededFragments: records.length - 1 });
+    if (effective) Object.assign(result, { effectiveFragment: effective.id, supersededFragments: records.length - 1 });
     if (canonical.schema === 'bug-ledger') result.quarantined = quarantined;
     state.merges[canonical.path] = result;
     if (canonical.schema === 'bug-ledger') {
@@ -2140,6 +2149,49 @@ function latestFragmentRevision(canonical, records) {
     if (!latest || record.revision > latest.revision) latest = record;
   }
   return latest;
+}
+
+// Fragments of every canonical share one write sequence, so an owner's successive documents
+// are totally ordered. Records written before sequences existed count as 0.
+function nextFragmentSequence(fragments) {
+  let highest = 0;
+  for (const list of Object.values(fragments)) {
+    for (const record of list) if (Number.isInteger(record?.sequence) && record.sequence > highest) highest = record.sequence;
+  }
+  return highest + 1;
+}
+
+function fragmentSequence(canonical, record) {
+  if (record.sequence === undefined) return 0;
+  if (!Number.isInteger(record.sequence) || record.sequence < 1) throw new Error(`${canonical.path} fragment ${record.id} has an invalid sequence`);
+  return record.sequence;
+}
+
+// A json-document canonical that is not a collection contract publishes one complete document.
+function isSingleDocumentCanonical(canonical) {
+  return canonical.format === 'json-document' && !isCollectionContract(canonical.schema);
+}
+
+// Only the owner supersedes a single-document canonical. Every fragment must still be a valid
+// document of this engagement; in write-sequence order (a tie is ambiguous) each one keeps the
+// contract's stability invariants relative to its predecessor, and the latest one is effective.
+function supersedingFragment(manifest, canonical, records, contents) {
+  const ordered = records.map((record, index) => {
+    if (record.lane !== canonical.owner) throw new Error(`${canonical.path} is a single-document contract; only ${canonical.owner} may submit fragments`);
+    const { errors, document } = validateCanonicalFragment(canonical.schema, contents[index]);
+    if (errors.length) throw new Error(`${canonical.path} fragment ${record.id} is invalid: ${errors.join('; ')}`);
+    if (document.engagementId !== manifest.engagementId) throw new Error(`${canonical.path} fragment ${record.id} engagementId does not match ${manifest.engagementId}`);
+    return { record, document, sequence: fragmentSequence(canonical, record) };
+  }).sort((left, right) => left.sequence - right.sequence);
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previous = ordered[index - 1];
+    const next = ordered[index];
+    if (previous.sequence === next.sequence) {
+      throw new Error(`${canonical.path} fragments ${previous.record.id} and ${next.record.id} share sequence ${next.sequence}`);
+    }
+    assertSupersession(canonical.schema, previous.document, next.document);
+  }
+  return ordered.at(-1).record;
 }
 
 // Kleio's evidence registry merge re-verifies every reference before publishing it: binary

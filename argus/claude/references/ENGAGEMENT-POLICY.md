@@ -612,6 +612,23 @@ every fragment before it is persisted, verifies its `engagementId`, then validat
 deterministic merged document again; malformed, incompatible, duplicate, or
 cross-engagement content cannot reach a canonical file.
 
+Single-document supersession: every other canonical JSON document (bug ledger, surface
+inventory, coverage result, final summary) is one complete document. Only its owner may
+submit fragments; any other lane is refused at write time with `<path> is a single-document
+contract; only <owner> may submit fragments`, so a non-owner can neither block nor poison
+the merge. Every fragment record carries a `sequence` one above the highest sequence across
+all canonicals (records written before sequences existed count as 0), and an identical
+replay of the same id and lane keeps its original record. The owner republishes by
+submitting a newer fragment. With more than one fragment, the merge digest-checks and
+validates every fragment, orders them by sequence (a tie fails), requires each one to keep
+its contract's stability invariants relative to its predecessor, and publishes only the
+latest; the merge record adds `effectiveFragment` and `supersededFragments`. The bug ledger
+keeps every earlier bug ID with at least its earlier origins, so an ID may change status but
+is never removed or re-pointed; the surface inventory keeps every earlier `SRF-*` ID and never
+lowers `discovery.candidates`. Fragments are immutable and never deleted, so a fragment that
+breaks an invariant fails that merge and every later merge of the canonical, and the last
+published document stays in place. A single fragment merges exactly as before.
+
 `solution/final-summary.json` is the canonical final record. Its merge also renders
 `solution/FINAL-SUMMARY.md` with an explicit `Source schema:` line, so the human-facing
 summary is traceable to the machine contract. The lane-plan `lanes`, evidence-reference
