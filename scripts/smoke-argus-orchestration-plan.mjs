@@ -84,7 +84,8 @@ assert(plan.$schema === 'argus/orchestration-plan@2' && plan.schemaVersion === 2
 // contract bump cannot leave a prompt citing a retired, schema-rejected version as authority.
 const planSchemaConst = readJson('argus/schemas/orchestration-plan.schema.json').properties.$schema.const;
 const promptSources = [
-  ...readdirSync(join(ROOT, 'argus/shared-skills')).map((skill) => `argus/shared-skills/${skill}/SKILL.md`),
+  ...readdirSync(join(ROOT, 'argus/shared-skills'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory()).map((entry) => `argus/shared-skills/${entry.name}/SKILL.md`),
   ...readdirSync(join(ROOT, 'argus/roles')).filter((name) => name.endsWith('.md')).map((name) => `argus/roles/${name}`),
 ];
 const planReferences = promptSources.flatMap((source) => [...readFileSync(join(ROOT, source), 'utf8')
