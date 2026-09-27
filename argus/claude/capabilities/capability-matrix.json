@@ -413,7 +413,8 @@
         "context7"
       ],
       "artifactPaths": [
-        "solution/TEST-HEALTH.md"
+        "solution/TEST-HEALTH.md",
+        "solution/quarantine.tsv"
       ]
     },
     {
@@ -481,6 +482,7 @@
         "solution/automation-status.json",
         "solution/test-lanes.tsv",
         "solution/environment.tsv",
+        "solution/quarantine.tsv",
         "solution/counterfactual/"
       ]
     },

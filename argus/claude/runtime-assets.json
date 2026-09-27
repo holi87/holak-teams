@@ -146,8 +146,8 @@
       "source": "argus/shared-skills/qa-framework-runner",
       "destination": "skills/qa-framework-runner",
       "files": 1,
-      "bytes": 4522,
-      "sha256": "8b0fd016264b487448fc6038b05c597dff35831c399e3bb54d66e218c5d09fd6"
+      "bytes": 4883,
+      "sha256": "7fed5aa258044075c806a56999f7f850cd811ebd2d8515f3c9926a5c63a4b45e"
     },
     {
       "id": "qa-coverage-reporting-skill",
@@ -182,8 +182,8 @@
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
-      "bytes": 25604,
-      "sha256": "e22700cd81e66f3d65c3a26bc7670fc9b7a083ae8b416ac1d10004827ccf20c3"
+      "bytes": 25674,
+      "sha256": "b88ff43c48a5bccc48e7a476da043d9d1929c741fbb3bbf21f8d7143c6c502bb"
     },
     {
       "id": "technique-catalogs-bundle",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 62295,
-    "sha256": "8168cdfded6ce86b8ccfca6118f06c9b714b317956ed3f771efa135752eb2960"
+    "bytes": 62457,
+    "sha256": "170d68a17a8d78f223d9f8dd964594abd2cb6423f8341a31a7a9a3c2a8d32062"
   }
 }

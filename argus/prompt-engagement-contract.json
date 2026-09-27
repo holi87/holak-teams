@@ -55,7 +55,8 @@
       { "id": "immutable-mode", "source": "qa-core", "markers": ["controller-selected primary mode", "Copy it exactly", "A=FULL_AUDIT", "B=BUG_HUNT", "Never infer, substitute, broaden", "protocol error"] },
       { "id": "first-attempt-schema", "source": "qa-core", "markers": ["exact key names", "value types", "repair within the same attempt", "never rely on a retry"] },
       { "id": "capability-template-selection", "source": "qa-framework-runner", "markers": ["Detect the target language", "Adapt a healthy existing suite", "Scaffold only"] },
-      { "id": "shared-template-semantics", "source": "qa-framework-runner", "markers": ["defect-evidence", "candidate-regression", "owner, reason, evidence, expiry"] },
+      { "id": "shared-template-semantics", "source": "qa-framework-runner", "markers": ["defect-evidence", "candidate-regression", "owner, reason, evidence, expiry", "solution/quarantine.tsv", "expires_on"] },
+      { "id": "suite-quarantine-ledger", "source": "asklepios", "markers": ["solution/quarantine.tsv", "reports/test-inventory.tsv", "expires_on"] },
       { "id": "confirmation-ratio", "source": "qa-core", "markers": ["captured occurrence", "occurrences/attempts ratio", "second success is never fabricated"] },
       { "id": "exploration-loop", "source": "qa-core", "markers": ["Seeded variation", "Differential oracle", "Search around each hit", "consecutive distinct probes", "consistency divergence"] }
     ]
