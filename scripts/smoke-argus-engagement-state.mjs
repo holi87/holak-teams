@@ -15,18 +15,24 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
 import {
   allocateWorker,
   advanceBarrier,
   appendHeartbeat,
   arriveBarrier,
+  bindDispatchableAgents,
   cleanupWorker,
+  conditionalGateRequest,
   createDefaultEngagement,
   ensurePreflightHeartbeat,
   evaluateWriteGuard,
+  getBarrierStatus,
   getEngagementStatus,
   initializeEngagementState,
   mergeCanonical,
+  resolveConditionalGates,
   skipPhases,
   validateEngagementManifest,
   writeCheckpoint,
@@ -43,6 +49,9 @@ const raci = readRepoJson('argus/raci.json');
 const finalSummaryFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/final-summary.json');
 const bugLedgerFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/bug-ledger.json');
 const evidenceFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/evidence-reference.json');
+const stateSchemaAjv = new Ajv2020({ allErrors: true, strict: false, validateFormats: true });
+addFormats(stateSchemaAjv);
+const validateStateSchema = stateSchemaAjv.compile(readRepoJson('argus/schemas/engagement-state.schema.json'));
 const MODE_A_PHASES = [
   'preflight', 'discovery', 'hunting', 'proof', 'deep-hunt-1', 'deep-proof-1', 'deep-hunt-2', 'deep-proof-2',
   'deep-hunt-3', 'deep-proof-3', 'automation', 'verification', 'reporting', 'complete',
@@ -61,9 +70,11 @@ try {
   testLedgerSnapshotNewConfirmed();
   testConvergedSkip();
   testStandbyBlocksSuccessCleanup();
+  testConditionalLaneProjection();
+  testConditionalGateResolution();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
-  console.log('PASS  Argus engagement state: derived phases, standby, proof ledger gate, recorded skips, decision-bound leases, authenticated heartbeat, and link defenses');
+  console.log('PASS  Argus engagement state: derived phases, standby, proof ledger gate, recorded skips, conditional lanes, one-shot gate resolution, decision-bound leases, authenticated heartbeat, and link defenses');
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
@@ -302,6 +313,7 @@ function testDerivedPhasePlan() {
   assert(state.currentPhase === 'discovery' && JSON.stringify(state.completedPhases) === '["preflight"]', 'initial phase cursor is not the first derived work phase');
   assert(JSON.stringify(Object.keys(state.barriers)) === JSON.stringify(MODE_A_PHASES), 'barriers are not keyed by the derived phases');
   assert(JSON.stringify(state.skippedPhases) === '{}' && JSON.stringify(state.ledgerSnapshots) === '{}', 'initial state lacks empty skippedPhases and ledgerSnapshots');
+  assert(state.conditionalAgents === null && state.gateResolution === null, 'initial state lacks null conditionalAgents and gateResolution');
 
   const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('derived-plan-controller') });
   const hermesBinding = executionBinding('derived-plan-hermes');
@@ -360,6 +372,16 @@ function testDerivedPhasePlan() {
   const { skippedPhases, ledgerSnapshots, ...withoutNewFields } = current;
   writeFileSync(statePath, `${JSON.stringify(withoutNewFields, null, 2)}\n`);
   expectThrow(() => getEngagementStatus(manifest), 'v3 state without skippedPhases and ledgerSnapshots');
+  // There is no migration path: a state without the conditional-lane fields is not v3.
+  const { conditionalAgents, gateResolution, ...withoutConditionalFields } = current;
+  writeFileSync(statePath, `${JSON.stringify(withoutConditionalFields, null, 2)}\n`);
+  expectThrowMessage(
+    () => getEngagementStatus(manifest),
+    'engagement state integrity failed: conditionalAgents must be null until the dispatchable projection is bound; gateResolution must be null until the dispatchable projection is bound',
+    'v3 state without conditionalAgents and gateResolution',
+  );
+  writeFileSync(statePath, `${JSON.stringify({ ...current, conditionalAgents: { hermes: ['db-access'] } }, null, 2)}\n`);
+  expectThrow(() => getEngagementStatus(manifest), 'conditional lanes before the dispatchable projection is bound');
   writeFileSync(statePath, `${JSON.stringify({ ...current, skippedPhases: { proof: { reason: 'converged', skippedAt: '2026-07-12T09:00:00.000Z', basis: null } } }, null, 2)}\n`);
   expectThrow(() => getEngagementStatus(manifest), 'skip record on a non-skippable phase');
   writeFileSync(statePath, `${JSON.stringify({ ...current, ledgerSnapshots: { triage: {} } }, null, 2)}\n`);
@@ -514,6 +536,169 @@ function testStandbyBlocksSuccessCleanup() {
   );
   cleanupWorker(manifest, 'minos', minos.token, 'failure');
   cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// The conditional map is sealed with the dispatchable projection: normalized, restricted to
+// dispatchable workers other than Odysseus and Kalchas, and immutable once bound.
+function testConditionalLaneProjection() {
+  const lanes = ['charon', 'hermes', 'kalchas', 'odysseus', 'orion'];
+  const fixture = createFixture('conditional-projection', lanes);
+  const { manifest } = fixture;
+  for (const [label, conditional, expected] of [
+    ['controller lane', { odysseus: ['db-access'] }, 'conditional lane odysseus must be a dispatchable worker other than odysseus and kalchas'],
+    ['recon lane', { kalchas: ['browser-runtime'] }, 'conditional lane kalchas must be a dispatchable worker other than odysseus and kalchas'],
+    ['non-dispatchable lane', { tiresias: ['source-access'] }, 'conditional lane tiresias must be a dispatchable worker other than odysseus and kalchas'],
+    ['empty gate list', { charon: [] }, 'conditional lane charon must list one or more capability ids'],
+    ['malformed capability id', { charon: ['DB access'] }, 'conditional lane charon must list one or more capability ids'],
+  ]) {
+    expectThrowMessage(() => bindDispatchableAgents(manifest, lanes, conditional), expected, `binding a ${label}`);
+  }
+  assert(getEngagementStatus(manifest).dispatchableAgents === null, 'a refused conditional binding sealed the projection');
+  bindDispatchableAgents(manifest, lanes, { orion: ['browser-runtime'], charon: ['db-access', 'db-access'] });
+  const state = getEngagementStatus(manifest);
+  assert(JSON.stringify(state.conditionalAgents) === '{"charon":["db-access"],"orion":["browser-runtime"]}' && state.gateResolution === null,
+    `conditional lanes were not normalized when bound: ${JSON.stringify(state.conditionalAgents)}`);
+  assertStateSchema(fixture, 'bound conditional projection');
+  bindDispatchableAgents(manifest, [...lanes].reverse(), { charon: ['db-access'], orion: ['browser-runtime'] });
+  assert(getEngagementStatus(manifest).revision === state.revision, 'an identical conditional re-bind mutated state');
+  for (const [label, conditional] of [
+    ['a different gate', { charon: ['db-access'], orion: ['source-access'] }],
+    ['an extra lane', { charon: ['db-access'], hermes: ['multi-service'], orion: ['browser-runtime'] }],
+    ['no conditional map', undefined],
+  ]) {
+    expectThrowMessage(() => bindDispatchableAgents(manifest, lanes, conditional), 'dispatchable agent projection is immutable once bound', `re-binding with ${label}`);
+  }
+
+  const empty = createFixture('conditional-projection-empty', lanes);
+  bindDispatchableAgents(empty.manifest, lanes);
+  const emptyState = getEngagementStatus(empty.manifest);
+  assert(JSON.stringify(emptyState.conditionalAgents) === '{}' && emptyState.gateResolution === null, 'an unconditional projection did not bind an empty conditional map');
+  assertStateSchema(empty, 'bound unconditional projection');
+  const controller = allocateWorker(empty.manifest, 'odysseus', { executionBinding: executionBinding('conditional-empty-controller') });
+  const kalchas = allocateWorker(empty.manifest, 'kalchas', { controllerToken: controller.token, executionBinding: executionBinding('conditional-empty-kalchas') });
+  arriveBarrier(empty.manifest, 'kalchas', kalchas.token, 'discovery');
+  expectThrowMessage(() => conditionalGateRequest(empty.manifest, controller.token), 'no conditional lanes await gate resolution', 'gate request without conditional lanes');
+  assert(advanceBarrier(empty.manifest, 'odysseus', controller.token).currentPhase === 'hunting', 'discovery without conditional lanes waited for gate resolution');
+  for (const [lane, token] of [['kalchas', kalchas.token], ['odysseus', controller.token]]) cleanupWorker(empty.manifest, lane, token, 'interrupted');
+}
+
+function testConditionalGateResolution() {
+  const lanes = ['atlas', 'charon', 'hermes', 'kalchas', 'metis', 'odysseus', 'orion'];
+  const fixture = createFixture('conditional-gates', lanes);
+  const { manifest, statePath } = fixture;
+  bindDispatchableAgents(manifest, lanes, { charon: ['db-access'], orion: ['browser-runtime'] });
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('conditional-controller') });
+  const tokens = { odysseus: controller.token };
+  for (const lane of ['atlas', 'hermes', 'kalchas', 'metis']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`conditional-${lane}`) }).token;
+  }
+  expectThrowMessage(
+    () => allocateWorker(manifest, 'charon', { controllerToken: controller.token, executionBinding: executionBinding('conditional-charon') }),
+    'charon is conditional on db-access; run engagement resolve-gates first',
+    'conditional lane allocation before gate resolution',
+  );
+  const verdicts = {
+    'db-access': { status: 'proven', basis: 'kalchas-evidence', reason: 'fixture verdict' },
+    'browser-runtime': { status: 'unmet', basis: 'runtime-probe', reason: 'fixture verdict' },
+  };
+  const evidenceSha256 = createHash('sha256').update('capability evidence fixture').digest('hex');
+  expectThrowMessage(
+    () => resolveConditionalGates(manifest, tokens.kalchas, { evidenceSha256, capabilities: verdicts }),
+    'invalid or inactive lease for odysseus',
+    'gate resolution with a non-controller token',
+  );
+  expectThrowMessage(
+    () => resolveConditionalGates(manifest, controller.token, { evidenceSha256, capabilities: verdicts }),
+    'resolve-gates requires the Kalchas discovery arrival',
+    'gate resolution before the Kalchas arrival',
+  );
+  for (const lane of ['atlas', 'metis']) arriveBarrier(manifest, lane, tokens[lane], 'discovery');
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token), 'phase discovery is waiting for: kalchas', 'discovery advance before the Kalchas arrival');
+  arriveBarrier(manifest, 'kalchas', tokens.kalchas, 'discovery');
+  expectThrowMessage(
+    () => advanceBarrier(manifest, 'odysseus', controller.token),
+    'discovery cannot advance before engagement resolve-gates records the conditional lane verdicts',
+    'discovery advance before gate resolution',
+  );
+  const request = conditionalGateRequest(manifest, controller.token);
+  assert(JSON.stringify(request.capabilities) === '["browser-runtime","db-access"]' &&
+    JSON.stringify(request.conditionalAgents) === '{"charon":["db-access"],"orion":["browser-runtime"]}',
+  `gate request does not name the conditional gates: ${JSON.stringify(request)}`);
+  for (const [label, resolution, expected] of [
+    ['a caller-supplied lane map', { evidenceSha256, capabilities: verdicts, lanes: { charon: 'released', orion: 'released' } },
+      'gate resolution accepts only evidenceSha256 and capabilities; lane verdicts are computed by the runtime'],
+    ['a missing gate', { evidenceSha256, capabilities: { 'db-access': verdicts['db-access'] } },
+      'gate resolution must cover exactly the conditional gates: browser-runtime, db-access'],
+    ['an extra gate', { evidenceSha256, capabilities: { ...verdicts, 'source-access': verdicts['db-access'] } },
+      'gate resolution must cover exactly the conditional gates: browser-runtime, db-access'],
+    ['an unknown status', { evidenceSha256, capabilities: { ...verdicts, 'db-access': { ...verdicts['db-access'], status: 'likely' } } },
+      'gate verdict for db-access must be exactly status (proven or unmet), basis, and reason'],
+    ['an extra verdict field', { evidenceSha256, capabilities: { ...verdicts, 'db-access': { ...verdicts['db-access'], proof: 'SELECT 1' } } },
+      'gate verdict for db-access must be exactly status (proven or unmet), basis, and reason'],
+    ['a malformed evidence digest', { evidenceSha256: 'not-a-digest', capabilities: verdicts },
+      'gate resolution evidenceSha256 must be null or a SHA-256 hex digest'],
+  ]) {
+    expectThrowMessage(() => resolveConditionalGates(manifest, controller.token, resolution), expected, `gate resolution with ${label}`);
+  }
+  assert(getEngagementStatus(manifest).gateResolution === null, 'a refused gate resolution recorded verdicts');
+
+  const resolved = resolveConditionalGates(manifest, controller.token, { evidenceSha256, capabilities: verdicts });
+  assert(JSON.stringify(resolved.lanes) === '{"charon":"released","orion":"gate-unmet"}' && resolved.evidenceSha256 === evidenceSha256 &&
+    JSON.stringify(resolved.capabilities) === JSON.stringify({ 'browser-runtime': verdicts['browser-runtime'], 'db-access': verdicts['db-access'] }) &&
+    Number.isFinite(Date.parse(resolved.resolvedAt)), `gate resolution returned unexpected verdicts: ${JSON.stringify(resolved)}`);
+  assert(JSON.stringify(getEngagementStatus(manifest).gateResolution) === JSON.stringify(resolved), 'gate resolution was not persisted exactly');
+  assertStateSchema(fixture, 'resolved gate state');
+  expectThrowMessage(
+    () => resolveConditionalGates(manifest, controller.token, { evidenceSha256: null, capabilities: { ...verdicts, 'browser-runtime': { ...verdicts['browser-runtime'], status: 'proven' } } }),
+    'gate resolution is immutable once recorded',
+    'a second gate resolution',
+  );
+  expectThrowMessage(() => conditionalGateRequest(manifest, controller.token), 'gate resolution is immutable once recorded', 'gate request after resolution');
+  expectThrowMessage(
+    () => allocateWorker(manifest, 'orion', { controllerToken: controller.token, executionBinding: executionBinding('conditional-orion') }),
+    'orion was omitted: gate unmet (browser-runtime)',
+    'gate-unmet lane allocation',
+  );
+  tokens.charon = allocateWorker(manifest, 'charon', { controllerToken: controller.token, executionBinding: executionBinding('conditional-charon') }).token;
+  assert(advanceBarrier(manifest, 'odysseus', controller.token).currentPhase === 'hunting', 'discovery did not advance after gate resolution');
+  const hunting = getBarrierStatus(manifest, 'hunting');
+  assert(JSON.stringify(hunting.participants) === '["charon","hermes"]', `hunting barrier did not omit the gate-unmet lane: ${hunting.participants.join(', ')}`);
+  for (const phase of ['deep-hunt-1', 'deep-hunt-3']) {
+    assert(!getBarrierStatus(manifest, phase).participants.includes('orion'), `${phase} barrier still waits for the gate-unmet lane`);
+  }
+  arriveBarrier(manifest, 'hermes', tokens.hermes, 'hunting');
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token), 'phase hunting is waiting for: charon', 'hunting advance without the released lane');
+  expectThrowMessage(() => arriveBarrier(manifest, 'orion', controller.token, 'hunting'), 'invalid or inactive lease for orion', 'arrival for a gate-unmet lane');
+  expectThrowMessage(
+    () => resolveConditionalGates(manifest, controller.token, { evidenceSha256, capabilities: verdicts }),
+    'gate resolution is immutable once recorded',
+    'gate resolution after discovery',
+  );
+
+  // Recorded verdicts are re-validated on every load; lane outcomes follow the capability verdicts.
+  const current = JSON.parse(readFileSync(statePath, 'utf8'));
+  for (const [label, mutate] of [
+    ['a promoted gate-unmet lane', (state) => { state.gateResolution.lanes.orion = 'released'; }],
+    ['a dropped lane verdict', (state) => { delete state.gateResolution.lanes.orion; }],
+    ['a proof value in a verdict', (state) => { state.gateResolution.capabilities['db-access'].observed = 'SELECT 1'; }],
+    ['an empty reason', (state) => { state.gateResolution.capabilities['db-access'].reason = ''; }],
+    ['a conditional recon lane', (state) => { state.conditionalAgents.kalchas = ['browser-runtime']; }],
+    ['unsorted gates', (state) => { state.conditionalAgents.charon = ['db-access', 'browser-runtime']; }],
+    ['a gate outside the conditional map', (state) => { state.gateResolution.capabilities['source-access'] = { status: 'proven', basis: 'x', reason: 'x' }; }],
+  ]) {
+    const tampered = structuredClone(current);
+    mutate(tampered);
+    writeFileSync(statePath, `${JSON.stringify(tampered, null, 2)}\n`);
+    expectThrow(() => getEngagementStatus(manifest), `state with ${label}`);
+  }
+  writeFileSync(statePath, `${JSON.stringify(current, null, 2)}\n`);
+  assert(getEngagementStatus(manifest).revision === current.revision, 'restored resolved state was not accepted');
+  for (const lane of ['atlas', 'charon', 'hermes', 'kalchas', 'metis', 'odysseus']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
+}
+
+function assertStateSchema(fixture, label) {
+  const state = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
+  assert(validateStateSchema(state), `${label} violates engagement-state.schema.json: ${stateSchemaAjv.errorsText(validateStateSchema.errors)}`);
 }
 
 // Drives a Mode A engagement with a validator and one hunter to the start of deep-hunt-2,
