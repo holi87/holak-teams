@@ -57,9 +57,10 @@ for (const variant of variantNames) {
             title: `Synthetic finding ${id}`, reportPath: `bugs/${origin}.md`, evidenceIds: [], confirmedAtMs: 1000 + index, seedId };
         });
         runs.push({
-          runId, variant, revision, repeat, seed: 100 + repeat, mode, build, enabledSeeds, truth: truthFor(enabledSeeds),
+          runId, publicId: sha256(runId).slice(0, 16), variant, revision, repeat, seed: 100 + repeat, mode, build, enabledSeeds, truth: truthFor(enabledSeeds),
           url: 'http://127.0.0.1:40000', port: 40000, contract: { rules: ['Synthetic public rule.'] }, status: 'awaiting-adjudication',
-          reason: null, launchAssurance: 'unattested', startedAt: new Date(STARTED).toISOString(), elapsedMs: 60_000, timedOut: false,
+          reason: null, launchAssurance: 'unattested', authorization: { sha256: sha256(`authorization ${runId}`), installed: 'match' },
+          startedAt: new Date(STARTED).toISOString(), elapsedMs: 60_000, timedOut: false,
           overBudget: false, artifactRoot,
           adapter: { envNames: ['HOME', 'PATH', 'TMPDIR'], exitCode: 0, signal: null, spawnError: null, resultState: 'valid', resultErrors: [],
             result: { schema: 'argus-eval/adapter-result@2', status: 'completed', launcherExitCode: 0,
@@ -88,7 +89,8 @@ const privateRuns = {
     variants: variantNames.map(name => ({ name, revision: plan.variants[name].revision, command: ['/bin/true'] })),
     modes: MODES, builds: BUILDS, repeats: REPEATS, seeds: Array.from({ length: REPEATS }, (_, repeat) => 100 + repeat),
     secondsByMode: { A: 28800, B: 14400 }, tokens: null, workRoot: work, adapterEnv: ['ANTHROPIC_API_KEY'],
-    replay: { enabled: true, repeats: 2, perSeedMatrix: true, secondsPerRunner: 1800 }, corpusModule: null, testMode: plan.testMode === true },
+    replay: { enabled: true, repeats: 2, perSeedMatrix: true, secondsPerRunner: 1800 },
+    authorization: { grants: ['browser-state-change', 'load', 'persistent-mutation', 'security-active'] }, corpusModule: null, testMode: plan.testMode === true },
   corpus: { version: corpusVersion, digest: corpusDigest() }, canarySha256: sha256('smoke canary'), runs,
 };
 assertValid('private-runs', privateRuns);
