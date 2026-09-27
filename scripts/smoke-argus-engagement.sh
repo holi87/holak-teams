@@ -561,6 +561,27 @@ if (cd "$TARGET" && "$CLI" authorization check --manifest ai_agents_internal/aut
   fail 'authorization check accepted --at inside an active engagement'
 fi
 grep -Fq 'authorization check --at is a test-only clock override and is refused while an engagement is active' "$WORK/authorization-at.out" || fail "authorization check --at was not refused by the engagement rule: $(<"$WORK/authorization-at.out")"
+# The CLI appends its audit beside --manifest, so inside an engagement only the engagement's
+# own authorization manifest is accepted, by the guard and by the CLI on its own.
+printf '{"name":"app"}\n' >"$TARGET/app/package.json"
+AUTH_READ="--lane talos --action read --target $TARGET --source-trust manifest"
+for manifest in app/package.json solution/package.json ai_agents_internal/../reports/authorization.json "$WORK/alternate-authorization.json"; do
+  guard_as talos Bash "argus-assets authorization check --manifest $manifest $AUTH_READ" \
+    'GUARD-SHELL-AMBIGUOUS: authorization check must name the active engagement authorization manifest'
+done
+guard_as talos Bash "argus-assets authorization check --manifest $TARGET/ai_agents_internal/authorization.json $AUTH_READ" allow
+# shellcheck disable=SC2086 # AUTH_READ is a word list of fixed, space-free arguments
+if (cd "$TARGET" && "$CLI" authorization check --manifest app/package.json $AUTH_READ) >"$WORK/authorization-bind.out" 2>&1; then
+  fail 'authorization check accepted a foreign manifest inside an active engagement'
+fi
+grep -Eq 'authorization check inside an active engagement must name /.*/ai_agents_internal/authorization\.json$' "$WORK/authorization-bind.out" \
+  || fail "foreign-manifest authorization check failed for the wrong reason: $(<"$WORK/authorization-bind.out")"
+test ! -e "$TARGET/app/authorization-audit.jsonl" || fail 'authorization check appended its audit beside a target-source file'
+# shellcheck disable=SC2086
+(cd "$TARGET" && "$CLI" authorization check --manifest ai_agents_internal/authorization.json $AUTH_READ) >"$WORK/authorization-bind.out" 2>&1 || true
+grep -Eq '^AUTHORIZATION  (ALLOW|DENY) .* audit=/.*/ai_agents_internal/authorization-audit\.jsonl ' "$WORK/authorization-bind.out" \
+  || fail "the engagement authorization manifest was not audited in the control directory: $(<"$WORK/authorization-bind.out")"
+rm "$TARGET/app/package.json"
 atlas_tmp="$(jq -r .temporaryDirectory "$ALLOCATIONS/atlas.json")"
 guard_shell "argus-assets copy-template typescript $atlas_tmp/template" allow
 guard_shell "argus-assets copy-runner-kit typescript $atlas_tmp/runner-kit" allow

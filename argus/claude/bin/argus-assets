@@ -3516,6 +3516,15 @@ function checkAuthorization(args) {
   }
   const manifestPath = resolve(options.manifest);
   if (!statSafe(manifestPath)?.isFile() || lstatSync(manifestPath).isSymbolicLink()) fail('authorization manifest must be a real file');
+  // The audit lands beside the manifest, so inside an engagement only the engagement's own
+  // manifest keeps it in the control directory, never in target source or a canonical tree.
+  let activeEngagement;
+  try { activeEngagement = activeEngagementManifest(); }
+  catch (error) { fail(`authorization check engagement is ambiguous: ${error.message}`); }
+  const engagementAuthorization = activeEngagement ? join(dirname(activeEngagement), 'authorization.json') : null;
+  if (engagementAuthorization && realpathSync(manifestPath) !== engagementAuthorization) {
+    fail(`authorization check inside an active engagement must name ${engagementAuthorization}`);
+  }
   const authorization = readSecureJson(manifestPath, 'authorization manifest');
   const patterns = readJson(REDACTION_PATTERNS_PATH);
   const patternErrors = validateRedactionPatterns(patterns);

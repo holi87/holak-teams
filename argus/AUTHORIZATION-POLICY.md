@@ -38,7 +38,10 @@ or split one denied action into smaller calls. Every decision appends a redacted
 event to the manifest's audit path and names the rule that allowed or denied it. Inside an
 engagement a lane checks only for itself: the PreToolUse guard denies an `authorization
 check` whose `--lane`, or a hunt-driver run whose `--agent`, is not the calling lane that
-Claude Code names in the hook payload, and denies both for an unidentified caller.
+Claude Code names in the hook payload, and denies both for an unidentified caller. Because
+the audit lands beside `--manifest`, both the guard and the CLI also refuse any manifest
+other than the engagement's `ai_agents_internal/authorization.json`, so a check never
+creates or appends an audit file in target source or beside a canonical artifact.
 
 ### Operator manifest at launch
 

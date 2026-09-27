@@ -47,8 +47,8 @@
       "source": "argus/AUTHORIZATION-POLICY.md",
       "destination": "references/AUTHORIZATION-POLICY.md",
       "files": 1,
-      "bytes": 12560,
-      "sha256": "61f6ae75137ae4894e7b6132f13759bd92fb574cab309a8b7cf9e78bd4b39185"
+      "bytes": 12825,
+      "sha256": "4934ddea1539e4b05a0cf018c213a8221c0465611008f701f1f1111968e6de7e"
     },
     {
       "id": "engagement-policy",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 426458,
-      "sha256": "683fb0d8fe6a929d1f95c4964fa3d47c3069628f90a6e59f607965d7e491ca3f"
+      "bytes": 427186,
+      "sha256": "df9d18f0da306ba40e6f96a6381ad5e9191f42108115f74e0dffa7fca41dc847"
     },
     {
       "id": "common-template",

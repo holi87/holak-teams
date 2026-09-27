@@ -2600,7 +2600,20 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     // event, so a lane can ask only for itself: Claude Code, not the model, names the caller.
     if (operation === 'check' && !lane) return deny('authorization check requires an identified calling lane');
     if (operation === 'check' && optionValue(tokens, '--lane') !== lane) return deny(`authorization check --lane must name the calling lane ${lane}`);
-    if (operation === 'check') return allow('packaged authorization audit owns the bounded mutation');
+    if (operation === 'check') {
+      // The CLI appends its audit beside --manifest, so only the engagement's own manifest keeps
+      // that append inside the control directory.
+      const requested = optionValue(tokens, '--manifest');
+      const expected = join(dirname(manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json')), 'authorization.json');
+      try {
+        if (!requested || resolvePhysical(requested, cwd) !== resolvePhysical(expected, cwd)) {
+          return deny('authorization check must name the active engagement authorization manifest ai_agents_internal/authorization.json');
+        }
+      } catch {
+        return deny('authorization check manifest cannot be resolved safely');
+      }
+      return allow('packaged authorization audit owns the bounded mutation');
+    }
     return deny('authorization init cannot run inside an active engagement');
   }
   if (primary === 'browser') return deny('browser provisioning is host/operator-only and cannot run inside an active engagement');
