@@ -108,6 +108,68 @@ expect_selection_failure() {
   [ ! -e "$output" ] || fail "$label persisted an invalid layout selection"
 }
 
+# A runner kit is exactly the composed-template files its contract entries select (a
+# trailing '/' selects a directory's files) plus their ancestor directories, each byte- and
+# mode-identical to the complete composition.
+assert_runner_kit() {
+  local runtime="$1" composed="$2" kit="$3"
+  KIT_RUNTIME="$runtime" COMPOSED_TREE="$composed" KIT_TREE="$kit" \
+    CONTRACT="$ROOT/argus/claude/capabilities/template-contract.json" node --input-type=module <<'NODE'
+import { createHash } from 'node:crypto';
+import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+function inventory(root, prefix = '', result = new Map()) {
+  for (const name of readdirSync(root).sort()) {
+    const path = join(root, name);
+    const relative = prefix ? `${prefix}/${name}` : name;
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink()) throw new Error(`runner kit: symlink ${relative}`);
+    if (stat.isDirectory()) {
+      result.set(relative, { type: 'directory', mode: stat.mode & 0o777 });
+      inventory(path, relative, result);
+    } else if (stat.isFile()) {
+      result.set(relative, { type: 'file', mode: stat.mode & 0o777, sha256: createHash('sha256').update(readFileSync(path)).digest('hex') });
+    } else throw new Error(`runner kit: unsupported entry ${relative}`);
+  }
+  return result;
+}
+
+const runtime = process.env.KIT_RUNTIME;
+const kitEntries = JSON.parse(readFileSync(process.env.CONTRACT, 'utf8')).templates[runtime].runnerKit;
+const composed = inventory(process.env.COMPOSED_TREE);
+const actual = inventory(process.env.KIT_TREE);
+const expected = new Map();
+for (const entry of kitEntries) {
+  const matches = [...composed].filter(([path, item]) => item.type === 'file' && (entry.endsWith('/') ? path.startsWith(entry) : path === entry));
+  if (!matches.length) throw new Error(`${runtime} runner kit entry selects no composed file: ${entry}`);
+  for (const [path, item] of matches) {
+    expected.set(path, item);
+    const parts = path.split('/');
+    for (let index = 1; index < parts.length; index += 1) {
+      const parent = parts.slice(0, index).join('/');
+      expected.set(parent, composed.get(parent));
+    }
+  }
+}
+const order = (map) => JSON.stringify([...map].sort(([left], [right]) => left.localeCompare(right)));
+if (order(expected) !== order(actual)) {
+  throw new Error(`${runtime} runner kit differs from the composed template\nexpected=${JSON.stringify([...expected.keys()].sort())}\nactual=${JSON.stringify([...actual.keys()].sort())}`);
+}
+for (const outside of ['run-tests.sh', 'argus-template.json', 'README.md', 'solution/STATE_MODEL.md']) {
+  if (actual.has(outside)) throw new Error(`${runtime} runner kit copied a non-kit file: ${outside}`);
+}
+NODE
+}
+
+expect_kit_failure() {
+  local label="$1" cli="$2" runtime="$3" destination="$4" message="$5"
+  if "$cli" copy-runner-kit "$runtime" "$destination" >"$WORK/$label.log" 2>&1; then
+    fail "$label unexpectedly copied a runner kit"
+  fi
+  grep -Fq -- "$message" "$WORK/$label.log" || fail "$label failed for the wrong reason: $(<"$WORK/$label.log")"
+}
+
 # The v2 template contract pins the runner kit, lane vocabulary, lane plan,
 # environment, counterfactual, and per-runtime adapter/marker values. Each targeted
 # drift must fail validation; the source and installed contracts must both pass.
@@ -150,6 +212,34 @@ for (const [label, mutate, expected] of mutations) {
   const errors = validateTemplateContract(contract);
   if (!errors.includes(expected)) problems.push(`${label}: expected "${expected}", got ${JSON.stringify(errors)}`);
 }
+// Runner-kit entries are canonical relative paths with an optional trailing '/' and no
+// globs. The JSON Schema rejects the same malformed entries as the runtime validator; only
+// the runtime validator also requires the shared declarations in every runtime's kit.
+const { compileJsonSchema } = await import(pathToFileURL(join(root, 'argus', 'runtime', 'json-schema.mjs')).href);
+const validateSchema = compileJsonSchema(JSON.parse(readFileSync(join(root, 'argus', 'schemas', 'template-contract.schema.json'), 'utf8')));
+const sourceSchemaErrors = validateSchema(source);
+if (sourceSchemaErrors.length) problems.push(`source contract rejected by its schema: ${JSON.stringify(sourceSchemaErrors)}`);
+const kitMutations = [
+  ['runner kit missing', 'java', (kit, template) => { delete template.runnerKit; }, true],
+  ['runner kit empty', 'python', (kit, template) => { template.runnerKit = []; }, true],
+  ['runner kit glob', 'typescript', (kit) => { kit.push('src/**/*.ts'); }, true],
+  ['runner kit traversal', 'java', (kit) => { kit.push('../outside.sh'); }, true],
+  ['runner kit dot segment', 'python', (kit) => { kit.push('src/./qa/'); }, true],
+  ['runner kit absolute', 'typescript', (kit) => { kit.push('/etc/passwd'); }, true],
+  ['runner kit double separator', 'java', (kit) => { kit.push('src//test/'); }, true],
+  ['runner kit backslash', 'python', (kit) => { kit.push('src\\qa\\argus_plugin.py'); }, true],
+  ['runner kit duplicate', 'typescript', (kit) => { kit.push('scripts/runner-lib.sh'); }, true],
+  ['runner kit shared library', 'java', (kit) => { kit.splice(kit.indexOf('scripts/runner-lib.sh'), 1); }, false],
+  ['runner kit counterfactual prefix', 'python', (kit) => { kit[kit.indexOf('solution/counterfactual/')] = 'solution/counterfactual'; }, false],
+];
+for (const [label, runtime, mutate, schemaRejects] of kitMutations) {
+  const contract = structuredClone(source);
+  mutate(contract.templates[runtime].runnerKit, contract.templates[runtime]);
+  const expected = `${runtime} template runner kit contract is invalid`;
+  const errors = validateTemplateContract(contract);
+  if (!errors.includes(expected)) problems.push(`${label}: expected "${expected}", got ${JSON.stringify(errors)}`);
+  if (schemaRejects && !validateSchema(contract).length) problems.push(`${label}: the JSON Schema accepted a malformed runner kit`);
+}
 if (problems.length) {
   for (const problem of problems) console.error(problem);
   process.exit(1);
@@ -168,6 +258,38 @@ for runtime in typescript java python; do
   assert_tree_equal "$source" "$WORK/raw-$runtime" "$runtime raw composition"
   test -x "$WORK/raw-$runtime/scripts/runner-contract.sh" || fail "$runtime composition lost executable mode"
 done
+
+# ADAPT path: copy-runner-kit hands an existing suite only the contract-declared runner
+# kit, byte- and mode-identical to the composition above, and says it is not runnable.
+for runtime in typescript java python; do
+  "$CLI" copy-runner-kit "$runtime" "$WORK/kit-$runtime" >"$WORK/kit-$runtime.log" 2>&1 || { cat "$WORK/kit-$runtime.log" >&2; fail "$runtime runner kit copy failed"; }
+  grep -Fxq "COPIED  $runtime runner kit -> $WORK/kit-$runtime" "$WORK/kit-$runtime.log" || fail "$runtime runner kit copy did not report its destination"
+  grep -Fxq 'Integrate into the existing suite; the kit is not a runnable framework.' "$WORK/kit-$runtime.log" || fail "$runtime runner kit copy did not warn that the kit is not runnable"
+  assert_runner_kit "$runtime" "$WORK/raw-$runtime" "$WORK/kit-$runtime" || fail "$runtime runner kit is not an exact subset of the composed template"
+  test -x "$WORK/kit-$runtime/scripts/runner-contract.sh" || fail "$runtime runner kit lost executable mode"
+done
+test -f "$WORK/kit-java/src/test/resources/META-INF/services/org.junit.platform.launcher.TestExecutionListener" || fail "Java runner kit omitted the listener registration"
+test -f "$WORK/kit-python/src/qa/argus_plugin.py" && test ! -e "$WORK/kit-python/src/qa/config.py" || fail "Python runner kit selected the wrong files"
+
+# The kit copy fails closed before writing: a non-empty or symlinked destination, an
+# unknown runtime, and a contract entry that selects no composed file leave nothing behind.
+mkdir "$WORK/kit-non-empty"
+printf 'preserve\n' >"$WORK/kit-non-empty/sentinel.txt"
+expect_kit_failure kit-non-empty "$CLI" python "$WORK/kit-non-empty" 'refusing to copy into non-empty destination'
+[ "$(find "$WORK/kit-non-empty" -mindepth 1 | wc -l | tr -d ' ')" = 1 ] && grep -Fxq preserve "$WORK/kit-non-empty/sentinel.txt" || fail "non-empty runner kit destination was modified"
+mkdir "$WORK/kit-output-real"
+ln -s "$WORK/kit-output-real" "$WORK/kit-output-link"
+expect_kit_failure kit-symlink "$CLI" java "$WORK/kit-output-link" 'destination cannot be a symbolic link'
+[ -z "$(find "$WORK/kit-output-real" -mindepth 1 -print -quit)" ] || fail "symlinked runner kit destination received files"
+expect_kit_failure kit-unknown-runtime "$CLI" ruby "$WORK/kit-ruby" 'copy-runner-kit runtime must be typescript, java, or python'
+[ ! -e "$WORK/kit-ruby" ] || fail "unknown runtime created a runner kit destination"
+expect_kit_failure kit-missing-destination "$CLI" typescript '' 'copy-runner-kit requires an empty destination path'
+cp -R "$ROOT/argus/claude" "$WORK/plugin-kit-missing"
+jq '.templates.python.runnerKit += ["src/qa/missing_helper.py", "src/qa/oracles"]' \
+  "$ROOT/argus/claude/capabilities/template-contract.json" >"$WORK/plugin-kit-missing/capabilities/template-contract.json"
+expect_kit_failure kit-missing-entry "$WORK/plugin-kit-missing/bin/argus-assets" python "$WORK/kit-missing-entry" \
+  'runner kit entry missing: src/qa/missing_helper.py, src/qa/oracles'
+[ ! -e "$WORK/kit-missing-entry" ] || fail "missing runner kit entry created a destination"
 
 # Every layer is fully inspected before the destination is created. Corruption,
 # symlinks, duplicate files, case-fold collisions, file/ancestor collisions, and

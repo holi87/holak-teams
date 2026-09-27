@@ -83,8 +83,8 @@
       "source": "argus/TEMPLATE-CONTRACT.md",
       "destination": "references/TEMPLATE-CONTRACT.md",
       "files": 1,
-      "bytes": 9043,
-      "sha256": "7a5c0e2e8d99cb5865b97e31c88632d4e3bd8b197853d5c66a92ab5bf1987233"
+      "bytes": 11952,
+      "sha256": "d60a3126c721a45cd73a36bc3b15278e34759610cdd2fb72f42451c5ca8ce0a4"
     },
     {
       "id": "coverage-contract",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 40,
-      "bytes": 182694,
-      "sha256": "cada2bfd96cfb86eb045ce91e6dc5de624d3d87490a82ef5e635e733b53e9e15"
+      "bytes": 182989,
+      "sha256": "9fc1a7b348b844e49e449d476dae76978dc7f13d6c4cec190932c45adb56f2e1"
     },
     {
       "id": "capability-matrix",
@@ -227,8 +227,8 @@
       "source": "argus/template-contract.json",
       "destination": "capabilities/template-contract.json",
       "files": 1,
-      "bytes": 3706,
-      "sha256": "97a811b411e571ab5b7bf5d6d706149cdad63b90d0a13366da1fb2dc21257294"
+      "bytes": 6144,
+      "sha256": "94cca438042c23c863453e2f362440629cd83d71280fef2fcecace5f44aa1e79"
     },
     {
       "id": "model-policy-benchmark",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 324194,
-      "sha256": "f6b7ae6d518bf0a9e45e0515277ea5747cf2e04d030d09617fae720565cbad2d"
+      "bytes": 326640,
+      "sha256": "dd6b377dcff2404eb2f560e0089c5ae8d790c0809990b875a1f1659dead325f5"
     },
     {
       "id": "common-template",
