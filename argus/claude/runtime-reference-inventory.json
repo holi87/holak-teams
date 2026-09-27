@@ -369,6 +369,12 @@
       ]
     },
     {
+      "value": "reports/counterfactual-plan.tsv",
+      "consumers": [
+        "aristarchus"
+      ]
+    },
+    {
       "value": "reports/evidence/",
       "consumers": [
         "atlas"
@@ -377,7 +383,8 @@
     {
       "value": "reports/expected-bugs.txt",
       "consumers": [
-        "atlas"
+        "atlas",
+        "minos"
       ]
     },
     {
@@ -419,6 +426,12 @@
       ]
     },
     {
+      "value": "reports/test-inventory.tsv",
+      "consumers": [
+        "skill:qa-framework-runner"
+      ]
+    },
+    {
       "value": "run-tests.sh",
       "consumers": [
         "aegis",
@@ -443,9 +456,29 @@
       ]
     },
     {
+      "value": "scripts/*.sh",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
       "value": "scripts/hunt-driver.mjs",
       "consumers": [
         "daidalos"
+      ]
+    },
+    {
+      "value": "scripts/outcome-event.sh",
+      "consumers": [
+        "atlas",
+        "skill:qa-framework-runner"
+      ]
+    },
+    {
+      "value": "scripts/runner-lib.sh",
+      "consumers": [
+        "atlas",
+        "skill:qa-framework-runner"
       ]
     },
     {
@@ -530,6 +563,35 @@
       ]
     },
     {
+      "value": "solution/counterfactual/",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "solution/counterfactual/<BUG-NNNN>.json",
+      "consumers": [
+        "aegis",
+        "atlas",
+        "daidalos",
+        "mnemosyne",
+        "nike",
+        "talos"
+      ]
+    },
+    {
+      "value": "solution/counterfactual/<id>.json",
+      "consumers": [
+        "skill:qa-framework-runner"
+      ]
+    },
+    {
+      "value": "solution/counterfactual/BUG-NNNN.json",
+      "consumers": [
+        "aristarchus"
+      ]
+    },
+    {
       "value": "solution/coverage-observations.json",
       "consumers": [
         "atlas",
@@ -556,6 +618,13 @@
       "consumers": [
         "atalanta",
         "kalchas"
+      ]
+    },
+    {
+      "value": "solution/environment.tsv",
+      "consumers": [
+        "atlas",
+        "skill:qa-framework-runner"
       ]
     },
     {
@@ -758,6 +827,14 @@
       ]
     },
     {
+      "value": "solution/test-lanes.tsv",
+      "consumers": [
+        "aristarchus",
+        "atlas",
+        "skill:qa-framework-runner"
+      ]
+    },
+    {
       "value": "solution/TEST-STRATEGY.md",
       "consumers": [
         "aristarchus",
@@ -784,6 +861,18 @@
       "consumers": [
         "minos",
         "tiresias"
+      ]
+    },
+    {
+      "value": "src/argus/fault-injector.ts",
+      "consumers": [
+        "nike"
+      ]
+    },
+    {
+      "value": "src/oracles",
+      "consumers": [
+        "atlas"
       ]
     },
     {
@@ -846,6 +935,7 @@
     {
       "value": "tests/resilience/",
       "consumers": [
+        "atlas",
         "nike"
       ]
     },
@@ -972,6 +1062,12 @@
       ]
     },
     {
+      "value": "java",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
       "value": "k6",
       "consumers": [
         "aristarchus",
@@ -1063,13 +1159,15 @@
     {
       "value": "pytest",
       "consumers": [
-        "kleio"
+        "kleio",
+        "skill:qa-framework-runner"
       ]
     },
     {
       "value": "python",
       "consumers": [
-        "ariadne"
+        "ariadne",
+        "atlas"
       ]
     },
     {

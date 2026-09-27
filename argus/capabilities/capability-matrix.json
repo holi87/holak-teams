@@ -478,7 +478,10 @@
       "artifactPaths": [
         "run-tests.sh",
         "solution/ARCHITECTURE.md",
-        "solution/automation-status.json"
+        "solution/automation-status.json",
+        "solution/test-lanes.tsv",
+        "solution/environment.tsv",
+        "solution/counterfactual/"
       ]
     },
     {

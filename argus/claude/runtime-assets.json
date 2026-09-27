@@ -101,8 +101,8 @@
       "source": "argus/RACI-CONTRACT.md",
       "destination": "references/RACI-CONTRACT.md",
       "files": 1,
-      "bytes": 12140,
-      "sha256": "4710fe168279d82a92d2563877c367ba912f10d1f07bf0a74907ebc750f14efa"
+      "bytes": 12223,
+      "sha256": "0b10a1530688babeca1fd676eab286f3d67cc21bf7c4ca700919365f2c046580"
     },
     {
       "id": "raci-matrix",
@@ -110,8 +110,8 @@
       "source": "argus/raci.json",
       "destination": "references/raci.json",
       "files": 1,
-      "bytes": 26276,
-      "sha256": "eea4d6870c5884316b7bf969c1c67799dd10a663c50433d9ae6d0047b8e8b74e"
+      "bytes": 26418,
+      "sha256": "2e5174099caf26b72dfec1b1ae775fda0dffa3c34155ec23acfea74dbfe7be18"
     },
     {
       "id": "orchestration-core-skill",
@@ -146,8 +146,8 @@
       "source": "argus/shared-skills/qa-framework-runner",
       "destination": "skills/qa-framework-runner",
       "files": 1,
-      "bytes": 2419,
-      "sha256": "49e54f90eab5fc3fb18a6ea593bb8f84e9d3b486787f95127ee9fc65e18ac343"
+      "bytes": 4522,
+      "sha256": "8b0fd016264b487448fc6038b05c597dff35831c399e3bb54d66e218c5d09fd6"
     },
     {
       "id": "qa-coverage-reporting-skill",
@@ -182,8 +182,8 @@
       "source": "argus/capabilities/capability-matrix.json",
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
-      "bytes": 25497,
-      "sha256": "452a09933d2d64c3e41c145c1dc7734355a9a0fe487e8be60ccbb7abdfff6d1c"
+      "bytes": 25604,
+      "sha256": "e324d596ebff2af69cfcc673257308e6edb1a7b187ca16a764059f3b8a8dcaeb"
     },
     {
       "id": "technique-catalogs-bundle",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 60411,
-    "sha256": "642ffe2cc44841a74cd57ed3310d1096c64e919d4873b8ca39592311f4f58deb"
+    "bytes": 62226,
+    "sha256": "3423fec780df28c473f03d32f7c9c72359aed1c92e79ae5d5864ca055b935056"
   }
 }

@@ -151,7 +151,7 @@ Engagement transitions are derived, not declared freely: they are exactly the co
 | aristarchus | Automation quality judge | automation-review | owned-artifact | `solution/automation-review.json` |
 | asklepios | Test-suite sanitation specialist | suite-sanitation | candidate-file | `solution/TEST-HEALTH.md` |
 | atalanta | REST API and public-data hunter | api-hunt | candidate-file | — |
-| atlas | Automation architect | automation-architecture | owned-artifact | `run-tests.sh`, `solution/ARCHITECTURE.md`, `solution/automation-status.json` |
+| atlas | Automation architect | automation-architecture | owned-artifact | `run-tests.sh`, `solution/ARCHITECTURE.md`, `solution/automation-status.json`, `solution/test-lanes.tsv`, `solution/environment.tsv`, `solution/counterfactual/` |
 | charon | Direct-database hunter | database-hunt | candidate-file | — |
 | daidalos | UI and accessibility automation engineer | ui-automation | tests-only | — |
 | hermes | Performance hunter | performance-hunt | candidate-file | `solution/PERF-REPORT.md` |

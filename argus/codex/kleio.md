@@ -3,8 +3,8 @@ schema: argus/codex-provenance@1
 slug: kleio
 display_name: Kleio
 runtime_config: argus/codex/kleio.toml
-runtime_config_sha256: dbcb1ef72285853e65214cd9c87117e3bcc218e893c93f2a49d3aa848fe52aea
-developer_instructions_sha256: bfbe44638d0d7fd01e4054d9bbdb6925365b15bad4d112d651e352dcf1edeec0
+runtime_config_sha256: 31c4af5fb62148cf6e773750c8382d9a0af2804b37f6f6edf1362c18107774d3
+developer_instructions_sha256: 05de077e174d6d0999513ab4eaf9389524fe8ad1c0300e4ebdb704ac71eff6a9
 canonical_source: argus/roles/kleio.md
 canonical_source_sha256: 9198cda4ec2baa68a0a81635ab1677723c85aa5c6f5ba1559472fbce3de90a34
 model: sol
