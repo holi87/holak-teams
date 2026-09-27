@@ -1051,7 +1051,9 @@ function bodyCaptureSettings(config) {
 }
 
 // Auth endpoints (login, me, refresh, and bodyCaptureExclude globs) never expose a body or
-// request body: they carry credentials and session tokens.
+// request body: they carry credentials and session tokens. An auth path covers itself and the
+// path segments below it, never a sibling that only shares its string prefix (api.me=/api/me
+// omits /api/me/ and /api/me/settings but not /api/messages); a trailing slash is ignored.
 function isOmittedEndpoint(url) {
   let pathname;
   try {
@@ -1059,7 +1061,10 @@ function isOmittedEndpoint(url) {
   } catch {
     return true;
   }
-  return bodyCapture.authPaths.some((path) => pathname.startsWith(path)) || bodyCapture.exclude.some((pattern) => pattern.test(url));
+  return bodyCapture.authPaths.some((path) => {
+    const base = path.replace(/\/+$/, '');
+    return pathname === base || pathname.startsWith(`${base}/`);
+  }) || bodyCapture.exclude.some((pattern) => pattern.test(url));
 }
 
 function mediaType(value) {
@@ -1089,7 +1094,7 @@ async function recordCapture({ page, method, status, url, contentType, readBody,
       sha256: sha256(buffer),
       truncated: buffer.length > bodyCapture.maxBytes,
       requestBody: readRequestBody(),
-      body: buffer.subarray(0, bodyCapture.maxBytes).toString('utf8'),
+      body: cappedBodyText(buffer, bodyCapture.maxBytes),
     };
   }
   capturedCount += 1;
@@ -1103,7 +1108,26 @@ function requestBodyText(request) {
   const type = mediaType(request.headers()['content-type']);
   if (!isJsonType(type) && type !== 'application/x-www-form-urlencoded') return null;
   const buffer = request.postDataBuffer();
-  return buffer ? buffer.subarray(0, MAX_REQUEST_BODY_BYTES).toString('utf8') : null;
+  return buffer ? cappedBodyText(buffer, MAX_REQUEST_BODY_BYTES) : null;
+}
+
+// A body within its cap is kept as served; --bodies redacts it at print time, by key when it
+// parses as JSON. A body over the cap is redacted whole first and only then cut to the cap:
+// cutting first leaves a fragment that no longer parses, so its sensitive keys would get the
+// text patterns only. Redacted JSON is re-serialized compact; a failed redaction keeps nothing.
+// The cut backs off to a character boundary.
+function cappedBodyText(buffer, maxBytes) {
+  if (buffer.length <= maxBytes) return buffer.toString('utf8');
+  let redacted = redactForConsole(buffer.toString('utf8'));
+  try {
+    redacted = JSON.stringify(JSON.parse(redacted));
+  } catch {
+    // Text bodies come back from the redactor's text mode as they are.
+  }
+  const bytes = Buffer.from(redacted, 'utf8');
+  let end = Math.min(bytes.length, maxBytes);
+  while (end < bytes.length && end > 0 && (bytes[end] & 0xc0) === 0x80) end -= 1;
+  return bytes.subarray(0, end).toString('utf8');
 }
 
 // Driver-issued API calls (token mint, whoami) never pass through a page, so they are

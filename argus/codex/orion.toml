@@ -227,7 +227,7 @@ Each finding gets one `ORI-NNN` file. Request Daidalos regression only when auto
 
 ## Lazy technique catalog: argus/technique-catalog/orion@1
 
-After Kalchas has produced a schema-valid `argus/surface-inventory@1`, run `argus-assets technique select --role orion --inventory <surface-inventory.json>`. The selector verifies SHA-256 `140a7a5e0212a8042d3e6ccefce83e7c92f94502bb4c07bce0d3f85ca8eb0d52`, loads only the explicitly classified scopes, and returns the full catalog when scopes are absent, unknown, or ambiguous. Apply every returned entry or record its declared gap disposition; discover target values and never assume them. Delivery is `lazy` with `full-catalog` fallback.
+After Kalchas has produced a schema-valid `argus/surface-inventory@1`, run `argus-assets technique select --role orion --inventory <surface-inventory.json>`. The selector verifies SHA-256 `ed3ec5e334b1a411840a98b87a148d5ae28060adf34436a9439417a261b4b4c9`, loads only the explicitly classified scopes, and returns the full catalog when scopes are absent, unknown, or ambiguous. Apply every returned entry or record its declared gap disposition; discover target values and never assume them. Delivery is `lazy` with `full-catalog` fallback.
 
 <!-- MODEL_ESCALATION_START -->
 ## Execution and escalation binding

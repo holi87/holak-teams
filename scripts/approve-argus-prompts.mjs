@@ -1,12 +1,21 @@
 #!/usr/bin/env node
 // Maintainer tool: re-stamp argus/prompt-budgets.json approvedCorpus for the current prompt
 // corpus, either as a pending approval bound to one Argus release or with adjudicated
-// discovery evidence (scripts/eval/discovery/adjudicate.mjs) that the corpus did not regress.
+// discovery evidence that the corpus did not regress: the argus-eval/discovery-summary@1 that
+// scripts/eval/discovery/adjudicate.mjs writes for a paired baseline/candidate comparison.
+//
+// The summary must be scored (not provisional or UNSCORED) and must not be a testMode run. The
+// candidate must reach the baseline within the nonRegression tolerances in every mode the
+// comparison ran. The recorded evidence keeps one figure per side and metric: the minimum
+// across those modes (critical recall over the modes where both sides have one), with `runs`
+// the fewest scored faulty runs, the repeats that recall is averaged over. If every mode
+// passes, these minima pass the prompt gate's own re-check.
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { formatSchemaErrors, validateEval } from './eval/discovery/lib/schemas.mjs';
 import {
   AGENTS_DIR,
   CAPABILITY_MATRIX,
@@ -22,10 +31,10 @@ import {
 const BUDGET_FILE = 'argus/prompt-budgets.json';
 const VALUE_FLAGS = new Set(['--root', '--approved-for', '--release', '--benchmark-pending', '--benchmark', '--baseline-variant', '--candidate-variant', '--adjudicated-at']);
 const BOOLEAN_FLAGS = new Set(['--write', '--help']);
-const COMPARISON_FIELDS = ['revision', 'runs', 'meanRecall', 'meanCriticalRecall', 'meanPrecision'];
+const SUMMARY_SCHEMA = 'argus-eval/discovery-summary@1';
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const USAGE = `usage: approve-argus-prompts.mjs --approved-for <text>
-         (--benchmark-pending <reason> | --benchmark <adjudication.json> --baseline-variant <name> --candidate-variant <name> [--adjudicated-at <YYYY-MM-DD>])
+         (--benchmark-pending <reason> | --benchmark <discovery-summary.json> --baseline-variant <name> --candidate-variant <name> [--adjudicated-at <YYYY-MM-DD>])
          [--release <semver>] [--root <dir>] [--write]
 
 Without --write the proposed approvedCorpus is printed and nothing is changed.`;
@@ -41,7 +50,7 @@ const approvedFor = options['--approved-for']?.trim();
 if (!approvedFor) fail('--approved-for <text> is required');
 const pending = options['--benchmark-pending'];
 const benchmarkPath = options['--benchmark'];
-if ((pending === undefined) === (benchmarkPath === undefined)) fail('pass exactly one of --benchmark-pending <reason> or --benchmark <adjudication.json>');
+if ((pending === undefined) === (benchmarkPath === undefined)) fail('pass exactly one of --benchmark-pending <reason> or --benchmark <discovery-summary.json>');
 if (pending !== undefined && !pending.trim()) fail('--benchmark-pending needs a non-empty reason');
 for (const flag of ['--baseline-variant', '--candidate-variant', '--adjudicated-at']) {
   if (pending !== undefined && options[flag] !== undefined) fail(`${flag} applies only to --benchmark`);
@@ -91,20 +100,26 @@ function adjudicatedBenchmark(path, currentSha256, nonRegression) {
   if (!nonRegression) fail(`${BUDGET_FILE} declares no nonRegression tolerances`);
 
   const bytes = readFileSync(path);
-  let adjudication;
+  let summary;
   try {
-    adjudication = JSON.parse(bytes.toString('utf8'));
+    summary = JSON.parse(bytes.toString('utf8'));
   } catch (error) {
     fail(`${path} is not JSON: ${error.message}`);
   }
-  if (adjudication?.status !== 'scored') fail(`adjudication status must be "scored", found ${JSON.stringify(adjudication?.status)}; unscored comparisons cannot approve a corpus`);
-  if (!Array.isArray(adjudication.comparison)) fail('adjudication has no comparison rows');
-  const baselineRow = comparisonRow(adjudication.comparison, baselineVariant);
-  const candidateRow = comparisonRow(adjudication.comparison, candidateVariant);
+  if (summary?.schema !== SUMMARY_SCHEMA) {
+    const legacy = Array.isArray(summary?.comparison) ? '; the pre-5.0 comparison shape is no longer read' : '';
+    fail(`${path} is not an ${SUMMARY_SCHEMA} document written by scripts/eval/discovery/adjudicate.mjs${legacy}`);
+  }
+  const schemaErrors = validateEval('discovery-summary', summary);
+  if (schemaErrors.length > 0) fail(`${path} violates ${SUMMARY_SCHEMA}: ${formatSchemaErrors(schemaErrors)}`);
+  if (summary.status !== 'scored') fail(`discovery summary status must be "scored", found ${JSON.stringify(summary.status)}; provisional and unscored comparisons cannot approve a corpus`);
+  if (summary.protocol.testMode) fail('the discovery summary is a testMode comparison; a stub-adapter run cannot approve a corpus');
+  const baselineRow = summaryVariant(summary, baselineVariant);
+  const candidateRow = summaryVariant(summary, candidateVariant);
   for (const row of [baselineRow, candidateRow]) {
-    if (!/^[0-9a-f]{40}$/.test(row.revision ?? '')) fail(`variant ${row.variant}: revision must be a full 40-hex commit, found ${JSON.stringify(row.revision)}`);
+    if (!/^[0-9a-f]{40}$/.test(row.revision ?? '')) fail(`variant ${row.name}: revision must be a full 40-hex commit, found ${JSON.stringify(row.revision)}`);
     if (spawnSync('git', ['-C', ROOT, 'cat-file', '-e', `${row.revision}^{commit}`]).status !== 0) {
-      fail(`variant ${row.variant}: revision ${row.revision} is not a commit in ${ROOT}`);
+      fail(`variant ${row.name}: revision ${row.revision} is not a commit in ${ROOT}`);
     }
   }
 
@@ -116,36 +131,66 @@ function adjudicatedBenchmark(path, currentSha256, nonRegression) {
   if (candidateSha256 !== currentSha256) {
     fail(`candidate revision ${candidateRow.revision} hashes to ${candidateSha256}, but the working-tree corpus is ${currentSha256}`);
   }
+  const baselineSha256 = corpusSha256AtRevision(baselineRow.revision);
+  const modes = summary.protocol.modes.map((mode) => ({
+    mode,
+    baseline: { revision: baselineRow.revision, corpusSha256: baselineSha256, ...modeFigures(baselineRow, mode) },
+    candidate: { revision: candidateRow.revision, corpusSha256: candidateSha256, ...modeFigures(candidateRow, mode) },
+  }));
+  for (const { mode, baseline, candidate } of modes) {
+    const errors = evaluateNonRegression({ baseline, candidate }, nonRegression);
+    if (errors.length > 0) fail(`refusing a regressed approval in mode ${mode}: ${errors.join('; ')}`);
+  }
   const evidence = {
     status: 'non-regressed',
     comparisonSha256: sha256(bytes),
-    adjudicatedAt: adjudicationDate(path),
-    baseline: comparisonEvidence(baselineRow, corpusSha256AtRevision(baselineRow.revision)),
-    candidate: comparisonEvidence(candidateRow, candidateSha256),
+    adjudicatedAt: adjudicationDate(summary.createdAt),
+    baseline: weakestModeEvidence(modes, 'baseline'),
+    candidate: weakestModeEvidence(modes, 'candidate'),
   };
   const errors = evaluateNonRegression(evidence, nonRegression);
   if (errors.length > 0) fail(`refusing a regressed approval: ${errors.join('; ')}`);
   return evidence;
 }
 
-function comparisonRow(rows, variant) {
-  const matches = rows.filter((row) => row?.variant === variant);
-  if (matches.length !== 1) fail(`adjudication must contain exactly one comparison row for variant ${JSON.stringify(variant)}, found ${matches.length}`);
-  const row = matches[0];
-  for (const field of COMPARISON_FIELDS) {
-    if (!Object.hasOwn(row, field)) fail(`variant ${variant}: comparison row has no ${field}`);
-  }
-  return row;
+function summaryVariant(summary, name) {
+  const matches = summary.variants.filter((variant) => variant.name === name);
+  if (matches.length !== 1) fail(`discovery summary must contain exactly one variant named ${JSON.stringify(name)}, found ${matches.length}`);
+  return matches[0];
 }
 
-function comparisonEvidence(row, corpusSha256) {
+// One mode's figures in the benchmark-evidence vocabulary: recall is averaged over the scored
+// faulty runs, so those are the repeats; pooled precision is the precision.
+function modeFigures(variant, mode) {
+  const aggregate = variant.perMode?.[mode];
+  if (!aggregate) fail(`variant ${variant.name}: the discovery summary has no mode ${mode} aggregate`);
+  for (const field of ['meanRecall', 'pooledPrecision']) {
+    if (typeof aggregate[field] !== 'number') {
+      fail(`variant ${variant.name} mode ${mode}: ${field} is ${JSON.stringify(aggregate[field])}; approval needs scored faulty runs with reported findings`);
+    }
+  }
   return {
-    revision: row.revision,
-    corpusSha256,
-    runs: row.runs,
-    meanRecall: row.meanRecall,
-    meanCriticalRecall: row.meanCriticalRecall,
-    meanPrecision: row.meanPrecision,
+    runs: aggregate.faultyRuns,
+    meanRecall: aggregate.meanRecall,
+    meanCriticalRecall: aggregate.meanCriticalRecall,
+    meanPrecision: aggregate.pooledPrecision,
+  };
+}
+
+// The per-metric minimum across modes. Critical recall is taken over the same modes on both
+// sides (those where both have one), so a pass in every mode implies a pass of the minima.
+function weakestModeEvidence(modes, side) {
+  const records = modes.map((entry) => entry[side]);
+  const critical = modes
+    .filter((entry) => entry.baseline.meanCriticalRecall !== null && entry.candidate.meanCriticalRecall !== null)
+    .map((entry) => entry[side].meanCriticalRecall);
+  return {
+    revision: records[0].revision,
+    corpusSha256: records[0].corpusSha256,
+    runs: Math.min(...records.map((record) => record.runs)),
+    meanRecall: Math.min(...records.map((record) => record.meanRecall)),
+    meanCriticalRecall: critical.length > 0 ? Math.min(...critical) : null,
+    meanPrecision: Math.min(...records.map((record) => record.meanPrecision)),
   };
 }
 
@@ -178,8 +223,9 @@ function corpusSha256AtRevision(revision) {
   return hashPromptCorpus({ agents, profiles });
 }
 
-function adjudicationDate(path) {
-  const value = options['--adjudicated-at'] ?? statSync(path).mtime.toISOString().slice(0, 10);
+// The adjudication date defaults to the day adjudicate.mjs wrote the summary.
+function adjudicationDate(createdAt) {
+  const value = options['--adjudicated-at'] ?? String(createdAt).slice(0, 10);
   const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00Z`) : null;
   if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
     fail(`--adjudicated-at must be a calendar date YYYY-MM-DD, found ${JSON.stringify(value)}`);

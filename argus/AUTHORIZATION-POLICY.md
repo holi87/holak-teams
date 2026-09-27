@@ -121,7 +121,10 @@ argus-assets redact --input <text-file|-> --output <safe-file|->
 ```
 
 The command redacts structured JSON by sensitive key and applies packaged patterns to
-free text. Authorization audit values pass through the same redactor before write.
+free text. In free text a sensitive key is also matched in JSON syntax (`"password":"…"`,
+`'password': '…'`, escaped `\"password\":\"…\"`), including a cut JSON fragment or JSON
+state embedded in a page, and its whole quoted value is blanked. Authorization audit values
+pass through the same redactor before write.
 The card and phone patterns are scoped so that the numbers that prove a defect (totals,
 IDs, epoch timestamps, log times) stay visible. A card number is a 13-19 digit run with a
 card-network leading digit (2-6) that passes the Luhn checksum. A phone number has a

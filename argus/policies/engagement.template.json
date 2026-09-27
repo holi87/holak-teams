@@ -77,7 +77,13 @@
       { "path": "scripts/inventory-gate.sh", "owners": ["atlas"] },
       { "path": "scripts/evidence-gate.sh", "owners": ["atlas"] },
       { "path": "scripts/argus-playwright-reporter.mjs", "owners": ["atlas"] },
-      { "path": "scripts/baseline-coverage.mjs", "owners": ["atlas"] }
+      { "path": "scripts/baseline-coverage.mjs", "owners": ["atlas"] },
+      { "path": "solution/perseus-ledger.json", "owners": ["perseus"] },
+      { "path": "solution/orion-ledger.json", "owners": ["orion"] },
+      { "path": "solution/lynceus-ledger.json", "owners": ["lynceus"] },
+      { "path": "solution/antigone-ledger.json", "owners": ["antigone"] },
+      { "path": "solution/charon-ledger.json", "owners": ["charon"] },
+      { "path": "solution/journey-ledger.json", "owners": ["ariadne"] }
     ],
     "selectedTemplateRoots": {
       "harnessRootOwners": ["atlas", "talos", "daidalos", "nike", "aegis", "mnemosyne", "asklepios"]

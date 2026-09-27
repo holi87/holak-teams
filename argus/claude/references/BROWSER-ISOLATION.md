@@ -180,9 +180,12 @@ node scripts/hunt-driver.mjs --agent orion --role argus-orion \
   `--capture-bodies` glob are recorded, and only textual bodies (text, XML, JSON), each
   capped at the recon config's `maxCapturedBodyBytes` (default 64 KiB) with its byte count
   and SHA-256. `--bodies` prints them through `argus-assets redact` to stdout only; nothing
-  is written to disk. Bodies and request bodies of the configured auth endpoints
-  (`api.login`, `api.me`, `api.refresh`) and of every `bodyCaptureExclude` glob are
-  omitted. No header is kept except `content-type`.
+  is written to disk. A body over its cap, and a JSON or form request body over 16 KiB, is
+  redacted whole before it is cut, so a truncated body keeps its sensitive keys blank.
+  Bodies and request bodies of the configured auth endpoints
+  (`api.login`, `api.me`, `api.refresh`, each with the path segments below it but not a
+  sibling that only shares its prefix) and of every `bodyCaptureExclude` glob are omitted.
+  No header is kept except `content-type`.
 - **Each actor is its own browser.** Every `--actor` runs a separate persistent browser
   process whose profile lives under the lane's allocated
   `<browserArtifactsDirectory>/actor-profiles/<name>`, so engagement cleanup and crash

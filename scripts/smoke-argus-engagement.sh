@@ -594,6 +594,18 @@ for lane in atlas talos daidalos nike aegis mnemosyne; do
 done
 guard_as argus:minos Write solution/counterfactual/BUG-0001.json 'GUARD-OWNED-ARTIFACT: lane-owned solution/counterfactual is written only by atlas, talos, daidalos, nike, aegis, mnemosyne, not minos'
 guard_as argus:kleio Write solution/counterfactual/nested/BUG-0002.json GUARD-OWNED-ARTIFACT
+# Each catalog-owning hunter writes its blocking technique-coverage ledger in place; Minos and
+# Kleio only read it, and no other lane, the controller, or an unidentified writer may write it.
+for pair in perseus:perseus-ledger orion:orion-ledger lynceus:lynceus-ledger antigone:antigone-ledger \
+  charon:charon-ledger ariadne:journey-ledger; do
+  lane="${pair%%:*}" path="solution/${pair#*:}.json"
+  guard_as "argus:$lane" Write "$path" allow
+  guard_as argus:minos Write "$path" "GUARD-OWNED-ARTIFACT: lane-owned $path is written only by $lane, not minos"
+done
+guard_as argus:orion Write solution/perseus-ledger.json 'GUARD-OWNED-ARTIFACT: lane-owned solution/perseus-ledger.json is written only by perseus, not orion'
+guard_as main Write solution/journey-ledger.json 'GUARD-OWNED-ARTIFACT: lane-owned solution/journey-ledger.json is written only by ariadne, not odysseus'
+guard_write solution/charon-ledger.json 'GUARD-OWNED-ARTIFACT: lane-owned solution/charon-ledger.json is written only by charon; the writing lane is not identified'
+guard_as argus:perseus Write solution/perseus-ledger.json.bak GUARD-TARGET-IMMUTABLE
 guard_as argus:atlas Write scripts/generated-helper.sh GUARD-TARGET-IMMUTABLE
 guard_as argus:atlas Write solution/test-lanes.tsv.orig GUARD-TARGET-IMMUTABLE
 guard_as argus:atlas Write src/application.ts GUARD-TARGET-IMMUTABLE

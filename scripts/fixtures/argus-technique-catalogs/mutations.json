@@ -306,6 +306,15 @@
       "runtimeIncludes": "exactly 13 entries"
     },
     {
+      "name": "orion-sibling-divergence-demoted-to-hypothesis",
+      "catalog": "orion",
+      "operation": "replace",
+      "pointer": "/entries/0/oracles/0",
+      "value": "Enablement and click outcome match the cited client-validation requirement; a sibling form's behaviour is a hypothesis, not proof, and a server rejecting invalid input with 4xx is not itself a UI defect",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: consistency oracle: file it as Suspected"
+    },
+    {
       "name": "orion-double-submit-unconditional-oracle",
       "catalog": "orion",
       "operation": "replace",
