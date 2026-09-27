@@ -235,7 +235,9 @@ evidence IDs; it replaces the 4.x `verification.mergeRationale`.
 The canonical merge reconciles every row's cited evidence (row, proof, merge, and rejection
 IDs) against the digest-bound evidence fragments. A merge across lanes must cite evidence
 collected by each merged lane, and an independent executor may not be the collector of the
-reproduction evidence it re-checks. A foreign registry, a tampered ledger fragment, or a
+reproduction evidence it re-checks or an origin lane: the lane an origin prefix files under
+(`bugs/<PREFIX>-*` in the capability matrix) or a collector of an origin's causal evidence.
+A foreign registry, a tampered ledger fragment, or a
 tampered evidence fragment still fails the merge. Any other failure is per row: the merge
 sets that row to `quarantined` with the failures as `quarantine.reasons`, re-validates the
 document, records the quarantined IDs in the merge record, and snapshots the post-quarantine

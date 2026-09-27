@@ -75,6 +75,26 @@ const ariadneRegistry = { ...registry, references: [reference('EVD-0001', 'ariad
 assert.deepEqual(reconcileFindings(selfCheck, ariadneRegistry, () => bytes).byBug['BUG-0001'], ['BUG-0001: independent executor collected the original reproduction evidence']);
 const trueIndependence = { ...registry, references: [...registry.references, reference('EVD-0003', 'ariadne')] };
 assert.deepEqual(reconcileFindings(selfCheck, trueIndependence, () => bytes), { errors: [], byBug: {} });
+// A co-finder of a merged row is an origin lane, never its independent reproducer: its filing
+// prefix (ORI files as orion) or the collector of its causal evidence names it, and the merge
+// quarantines the row.
+const coFound = copy(valid);
+Object.assign(coFound.bugs[0], { origin: ['ATA-001', 'ORI-001'], severity: 'Critical', merge: { rationale: 'One authorization defect reached from the API and the UI.', causalEvidence: [{ ref: 'ATA-001', evidenceIds: ['EVD-0001'] }, { ref: 'ORI-001', evidenceIds: ['EVD-0004'] }] } });
+coFound.bugs[0].verification.independent = { status: 'reproduced', executor: 'orion', evidenceIds: ['EVD-0003'], reason: 'Fresh-state reproduction from a second lane' };
+assert.deepEqual(validateCanonicalDocument('bug-ledger', coFound), []);
+const coFinderRefs = (executorCollector, causalCollector) => ({ ...registry, references: [...registry.references, reference('EVD-0003', executorCollector), reference('EVD-0004', causalCollector)] });
+const coFinder = reconcileFindings(coFound, coFinderRefs('orion', 'orion'), () => bytes).byBug;
+assert.deepEqual(coFinder, { 'BUG-0001': ['BUG-0001: independent executor orion is an origin lane'] });
+const coFoundLedger = copy(coFound);
+assert.deepEqual(quarantineFindings(coFoundLedger, coFinder), ['BUG-0001']);
+assert(row(coFoundLedger, 'BUG-0001').status === 'quarantined' && row(coFoundLedger, 'BUG-0001').quarantine.reasons.includes('independent executor orion is an origin lane'));
+assert.deepEqual(reconcileFindings(coFound, coFinderRefs('orion', 'talos'), () => bytes).byBug, { 'BUG-0001': ['BUG-0001: independent executor orion is an origin lane'] }, 'the ORI filing prefix did not name orion');
+const coTalos = copy(coFound);
+Object.assign(coTalos.bugs[0], { origin: ['ATA-001', 'TAL-001'], merge: { ...coTalos.bugs[0].merge, causalEvidence: [{ ref: 'ATA-001', evidenceIds: ['EVD-0001'] }, { ref: 'TAL-001', evidenceIds: ['EVD-0004'] }] } });
+coTalos.bugs[0].verification.independent.executor = 'talos';
+assert.deepEqual(reconcileFindings(coTalos, coFinderRefs('talos', 'talos'), () => bytes).byBug, { 'BUG-0001': ['BUG-0001: independent executor talos is an origin lane'] }, 'a causal-evidence collector reproduced independently');
+const thirdLane = copy(coFound); thirdLane.bugs[0].verification.independent.executor = 'perseus';
+assert.deepEqual(reconcileFindings(thirdLane, coFinderRefs('perseus', 'orion'), () => bytes), { errors: [], byBug: {} });
 
 // A quarantined row keeps its submitted blocks, never counts as confirmed, and stays valid.
 const drifted = copy(valid);
