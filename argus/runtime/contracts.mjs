@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateCoverageObservations, validateSurfaceInventory } from './coverage.mjs';
+import { validateEvidenceReferences, validateRunnerResultSemantics } from './evidence.mjs';
 import { compileJsonSchema } from './json-schema.mjs';
 
 export const CONTRACT_VERSION = 1;
@@ -54,7 +55,7 @@ if (compatibility.current !== CONTRACT_VERSION || !compatibility.readCompatible.
 // subtask that bumps a contract edits its own row here and in the compatibility policy.
 const EXPECTED_CONTRACT_VERSIONS = Object.freeze({
   'lane-plan': 2,
-  'evidence-reference': 2,
+  'evidence-reference': 3,
   'automation-status': 2,
   'preflight-report': 3,
   'bug-ledger': 2,
@@ -238,10 +239,11 @@ function canonicalValidator(kind, version) {
 function semanticErrors(kind, document) {
   if (kind === 'bug-ledger') return [...duplicateIds(document.bugs, 'bug'), ...validateFindingQuality(document.bugs)];
   if (kind === 'lane-plan') return validateLanePlan(document);
+  if (kind === 'evidence-reference') return [...validateOrderedCollection(document, COLLECTION_CONTRACTS[kind]), ...validateEvidenceReferences(document)];
   if (COLLECTION_CONTRACTS[kind]) return validateOrderedCollection(document, COLLECTION_CONTRACTS[kind]);
   if (kind === 'surface-inventory') return validateSurfaceInventory(document);
   if (kind === 'coverage-observations') return validateCoverageObservations(document);
-  if (kind === 'runner-result') return validateRunnerResult(document);
+  if (kind === 'runner-result') return validateRunnerResultSemantics(document);
   if (kind === 'capability-evidence') return validateCapabilityEvidence(document);
   return [];
 }
@@ -310,16 +312,6 @@ function validateOrderedCollection(document, { field, key, label }) {
     if (previous !== null && compareAscii(previous, value) > 0) errors.push(`${label} records must be sorted by ${key}`);
     seen.add(value);
     previous = value;
-  }
-  return errors;
-}
-
-function validateRunnerResult(document) {
-  const errors = [];
-  if ((document.exitCode === 0) !== (document.status === 'pass')) errors.push('runner status must be pass exactly when exitCode is 0');
-  for (const category of ['product', 'automation', 'infrastructure', 'skip', 'policy']) {
-    const count = document.events.filter((event) => event.category === category).length;
-    if (document.categories[category] !== count) errors.push(`runner category ${category} count differs from events`);
   }
   return errors;
 }

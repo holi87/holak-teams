@@ -64,7 +64,7 @@ for rule in \
   fi
 done
 
-for retired in lane-plan:1 evidence-reference:1 automation-status:1 bug-ledger:1; do
+for retired in lane-plan:1 evidence-reference:1 evidence-reference:2 automation-status:1 bug-ledger:1; do
   kind="${retired%%:*}" version="${retired#*:}"
   jq --arg schema "argus/$kind@$version" --argjson version "$version" '."$schema"=$schema | .schemaVersion=$version' \
     "$FIXTURES/valid/$kind.json" >"$WORK/$kind-retired-v$version.json"
@@ -130,7 +130,7 @@ jq '.engagementId = "schema-fixture" | .references = [.references[1]]' "$WORK/ev
 jq '.engagementId = "schema-fixture" | .references = [.references[0]]' "$WORK/evidence-source.json" >"$WORK/evidence-1.json"
 "$CLI" engagement fragment --manifest "$MANIFEST" --lane talos --token "$TALOS" --canonical solution/evidence-reference.json --id a-evidence-2 --input "$WORK/evidence-2.json" >/dev/null
 evidence_fragment="$("$CLI" engagement fragment --manifest "$MANIFEST" --lane atalanta --token "$ATALANTA" --canonical solution/evidence-reference.json --id z-evidence-1 --input "$WORK/evidence-1.json")"
-jq -e '."$schema" == "argus/evidence-reference@2" and .schemaVersion == 2' "$TARGET/$(jq -r .path <<<"$evidence_fragment")" >/dev/null || fail 'evidence-reference fragment was not persisted as v2'
+jq -e '."$schema" == "argus/evidence-reference@3" and .schemaVersion == 3 and .references[0].mediaType == "text/plain" and .references[0].relatedSurfaceIds == ["SRF-API-ORDER"]' "$TARGET/$(jq -r .path <<<"$evidence_fragment")" >/dev/null || fail 'evidence-reference fragment was not persisted as v3'
 "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/evidence-reference.json >/dev/null
 jq -e '.references | map(.id) == ["EVD-0001", "EVD-0002"]' "$TARGET/solution/evidence-reference.json" >/dev/null || fail 'evidence fragments were not merged in deterministic ID order'
 
@@ -200,6 +200,42 @@ if (!withMerge('solution/BUG-LEDGER.md', 'append').includes('canonical artifact 
 if (withMerge('solution/TEST-STRATEGY.md', 'concatenate').length) throw new Error('an explicit concatenate merge was rejected');
 NODE
 
+# Binary evidence is registered only through the reviewer's own lane fragment, and Kleio's
+# registry merge binds it to the collector's audited binary-evidence allow decision.
+jq -e '.engagementId == "schema-fixture"' "$TARGET/ai_agents_internal/authorization.json" >/dev/null || fail 'preflight did not bind the authorization manifest to the engagement'
+mkdir -p "$TARGET/reports/evidence"
+node -e 'require("fs").writeFileSync(process.argv[1], Buffer.from(process.argv[2], "base64"))' "$TARGET/reports/evidence/shot.png" \
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+AUDIT_AT="$(node -e 'process.stdout.write(new Date(Date.now() - 2000).toISOString())')"
+node --input-type=module - "$WORK/evidence-source.json" "$TARGET" "$AUDIT_AT" "$WORK/evidence-shot.json" <<'NODE'
+import { readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
+const [input, target, auditAt, output] = process.argv.slice(2);
+const document = JSON.parse(readFileSync(input));
+const shot = document.references.find(ref => ref.kind === 'screenshot');
+if (shot?.id !== 'EVD-0003' || shot.collectedBy !== 'atalanta' || shot.review?.reviewer !== 'minos' || shot.redaction !== 'masked') throw new Error('valid evidence fixture lost its reviewed screenshot');
+shot.sha256 = createHash('sha256').update(readFileSync(join(target, shot.source))).digest('hex');
+shot.capturedAt = new Date(Date.parse(auditAt) + 1000).toISOString();
+shot.review = { ...shot.review, auditTimestamp: auditAt, reviewedAt: new Date(Date.parse(auditAt) + 1500).toISOString() };
+writeFileSync(output, JSON.stringify({ ...document, engagementId: 'schema-fixture', references: [shot] }));
+NODE
+if "$CLI" engagement fragment --manifest "$MANIFEST" --lane atalanta --token "$ATALANTA" --canonical solution/evidence-reference.json --id evidence-shot-collector --input "$WORK/evidence-shot.json" >"$WORK/shot-collector.out" 2>&1; then
+  fail 'the collecting lane registered its own binary evidence'
+fi
+grep -Fq 'binary evidence EVD-0003 must be registered by its reviewer minos, not atalanta' "$WORK/shot-collector.out" || fail "collector-registered binary evidence was not refused by the reviewer rule: $(<"$WORK/shot-collector.out")"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$MINOS" --canonical solution/evidence-reference.json --id evidence-shot --input "$WORK/evidence-shot.json" >/dev/null
+if "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/evidence-reference.json >"$WORK/shot-merge.out" 2>&1; then
+  fail 'binary evidence merged without an audited binary-evidence allow decision'
+fi
+grep -Fq 'evidence registry verification failed: binary evidence EVD-0003 has no allow binary-evidence audit event for atalanta' "$WORK/shot-merge.out" || fail "unaudited binary evidence failed for another reason: $(<"$WORK/shot-merge.out")"
+jq -e '.references | map(.id) == ["EVD-0001", "EVD-0002"]' "$TARGET/solution/evidence-reference.json" >/dev/null || fail 'a refused evidence merge changed the canonical registry'
+jq -nc --arg at "$AUDIT_AT" --arg target "$TARGET" '{schemaVersion: 1, timestamp: $at, engagementId: "schema-fixture", lane: "atalanta", action: "binary-evidence", decision: "allow", ruleId: "AUTH-ALLOW", reason: "explicit binary-evidence grant is valid", target: $target, resource: null, account: null, namespace: null, mutation: null, manifestSha256: ("0" * 64), sourceTrust: "user"}' \
+  >>"$TARGET/ai_agents_internal/authorization-audit.jsonl"
+"$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/evidence-reference.json >/dev/null || fail 'audited, reviewer-registered binary evidence did not merge'
+jq -e '(.references | map(.id)) == ["EVD-0001", "EVD-0002", "EVD-0003"] and .references[2].review.reviewer == "minos" and .references[2].mediaType == "image/png"' \
+  "$TARGET/solution/evidence-reference.json" >/dev/null || fail 'the merged registry does not carry the reviewed screenshot'
+
 
 jq '.engagementId = "schema-fixture" | .tests = [.tests[1]]' "$FIXTURES/valid/automation-status.json" >"$WORK/automation-2.json"
 jq '.engagementId = "schema-fixture" | .tests = [.tests[0]]' "$FIXTURES/valid/automation-status.json" >"$WORK/automation-1.json"
@@ -241,4 +277,4 @@ jq '.engagementId = "schema-fixture"' "$FIXTURES/valid/final-summary.json" >"$WO
 grep -Fq 'Source schema: argus/final-summary@1' "$TARGET/solution/FINAL-SUMMARY.md" || fail "rendered summary has no source schema"
 grep -Fq 'Required-case depth: 50%' "$TARGET/solution/FINAL-SUMMARY.md" || fail "rendered summary has no surface-derived coverage"
 
-printf 'PASS  Argus schemas: current fixtures, retired v1 rejection, deterministic collection merges, fragment rejection, per-bug ledger quarantine, latest-revision ledgers, stable IDs, runner results, and source-versioned summary\n'
+printf 'PASS  Argus schemas: current fixtures, retired version rejection, deterministic collection merges, fragment rejection, per-bug ledger quarantine, latest-revision ledgers, reviewer-registered audited binary evidence, stable IDs, runner results, and source-versioned summary\n'

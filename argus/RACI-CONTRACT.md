@@ -18,6 +18,7 @@ R = responsible, A = exactly one accountable owner, C = consulted, I = informed.
 | repair | odysseus | originating-specialist | minos | Re-dispatch the filing lane under its active allocation with the exact repair.missing items; the lane updates its own candidate file and evidence, then Minos re-judges. |
 | reproduce | minos | independent-reproducer | originating-specialist | Odysseus assigns the first eligible surface-route reproduce candidate; the reproducer arranges fresh state and records evidence collected under its own slug. |
 | source-oracle | metis | metis | minos | Metis answers needs-oracle requests with an ORC addendum, a justified-invariant class, both readings, or an explicit no-oracle residual. |
+| review-evidence | minos | minos | originating-specialist | The collector runs the binary-evidence authorization check before capture and hands Minos the masked or synthetic derivative with the printed audit timestamp; Minos inspects it and registers the reference and review in his own evidence fragment. Kleio reviews a capture Minos collected. |
 
 ## Surface routing
 

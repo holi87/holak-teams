@@ -104,10 +104,13 @@ for (const [kind, field, key] of [
   catch { duplicateRejected = true; }
   assert(duplicateRejected, `${kind}: merge accepted duplicate ${key} values across fragments`);
 
+  // Each collection reads only its current version; the immediately retired one fails closed.
   const policy = compatibility.contracts?.[kind];
-  assert(policy?.current === 2 && JSON.stringify(policy.readCompatible) === '[2]' && !Object.hasOwn(policy, 'migration'), `${kind}: retired compatibility policy still accepts v1`);
-  const retired = { ...document, $schema: `argus/${kind}@1`, schemaVersion: 1 };
-  assert(validateCanonicalDocument(kind, retired).length > 0, `${kind}: runtime reader still accepts retired v1 input`);
+  const current = policy?.current;
+  assert(Number.isInteger(current) && current >= 2 && document.schemaVersion === current && document.$schema === schemaId(kind, current), `${kind}: valid fixture is not the current policy version`);
+  assert(JSON.stringify(policy.readCompatible) === `[${current}]` && !Object.hasOwn(policy, 'migration'), `${kind}: compatibility policy still accepts a retired version`);
+  const retired = { ...document, $schema: `argus/${kind}@${current - 1}`, schemaVersion: current - 1 };
+  assert(validateCanonicalDocument(kind, retired).length > 0, `${kind}: runtime reader still accepts retired v${current - 1} input`);
 }
 const preflightV3Schema = schemas.get('preflight-report.schema.json');
 assert(preflightV3Schema?.properties?.schemaVersion?.const === 3, 'current preflight-report validator does not require schemaVersion 3');
@@ -129,7 +132,7 @@ leapSecondLane.lanes = [{
   ],
 }];
 assert(validateCanonicalDocument('lane-plan', leapSecondLane).length === 0, 'lane-plan rejected a strictly increasing sequence across an RFC3339 leap second');
-console.log(`PASS  Canonical JSON Schemas: ${schemaFiles.length} compiled, ${differentialFixtures} differential + ${semanticFixtures} current semantic-only fixtures, retired v1 readers rejected, ${validatedDocuments} source documents validated across ${coveredSchemas.size} schemas`);
+console.log(`PASS  Canonical JSON Schemas: ${schemaFiles.length} compiled, ${differentialFixtures} differential + ${semanticFixtures} current semantic-only fixtures, retired collection readers rejected, ${validatedDocuments} source documents validated across ${coveredSchemas.size} schemas`);
 
 function declaredSchemaName(value) {
   if (value === 'https://json-schema.org/draft/2020-12/schema') return null;

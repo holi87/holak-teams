@@ -35,8 +35,8 @@ for (const contract of capability.agents) {
   }
 }
 
-const expectedActivities = ['automate', 'deduplicate', 'discover', 'judge', 'persist', 'repair', 'report', 'reproduce', 'source-oracle', 'validate'];
-assert(equal(source.defectLifecycle.map((item) => item.activity).sort(), expectedActivities), 'defect lifecycle must define ten unique activities');
+const expectedActivities = ['automate', 'deduplicate', 'discover', 'judge', 'persist', 'repair', 'report', 'reproduce', 'review-evidence', 'source-oracle', 'validate'];
+assert(equal(source.defectLifecycle.map((item) => item.activity).sort(), expectedActivities), 'defect lifecycle must define eleven unique activities');
 unique(source.defectLifecycle, (item) => item.activity, 'defect activity');
 unique(source.surfaceRoutes, (item) => item.surface, 'surface route');
 unique(source.stateTransitions, transitionKey, 'state transition');

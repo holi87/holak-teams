@@ -169,11 +169,14 @@ try {
   const references = [];
   for (const [id, [kind, source, content]] of Object.entries(evidenceFiles)) {
     if (content !== null) write(faultyRoot, source, content);
-    references.push({ id, kind, source, collectedBy: 'atalanta', capturedAt: new Date(STARTED + 1000).toISOString(), redaction: 'synthetic',
-      sha256: id === 'EVD-0006' ? '0'.repeat(64) : sha256(content ?? id), relatedBugIds: ['BUG-0001'] });
+    // evidence-reference@3: a zipped trace is binary evidence and carries its second-agent review.
+    const binary = kind === 'trace';
+    references.push({ id, kind, mediaType: binary ? 'application/zip' : 'text/plain', source, collectedBy: 'atalanta', capturedAt: new Date(STARTED + 1000).toISOString(), redaction: 'synthetic',
+      sha256: id === 'EVD-0006' ? '0'.repeat(64) : sha256(content ?? id), relatedBugIds: ['BUG-0001'], relatedSurfaceIds: ['SRF-API-ORDERS'],
+      ...(binary ? { review: { reviewer: 'minos', reviewedAt: new Date(STARTED + 2000).toISOString(), method: 'synthetic-content', auditTimestamp: new Date(STARTED).toISOString() } } : {}) });
   }
   symlinkSync(join(sealed, 'canary.txt'), join(faultyRoot, 'evidence/ata-001/linked.txt'));
-  write(faultyRoot, 'solution/evidence-reference.json', JSON.stringify({ $schema: 'argus/evidence-reference@2', schemaVersion: 2, engagementId: `judge-smoke-${faultyId}`, references }));
+  write(faultyRoot, 'solution/evidence-reference.json', JSON.stringify({ $schema: 'argus/evidence-reference@3', schemaVersion: 3, engagementId: `judge-smoke-${faultyId}`, references }));
   const faulty = makeRun({ runId: faultyId, repeat: 0, seed: 11, build: 'faulty', status: 'awaiting-adjudication', root: faultyRoot, app: apps.get(11), source: corpus });
   assert.equal(faulty.extraction.findings.find(item => item.id === 'BUG-0003').reportPath, 'bugs/LYN-003-cart.md');
   // After extraction the report is swapped for a link to the sealed canary: the judge re-checks.

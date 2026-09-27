@@ -1,1 +1,1 @@
-{"$schema":"argus/evidence-reference@2","schemaVersion":2,"engagementId":"fixture-1","references":[{"id":"EVD-bad","kind":"image","source":"raw-secret","collectedBy":"atalanta","capturedAt":"no","redaction":"raw","sha256":"bad","relatedBugIds":[]}]}
+{"$schema":"argus/evidence-reference@3","schemaVersion":3,"engagementId":"fixture-1","references":[{"id":"EVD-bad","kind":"image","mediaType":"Image/PNG","source":"raw-secret","collectedBy":"atalanta","capturedAt":"no","redaction":"raw","sha256":"bad","relatedBugIds":[],"relatedSurfaceIds":["srf-bad"]}]}

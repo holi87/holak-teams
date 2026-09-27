@@ -4,8 +4,8 @@
   "agentsScanned": 27,
   "skillsScanned": 7,
   "entrypointsScanned": 1,
-  "runtimeFilesScanned": 9,
-  "runtimeImportsScanned": 16,
+  "runtimeFilesScanned": 10,
+  "runtimeImportsScanned": 21,
   "hooksScanned": 1,
   "pluginAssetReferences": [
     {
@@ -2308,6 +2308,12 @@
           "consumer": "lib/contracts.mjs",
           "kind": "runtime",
           "mechanism": "runtime-import",
+          "reference": "./evidence.mjs"
+        },
+        {
+          "consumer": "lib/contracts.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
           "reference": "./finding-quality.mjs"
         },
         {
@@ -2332,6 +2338,12 @@
           "consumer": "lib/engagement.mjs",
           "kind": "runtime",
           "mechanism": "runtime-import",
+          "reference": "./evidence.mjs"
+        },
+        {
+          "consumer": "lib/engagement.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
           "reference": "./finding-quality.mjs"
         },
         {
@@ -2339,6 +2351,24 @@
           "kind": "runtime",
           "mechanism": "runtime-import",
           "reference": "./model-policy.mjs"
+        },
+        {
+          "consumer": "lib/evidence.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./authorization.mjs"
+        },
+        {
+          "consumer": "lib/evidence.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./json-schema.mjs"
+        },
+        {
+          "consumer": "lib/finding-quality.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./evidence.mjs"
         },
         {
           "consumer": "lib/orchestration-plan.mjs",
