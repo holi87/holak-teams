@@ -11,7 +11,7 @@
     "inputTokens", "outputTokens", "totalTokens", "durationMs"
   ],
   "properties": {
-    "schema": { "const": "argus/model-telemetry-event@2" },
+    "schema": { "const": "argus/model-telemetry-event@3" },
     "timestamp": { "type": "string", "format": "date-time" },
     "eventId": { "type": "string", "pattern": "^MDL-[a-f0-9]{24}$" },
     "decisionId": { "type": "string", "pattern": "^MDR-[a-f0-9]{24}$" },
@@ -39,7 +39,10 @@
         "OPERATOR_APPROVAL_SELECTED",
         "OPERATOR_RETRY_SELECTED",
         "OPERATOR_ABORTED",
-        "CAPABILITY_DRIFT"
+        "CAPABILITY_DRIFT",
+        "AUTO_CONTINUE_SELECTED",
+        "BACKOFF_RETRY_SELECTED",
+        "AUTO_CONTINUATION_EXHAUSTED"
       ]
     },
     "fallbackUsed": { "type": "boolean" },

@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 15385,
-      "sha256": "c959051038589a9ce0ccbf269e0d56fb75f2ef191104acfb1ead990dc59cdbc8"
+      "bytes": 16610,
+      "sha256": "8a50e964bb649bcb728b3ac671d28874dafa8a709edb1e2b62835da0b0864134"
     },
     {
       "id": "runner-contract",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 40,
-      "bytes": 163051,
-      "sha256": "723ccba1f99df1f9cca4357c55f466dc9ce466443a1e0faf9f6bb426bfbeb2af"
+      "bytes": 167617,
+      "sha256": "90aa55791b0b2426142b01b659c9eb8c1f6444a596ef3702b6abb325f5ca3cd9"
     },
     {
       "id": "capability-matrix",
@@ -209,8 +209,8 @@
       "source": "argus/model-policy.json",
       "destination": "capabilities/model-policy.json",
       "files": 1,
-      "bytes": 9289,
-      "sha256": "92b8380b0e18203288ab3031527e45d968deffd0535b9f3f65fc378a4e4ae1bb"
+      "bytes": 10176,
+      "sha256": "bba1925107477d89a961db092f3d1389f0ea87ebc0698538b3b6e99838ee5137"
     },
     {
       "id": "runtime-adapters",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 9,
-      "bytes": 269198,
-      "sha256": "34977992cdabc37700590aa4507a93bf9cb443a5159c52ddcbe20df6b9e495ff"
+      "bytes": 281239,
+      "sha256": "4ace272c273318771ca53663680e559e0194f14ac40c5c71a4dd495aecb51b57"
     },
     {
       "id": "common-template",

@@ -74,18 +74,31 @@ identity; an unknown or retired version fails closed.
 `argus/model-escalation-request@1` is a controller-bound stop envelope, not a canonical
 solution artifact. A worker returns it after persisting a monotonic checkpoint. Odysseus
 validates its exact fields, current engagement/dispatch/attempt binding, declared signal,
-and checkpoint state before opening a new attempt in a new thread. A pre-spawn
-`model-unavailable` retry is the explicit exception: it uses the prior-decision/allocation
-availability binding and may have no checkpoint because no worker thread began.
+and checkpoint state before opening a new attempt in a new thread. Its signal enum lists
+only worker-declared signals: the controller-observed `no-artifact` and `zero-candidates`
+outcomes can never appear in a worker envelope. Two retries carry no checkpoint. A
+pre-spawn `model-unavailable` retry uses the prior-decision/allocation availability binding
+because no worker thread began. A controller-observed outcome (or an uncheckpointed
+turn-limit) uses an outcome binding to the same prior decision and allocation, which also
+records the accountable artifacts the controller observed.
 
 Model-control records are likewise runtime controls, not mergeable solution fragments.
-`argus/model-decision@2` is the immutable selected/blocked route. Human frontier disposition uses
-`argus/model-operator-decision@1` under the distinct operator trust purpose. Engagement
-state v2 persists the exact decision binding on every current allocation.
-`engagement start-attempt` consumes the current lane capability, atomically rotates it, and
-returns the next token once; telemetry for the completed decision must precede that
-transition. Codex routes are currently blocked because the CLI lacks a native hard turn cap;
-signed metadata cannot override that capability result.
+`argus/model-decision@3` is the immutable selected/blocked route under
+`argus/model-policy@2`. Every decision carries exactly the lineage its route needs:
+`escalationBinding` (a worker envelope with a non-null checkpoint reference and digest),
+`availabilityBinding` (with `priorUnavailableRetries`), or `outcomeBinding` (with
+`priorCheckpointlessRetries` and `observedArtifacts`). A selected automatic route
+(`AUTO_CONTINUE_SELECTED` or `BACKOFF_RETRY_SELECTED`) also records a `continuation` with
+its kind (`checkpoint-resume`, `fresh-restart`, or `backoff-retry`), sequence, per-attempt
+native turn cap, cumulative turn budget, and backoff seconds; every other decision records
+`continuation: null`. `AUTO_CONTINUATION_EXHAUSTED` blocks without an operator escalation.
+Human frontier disposition uses `argus/model-operator-decision@1` under the distinct
+operator trust purpose. Engagement state v3 persists the exact decision binding on every
+current allocation. `engagement start-attempt` consumes the current lane capability,
+atomically rotates it, and returns the next token once; telemetry for the completed
+decision, `argus/model-telemetry-event@3`, must precede that transition. Codex routes are
+currently blocked because the CLI lacks a native hard turn cap; signed metadata cannot
+override that capability result.
 
 ## Recon capability evidence
 
@@ -128,7 +141,7 @@ credentials. Keep credentials, tokens, and connection strings out of `summary` a
 | Surface inventory | `items`, `discovery` | Discovery expands monotonically; accessibility changes require evidence | Stable `SRF-*` IDs, enumerated denominator dimensions, risk basis, and discovery evidence. |
 | Coverage observations | `surfaceId`, `executed`, `assertions`, `evidenceIds`, `defects` | Append or replace one stable surface observation | Inventory link plus named oracle and evidence IDs. |
 | Coverage result | `discovery`, `overall`, `lanes`, `scopedOutcomes`, `defectOutcomes` | Deterministically recalculated from canonical inputs | Exact input schema IDs and stable surface/evidence links; defect score contribution is always zero. |
-| Model escalation request | `engagementId`, `dispatchId`, `attempt`, `agent`, `signal`, `checkpointRef`, `resumable` | Worker stops; controller validates, routes, records prior-attempt telemetry, and rebinds the active allocation with `engagement start-attempt`; it replaces the consumed token with the returned token before opening the next thread | `argus/model-escalation-request@1`, current engagement state, the prior selected decision, and the referenced monotonic checkpoint. Pre-spawn `model-unavailable` instead uses an availability binding. |
+| Model escalation request | `engagementId`, `dispatchId`, `attempt`, `agent`, `signal`, `checkpointRef`, `resumable` | Worker stops; controller validates, routes, records prior-attempt telemetry, and rebinds the active allocation with `engagement start-attempt`; it replaces the consumed token with the returned token before opening the next thread | `argus/model-escalation-request@1`, current engagement state, the prior selected decision, and the referenced monotonic checkpoint. The signal is worker-declared only; `no-artifact` and `zero-candidates` are invalid here. Pre-spawn `model-unavailable` instead uses an availability binding, and a controller-observed outcome uses an outcome binding. |
 | Final summary | `status`, `counts`, `runner`, `sourceSchemas`, `summary`, `generatedAt` | Terminal `completed`, `degraded`, or `blocked` | All linked source schemas, runner categories, and final barrier/merge evidence. |
 
 Only the controller changes coordination state: worker allocation, token generation,

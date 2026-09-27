@@ -33,7 +33,7 @@ controller_token="$(jq -r .token <<<"$controller")"
 decision="$(argus_smoke_model_decision "$MANIFEST" "$HOST" odysseus)"
 "$CLI" model telemetry --manifest "$MANIFEST" --decision "$decision" --token "$controller_token" \
   --input-tokens 100 --output-tokens 20 --duration-ms 250 --success true >/dev/null
-jq -e 'length == 1 and .[0].agent == "odysseus" and .[0].schema == "argus/model-telemetry-event@2"' \
+jq -e 'length == 1 and .[0].agent == "odysseus" and .[0].schema == "argus/model-telemetry-event@3"' \
   <(jq -s . "$TARGET/ai_agents_internal/model-telemetry.jsonl") >/dev/null || fail 'decision telemetry was not recorded exactly once'
 
 # A trust-store status change must take effect immediately. The pinned manifest
