@@ -3,7 +3,9 @@
 // real HTTP GET against the configured base URL, and every call is appended to the file
 // named by FAKE_PLAYWRIGHT_LOG (one "<event> <detail>" line each) so a smoke can prove which
 // module was imported and what the driver did with it. It implements every BrowserContext
-// and Page member hunt-driver.mjs touches, including locator(...).ariaSnapshot().
+// and Page member hunt-driver.mjs touches, including locator(...).ariaSnapshot(), context
+// 'page' events, context-level init scripts, clock, routes, and offline mode. Like
+// Playwright 1.57+, pages have no `accessibility` member.
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +41,8 @@ async function httpRequest(method, url, options = {}) {
     ok: () => response.ok,
     status: () => response.status,
     url: () => response.url,
+    headers: () => Object.fromEntries(response.headers),
+    body: async () => Buffer.from(body),
     text: async () => body,
     json: async () => JSON.parse(body),
     request: () => ({ method: () => method }),
@@ -92,17 +96,6 @@ function createPage(context) {
     url: () => page.currentUrl,
     async waitForTimeout(milliseconds) { record('page.waitForTimeout', String(milliseconds)); },
     locator: (selector) => createLocator(page, selector),
-    accessibility: {
-      async snapshot(options = {}) {
-        record('page.accessibility.snapshot', `interestingOnly=${options.interestingOnly ?? true}`);
-        const heading = textBetween(page.content, 'h1');
-        return {
-          role: 'WebArea',
-          name: textBetween(page.content, 'title'),
-          children: heading ? [{ role: 'heading', name: heading, level: 1 }] : [],
-        };
-      },
-    },
     async setContent(html) { page.content = String(html); record('page.setContent', `length=${page.content.length}`); },
     async screenshot(options = {}) {
       if (options.path) {
@@ -124,10 +117,32 @@ function createPage(context) {
 }
 
 function createContext(userDataDir, options) {
+  const listeners = new Map();
+  const pages = [];
   const context = {
     baseURL: options.baseURL ?? null,
-    pages: () => [page],
-    async newPage() { return page; },
+    pages: () => [...pages],
+    on(event, handler) {
+      record('context.on', event);
+      if (!listeners.has(event)) listeners.set(event, new Set());
+      listeners.get(event).add(handler);
+      return context;
+    },
+    async newPage() {
+      const page = createPage(context);
+      pages.push(page);
+      record('context.newPage');
+      for (const handler of [...(listeners.get('page') ?? [])]) handler(page);
+      return page;
+    },
+    async addInitScript() { record('context.addInitScript'); },
+    clock: {
+      async install(clockOptions = {}) { record('context.clock.install', new Date(clockOptions.time ?? 0).toISOString()); },
+      async fastForward(ticks) { record('context.clock.fastForward', String(ticks)); },
+    },
+    async route(pattern) { record('context.route', String(pattern)); },
+    async unroute(pattern) { record('context.unroute', String(pattern)); },
+    async setOffline(offline) { record('context.setOffline', String(offline)); },
     request: {
       get: (url, requestOptions) => httpRequest('GET', new URL(url, options.baseURL ?? undefined).href, requestOptions),
       post: (url, requestOptions) => httpRequest('POST', new URL(url, options.baseURL ?? undefined).href, requestOptions),
@@ -144,7 +159,7 @@ function createContext(userDataDir, options) {
     },
     async close() { record('context.close', userDataDir); },
   };
-  const page = createPage(context);
+  pages.push(createPage(context));
   return context;
 }
 
