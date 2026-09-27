@@ -100,7 +100,7 @@ Execute the engagement unless the user explicitly requests planning only. Then c
 
 ## Sources of authority
 
-- `argus/orchestration-plan@1` owns modes, gates, DAG, waves, and the
+- `argus/orchestration-plan@2` owns modes, gates, DAG, waves, phases, and the
   controller/specialist boundary. Packaged preflight persists its disposition-filtered
   projection; never rebuild a roster from prose.
 - Capability matrix and preflight own availability, dispositions, and fallbacks; RACI owns

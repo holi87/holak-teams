@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 15800,
-      "sha256": "ff504c363a9b6d953f3cd1b3239e45103affc39955f1f6fd12929df44d906128"
+      "bytes": 15808,
+      "sha256": "fbc881ffd3793d49fe086c2399bcec96d24200c0db833bc9206893828846ec85"
     },
     {
       "id": "qa-core-skill",

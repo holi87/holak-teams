@@ -334,7 +334,9 @@ Engagement coordination:
   id --manifest <path> --lane <slug> --token <lease> --kind <kind> --identity <stable-key>
   checkpoint --manifest <path> --lane <slug> --token <lease> --phase <phase> --sequence <n> --dispatch-id <id> --attempt <n> --input <json-file|->
   heartbeat --manifest <path> --lane <slug> --token <lease> --phase <phase> --completed <n> --total <n> --status <status>
-  barrier arrive|status|advance --manifest <path> [lease options]
+  barrier arrive|status|advance|skip --manifest <path> [lease options] [--reason converged|controller-budget]
+    skip is controller only (--lane odysseus) from the untouched start of a deep-hunt pass;
+    --reason is required and records why the remaining deep-hunt passes end.
   cleanup --manifest <path> --lane <slug> --token <lease> --outcome <success|failure|interrupted>
   resolve-gates --manifest <path> [--controller-token <odysseus-token>] [--evidence <path>]
     Once, in discovery after Kalchas arrives; --evidence defaults to
