@@ -6,7 +6,10 @@ copy is `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 ## One manifest and one state file
 
 `argus-assets preflight` creates or loads `ai_agents_internal/engagement.json` before
-specialists run. The manifest fixes the target and artifact roots, selected workers,
+specialists run. Its `--output` resolves against the artifact root and must stay inside
+`ai_agents_internal`; inside an active engagement the guard further allows only
+`ai_agents_internal/preflight.json` or a diagnostic `ai_agents_internal/preflight-<name>.json`,
+so a rerun never overwrites a canonical or control artifact. The manifest fixes the target and artifact roots, selected workers,
 phase participants, canonical owners, allowed write roots, isolated resource policy,
 exclusive-operation owners, ID allocators, cleanup obligations, and the resumable state
 path. The manifest is operator-owned and is never modified by target, repository, issue,

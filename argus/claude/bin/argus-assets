@@ -4104,6 +4104,13 @@ async function preflight(argv) {
   const artifactRootCandidate = resolve(options.artifactRoot ?? targetPath ?? process.cwd());
   const artifactRootPath = statSafe(artifactRootCandidate)?.isDirectory() ? realpathSync(artifactRootCandidate) : artifactRootCandidate;
   refuseSealedPreflightRewrite(artifactRootPath, options.output);
+  // A report inside the artifact root stays in the control directory, so it never overwrites a
+  // canonical artifact, a lane's output, or the test corpus. One outside the root still falls
+  // back to the default report below.
+  const requestedReport = resolve(artifactRootPath, options.output ?? 'ai_agents_internal/preflight.json');
+  if (isWithin(artifactRootPath, requestedReport) && !isWithin(join(artifactRootPath, 'ai_agents_internal'), requestedReport)) {
+    fail('preflight --output must stay inside <artifact-root>/ai_agents_internal');
+  }
   // After the seal, browser lanes depend on browser-runtime.json, which only the one-shot
   // `engagement resolve-gates` may rewrite; a diagnostic report keeps its own result.
   const sealed = Boolean(lstatSafe(join(artifactRootPath, 'ai_agents_internal', 'model-control-seal.json')));

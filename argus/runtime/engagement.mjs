@@ -2534,6 +2534,10 @@ function shellMayCreateLink(command) {
   return /(?:^|[;&|\s])(?:[^\s;&|]*\/)?(?:ln|link)(?:\s|$)|\b(?:linkSync|symlinkSync|link|symlink)\s*\(|\.(?:hardlink_to|symlink_to)\s*\(/i.test(command);
 }
 
+// Inside an engagement preflight writes its report only as the sealed preflight.json or as a
+// new diagnostic beside it, so a rerun can never overwrite another control artifact.
+const PREFLIGHT_REPORT_NAME = /^preflight(?:-[A-Za-z0-9_-]+)?\.json$/;
+
 // A packaged command is refused when any of these appear anywhere in it, quoted or not.
 const PACKAGED_COMMAND_METACHARACTER = /[;&|>\n\r`]|\$\(/;
 const METACHARACTER_NAMES = Object.freeze({ ';': 'a semicolon (;)', '&': 'an ampersand (&)', '|': 'a pipe (|)', '>': 'a redirection (>)', '`': 'a backtick (`)', '$(': 'a command substitution ($()', '\n': 'a newline', '\r': 'a carriage return' });
@@ -2652,10 +2656,21 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     return deny('unknown template operation');
   }
   if (primary === 'preflight') {
-    const root = optionValue(tokens, '--artifact-root') ?? manifest.artifactRoot;
+    // As the CLI does: the artifact root defaults to a path target, else the working directory,
+    // and --output resolves against that root, never against the working directory.
+    const target = optionValue(tokens, '--target');
+    const root = optionValue(tokens, '--artifact-root') ?? (target && !/^https?:\/\//i.test(target) ? target : cwd);
     const output = optionValue(tokens, '--output') ?? 'ai_agents_internal/preflight.json';
-    if (resolvePhysical(root, cwd) !== resolvePhysical(manifest.artifactRoot, manifest.artifactRoot)) return { paths: [root] };
-    if (!String(output).replace(/^\.\//, '').startsWith('ai_agents_internal/')) return { paths: [output] };
+    try {
+      const artifactPhysical = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
+      if (resolvePhysical(root, cwd) !== artifactPhysical) return { paths: [root] };
+      const report = resolvePhysical(output, artifactPhysical);
+      if (dirname(report) !== join(artifactPhysical, 'ai_agents_internal') || !PREFLIGHT_REPORT_NAME.test(basename(report))) {
+        return deny('preflight --output must be ai_agents_internal/preflight.json or a diagnostic ai_agents_internal/preflight-<name>.json');
+      }
+    } catch {
+      return deny('preflight artifact root or output cannot be resolved safely');
+    }
     return allow('packaged preflight writes only dedicated engagement control artifacts');
   }
   if (primary === 'redact') {

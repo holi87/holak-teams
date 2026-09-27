@@ -518,6 +518,25 @@ guard_shell "node -e \"import('./runtime/engagement.mjs').then(function (m) { m.
 guard_shell "argus-assets redact --input reports/result.txt --output app/redacted.txt" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets redact --input reports/result.txt --output ai_agents_internal/operator-decisions/forged.json" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets preflight --target app --artifact-root app --mode A" GUARD-TARGET-IMMUTABLE
+# Preflight resolves --output against the artifact root, as the CLI does, and writes only its
+# report or a new diagnostic beside it; the artifact root defaults to a path target.
+PREFLIGHT_OUTPUT='GUARD-SHELL-AMBIGUOUS: preflight --output must be ai_agents_internal/preflight.json or a diagnostic'
+guard_shell "argus-assets preflight --target $TARGET --artifact-root $TARGET --mode A" allow
+guard_shell "argus-assets preflight --target $TARGET --artifact-root $TARGET --mode A --output ai_agents_internal/preflight-diagnostic.json" allow
+guard_shell "argus-assets preflight --target $TARGET --mode A --output ./ai_agents_internal/preflight.json" allow
+for output in ai_agents_internal/../solution/preflight-escape.json ai_agents_internal/../solution/BUG-LEDGER.md \
+  ai_agents_internal/../app/preflight.json ai_agents_internal/engagement-state.json ai_agents_internal/heartbeat/preflight.json \
+  reports/preflight.json; do
+  guard_shell "argus-assets preflight --target $TARGET --artifact-root $TARGET --mode A --output $output" "$PREFLIGHT_OUTPUT"
+done
+guard_shell 'argus-assets preflight --target app --mode A' GUARD-TARGET-IMMUTABLE
+if (cd "$TARGET" && "$CLI" preflight --target "$TARGET" --artifact-root "$TARGET" --mode A \
+  --output ai_agents_internal/../solution/preflight-escape.json) >"$WORK/preflight-escape.out" 2>&1; then
+  fail 'preflight accepted a report path outside the control directory'
+fi
+grep -Fq 'preflight --output must stay inside <artifact-root>/ai_agents_internal' "$WORK/preflight-escape.out" \
+  || fail "preflight output escape failed for the wrong reason: $(<"$WORK/preflight-escape.out")"
+test ! -e "$TARGET/solution/preflight-escape.json" || fail 'a refused preflight wrote outside the control directory'
 guard_shell "argus-assets copy-browser-driver $TARGET" allow
 guard_shell "argus-assets copy-browser-driver $WORK/outside-target" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets browser provision --artifact-root $TARGET" GUARD-SHELL-AMBIGUOUS
