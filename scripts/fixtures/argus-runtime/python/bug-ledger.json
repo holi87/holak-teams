@@ -1,0 +1,107 @@
+{
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
+  "engagementId": "argus-runtime-python-smoke",
+  "bugs": [
+    {
+      "id": "BUG-0001",
+      "origin": ["ATA-001"],
+      "title": "Synthetic deterministic defect reproduced on every attempt",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-001",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0001",
+      "evidenceIds": ["EVD-0001"],
+      "verification": {
+        "build": "synthetic-fixture",
+        "disputedOracle": false,
+        "oracle": {
+          "kind": "requirement",
+          "sourceRef": "Synthetic requirement 1",
+          "evidenceId": "EVD-0001",
+          "applicability": "Synthetic authorized test accounts",
+          "exceptions": []
+        },
+        "reproduction": {
+          "initialState": "Fresh synthetic fixture",
+          "steps": ["Execute the synthetic reproduction request."],
+          "attempts": 2,
+          "occurrences": 2,
+          "evidenceIds": ["EVD-0001"]
+        },
+        "independent": {
+          "status": "unavailable",
+          "executor": null,
+          "evidenceIds": [],
+          "reason": "Synthetic fixture; no independent runtime executor was run."
+        }
+      }
+    },
+    {
+      "id": "BUG-0002",
+      "origin": ["ATA-002"],
+      "title": "Synthetic finding still waiting for an oracle",
+      "severity": "Minor",
+      "priority": "P3",
+      "lane": "atalanta",
+      "oracleId": null,
+      "status": "needs-oracle",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": ["EVD-0002"]
+    },
+    {
+      "id": "BUG-0003",
+      "origin": ["ATA-003"],
+      "title": "Synthetic intermittent defect reproduced on half of the attempts",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-003",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0003",
+      "evidenceIds": ["EVD-0003"],
+      "verification": {
+        "build": "synthetic-fixture",
+        "disputedOracle": false,
+        "oracle": {
+          "kind": "requirement",
+          "sourceRef": "Synthetic requirement 3",
+          "evidenceId": "EVD-0003",
+          "applicability": "Synthetic authorized test accounts",
+          "exceptions": []
+        },
+        "reproduction": {
+          "initialState": "Fresh synthetic fixture",
+          "steps": ["Execute the synthetic reproduction request."],
+          "attempts": 4,
+          "occurrences": 2,
+          "evidenceIds": ["EVD-0003"]
+        },
+        "independent": {
+          "status": "unavailable",
+          "executor": null,
+          "evidenceIds": [],
+          "reason": "Synthetic fixture; no independent runtime executor was run."
+        }
+      }
+    },
+    {
+      "id": "BUG-0004",
+      "origin": ["PRO-004"],
+      "title": "Synthetic suspected finding without complete proof",
+      "severity": "Minor",
+      "priority": "P3",
+      "lane": "proteus",
+      "oracleId": "ORC-API-004",
+      "status": "suspected",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    }
+  ]
+}
