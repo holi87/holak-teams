@@ -245,6 +245,12 @@ else
   fail "[argus] (j2) accessibility and managed browser-session policy"
 fi
 
+if "$ROOT/scripts/smoke-argus-browser-runtime.sh"; then
+  pass "[argus] (j3) host-only browser provisioning, engagement guard denial, and digest-verified managed driver runtime"
+else
+  fail "[argus] (j3) host browser provisioning and managed driver runtime"
+fi
+
 if "$ROOT/scripts/smoke-argus-schemas.sh"; then
   pass "[argus] (k) canonical schemas, fixtures, fragment compatibility, and source-versioned summary"
 else

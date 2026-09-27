@@ -205,6 +205,9 @@ switch (command) {
   case 'launch':
     process.exitCode = launchCommand(args);
     break;
+  case 'browser':
+    process.exitCode = browserCommand(args);
+    break;
   case 'orchestration':
     process.exitCode = orchestrationCommand(args);
     break;
@@ -256,6 +259,7 @@ Usage:
   argus-assets model telemetry --manifest <engagement.json> --decision <model-decision.json> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false> [options]
   argus-assets launch request --target <url-or-path> --workspace <absolute-path> --artifact-root <absolute-path> --mode <A|B|C|D> --engagement-id <id> --launcher <path> --launcher-pid <pid> --claude-executable <path> --runtime-key-id <id> --trust-store <path> --output <path>
   argus-assets launch verify --request <json> --authorization <json> --receipt <path> --trust-store <path>
+  argus-assets browser provision --artifact-root <absolute-path> [--version <x.y.z>] [--package <absolute .tgz>] [--skip-browser-install] [--json]
   argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--artifact-root <path>] [--output <json|->]
   argus-assets template <detect|select|scaffold> [options]
   argus-assets technique scopes|select --role <${techniqueCatalogRoles().join('|')}> [--inventory <surface-inventory.json>]
@@ -306,6 +310,13 @@ Engagement coordination:
   resolve-gates --manifest <path> [--controller-token <odysseus-token>] [--evidence <path>]
     Once, in discovery after Kalchas arrives; --evidence defaults to
     solution/discovery/capability-evidence.json, resolved against the artifact root.
+
+Browser provisioning (host/operator-only; argus-launch --provision-browser runs it before the sandbox):
+  provision reuses a host Playwright outside the artifact root that already launches headless
+  Chromium; otherwise it installs the pinned release (default: the TypeScript template lockfile)
+  into ~/.cache/argus/browser-runtime/<x.y.z> and Chromium into Playwright's host default cache.
+  --package installs a local Playwright archive; --skip-browser-install keeps the cached browser.
+  Refused whenever launch attestation or engagement lease variables are set.
 
 Capability-based templates:
   detect --target <repo> [--output <json|->]
@@ -4299,6 +4310,267 @@ function recordBrowserRuntime({ artifactRootPath, persist, engagementId, probedA
       candidates: result.candidates,
     };
   }
+}
+
+// `browser provision` is host preparation that runs before the launch sandbox exists (from
+// argus-launch --provision-browser or an operator shell); it is not part of the signed launch
+// request because preflight re-probes the runtime inside the sandbox. It reuses a host runtime
+// outside the artifact root that already launches headless Chromium, or installs the pinned
+// Playwright release into ~/.cache/argus/browser-runtime/<x.y.z>, the first preflight candidate
+// location. That directory lies outside the artifact root, so sandboxed lanes can read the
+// module but never modify it. Chromium goes to Playwright's host default cache. The launch and
+// lease variables refuse it here and the PreToolUse guard denies it inside every engagement.
+function browserCommand(args) {
+  const usage = 'usage: argus-assets browser provision --artifact-root <absolute-path> [--version <x.y.z>] [--package <absolute .tgz>] [--skip-browser-install] [--json]';
+  const [operation, ...rest] = args;
+  if (operation !== 'provision') fail(usage);
+  const engagementSignals = Object.keys(process.env)
+    .filter((name) => /^ARGUS_(NATIVE_LAUNCH_|LAUNCH_UNATTESTED$|ENGAGEMENT_(LEASE|CONTROLLER)_TOKEN$)/.test(name))
+    .sort();
+  if (engagementSignals.length > 0) {
+    console.error(`FAIL  browser provisioning is host/operator-only; run it before the launch sandbox (argus-launch --provision-browser); set: ${engagementSignals.join(', ')}`);
+    return 2;
+  }
+  return provisionBrowserRuntime(parseBrowserProvisionOptions(rest, usage));
+}
+
+function parseBrowserProvisionOptions(args, usage) {
+  const options = { json: false, skipBrowserInstall: false };
+  const valued = new Set(['--artifact-root', '--version', '--package']);
+  for (let index = 0; index < args.length; index += 1) {
+    const name = args[index];
+    const key = kebabToCamel(String(name).replace(/^--/, ''));
+    if (name === '--json' || name === '--skip-browser-install') {
+      if (options[key]) fail(`duplicate option: ${name}`);
+      options[key] = true;
+      continue;
+    }
+    if (!valued.has(name)) fail(`unknown browser provision option: ${name}; ${usage}`);
+    const value = args[index + 1];
+    if (value == null || value.startsWith('--')) fail(`${name} requires a value`);
+    if (Object.hasOwn(options, key)) fail(`duplicate option: ${name}`);
+    options[key] = value;
+    index += 1;
+  }
+  if (!options.artifactRoot) fail(`browser provision requires --artifact-root; ${usage}`);
+  if (options.version !== undefined && !/^\d+\.\d+\.\d+$/.test(options.version)) fail('browser provision --version must be a plain x.y.z release');
+  if (options.version !== undefined && options.package !== undefined) {
+    fail('browser provision --version and --package are mutually exclusive: a package archive carries its own version');
+  }
+  if (options.package !== undefined &&
+      (!options.package.startsWith('/') || resolve(options.package) !== options.package || !options.package.endsWith('.tgz'))) {
+    fail('browser provision --package must be an absolute, normalized path to a .tgz archive');
+  }
+  return options;
+}
+
+function provisionBrowserRuntime(options) {
+  const artifactRoot = secureBrowserProvisionArtifactRoot(options.artifactRoot);
+  const runtimeRoot = hostBrowserRuntimeRoot(artifactRoot);
+  if (options.package !== undefined) {
+    const archive = lstatSafe(options.package);
+    if (!archive || archive.isSymbolicLink() || !archive.isFile()) fail(`browser provision --package must be an existing regular file: ${options.package}`);
+  }
+  assertBrowserProvisionAliasFree(artifactRoot);
+
+  if (options.version === undefined && options.package === undefined) {
+    const existing = resolveBrowserRuntime({ targetPath: null, artifactRootPath: artifactRoot, profile: {}, probeAllowed: true });
+    if (existing.status === 'available' && !isWithin(artifactRoot, existing.modulePath)) {
+      assertBrowserProvisionAliasFree(artifactRoot);
+      return reportBrowserProvision(options.json, {
+        action: 'reused',
+        installDirectory: null,
+        browserInstall: 'not-needed',
+        runtime: existing,
+      }, `BROWSER_PROVISION  reused ${existing.source} ${existing.modulePath} ${existing.moduleVersion}`);
+    }
+  }
+
+  const requestedVersion = options.version ?? (options.package === undefined ? pinnedPlaywrightVersion() : null);
+  const staging = mkdtempSync(join(runtimeRoot, '.staging-'));
+  let outcome;
+  let failure = null;
+  try {
+    chmodSync(staging, 0o700);
+    outcome = installBrowserRuntime({ options, artifactRoot, runtimeRoot, staging, requestedVersion });
+  } catch (error) {
+    failure = error;
+  } finally {
+    rmSync(staging, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+  if (failure) fail(`browser provisioning failed: ${failure.message}`);
+  return reportBrowserProvision(options.json, outcome,
+    `BROWSER_PROVISION  installed host-provisioned ${outcome.runtime.modulePath} ${outcome.runtime.moduleVersion} chromium=${outcome.browserInstall}`);
+}
+
+// Nothing is committed until the staged package is verified, alias-free, and has launched
+// headless Chromium, so a failed run never replaces a working runtime of the same version.
+function installBrowserRuntime({ options, artifactRoot, runtimeRoot, staging, requestedVersion }) {
+  const prefix = join(staging, 'install');
+  mkdirSync(prefix, { mode: 0o700 });
+  runBrowserProvisionChild('npm', [
+    'install', '--prefix', prefix, '--no-save', '--no-package-lock', '--no-bin-links', '--ignore-scripts', '--no-audit', '--no-fund',
+    options.package ?? `playwright@${requestedVersion}`,
+  ], { npm_config_cache: join(staging, 'npm-cache'), npm_config_update_notifier: 'false' }, 600000, 'npm install');
+
+  const stagedModule = join(prefix, 'node_modules', 'playwright');
+  const staged = inspectBrowserRuntimeCandidate({ source: 'host-provisioned', path: stagedModule, explicit: true });
+  if (staged.invalid) throw new Error(`the installed package is not a usable Playwright module: ${staged.invalid}`);
+  if (requestedVersion !== null && staged.moduleVersion !== requestedVersion) {
+    throw new Error(`npm installed Playwright ${staged.moduleVersion} instead of the requested ${requestedVersion}`);
+  }
+  if (!/^\d+\.\d+\.\d+$/.test(staged.moduleVersion)) {
+    throw new Error(`the package archive version ${staged.moduleVersion} is not a plain x.y.z release that preflight can discover`);
+  }
+  assertAliasFreeTree(prefix, 'the installed browser runtime');
+
+  let browserInstall = 'skipped';
+  if (!options.skipBrowserInstall) {
+    const cli = join(stagedModule, 'cli.js');
+    if (!statSafe(cli)?.isFile()) throw new Error('the installed Playwright package has no cli.js to install Chromium; pass --skip-browser-install when Chromium is already cached');
+    runBrowserProvisionChild(process.execPath, [cli, 'install', 'chromium'], {}, 1200000, 'Playwright Chromium install');
+    browserInstall = 'installed';
+  }
+
+  const probedAt = new Date().toISOString();
+  const probe = probeBrowserRuntime(staged.modulePath, ensureBrowserProbeScratch(artifactRoot));
+  if (!probe.launched) {
+    const hint = options.skipBrowserInstall ? '; rerun without --skip-browser-install to download Chromium' : '';
+    throw new Error(`Playwright ${staged.moduleVersion} did not launch headless Chromium: ${probe.evidence}${hint}`);
+  }
+  assertAliasFreeTree(artifactRoot, 'the artifact root');
+
+  const installDirectory = join(runtimeRoot, staged.moduleVersion);
+  commitBrowserRuntime(prefix, installDirectory);
+  const installed = inspectBrowserRuntimeCandidate({ source: 'host-provisioned', path: join(installDirectory, 'node_modules', 'playwright'), explicit: true });
+  if (installed.invalid) throw new Error(`the committed runtime is not a usable Playwright module: ${installed.invalid}`);
+  const tree = digestBrowserRuntimeTree(installed.modulePath);
+  const launched = `launched headless Chromium: ${probe.executablePath}`;
+  return {
+    action: 'installed',
+    installDirectory,
+    browserInstall,
+    runtime: {
+      status: 'available',
+      source: 'host-provisioned',
+      modulePath: installed.modulePath,
+      moduleVersion: installed.moduleVersion,
+      packageJsonSha256: installed.packageJsonSha256,
+      moduleTreeSha256: tree.sha256,
+      moduleTreeRoots: tree.roots,
+      executablePath: probe.executablePath,
+      probedAt,
+      evidence: limitBrowserRuntimeEvidence(`Playwright ${installed.moduleVersion} provisioned into ${installed.modulePath} ${launched}`),
+      candidates: [{ source: 'host-provisioned', modulePath: installed.modulePath, result: 'launched', evidence: limitBrowserRuntimeEvidence(launched) }],
+    },
+  };
+}
+
+function secureBrowserProvisionArtifactRoot(value) {
+  if (!value.startsWith('/') || resolve(value) !== value) fail('browser provision --artifact-root must be an absolute, normalized path');
+  const entry = lstatSafe(value);
+  if (!entry || entry.isSymbolicLink() || !entry.isDirectory()) fail(`browser provision --artifact-root must be an existing directory, not a symbolic link: ${value}`);
+  const physical = realpathSync(value);
+  if (physical !== value) fail(`browser provision --artifact-root must use its physical path: ${physical}`);
+  if (entry.uid !== process.getuid()) fail(`browser provision --artifact-root must be owned by the current user: ${value}`);
+  if ((entry.mode & 0o022) !== 0) fail(`browser provision --artifact-root must not be group/world writable: ${value}`);
+  return physical;
+}
+
+// The host runtime root must stay physically disjoint from the artifact root: the launch
+// sandbox confines writes to the artifact root, which is what keeps the module read-only.
+function hostBrowserRuntimeRoot(artifactRoot) {
+  const home = process.env.HOME || userInfo().homedir;
+  if (!nonEmptyString(home) || !home.startsWith('/')) fail('browser provision needs an absolute HOME for the host browser runtime directory');
+  const lexical = join(home, '.cache', 'argus', 'browser-runtime');
+  try { mkdirSync(lexical, { recursive: true, mode: 0o700 }); }
+  catch (error) { fail(`cannot create the host browser runtime directory ${lexical}: ${error.message}`); }
+  const entry = lstatSync(lexical);
+  if (entry.isSymbolicLink() || !entry.isDirectory()) fail(`the host browser runtime directory must be a real directory: ${lexical}`);
+  if (entry.uid !== process.getuid() || (entry.mode & 0o022) !== 0) {
+    fail(`the host browser runtime directory must be owned by the current user and not group/world writable: ${lexical}`);
+  }
+  const physical = realpathSync(lexical);
+  if (isWithin(artifactRoot, physical) || isWithin(physical, artifactRoot)) {
+    fail(`the host browser runtime directory ${physical} must be physically disjoint from the artifact root ${artifactRoot}`);
+  }
+  return physical;
+}
+
+function pinnedPlaywrightVersion() {
+  const lock = readJson(assetPath(requireAsset('typescript-template'), 'package-lock.json'));
+  const version = lock?.packages?.['node_modules/playwright']?.version;
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) fail('the packaged TypeScript template lockfile does not pin a plain Playwright x.y.z release');
+  return version;
+}
+
+// npm and Playwright's installer get HOME, PATH, and only the proxy, CA, registry, and
+// download-mirror settings they need to reach the network. PLAYWRIGHT_BROWSERS_PATH is never
+// passed, so Chromium lands in the host default cache, outside the artifact root. The running
+// Node's own bin directory leads PATH so npm is the one shipped with it, not a version shim.
+function runBrowserProvisionChild(file, args, extraEnvironment, timeout, label) {
+  const forwarded = {};
+  for (const name of ['HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'https_proxy', 'http_proxy', 'no_proxy', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
+    'NODE_EXTRA_CA_CERTS', 'npm_config_registry', 'NPM_CONFIG_REGISTRY', 'PLAYWRIGHT_DOWNLOAD_HOST']) {
+    if (process.env[name]) forwarded[name] = process.env[name];
+  }
+  const environment = browserRuntimeChildEnvironment({ ...forwarded, ...extraEnvironment });
+  environment.PATH = `${dirname(process.execPath)}:${environment.PATH}`;
+  try {
+    execFileSync(file, args, { stdio: ['ignore', 2, 2], timeout, env: environment });
+  } catch (error) {
+    if (error?.code === 'ETIMEDOUT') throw new Error(`${label} was killed after ${timeout / 1000} s`);
+    if (error?.code === 'ENOENT') throw new Error(`${label} could not start: ${file} was not found`);
+    throw new Error(`${label} exited with status ${error?.status ?? error?.signal ?? 'unknown'}`);
+  }
+}
+
+// Mirrors argus-launch verify_artifact_tree: the launch refuses an artifact root holding any
+// symbolic link or multiply linked file, so provisioning must never leave one behind.
+function assertBrowserProvisionAliasFree(artifactRoot) {
+  try { assertAliasFreeTree(artifactRoot, 'the artifact root'); }
+  catch (error) { fail(`browser provisioning failed: ${error.message}`); }
+}
+
+function assertAliasFreeTree(root, label) {
+  const pending = [root];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const name of readdirSync(directory)) {
+      const path = join(directory, name);
+      const entry = lstatSync(path);
+      if (entry.isSymbolicLink()) throw new Error(`${label} contains a symbolic link alias: ${path}`);
+      if (entry.isDirectory()) pending.push(path);
+      else if (entry.isFile() && entry.nlink > 1) throw new Error(`${label} contains a hard-link alias: ${path}`);
+    }
+  }
+}
+
+// Swaps the verified staging prefix into <runtimeRoot>/<version>. A previous install of the
+// same version is renamed aside first and restored if the final rename fails.
+function commitBrowserRuntime(prefix, installDirectory) {
+  let retired = null;
+  if (lstatSafe(installDirectory)) {
+    retired = join(dirname(installDirectory), `.retired-${basename(installDirectory)}-${randomBytes(6).toString('hex')}`);
+    renameSync(installDirectory, retired);
+  }
+  try {
+    renameSync(prefix, installDirectory);
+  } catch (error) {
+    if (retired) renameSync(retired, installDirectory);
+    throw error;
+  }
+  if (retired) rmSync(retired, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+}
+
+function reportBrowserProvision(json, result, line) {
+  if (json) {
+    console.error(line);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  } else {
+    console.log(line);
+  }
+  return 0;
 }
 
 function isWritableDirectory(path) {

@@ -25,10 +25,24 @@
  * -----
  *   node scripts/hunt-driver.mjs --agent <name> [--role <role>|anon] [actions...]
  *
+ * Inside a managed engagement run the packaged copy IN PLACE from the plugin; nothing is
+ * copied into the target. Print the template path first, then pass it literally (the write
+ * guard rejects $(...) composition around argus-assets):
+ *   argus-assets path typescript-template        # prints <template>
+ *   ARGUS_ENGAGEMENT_MANIFEST=<artifact-root>/ai_agents_internal/engagement.json \
+ *   ARGUS_BROWSER_PROFILE=<allocated-browserProfile> \
+ *   ARGUS_BROWSER_ARTIFACTS=<allocated-browserArtifactsDirectory> \
+ *   node <template>/scripts/hunt-driver.mjs --agent <slug> [--role <role>|anon] [actions...]
+ * ARGUS_ENGAGEMENT_MANIFEST selects the managed defaults, all under its directory
+ * (ai_agents_internal/): recon/driver.config.json, authorization.json, and the Playwright
+ * module recorded in browser-runtime.json, whose package and module-tree digests are
+ * re-verified before the import.
+ *
  * Config (app-specific) comes from scripts/driver.config.json (see
- * driver.config.example.json). One launch per invocation; the profile (and thus
- * the session) persists on disk between invocations, so follow-up calls stay
- * logged in. Batch several actions in one call to amortise the ~1s launch.
+ * driver.config.example.json), or recon/driver.config.json in a managed engagement.
+ * One launch per invocation; the profile (and thus the session) persists on disk
+ * between invocations, so follow-up calls stay logged in. Batch several actions in
+ * one call to amortise the ~1s launch.
  *
  * ACTIONS (executed in the order given, all in a single browser launch):
  *   --goto <route>          navigate to baseUrl+route, wait for SPA render
@@ -65,9 +79,10 @@
  *     --shot out/mycourses-375.png --snapshot --console --net
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { readFileSync, mkdirSync, rmSync, existsSync, lstatSync, readdirSync, readlinkSync, realpathSync, statSync } from 'node:fs';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -93,7 +108,13 @@ Configuration:
   Copy scripts/driver.config.example.json to scripts/driver.config.json and
   fill it from recon. Set DRIVER_CONFIG to use another path.
   The driver requires the shared authorization manifest at
-  ai_agents_internal/authorization.json (override with ARGUS_AUTHORIZATION_MANIFEST).`);
+  ai_agents_internal/authorization.json (override with ARGUS_AUTHORIZATION_MANIFEST).
+
+Managed engagement (run in place: node <argus-assets path typescript-template>/scripts/hunt-driver.mjs):
+  ARGUS_ENGAGEMENT_MANIFEST=<artifact-root>/ai_agents_internal/engagement.json selects
+  the managed defaults next to it: recon/driver.config.json, authorization.json, and the
+  verified Playwright module from browser-runtime.json. ARGUS_BROWSER_PROFILE and
+  ARGUS_BROWSER_ARTIFACTS (the allocated lane coordinates) are required.`);
   process.exit(0);
 }
 let agent = null;
@@ -147,9 +168,17 @@ const anon = !role || role === 'anon';
 // ---- config + deferred dependency load ----------------------------------
 // Keep --help runnable directly from an installed plugin cache before the
 // template has been copied or npm dependencies installed.
-const CONFIG_PATH = process.env.DRIVER_CONFIG ?? join(HERE, 'driver.config.json');
+// ARGUS_ENGAGEMENT_MANIFEST marks a managed engagement: its control directory
+// (ai_agents_internal/) supplies the recon config, the authorization manifest,
+// and the preflight-verified Playwright runtime, so the packaged driver runs in
+// place from the plugin instead of being copied into the target.
+const controlDir = process.env.ARGUS_ENGAGEMENT_MANIFEST ? dirname(resolve(process.env.ARGUS_ENGAGEMENT_MANIFEST)) : null;
+if (controlDir && !process.env.ARGUS_BROWSER_PROFILE) fail('ARGUS_BROWSER_PROFILE is required inside a managed engagement');
+const CONFIG_PATH = process.env.DRIVER_CONFIG ?? (controlDir ? join(controlDir, 'recon', 'driver.config.json') : join(HERE, 'driver.config.json'));
 if (!existsSync(CONFIG_PATH)) {
-  fail(`No config at ${CONFIG_PATH}. Copy driver.config.example.json -> driver.config.json and fill it from recon.`);
+  fail(controlDir
+    ? `No config at ${CONFIG_PATH}. Kalchas writes recon/driver.config.json during recon; ask Odysseus to route recon before driving the browser.`
+    : `No config at ${CONFIG_PATH}. Copy driver.config.example.json -> driver.config.json and fill it from recon.`);
 }
 const cfg = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
 const BASE = process.env.QCA_BASE_URL ?? cfg.baseUrl;
@@ -173,7 +202,8 @@ const interactiveActions = new Set(['eval', 'click', 'type', 'press', 'hover', '
 const authorizationAction = actions.some(([action]) => interactiveActions.has(action))
   ? 'browser-state-change'
   : 'browser-read';
-const authorizationManifest = process.env.ARGUS_AUTHORIZATION_MANIFEST ?? join(ROOT, 'ai_agents_internal', 'authorization.json');
+const authorizationManifest = process.env.ARGUS_AUTHORIZATION_MANIFEST
+  ?? (controlDir ? join(controlDir, 'authorization.json') : join(ROOT, 'ai_agents_internal', 'authorization.json'));
 const authorizationArgs = [
   'authorization', 'check',
   '--manifest', authorizationManifest,
@@ -207,7 +237,7 @@ if (actions.some(([action]) => action === 'shot') || captureTrace || captureVide
     fail('authorization denied binary-evidence; do not capture the screenshot until the view is synthetic/masked and independently reviewed');
   }
 }
-const { chromium } = await import('playwright');
+const { chromium } = await loadPlaywright();
 
 // ---- token mint (API login) ---------------------------------------------
 async function mintTokens(apiCtx) {
@@ -455,4 +485,114 @@ function isWithin(root, candidate) {
   const normalizedRoot = `${resolve(root)}/`;
   const normalizedCandidate = resolve(candidate);
   return normalizedCandidate === resolve(root) || normalizedCandidate.startsWith(normalizedRoot);
+}
+
+// In a managed engagement the Playwright module is the one preflight or gate resolution
+// proved and recorded in browser-runtime.json. Both digests are recomputed immediately
+// before the import, so a module changed after the probe is refused instead of executed.
+// Without a record (unmanaged runs) the driver imports its own playwright dependency.
+async function loadPlaywright() {
+  const recordPath = controlDir ? join(controlDir, 'browser-runtime.json') : null;
+  if (!recordPath || !existsSync(recordPath)) return import('playwright');
+  let record;
+  try {
+    record = JSON.parse(readFileSync(recordPath, 'utf8'));
+  } catch (error) {
+    fail(`browser runtime record ${recordPath} is unreadable: ${error.message}`);
+  }
+  if (record?.$schema !== 'argus/browser-runtime@1') fail(`${recordPath} is not an argus/browser-runtime@1 record`);
+  if (record.status !== 'available') {
+    fail(`browser runtime is ${record.status} (${record.evidence ?? 'no evidence'}); ask Odysseus to rerun gate resolution`);
+  }
+  const modulePath = record.modulePath;
+  if (typeof modulePath !== 'string' || !modulePath.startsWith('/')) fail(`${recordPath} has no absolute modulePath`);
+  const changed = (detail) => fail(`browser runtime changed since preflight; ask Odysseus to rerun gate resolution (${detail})`);
+  let tree;
+  try {
+    if (realpathSync(modulePath) !== modulePath) changed('the module path no longer resolves to itself');
+    if (sha256(readFileSync(join(modulePath, 'package.json'))) !== record.packageJsonSha256) changed('package.json digest differs');
+    tree = digestModuleTree(modulePath);
+  } catch (error) {
+    changed(error.message);
+  }
+  if (tree.sha256 !== record.moduleTreeSha256 || JSON.stringify(tree.roots) !== JSON.stringify(record.moduleTreeRoots)) {
+    changed('module tree digest differs');
+  }
+  return import(pathToFileURL(join(modulePath, 'index.mjs')).href);
+}
+
+function sha256(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+// Recomputes argus/browser-runtime@1 moduleTreeSha256 exactly as argus-assets does: the roots
+// are the package plus every runtime dependency found by Node's node_modules lookup outside an
+// already covered root; entries are labelled by their path relative to dirname(modulePath)
+// with "/" separators, sorted by code unit, and hashed as `${label}\0${kind}\0${payload}\n`,
+// where files carry the SHA-256 of their bytes and symbolic links their unfollowed link text.
+function digestModuleTree(modulePath) {
+  const roots = [modulePath];
+  const scanned = new Set();
+  const queue = [modulePath];
+  while (queue.length > 0) {
+    const packageRoot = queue.shift();
+    if (scanned.has(packageRoot)) continue;
+    scanned.add(packageRoot);
+    let manifest;
+    try { manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')); }
+    catch { manifest = null; }
+    const names = Object.keys({
+      ...(isPlainObject(manifest?.dependencies) ? manifest.dependencies : {}),
+      ...(isPlainObject(manifest?.optionalDependencies) ? manifest.optionalDependencies : {}),
+    }).sort();
+    for (const name of names) {
+      const dependency = resolvePackageDirectory(packageRoot, name);
+      if (!dependency) continue;
+      if (!roots.some((root) => isWithin(root, dependency))) roots.push(dependency);
+      if (roots.length > 16) throw new Error('module tree spans more than 16 package roots');
+      queue.push(dependency);
+    }
+  }
+  const base = dirname(modulePath);
+  const entries = [];
+  for (const root of roots) {
+    const pending = [root];
+    while (pending.length > 0) {
+      const directory = pending.pop();
+      for (const name of readdirSync(directory)) {
+        const path = join(directory, name);
+        const entry = lstatSync(path);
+        const label = relative(base, path).split(sep).join('/');
+        if (entry.isSymbolicLink()) entries.push([label, 'symlink', readlinkSync(path)]);
+        else if (entry.isDirectory()) pending.push(path);
+        else if (entry.isFile()) entries.push([label, 'file', sha256(readFileSync(path))]);
+        else throw new Error(`module tree holds an unsupported filesystem entry: ${label}`);
+        if (entries.length > 20000) throw new Error('module tree holds more than 20000 entries');
+      }
+    }
+  }
+  entries.sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0));
+  const digest = createHash('sha256');
+  for (const [label, kind, payload] of entries) digest.update(`${label}\0${kind}\0${payload}\n`);
+  return { sha256: digest.digest('hex'), roots };
+}
+
+function resolvePackageDirectory(fromDirectory, name) {
+  for (let cursor = fromDirectory; ; cursor = dirname(cursor)) {
+    if (basename(cursor) !== 'node_modules') {
+      const candidate = join(cursor, 'node_modules', name);
+      let manifestEntry = null;
+      try { manifestEntry = statSync(join(candidate, 'package.json')); }
+      catch { manifestEntry = null; }
+      if (manifestEntry?.isFile()) {
+        try { return realpathSync(candidate); }
+        catch { return null; }
+      }
+    }
+    if (dirname(cursor) === cursor) return null;
+  }
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

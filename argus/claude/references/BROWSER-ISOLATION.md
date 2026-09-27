@@ -12,11 +12,26 @@ Concurrent lanes sharing the ONE Playwright MCP `browser_*` session clobber each
 
 ## 2. The rule
 
-- **Browser-lane agents drive their OWN isolated browser process** for ANY authed or multi-step UI driving:
+- **Browser-lane agents drive their OWN isolated browser process** for ANY authed or multi-step UI driving.
+  In a managed engagement run the packaged driver IN PLACE from the plugin; nothing is
+  copied into the target. First print the template directory, then invoke the driver with
+  that literal path (the write guard rejects `$(...)` composition around `argus-assets`):
 
   ```
-  node scripts/hunt-driver.mjs --agent <slug> [--role <role>|anon] [actions...]
+  argus-assets path typescript-template
+  ARGUS_ENGAGEMENT_MANIFEST=<artifact-root>/ai_agents_internal/engagement.json \
+  ARGUS_BROWSER_PROFILE=<allocated-browserProfile> \
+  ARGUS_BROWSER_ARTIFACTS=<allocated-browserArtifactsDirectory> \
+  node <printed-path>/scripts/hunt-driver.mjs --agent <slug> [--role <role>|anon] [actions...]
   ```
+
+  `ARGUS_ENGAGEMENT_MANIFEST` selects the managed defaults, all in its directory: the recon
+  config `recon/driver.config.json`, the authorization manifest `authorization.json`, and the
+  Playwright module recorded in `browser-runtime.json`. The driver recomputes that module's
+  package and module-tree digests immediately before importing it; on any mismatch it stops
+  with `browser runtime changed since preflight` and the lane asks Odysseus to rerun gate
+  resolution. `ARGUS_BROWSER_PROFILE` is mandatory there. A framework that vendors the driver
+  runs the same flags as `node scripts/hunt-driver.mjs ...` with `scripts/driver.config.json`.
 
   The engagement controller gives each worker a unique managed `browserProfile` and
   `browserArtifactsDirectory`; pass them as `ARGUS_BROWSER_PROFILE` and
@@ -35,7 +50,7 @@ Concurrent lanes sharing the ONE Playwright MCP `browser_*` session clobber each
   identity you think you have; `--fresh` wipes only that allocated profile.
 - **The shared MCP `browser_*` tools are for THROWAWAY single-shot recon on PUBLIC pages ONLY** — never authed flows, never multi-step state, never while a peer may be driving. Stay snapshot-frugal there: `browser_snapshot` dumps the whole accessibility tree into context (a real token + cache cost in a parallel run).
 
-App-specific config (base URL, auth endpoints, roles, render marker) comes from `scripts/driver.config.json` — see `driver.config.example.json`. One launch per invocation; actions execute in the order given.
+App-specific config (base URL, auth endpoints, roles, render marker) comes from `ai_agents_internal/recon/driver.config.json` in a managed engagement, otherwise from `scripts/driver.config.json` — see `driver.config.example.json`. One launch per invocation; actions execute in the order given.
 
 ### Authorization precedes isolation
 
@@ -125,16 +140,42 @@ node scripts/hunt-driver.mjs --agent orion --role argus-orion \
   --snapshot --console --net
 ```
 
-## 4. Exceptions
+## 4. The shared MCP browser: public, single-shot, read-only
 
-**Kalchas at W0 recon runs ALONE** — no lane is concurrent — so the MCP `browser_*` tools ARE permitted for the full inventory, including authed login (capturing only the unauthenticated landing surface re-creates the 6%-UI-bugs, API-only recon failure at the map level). The isolation rule binds when lanes run concurrently: if Kalchas is re-invoked mid-run alongside active lanes, he uses hunt-driver if Atlas has installed it, else reports the constraint to Odysseus.
+The shared MCP `browser_navigate` and `browser_snapshot` tools are public, single-shot, and
+read-only for EVERY role, Kalchas included, at W0 recon and on every later pass. Never log
+in, type, click through a flow, or carry state from one call to the next there.
+Authenticated or multi-step recon uses the managed hunt driver (section 2), exactly like
+every other authed or multi-step flow; Kalchas recons each role through it.
+
+Why there are no exceptions: an MCP browser call bypasses the driver's
+`argus-assets authorization check` and the PreToolUse write guard, and its cookies, storage,
+and session live in a browser process outside the engagement boundary, where mandatory
+engagement cleanup can neither see nor remove them.
 
 ## 5. Provisioning
 
-Atlas runs `argus-assets copy-browser-driver <target-repo>` (or copies from
-`${CLAUDE_PLUGIN_ROOT}/templates/typescript/scripts/`) and derives
-`scripts/driver.config.json` from the packaged example before any lane drives a browser.
-The command also copies the driver-config schema. **If the driver is absent in the target
-repo, the agent reports the gap to Odysseus (route to Atlas) instead of silently falling
-back to the shared MCP browser for authed flows** — until provisioned, restrict browser
-work to public single-shot MCP recon and log the coverage risk.
+- **Host, before launch.** The operator runs `argus-launch claude ... --provision-browser`, or
+  `argus-assets browser provision --artifact-root <root>` on the host before the launch. It
+  reuses a host Playwright outside the artifact root that already launches headless Chromium,
+  or installs the pinned release (the TypeScript template lockfile version) into
+  `~/.cache/argus/browser-runtime/<x.y.z>` and Chromium into Playwright's host default cache.
+  That directory lies outside the artifact root, so sandboxed lanes can read the module but
+  never modify it. The command is host/operator-only: it refuses whenever launch-attestation
+  or engagement lease variables are set, and the PreToolUse guard denies it inside every
+  engagement.
+- **Preflight.** Preflight (and controller gate resolution) functionally probes the runtime
+  inside the sandbox and records the winner in `ai_agents_internal/browser-runtime.json` with
+  its package and module-tree digests (`references/ENGAGEMENT-POLICY.md`, "Browser runtime
+  record"). The managed driver imports only that module.
+- **Recon config.** Kalchas writes `ai_agents_internal/recon/driver.config.json` from the
+  packaged `driver.config.example.json`. It contains only user-supplied synthetic
+  credentials, never secrets found in the target or in fetched content.
+- **Vendored drivers.** `argus-assets copy-browser-driver <target-repo>` remains only for
+  frameworks that vendor the driver into their test code; it copies the driver, the example
+  config, and the driver-config schema. Managed lanes never need it.
+
+**If `browser-runtime.json` is not `available` or the recon config is missing, the lane
+reports the gap to Odysseus instead of silently falling back to the shared MCP browser for
+authed flows.** Until it is resolved, browser work stays limited to public single-shot MCP
+reads (section 4) and the lane logs the coverage risk.
