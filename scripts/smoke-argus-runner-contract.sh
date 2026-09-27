@@ -49,6 +49,11 @@ evaluate() {
   "$CLI" schema validate --kind runner-result --input "$output" >/dev/null || fail "$label result failed packaged runtime validation"
 }
 
+# The failure fixtures carry no defect event, so they are evaluated for an engagement with no
+# confirmed defect; a listed defect would turn each of them into the policy exit 13.
+NO_BUGS="$WORK/expected-bugs-none.txt"
+: >"$NO_BUGS"
+
 for index in "${!ENGINES[@]}"; do
   engine="${ENGINES[$index]}"
   # An approved skip needs a quarantine row; the same fixture without the register is an
@@ -57,33 +62,41 @@ for index in "${!ENGINES[@]}"; do
   evaluate "$engine" baseline "$FIXTURES/baseline.tsv" 0 15 "baseline-unregistered-skip-$index"
   # An empty event stream with a green native runner is a broken adapter, never a pass.
   evaluate "$engine" baseline /dev/null 0 14 "baseline-no-events-$index"
-  evaluate "$engine" full-suite /dev/null 0 14 "full-no-events-$index"
+  evaluate "$engine" full-suite /dev/null 0 14 "full-no-events-$index" --expected-bugs "$NO_BUGS"
+  # Outside baseline the caller must name the confirmed defects: an omitted list, or one that
+  # names no file, is a contract error rather than a way around the check.
+  evaluate "$engine" candidate-regression "$FIXTURES/candidate-regression.tsv" 0 14 "candidate-no-expected-bugs-$index"
+  evaluate "$engine" full-suite "$FIXTURES/full-suite.tsv" 0 14 "full-no-expected-bugs-$index" --quarantine "$FIXTURES/quarantine.tsv"
+  evaluate "$engine" defect-evidence "$FIXTURES/defect-evidence.tsv" 1 14 "evidence-no-expected-bugs-$index"
+  evaluate "$engine" candidate-regression "$FIXTURES/candidate-regression.tsv" 0 14 "candidate-absent-expected-bugs-$index" --expected-bugs "$WORK/absent-expected-bugs.txt"
   # Every confirmed defect the caller names must appear as an event.
-  evaluate "$engine" defect-evidence "$FIXTURES/defect-evidence.tsv" 1 0 "evidence-expected-$index" --expected-bugs "$FIXTURES/expected-bugs.txt"
   evaluate "$engine" defect-evidence "$FIXTURES/defect-evidence.tsv" 1 13 "evidence-missing-bug-$index" --expected-bugs "$FIXTURES/expected-bugs-missing.txt"
-  evaluate "$engine" defect-evidence "$FIXTURES/defect-evidence.tsv" 1 0 "evidence-$index"
-  evaluate "$engine" defect-evidence "$WORK/evidence-with-unexpected.tsv" 1 11 "evidence-unexpected-$index"
-  evaluate "$engine" candidate-regression "$FIXTURES/candidate-regression.tsv" 0 0 "candidate-$index"
-  evaluate "$engine" full-suite "$FIXTURES/full-suite.tsv" 0 0 "full-$index" --quarantine "$FIXTURES/quarantine.tsv"
-  evaluate "$engine" candidate-regression "$FIXTURES/known-red.tsv" 1 10 "known-red-candidate-$index"
-  evaluate "$engine" full-suite "$FIXTURES/known-red.tsv" 1 10 "known-red-full-$index"
-  evaluate "$engine" full-suite "$FIXTURES/automation-failure.tsv" 1 11 "automation-$index"
-  evaluate "$engine" full-suite "$FIXTURES/infrastructure-failure.tsv" 1 12 "infrastructure-$index"
-  evaluate "$engine" full-suite "$FIXTURES/policy-denial.tsv" 1 13 "policy-$index"
-  evaluate "$engine" defect-evidence /dev/null 1 14 "missing-evidence-$index"
-  evaluate "$engine" full-suite "$FIXTURES/unapproved-skip.tsv" 0 15 "skip-$index"
+  evaluate "$engine" full-suite "$FIXTURES/full-suite.tsv" 0 13 "full-missing-bug-$index" --quarantine "$FIXTURES/quarantine.tsv" --expected-bugs "$FIXTURES/expected-bugs-missing.txt"
+  evaluate "$engine" defect-evidence "$FIXTURES/defect-evidence.tsv" 1 0 "evidence-$index" --expected-bugs "$FIXTURES/expected-bugs.txt"
+  evaluate "$engine" defect-evidence "$WORK/evidence-with-unexpected.tsv" 1 11 "evidence-unexpected-$index" --expected-bugs "$FIXTURES/expected-bugs.txt"
+  evaluate "$engine" candidate-regression "$FIXTURES/candidate-regression.tsv" 0 0 "candidate-$index" --expected-bugs "$FIXTURES/expected-bugs-candidate.txt"
+  evaluate "$engine" full-suite "$FIXTURES/full-suite.tsv" 0 0 "full-$index" --quarantine "$FIXTURES/quarantine.tsv" --expected-bugs "$FIXTURES/expected-bugs-full.txt"
+  evaluate "$engine" candidate-regression "$FIXTURES/known-red.tsv" 1 10 "known-red-candidate-$index" --expected-bugs "$FIXTURES/expected-bugs-candidate.txt"
+  evaluate "$engine" full-suite "$FIXTURES/known-red.tsv" 1 10 "known-red-full-$index" --expected-bugs "$FIXTURES/expected-bugs-full.txt"
+  evaluate "$engine" full-suite "$FIXTURES/automation-failure.tsv" 1 11 "automation-$index" --expected-bugs "$NO_BUGS"
+  evaluate "$engine" full-suite "$FIXTURES/infrastructure-failure.tsv" 1 12 "infrastructure-$index" --expected-bugs "$NO_BUGS"
+  evaluate "$engine" full-suite "$FIXTURES/policy-denial.tsv" 1 13 "policy-$index" --expected-bugs "$NO_BUGS"
+  evaluate "$engine" defect-evidence /dev/null 1 14 "missing-evidence-$index" --expected-bugs "$FIXTURES/expected-bugs.txt"
+  evaluate "$engine" full-suite "$FIXTURES/unapproved-skip.tsv" 0 15 "skip-$index" --expected-bugs "$NO_BUGS"
   # A contract smoke proves the scaffold, not the target: never a delivery gate.
-  evaluate "$engine" full-suite "$FIXTURES/full-suite.tsv" 0 0 "full-contract-smoke-$index" --quarantine "$FIXTURES/quarantine.tsv" --contract-smoke
+  evaluate "$engine" full-suite "$FIXTURES/full-suite.tsv" 0 0 "full-contract-smoke-$index" --quarantine "$FIXTURES/quarantine.tsv" --expected-bugs "$FIXTURES/expected-bugs-full.txt" --contract-smoke
   jq -e '.deliveryGate == true' "$WORK/full-$index.json" >/dev/null || fail "full-suite result $index is not marked as the delivery gate"
   jq -e '.deliveryGate == false' "$WORK/full-contract-smoke-$index.json" >/dev/null || fail "contract smoke result $index was marked as a delivery gate"
+  jq -e '.missingExpectedBugs == 0' "$WORK/full-$index.json" >/dev/null || fail "full-suite result $index lost a listed defect"
+  jq -e '.missingExpectedBugs == 1' "$WORK/full-missing-bug-$index.json" >/dev/null ||
+    fail "full-suite result $index did not count the listed defect without an event"
 done
 
+# Every runner gets its modes and result path from the common runner library, which the loop
+# below checks; a runner that does not run on it is not a template runner.
 for runner in "$ROOT/argus/framework-template/run-tests.sh" "$ROOT/argus/framework-template-java/run-tests.sh" "$ROOT/argus/framework-template-python/run-tests.sh"; do
-  # A runner on the common library gets its modes and result path from runner-lib.sh, which
-  # the loop below checks; the literal checks remain for runners not yet migrated to it.
-  if grep -Fxq 'source scripts/runner-lib.sh' "$runner" && grep -Fxq 'argus_main "$@"' "$runner"; then continue; fi
-  grep -Fq 'baseline|defect-evidence|candidate-regression|full-suite' "$runner" || fail "$(basename "$(dirname "$runner")") does not expose all modes"
-  grep -Fq 'reports/argus-runner-result.json' "$runner" || fail "$(basename "$(dirname "$runner")") does not emit the canonical result"
+  grep -Fxq 'source scripts/runner-lib.sh' "$runner" && grep -Fxq 'argus_main "$@"' "$runner" ||
+    fail "$(basename "$(dirname "$runner")") does not run on scripts/runner-lib.sh"
 done
 for library in "$ROOT/argus/framework-template/scripts/runner-lib.sh" "$ROOT/argus/framework-template-java/scripts/runner-lib.sh" "$ROOT/argus/framework-template-python/scripts/runner-lib.sh"; do
   grep -Fq 'baseline|defect-evidence|candidate-regression|full-suite' "$library" || fail "$(basename "$(dirname "$(dirname "$library")")") runner library does not expose all modes"

@@ -102,10 +102,11 @@ if [ "$event_count" -eq 0 ] && [ "$empty_selection" -eq 0 ]; then contract_error
 if [ "$empty_selection" -ne 0 ]; then skip_violation=1; fi
 
 # A selector that quietly drops half the regression suite used to look identical to a suite
-# that ran it. When the caller names the confirmed defects, every one of them must appear as
-# an event: absence is a gate failure, not a smaller run.
-if [ -n "$expected_bugs" ] && [ "$mode" != baseline ]; then
-  if [ ! -f "$expected_bugs" ]; then
+# that ran it. Outside baseline the caller must name the confirmed defects, so omitting the
+# list is a contract error rather than a way around the check, and every listed defect must
+# appear as an event: absence is a gate failure, not a smaller run.
+if [ "$mode" != baseline ]; then
+  if [ -z "$expected_bugs" ] || [ ! -f "$expected_bugs" ]; then
     contract_error=1
   else
     while IFS= read -r wanted; do

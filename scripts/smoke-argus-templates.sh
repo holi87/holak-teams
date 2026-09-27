@@ -471,9 +471,21 @@ cmp "$WORK/typescript/scripts/runner-contract.sh" "$WORK/java/scripts/runner-con
 cmp "$WORK/typescript/scripts/runner-contract.sh" "$WORK/python/scripts/runner-contract.sh" >/dev/null || fail "Python runner evaluator drifted"
 cmp "$WORK/typescript/scripts/quarantine-contract.sh" "$WORK/java/scripts/quarantine-contract.sh" >/dev/null || fail "Java quarantine evaluator drifted"
 cmp "$WORK/typescript/scripts/quarantine-contract.sh" "$WORK/python/scripts/quarantine-contract.sh" >/dev/null || fail "Python quarantine evaluator drifted"
+# The evaluator joins the register to the inventory (SD-3): one quarantined, non-regression
+# contract-smoke case. The retired tag-count basis and a missing inventory are usage errors.
+printf 'case.one\tcontract-smoke\tfalse\ttrue\t-\t-\t-\t-\n' >"$WORK/quarantine-inventory.tsv"
 printf 'case.one\tatlas\tflaky-clock\t2099-01-01\t#18\n' >"$WORK/quarantine.tsv"
+for arguments in "--tagged-count 1" "--inventory $WORK/quarantine-inventory.tsv --tagged-count 1" "--inventory $WORK/absent-inventory.tsv" ""; do
+  set +e
+  # shellcheck disable=SC2086 # Each case is a deliberately word-split argument list.
+  "$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-usage.tsv" --ledger "$WORK/quarantine.tsv" $arguments >/dev/null 2>&1
+  usage_code=$?
+  set -e
+  [ "$usage_code" -eq 14 ] || fail "quarantine evaluator accepted '$arguments' with exit $usage_code instead of 14"
+done
+test ! -s "$WORK/quarantine-usage.tsv" || fail "quarantine evaluator emitted events for a usage error"
 : >"$WORK/quarantine-events.tsv"
-"$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-events.tsv" --ledger "$WORK/quarantine.tsv" --tagged-count 1
+"$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-events.tsv" --ledger "$WORK/quarantine.tsv" --inventory "$WORK/quarantine-inventory.tsv"
 # The register is what approves the skip, so it is passed in: without it the same event
 # is an unapproved skip, which is the point of the check below.
 "$WORK/typescript/scripts/runner-contract.sh" --mode baseline --events "$WORK/quarantine-events.tsv" --output "$WORK/quarantine-result.json" --runner-exit 0 --quarantine "$WORK/quarantine.tsv"
@@ -485,7 +497,7 @@ set -e
 [ "$unregistered_code" -eq 15 ] || fail "a skip with no quarantine row was accepted as approved"
 printf 'case.one\tatlas\tflaky-clock\t2000-01-01\t#18\n' >"$WORK/quarantine.tsv"
 : >"$WORK/quarantine-events.tsv"
-if "$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-events.tsv" --ledger "$WORK/quarantine.tsv" --tagged-count 1; then fail "expired quarantine unexpectedly passed"; fi
+if "$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-events.tsv" --ledger "$WORK/quarantine.tsv" --inventory "$WORK/quarantine-inventory.tsv"; then fail "expired quarantine unexpectedly passed"; fi
 set +e
 "$WORK/typescript/scripts/runner-contract.sh" --mode baseline --events "$WORK/quarantine-events.tsv" --output "$WORK/expired-result.json" --runner-exit 1
 expired_code=$?
