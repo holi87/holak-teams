@@ -2,10 +2,15 @@
   "$schema": "argus/surface-inventory@1", "schemaVersion": 1, "engagementId": "coverage-fixture", "owner": "kalchas",
   "discovery": { "candidates": 5, "characterized": 4 },
   "items": [
-    { "id": "SRF-UI-CHECKOUT", "surfaceType": "ui", "lane": "ui", "risk": "critical", "riskWeight": 5, "riskBasis": "Revenue journey", "accessibility": "testable", "denominators": ["route", "role", "state", "device", "browser", "risk-category"], "discoveryEvidenceIds": ["EVD-0001"] },
-    { "id": "SRF-API-ORDERS-POST", "surfaceType": "api", "lane": "api", "risk": "critical", "riskWeight": 5, "riskBasis": "Creates a charged order", "accessibility": "testable", "denominators": ["operation", "schema", "role", "state", "risk-category"], "discoveryEvidenceIds": ["EVD-0001"],
+    { "id": "SRF-UI-CHECKOUT", "surfaceType": "ui", "lane": "ui", "risk": "critical", "riskWeight": 5, "riskBasis": "Revenue journey", "accessibility": "testable", "denominators": ["route", "role", "state", "device", "browser", "risk-category"], "discoveryEvidenceIds": ["EVD-0001"], "features": ["notification-channel"] },
+    { "id": "SRF-API-ORDERS-POST", "surfaceType": "api", "lane": "api", "risk": "critical", "riskWeight": 5, "riskBasis": "Creates a charged order", "accessibility": "testable", "denominators": ["operation", "schema", "role", "state", "risk-category"], "discoveryEvidenceIds": ["EVD-0001"], "features": ["notification-channel", "audit-trail"],
       "obligations": [{ "id": "CASE-API-ORDER-CREATE", "dimensions": { "operation": "create", "role": "customer", "state": "in-stock" }, "oracleId": "ORC-API-1", "applicability": "Synthetic customer account with an in-stock SKU", "weight": 5 }] },
-    { "id": "SRF-EVENT-ORDER-CREATED", "surfaceType": "event", "lane": "events", "risk": "critical", "riskWeight": 4, "riskBasis": "Starts fulfilment of charged orders", "accessibility": "testable", "denominators": ["operation", "schema", "state", "risk-category"], "discoveryEvidenceIds": ["EVD-0001"] },
-    { "id": "SRF-DATA-AUDIT", "surfaceType": "data", "lane": "data", "risk": "medium", "riskWeight": 3, "riskBasis": "Regulatory audit record", "accessibility": "inaccessible", "scopeReason": "Read-only account has no audit-store access", "denominators": ["schema", "role", "state", "risk-category"], "discoveryEvidenceIds": ["EVD-0001"] }
+    { "id": "SRF-EVENT-ORDER-CREATED", "surfaceType": "event", "lane": "events", "risk": "critical", "riskWeight": 4, "riskBasis": "Starts fulfilment of charged orders", "accessibility": "testable", "denominators": ["operation", "schema", "state", "risk-category"], "discoveryEvidenceIds": ["EVD-0001"], "features": ["background-job"] },
+    { "id": "SRF-DATA-AUDIT", "surfaceType": "data", "lane": "data", "risk": "medium", "riskWeight": 3, "riskBasis": "Regulatory audit record", "accessibility": "inaccessible", "scopeReason": "Read-only account has no audit-store access", "denominators": ["schema", "role", "state", "risk-category"], "discoveryEvidenceIds": ["EVD-0001"], "features": ["audit-trail"] }
+  ],
+  "sideEffectChannels": [
+    { "id": "SFX-ORDER-CONFIRMATION-EMAIL", "kind": "notification-channel", "observability": "observable", "observation": "Synthetic customer mailbox in the local mail catcher", "surfaceIds": ["SRF-UI-CHECKOUT"] },
+    { "id": "SFX-FULFILMENT-JOB", "kind": "background-job", "observability": "observable", "observation": "Order status moves to fulfilling on the order detail endpoint" },
+    { "id": "SFX-ORDER-AUDIT", "kind": "audit-trail", "observability": "unobservable", "reason": "Read-only account has no audit-store access" }
   ]
 }

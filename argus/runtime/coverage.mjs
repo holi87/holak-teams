@@ -6,6 +6,12 @@ const EVIDENCE = /^EVD-[0-9]{4}$/;
 const SLUG = /^[a-z][a-z0-9-]*$/;
 const CASE_ID = /^[A-Za-z0-9_.:-]+$/;
 const DEFECT_REF = /^(?:BUG-[0-9]{4}|[A-Z]{3}-[0-9]{3,4})$/;
+// Optional recon tags: attack-surface features on an item and the side-effect channels a
+// hunter must observe. Neither is a denominator, so coverage arithmetic never reads them.
+const SURFACE_FEATURES = new Set(['file-upload', 'url-fetch-redirect', 'protected-download', 'export-generation', 'notification-channel', 'audit-trail', 'scheduled-job', 'background-job']);
+const SIDE_EFFECT_KINDS = new Set(['notification-channel', 'audit-trail', 'export-generation', 'scheduled-job', 'background-job']);
+const OBSERVABILITY = new Set(['observable', 'unobservable']);
+const CHANNEL_ID = /^SFX-[A-Z0-9][A-Z0-9-]*$/;
 // The input versions this module reads; contracts.mjs owns the compatibility policy. This
 // module imports nothing, so the contract validator and the finding reconciler can use it.
 const INPUT_VERSIONS = Object.freeze({ 'surface-inventory': 1, 'coverage-observations': 2 });
@@ -41,8 +47,43 @@ export function validateSurfaceInventory(document) {
     if (item.accessibility !== 'testable' && (typeof item.scopeReason !== 'string' || !item.scopeReason.trim())) errors.push(`${item.id}: scoped outcomes require scopeReason`);
     if (!Array.isArray(item.denominators) || item.denominators.length === 0 || item.denominators.some((value) => !['route', 'operation', 'schema', 'role', 'state', 'device', 'browser', 'risk-category'].includes(value))) errors.push(`${item.id}: denominators are invalid`);
     if (!validEvidence(item.discoveryEvidenceIds)) errors.push(`${item.id}: discoveryEvidenceIds are invalid`);
+    if (item.features !== undefined && !validFeatures(item.features)) errors.push(`${item.id}: features are invalid`);
   }
+  errors.push(...validateSideEffectChannels(document.sideEffectChannels, ids));
   return unique(errors);
+}
+
+// Each channel names how its effect is observed, or why it cannot be; a linked surface must
+// exist in the same inventory.
+function validateSideEffectChannels(channels, surfaceIds) {
+  if (channels === undefined) return [];
+  if (!Array.isArray(channels)) return ['sideEffectChannels must be an array'];
+  const errors = [];
+  const ids = new Set();
+  for (const channel of channels) {
+    if (!channel || typeof channel !== 'object' || Array.isArray(channel)) { errors.push('side-effect channel must be an object'); continue; }
+    const label = channel.id ?? '(missing channel id)';
+    if (typeof channel.id !== 'string' || !CHANNEL_ID.test(channel.id)) errors.push(`invalid side-effect channel id: ${label}`);
+    if (ids.has(channel.id)) errors.push(`duplicate side-effect channel id: ${label}`);
+    ids.add(channel.id);
+    const unknown = Object.keys(channel).filter((key) => !['id', 'kind', 'observability', 'observation', 'reason', 'surfaceIds'].includes(key));
+    if (unknown.length) errors.push(`${label}: unknown side-effect channel fields: ${unknown.join(', ')}`);
+    if (!SIDE_EFFECT_KINDS.has(channel.kind)) errors.push(`${label}: invalid side-effect channel kind`);
+    if (!OBSERVABILITY.has(channel.observability)) errors.push(`${label}: observability must be observable or unobservable`);
+    if (channel.observation !== undefined && !nonEmpty(channel.observation)) errors.push(`${label}: observation must be a non-empty string`);
+    if (channel.reason !== undefined && !nonEmpty(channel.reason)) errors.push(`${label}: reason must be a non-empty string`);
+    if (channel.observability === 'observable' && channel.observation === undefined) errors.push(`${label}: an observable channel requires observation`);
+    if (channel.observability === 'unobservable' && channel.reason === undefined) errors.push(`${label}: an unobservable channel requires reason`);
+    if (channel.surfaceIds !== undefined) {
+      const linked = channel.surfaceIds;
+      if (!Array.isArray(linked) || linked.length === 0 || new Set(linked).size !== linked.length || linked.some((id) => typeof id !== 'string' || !ID.test(id))) errors.push(`${label}: surfaceIds are invalid`);
+      else for (const id of linked.filter((value) => !surfaceIds.has(value))) errors.push(`${label}: unknown surface ${id}`);
+    }
+  }
+  return errors;
+}
+function validFeatures(values) {
+  return Array.isArray(values) && values.length > 0 && values.every((value) => SURFACE_FEATURES.has(value)) && new Set(values).size === values.length;
 }
 
 // Observations are a collection keyed by <lane>:<surfaceId>. A record cites evidence; it
