@@ -79,6 +79,9 @@ for index in "${!ENGINES[@]}"; do
 done
 
 for runner in "$ROOT/argus/framework-template/run-tests.sh" "$ROOT/argus/framework-template-java/run-tests.sh" "$ROOT/argus/framework-template-python/run-tests.sh"; do
+  # A runner on the common library gets its modes and result path from runner-lib.sh, which
+  # the loop below checks; the literal checks remain for runners not yet migrated to it.
+  if grep -Fxq 'source scripts/runner-lib.sh' "$runner" && grep -Fxq 'argus_main "$@"' "$runner"; then continue; fi
   grep -Fq 'baseline|defect-evidence|candidate-regression|full-suite' "$runner" || fail "$(basename "$(dirname "$runner")") does not expose all modes"
   grep -Fq 'reports/argus-runner-result.json' "$runner" || fail "$(basename "$(dirname "$runner")") does not emit the canonical result"
 done

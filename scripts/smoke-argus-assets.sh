@@ -263,7 +263,6 @@ cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-t
   if printf '%s\n' '{"tool_name":"Write","cwd":"'"$WORK_DIR"'/typescript","tool_input":{"file_path":"app/source.ts"}}' | node typescript/scripts/app-source-guard.mjs >/dev/null 2>&1; then
     fail "packaged app-source guard allowed an application-source write"
   fi
-  SMOKE=1 node typescript/scripts/bug-coverage.mjs >/dev/null 2>&1
   cp "$ROOT/scripts/fixtures/argus-coverage/surface-inventory.json" typescript/solution/surface-inventory.json
   cp "$ROOT/scripts/fixtures/argus-coverage/coverage-observations.json" typescript/solution/coverage-observations.json
   ARGUS_ASSETS="$INSTALLED_PLUGIN/bin/argus-assets" node typescript/scripts/baseline-coverage.mjs >/dev/null

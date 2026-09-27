@@ -1,6 +1,8 @@
 import { test as helperTest } from './helpers';
 import { test as fakeFixtureTest } from './fixtures';
 
+// Functions named like Playwright's `test` that never register a Playwright test: they must
+// be absent from the inventory, so their bugs stay uncovered.
 const test = (title: string, callback: () => void) => callback();
 const it = test;
 
