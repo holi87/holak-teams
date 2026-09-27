@@ -1,0 +1,51 @@
+{
+  "$schema": "argus/automation-review@1",
+  "schemaVersion": 1,
+  "engagementId": "fixture-1",
+  "owner": "aristarchus",
+  "reviews": [
+    {
+      "reviewId": "REV-01",
+      "round": 1,
+      "supersedes": null,
+      "verdict": "APPROVE",
+      "reviewedAt": "2026-07-10T10:00:00.000Z",
+      "corpus": { "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "fileCount": 4, "roots": ["run-tests.sh", "scripts", "tests"] },
+      "reviewedCommit": null,
+      "blockers": [],
+      "warnings": [],
+      "resolved": [],
+      "uncoveredConfirmedBugs": [],
+      "evidenceCommands": [
+        { "command": "grep -rn -E 'test[.](skip|only|fixme)' tests", "exitCode": 1, "outputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }
+      ]
+    },
+    {
+      "reviewId": "REV-02",
+      "round": 2,
+      "supersedes": "REV-01",
+      "verdict": "BLOCK",
+      "reviewedAt": "2026-07-10T11:30:00.000Z",
+      "corpus": { "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "fileCount": 5, "roots": ["run-tests.sh", "scripts", "tests"] },
+      "reviewedCommit": null,
+      "blockers": [
+        {
+          "id": "ARB-001",
+          "file": "tests/api/widget.spec.ts",
+          "line": 8,
+          "category": "vacuous-oracle",
+          "pattern": "The widget regression asserts only that the response body is defined",
+          "consequence": "The BUG-0001 regression stays green on the buggy build; the delivery gate proves nothing about the defect.",
+          "ownerLane": "talos",
+          "direction": "Assert the violated invariant: the widget total equals the sum of its line items."
+        }
+      ],
+      "warnings": [],
+      "resolved": [],
+      "uncoveredConfirmedBugs": [],
+      "evidenceCommands": [
+        { "command": "grep -rn -E 'toBeDefined' tests/api/widget.spec.ts", "exitCode": 0, "outputSha256": "4444444444444444444444444444444444444444444444444444444444444444" }
+      ]
+    }
+  ]
+}

@@ -29,6 +29,7 @@ ARGUS_PASS_ARTIFACTS="reports/evidence/passes"
 ARGUS_LANE_PLAN="solution/test-lanes.tsv"
 ARGUS_ENVIRONMENT_PLAN="solution/environment.tsv"
 ARGUS_QUARANTINE_LEDGER="solution/quarantine.tsv"
+ARGUS_AUTOMATION_REVIEW="solution/automation-review.json"
 ARGUS_ROOT="" ARGUS_MODE="" ARGUS_EVENTS="" ARGUS_LANES=""
 ARGUS_NATIVE_MAX=0 ARGUS_CALL_STATUS=0 ARGUS_FINISHING=0
 ARGUS_PASSTHROUGH=()
@@ -282,6 +283,136 @@ argus_defect_evidence_passes() {
   for pass in ${passes[@]+"${passes[@]}"}; do argus_run_pass regression "$pass"; done
 }
 
+# Readers of Aristarchus's review record (argus/automation-review@1). Each prints the latest
+# round as `<verdict>\t<reviewId>\t<round>\t<blocker-count>`, or names the defect on stderr
+# and fails. Both apply the same checks, which cover only the structure the gate relies on:
+# rounds are objects whose `round` and `reviewId` run contiguously from REV-01, whose verdict
+# is APPROVE or BLOCK, and whose verdict is BLOCK exactly when `blockers` is non-empty. The
+# engagement merge validates the complete contract.
+argus_automation_review_node() {
+  # shellcheck disable=SC2016 # The reader is literal JavaScript.
+  node -e '
+    const fail = (message) => { console.error(`ARGUS AUTOMATION REVIEW: ${message}`); process.exit(1); };
+    const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+    let record;
+    try {
+      const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(require("fs").readFileSync(process.argv[1]));
+      record = JSON.parse(text);
+    } catch (error) { fail(`the record is not readable JSON (${error.message})`); }
+    if (!isObject(record) || record.$schema !== "argus/automation-review@1" || record.schemaVersion !== 1) {
+      fail("the record is not an argus/automation-review@1 document");
+    }
+    const reviews = record.reviews;
+    if (!Array.isArray(reviews) || reviews.length === 0) fail("reviews is not a non-empty array");
+    if (reviews.length > 99) fail("reviews holds more than 99 rounds");
+    reviews.forEach((review, index) => {
+      const round = index + 1;
+      const id = `REV-${String(round).padStart(2, "0")}`;
+      if (!isObject(review) || review.round !== round || review.reviewId !== id) {
+        fail(`review ${round} is not round ${round} ${id}; rounds run contiguously from REV-01`);
+      }
+      if (review.verdict !== "APPROVE" && review.verdict !== "BLOCK") fail(`${id} has no APPROVE or BLOCK verdict`);
+      if (!Array.isArray(review.blockers) || (review.verdict === "BLOCK") !== (review.blockers.length > 0)) {
+        fail(`${id} verdict ${review.verdict} does not match its blockers`);
+      }
+    });
+    const latest = reviews[reviews.length - 1];
+    console.log([latest.verdict, latest.reviewId, reviews.length, latest.blockers.length].join("\t"));
+  ' "$1"
+}
+
+# The Python reader matches JSON.parse: it rejects NaN and Infinity, a byte-order mark, and
+# invalid UTF-8, and it never takes a boolean for a number.
+argus_automation_review_python() {
+  # shellcheck disable=SC2016 # The reader is literal Python.
+  python3 -c '
+import json, sys
+
+def fail(message):
+    sys.stderr.write("ARGUS AUTOMATION REVIEW: %s\n" % message)
+    sys.exit(1)
+
+def reject_constant(name):
+    raise ValueError("unexpected constant %s" % name)
+
+def number_is(value, expected):
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and value == expected
+
+try:
+    with open(sys.argv[1], "rb") as handle:
+        record = json.loads(handle.read().decode("utf-8"), parse_constant=reject_constant)
+except (OSError, ValueError) as error:
+    fail("the record is not readable JSON (%s)" % error)
+if not isinstance(record, dict) or record.get("$schema") != "argus/automation-review@1" or not number_is(record.get("schemaVersion"), 1):
+    fail("the record is not an argus/automation-review@1 document")
+reviews = record.get("reviews")
+if not isinstance(reviews, list) or not reviews:
+    fail("reviews is not a non-empty array")
+if len(reviews) > 99:
+    fail("reviews holds more than 99 rounds")
+for index, review in enumerate(reviews):
+    number = index + 1
+    review_id = "REV-%02d" % number
+    if not isinstance(review, dict) or not number_is(review.get("round"), number) or review.get("reviewId") != review_id:
+        fail("review %d is not round %d %s; rounds run contiguously from REV-01" % (number, number, review_id))
+    if review.get("verdict") not in ("APPROVE", "BLOCK"):
+        fail("%s has no APPROVE or BLOCK verdict" % review_id)
+    blockers = review.get("blockers")
+    if not isinstance(blockers, list) or (review["verdict"] == "BLOCK") != (len(blockers) > 0):
+        fail("%s verdict %s does not match its blockers" % (review_id, review["verdict"]))
+latest = reviews[-1]
+print("%s\t%s\t%d\t%d" % (latest["verdict"], latest["reviewId"], len(reviews), len(latest["blockers"])))
+' "$1"
+}
+
+# node is always present inside an engagement; a delivered Python or Java suite may have only
+# python3. A record that no reader can read fails closed like any other malformed record.
+argus_automation_review_latest() {
+  local record="$1"
+  if [ -L "$record" ] || [ ! -f "$record" ]; then
+    echo "ARGUS AUTOMATION REVIEW: $record is not a regular file" >&2
+    return 1
+  fi
+  if command -v node >/dev/null 2>&1; then
+    argus_automation_review_node "$record"
+  elif command -v python3 >/dev/null 2>&1; then
+    argus_automation_review_python "$record"
+  else
+    echo "ARGUS AUTOMATION REVIEW: reading $record needs node or python3 on PATH" >&2
+    return 1
+  fi
+}
+
+# The automation review gate is the last step of a full-suite run, the delivery gate; other
+# modes are the repair loop a BLOCK asks for, and a contract smoke is never a delivery gate.
+# When solution/automation-review.json exists and its latest round is BLOCK, the run is a
+# policy denial (exit 13) that names the round. An APPROVE round is recorded as a policy pass,
+# and an absent record changes nothing, so a suite delivered without it runs as before. A
+# record the gate cannot read fails closed.
+argus_automation_review_gate() {
+  local output line verdict review_id round blockers
+  local shape=$'^(APPROVE|BLOCK)\tREV-[0-9]{2}\t[1-9][0-9]?\t[0-9]+$'
+  [ "$ARGUS_MODE" = full-suite ] && [ "${ARGUS_CONTRACT_SMOKE:-0}" != 1 ] || return 0
+  [ -e "$ARGUS_AUTOMATION_REVIEW" ] || [ -L "$ARGUS_AUTOMATION_REVIEW" ] || return 0
+  output="$(mktemp)"
+  argus_call argus_automation_review_latest "$ARGUS_AUTOMATION_REVIEW" >"$output"
+  line="$(cat "$output")"
+  rm -f "$output"
+  if [ "$ARGUS_CALL_STATUS" -ne 0 ] || [[ ! "$line" =~ $shape ]]; then
+    echo "ARGUS AUTOMATION REVIEW: $ARGUS_AUTOMATION_REVIEW is unreadable or malformed; the full-suite delivery gate fails closed" >&2
+    argus_emit automation-review policy denied false n/a - automation-review-invalid
+    return 0
+  fi
+  IFS=$'\t' read -r verdict review_id round blockers <<<"$line"
+  if [ "$verdict" = BLOCK ]; then
+    echo "ARGUS AUTOMATION REVIEW: the latest round $review_id (round $round) is BLOCK with $blockers blocker(s); the full-suite delivery gate is denied until Aristarchus records an APPROVE round" >&2
+    argus_emit "automation-review.$review_id" policy denied false n/a - automation-review-blocked
+  else
+    echo "ARGUS AUTOMATION REVIEW: the latest round $review_id (round $round) is APPROVE"
+    argus_emit "automation-review.$review_id" policy pass false n/a - automation-review-approved
+  fi
+}
+
 argus_main() {
   set -euo pipefail
   ARGUS_ROOT="$PWD"
@@ -375,6 +506,7 @@ argus_main() {
     argus_call bash "$ARGUS_ROOT/scripts/evidence-gate.sh" --expected-bugs "$ARGUS_EXPECTED_BUGS" --plan "$ARGUS_COUNTERFACTUAL_PLAN" --events "$ARGUS_EVENTS"
     if [ "$ARGUS_CALL_STATUS" -ne 0 ]; then argus_finish 1; fi
   fi
+  argus_automation_review_gate
 
   if [ "$ARGUS_NATIVE_MAX" -eq 0 ]; then argus_finish 0; fi
   argus_finish 1
