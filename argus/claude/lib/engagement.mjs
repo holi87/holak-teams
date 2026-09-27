@@ -1462,10 +1462,13 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
   const command = tool === 'Bash' ? String(toolInput.command ?? '') : '';
   const commandSha256 = command ? sha256(command) : null;
   const artifactPhysical = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
+  const lane = guardLaneIdentity(payload);
   let paths = [];
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/i.test(tool)) paths = collectDirectPaths(toolInput);
   else if (tool === 'Bash') {
-    const packaged = classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256);
+    const driverDenial = huntDriverLaneDenial(command, lane);
+    if (driverDenial) return guardDecision('deny', 'GUARD-SHELL-AMBIGUOUS', driverDenial, [], commandSha256);
+    const packaged = classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256, lane);
     if (packaged?.decision) return packaged.decision;
     if (packaged?.paths) paths = packaged.paths;
     else {
@@ -1481,7 +1484,6 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
     }
   } else return guardDecision('allow', 'GUARD-ALLOW', 'tool is outside the filesystem-write matcher', [], commandSha256);
   if (paths.length === 0) return guardDecision('deny', 'GUARD-PATH-UNRESOLVED', 'write tool has no recognized destination', [], commandSha256);
-  const lane = guardLaneIdentity(payload);
   const selectedRoots = selectedTemplateWriteRoots(manifest);
 
   const evaluated = [];
@@ -2485,7 +2487,17 @@ function shellMayCreateLink(command) {
   return /(?:^|[;&|\s])(?:[^\s;&|]*\/)?(?:ln|link)(?:\s|$)|\b(?:linkSync|symlinkSync|link|symlink)\s*\(|\.(?:hardlink_to|symlink_to)\s*\(/i.test(command);
 }
 
-function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256) {
+// The packaged hunt driver runs its own `authorization check --lane <--agent>` calls out of the
+// guard's sight, so a command that names the driver and an agent must name the calling lane.
+function huntDriverLaneDenial(command, lane) {
+  const tokens = command.replace(/\\([\s\S])/g, '$1').replace(/["']/g, '').split(/\s+/);
+  const agents = tokens.flatMap((token, index) => (token === '--agent' ? [tokens[index + 1]] : token.startsWith('--agent=') ? [token.slice(8)] : []));
+  if (agents.length === 0 || !tokens.some((token) => /hunt-driver\.mjs$/.test(token))) return null;
+  if (!lane) return 'the packaged hunt driver requires an identified calling lane';
+  return agents.every((agent) => agent === lane) ? null : `the packaged hunt driver --agent must name the calling lane ${lane}`;
+}
+
+function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256, lane) {
   const value = command.trim();
   if (/[;&|>\n\r`]|\$\(/.test(value)) return null;
   const tokens = shellTokens(value);
@@ -2516,6 +2528,10 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
   }
   if (primary === 'authorization') {
     if (operation === 'check' && optionNames.includes('--at')) return deny('authorization check --at is a test-only clock override and is refused inside an active engagement');
+    // The audit event records --lane, and a binary capture's review is bound to its collector's
+    // event, so a lane can ask only for itself: Claude Code, not the model, names the caller.
+    if (operation === 'check' && !lane) return deny('authorization check requires an identified calling lane');
+    if (operation === 'check' && optionValue(tokens, '--lane') !== lane) return deny(`authorization check --lane must name the calling lane ${lane}`);
     if (operation === 'check') return allow('packaged authorization audit owns the bounded mutation');
     return deny('authorization init cannot run inside an active engagement');
   }

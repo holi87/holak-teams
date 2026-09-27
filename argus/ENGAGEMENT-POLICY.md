@@ -67,7 +67,9 @@ engineers for `solution/counterfactual/`. The guard takes the writing lane from 
 PreToolUse payload that Claude Code writes (`agent_type` `argus:<slug>` for a subagent; the
 main thread is the controller). A non-owner, the controller when it is not an owner, an
 unidentified writer, and an owned root reached through a symbolic link are denied with
-`GUARD-OWNED-ARTIFACT`. A packaged command checks its own outputs without a lane identity,
+`GUARD-OWNED-ARTIFACT`. The same identity binds `authorization check --lane` and the hunt
+driver's `--agent` to the caller, so no lane records an audited decision as another lane.
+A packaged command checks its own outputs without a lane identity,
 so it never writes an owned path: write to `reports/` and copy the result in place.
 `writePolicy.selectedTemplateRoots` adds the roots of the operator's explicit
 `ai_agents_internal/template-selection.json`, which no lane can write: its `testRoot` joins

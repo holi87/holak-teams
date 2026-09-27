@@ -35,7 +35,10 @@ argus-assets authorization check \
 Exit 0 and `AUTHORIZATION ALLOW` are both required. Exit 3 or `DENY` means do not perform
 the action. Never reinterpret a denial, retry with weaker parameters without rechecking,
 or split one denied action into smaller calls. Every decision appends a redacted JSONL
-event to the manifest's audit path and names the rule that allowed or denied it.
+event to the manifest's audit path and names the rule that allowed or denied it. Inside an
+engagement a lane checks only for itself: the PreToolUse guard denies an `authorization
+check` whose `--lane`, or a hunt-driver run whose `--agent`, is not the calling lane that
+Claude Code names in the hook payload, and denies both for an unidentified caller.
 
 ### Operator manifest at launch
 
