@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compileJsonSchema } from '../../../argus/runtime/json-schema.mjs';
-import { classifyLedgerStatus, extractFindings, LEDGER_PATH, MAX_EXTRACT_BYTES } from './lib/extract.mjs';
-import { evalSchema, formatSchemaErrors } from './lib/schemas.mjs';
+import { classifyLedgerStatus, extractFindings, LANE_OUTCOMES_PATH, LEDGER_PATH, MAX_EXTRACT_BYTES } from './lib/extract.mjs';
+import { evalSchema, formatSchemaErrors, validateArgus } from './lib/schemas.mjs';
 
 // The packaged example ledger is kept valid against the canonical schema by the Argus schema
 // gate, so this smoke follows the ledger version instead of pinning one.
@@ -115,7 +115,9 @@ try {
   {
     const root = artifactRoot('missing');
     const result = extractFindings(root, { startedAtMs: STARTED, elapsedMs: ELAPSED });
-    assert.deepEqual(result, { ledger: 'missing', ledgerErrors: [], findings: [], suspected: [], unledgeredReports: [], framework: { root: null, candidates: 0 } });
+    assert.deepEqual(result, { ledger: 'missing', ledgerErrors: [], findings: [], suspected: [], unledgeredReports: [], framework: { root: null, candidates: 0 },
+      laneOutcomes: { state: 'missing', errors: [], document: null } });
+    assertExtractionShape(result);
     cases++;
   }
 
@@ -213,7 +215,62 @@ try {
     cases++;
   }
 
-  console.log(`PASS  evaluator-side extraction: ${cases} cases (valid, invalid and missing ledgers, symbolic links, unledgered reports, framework detection, oversize files, ledger@2 status classes)`);
+  // 9. The controller's lane-outcomes report is kept whole when it is schema-valid and names each
+  // lane once; a linked, malformed, oversize, or text-carrying report is invalid, never trusted,
+  // and never invalidates the ledger extraction.
+  {
+    const lane = (agent, turnLimit, totalTokens) => ({
+      agent,
+      decisions: { total: 1 + turnLimit, normal: 1, turnLimit, escalations: turnLimit, noArtifact: 0, zeroCandidates: 0, autoContinued: 0, backoffRetries: 0, blocked: 0 },
+      telemetry: { events: 1, successes: 1, failures: 0, totalTokens, reportedCostUsd: 0.25 },
+      ledger: { reported: 1, confirmed: 1, suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, wired: 1, severe: 0 },
+      automation: { tests: 1, coveringBugs: 1, failed: 0 },
+    });
+    const report = {
+      schema: 'argus/lane-outcomes@1', schemaVersion: 1, engagementId: 'extract-smoke', generatedAt: at(59_000).toISOString(),
+      sources: { bugLedgerSha256: 'a'.repeat(64), automationStatusSha256: null, decisions: 5, telemetryEvents: 2, unattributedLedgerRows: 0, unattributedTests: 0 },
+      lanes: [lane('atalanta', 2, 5000), lane('constructor', 0, 700)],
+    };
+    assert.deepEqual(validateArgus('lane-outcomes', report), [], 'the fixture report must satisfy the canonical Argus schema');
+    const root = artifactRoot('lane-outcomes');
+    write(root, LEDGER_PATH, JSON.stringify(exampleLedger));
+    write(root, LANE_OUTCOMES_PATH, JSON.stringify(report));
+    const present = extractFindings(root, { startedAtMs: STARTED, elapsedMs: ELAPSED });
+    assertExtractionShape(present);
+    assert.equal(present.ledger, 'present');
+    assert.deepEqual(present.laneOutcomes, { state: 'present', errors: [], document: report });
+    assert.equal(Object.prototype.agent, undefined, 'a lane named constructor never reaches Object.prototype');
+
+    const invalidCases = [
+      ['text-carrying lane', JSON.stringify({ ...report, lanes: [{ ...lane('atalanta', 0, 1), title: 'Order search echoes a query' }] }), /must NOT have additional property title/],
+      ['foreign schema', JSON.stringify({ ...report, schema: 'argus/lane-outcomes@2' }), /must be equal to constant/],
+      ['repeated lane', JSON.stringify({ ...report, lanes: [lane('atalanta', 0, 1), lane('atalanta', 1, 2)] }), /repeats lane atalanta/],
+      ['invalid JSON', '{"lanes": [', /not valid JSON/],
+      ['oversize', `${JSON.stringify(report)}${' '.repeat(MAX_EXTRACT_BYTES)}`, /exceeds/],
+    ];
+    for (const [label, content, expected] of invalidCases) {
+      write(root, LANE_OUTCOMES_PATH, content);
+      const result = extractFindings(root, { startedAtMs: STARTED, elapsedMs: ELAPSED });
+      assertExtractionShape(result);
+      assert.equal(result.laneOutcomes.state, 'invalid', `${label}: the report must be invalid`);
+      assert.equal(result.laneOutcomes.document, null, `${label}: an invalid report keeps no document`);
+      assert.match(result.laneOutcomes.errors.join(' '), expected, `${label}: unexpected errors ${result.laneOutcomes.errors.join('; ')}`);
+      assert.equal(result.ledger, 'present', `${label}: an invalid report never invalidates the ledger`);
+    }
+
+    const outside = join(work, 'outside-lane-outcomes');
+    write(outside, 'lane-outcomes.json', JSON.stringify(report));
+    const linked = artifactRoot('lane-outcomes-link');
+    mkdirSync(join(linked, 'ai_agents_internal'));
+    symlinkSync(join(outside, 'lane-outcomes.json'), join(linked, LANE_OUTCOMES_PATH));
+    const viaLink = extractFindings(linked, { startedAtMs: STARTED, elapsedMs: ELAPSED });
+    assertExtractionShape(viaLink);
+    assert.deepEqual([viaLink.laneOutcomes.state, viaLink.laneOutcomes.document], ['invalid', null], 'a linked report is not trusted');
+    assert.match(viaLink.laneOutcomes.errors[0], /symbolic link/);
+    cases++;
+  }
+
+  console.log(`PASS  evaluator-side extraction: ${cases} cases (valid, invalid and missing ledgers, symbolic links, unledgered reports, framework detection, oversize files, ledger@2 status classes, lane-outcomes reports)`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

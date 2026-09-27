@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 35115,
-      "sha256": "4b35e77b082ac114965cc841830ee82fe0b690ce29100807817644e36140386e"
+      "bytes": 37078,
+      "sha256": "8b2d607663d070379c186a6f5f32811b1e565eebeea22a3bb0ba1590617491cc"
     },
     {
       "id": "runner-contract",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 15420,
-      "sha256": "e34257594f0a5a5d799bd43c08bb93e13146db0dde74aea655a4688364b773c3"
+      "bytes": 15644,
+      "sha256": "aff712b882c220bfb483b7867a78857c43434138086bec5d0001581b4b2aa956"
     },
     {
       "id": "qa-core-skill",
@@ -172,9 +172,9 @@
       "kind": "schemas",
       "source": "argus/schemas",
       "destination": "schemas",
-      "files": 41,
-      "bytes": 197957,
-      "sha256": "ce6153678f6b953e049accce530a7fb996689a14f7da3e6ebfa35dc77b07ff05"
+      "files": 42,
+      "bytes": 202274,
+      "sha256": "41d5adb04eecbfaa8bb49a8cc4589812a704295e0d1e727f452e9f2fdc360a2d"
     },
     {
       "id": "capability-matrix",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 393180,
-      "sha256": "a9526960fe646088c6a054ff9fd4841af9240a19617548ffac9ec837a955f067"
+      "bytes": 405097,
+      "sha256": "c0f6b8581aa9cba7ec24db3e683a5f8c9601a5124898243df4ec257be66d36b0"
     },
     {
       "id": "common-template",

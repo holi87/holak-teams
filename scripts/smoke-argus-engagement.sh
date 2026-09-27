@@ -267,6 +267,40 @@ grep -Fq 'bug-ledger supersession removed or re-pointed BUG-0001' "$WORK/unstabl
   || fail "unstable ledger merge failed for the wrong reason: $(<"$WORK/unstable-ledger.out")"
 [ "$superseded_digest" = "$(digest_file "$TARGET/solution/bug-ledger.json")" ] || fail "a refused supersession changed the canonical ledger"
 
+# Lane outcomes count the merged ledger and automation status per selected lane. A test owned
+# by an unselected lane is counted as unattributed, never dropped; a decision whose integrity
+# digest does not match fails the whole report instead of undercounting it.
+jq -c '.engagementId = "phase0-smoke" | .tests = [
+  (.tests[0] | .owner = "hermes" | .status = "failed" | .evidenceIds = []),
+  (.tests[1] | .owner = "hermes" | .evidenceIds = []),
+  (.tests[1] | .testId = "TST-0003" | .owner = "not-selected" | .evidenceIds = [])]' \
+  "$ROOT/scripts/fixtures/argus-schemas/valid/automation-status.json" >"$WORK/automation-status.json"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane atlas --token "$(token_for atlas)" \
+  --canonical solution/automation-status.json --id lane-outcomes --input "$WORK/automation-status.json" >/dev/null
+"$CLI" engagement merge --manifest "$MANIFEST" --owner atlas --token "$(token_for atlas)" \
+  --canonical solution/automation-status.json >/dev/null
+"$CLI" engagement lane-outcomes --manifest "$MANIFEST" --controller-token "$CONTROLLER_TOKEN" >/dev/null
+jq -e --arg ledger "$superseded_digest" --arg automation "$(digest_file "$TARGET/solution/automation-status.json")" '
+  .sources.bugLedgerSha256 == $ledger and .sources.automationStatusSha256 == $automation
+  and .sources.unattributedLedgerRows == 0 and .sources.unattributedTests == 1
+  and (.lanes | length == 27)
+  and (.lanes[] | select(.agent == "hermes") | .ledger == {reported:1,confirmed:0,suspected:1,needsOracle:0,bounced:0,quarantined:0,duplicate:0,rejected:0,wired:0,severe:0}
+    and .automation == {tests:2,coveringBugs:1,failed:1})
+  and ([.lanes[] | select(.agent != "hermes") | .ledger.reported + .automation.tests] | add == 0)' \
+  "$TARGET/ai_agents_internal/lane-outcomes.json" >/dev/null || fail "lane-outcomes miscounted the merged canonicals: $(cat "$TARGET/ai_agents_internal/lane-outcomes.json")"
+DECISIONS="$TARGET/ai_agents_internal/model-decisions"
+tampered="$(find "$DECISIONS" -maxdepth 1 -name 'MDR-*.json' | sort | head -n 1)"
+jq '.decisionId = "MDR-ffffffffffffffffffffffff" | .relativePath = "ai_agents_internal/model-decisions/MDR-ffffffffffffffffffffffff.json"' \
+  "$tampered" >"$DECISIONS/MDR-ffffffffffffffffffffffff.json"
+if outcomes_error="$("$CLI" engagement lane-outcomes --manifest "$MANIFEST" --controller-token "$CONTROLLER_TOKEN" 2>&1)"; then
+  fail 'lane-outcomes counted a decision that fails its integrity digest'
+fi
+grep -Fq 'failed its integrity digest' <<<"$outcomes_error" || fail "tampered-decision lane-outcomes failed for the wrong reason: $outcomes_error"
+rm "$DECISIONS/MDR-ffffffffffffffffffffffff.json"
+if "$CLI" engagement lane-outcomes --manifest "$MANIFEST" --controller-token "$(token_for hermes)" >/dev/null 2>&1; then
+  fail 'lane-outcomes accepted a worker token as the controller token'
+fi
+
 # The per-contract stability invariants, exercised directly on packaged contract semantics.
 node --input-type=module - "$ROOT" <<'NODE'
 import { readFileSync } from 'node:fs';
@@ -409,6 +443,13 @@ guard_shell "argus-assets engagement report-facts --manifest $WORK/alternate-eng
 guard_shell 'argus-assets engagement report-facts' 'GUARD-SHELL-AMBIGUOUS: engagement report-facts must bind to the active engagement manifest'
 guard_shell "argus-assets engagement report-facts --manifest $MANIFEST --token $(token_for kleio)" 'GUARD-SHELL-AMBIGUOUS: engagement report-facts accepts only --manifest <path> and --output <json|->'
 guard_shell "argus-assets engagement report-facts --manifest $MANIFEST --output" 'GUARD-SHELL-AMBIGUOUS: engagement report-facts accepts only'
+# lane-outcomes writes only its fixed control artifact; the options are closed.
+guard_shell "argus-assets engagement lane-outcomes --manifest $MANIFEST --controller-token $CONTROLLER_TOKEN" allow
+guard_shell "argus-assets engagement lane-outcomes --manifest $WORK/alternate-engagement.json --controller-token $CONTROLLER_TOKEN" 'GUARD-SHELL-AMBIGUOUS: engagement lane-outcomes must bind to the active engagement manifest'
+guard_shell "argus-assets engagement lane-outcomes --manifest $MANIFEST" 'GUARD-SHELL-AMBIGUOUS: engagement lane-outcomes requires --controller-token'
+guard_shell "argus-assets engagement lane-outcomes --manifest $MANIFEST --controller-token $CONTROLLER_TOKEN --output reports/lane-outcomes.json" 'GUARD-SHELL-AMBIGUOUS: engagement lane-outcomes accepts only --manifest <path> and --controller-token <odysseus-token>'
+guard_shell "argus-assets engagement lane-outcomes --manifest $MANIFEST --token $(token_for kleio)" 'GUARD-SHELL-AMBIGUOUS: engagement lane-outcomes accepts only'
+guard_shell "argus-assets engagement lane-outcomes --manifest $MANIFEST --controller-token" 'GUARD-SHELL-AMBIGUOUS: engagement lane-outcomes accepts only'
 # No arrow function here: its ">" alone would already look like a redirection.
 guard_shell "node -e \"import('./runtime/engagement.mjs').then(function (m) { m.resolveConditionalGates({}, 'token', {}) })\"" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets redact --input reports/result.txt --output app/redacted.txt" GUARD-TARGET-IMMUTABLE

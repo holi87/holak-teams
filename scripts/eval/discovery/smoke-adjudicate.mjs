@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { corpusDigest, corpusVersion, seedIds, truthFor } from './corpus/index.mjs';
 import { planReplayCases, summarizeReplay } from './lib/replay.mjs';
-import { formatSchemaErrors, validateEval } from './lib/schemas.mjs';
+import { formatSchemaErrors, validateArgus, validateEval } from './lib/schemas.mjs';
 import { aggregateRuns, scoreRun } from './score.mjs';
 
 const ADJUDICATE = fileURLToPath(new URL('./adjudicate.mjs', import.meta.url));
@@ -55,6 +55,27 @@ const human = (finding, outcome, { seedId = null, duplicateOf = null, reproduced
 const usage = (fields = {}) => ({ source: 'claude-cli-result-json', inputTokens: 600, outputTokens: 400, cacheReadTokens: 0, cacheCreationTokens: 0,
   totalTokens: 1000, costUsd: 2.5, numTurns: 40, controllerTurnCapHit: false, ...fields });
 
+// A present argus/lane-outcomes@1 extraction; each entry is [agent, turnLimit, totalTokens].
+function laneOutcomes(runId, entries) {
+  const lanes = entries.map(([agent, turnLimit, totalTokens]) => ({
+    agent,
+    decisions: { total: 1 + turnLimit, normal: 1, turnLimit, escalations: turnLimit, noArtifact: 0, zeroCandidates: 0, autoContinued: 0, backoffRetries: 0, blocked: 0 },
+    telemetry: { events: 1 + turnLimit, successes: 1 + turnLimit, failures: 0, totalTokens, reportedCostUsd: null },
+    ledger: { reported: 0, confirmed: 0, suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, wired: 0, severe: 0 },
+    automation: { tests: 0, coveringBugs: 0, failed: 0 },
+  }));
+  const document = {
+    schema: 'argus/lane-outcomes@1', schemaVersion: 1, engagementId: `eval-${runId}`, generatedAt: new Date(STARTED + 59_000).toISOString(),
+    sources: { bugLedgerSha256: sha256(`ledger ${runId}`), automationStatusSha256: null,
+      decisions: lanes.reduce((sum, lane) => sum + lane.decisions.total, 0), telemetryEvents: lanes.reduce((sum, lane) => sum + lane.telemetry.events, 0),
+      unattributedLedgerRows: 0, unattributedTests: 0 },
+    lanes,
+  };
+  const errors = validateArgus('lane-outcomes', document);
+  assert.deepEqual(errors, [], `lane-outcomes fixture violation: ${formatSchemaErrors(errors)}`);
+  return { state: 'present', errors: [], document };
+}
+
 // A completed replay over the planned cases (2 repeats, per-seed matrix); `outcomes(plan)` gives
 // each case's per-bug outcomes, and a case catching any bug exits 1.
 function replayFor(artifactRoot, truth, outcomes) {
@@ -87,7 +108,7 @@ function plans() {
   const b = [row(1, { lane: 'metis' }), row(2, { lane: 'metis' })];
   const t = [row(1, { lane: 'metis' })];
   return [
-    { runId: 'r0-A-faulty-baseline', rows: a, replay: r0Outcomes, verdicts: [
+    { runId: 'r0-A-faulty-baseline', rows: a, replay: r0Outcomes, laneOutcomes: [['atalanta', 1, 5000], ['proteus', 0, 3000], ['kalchas', 2, 9000]], verdicts: [
       human(a[0], 'real', { seedId: S1, reproduced: true, evidence: 'artifact:repro-BUG-0001.txt' }),
       human(a[1], 'real', { evidence: 'repro:r0-A-faulty-baseline-BUG-0002.txt' }),
       judge(a[2], 'real', { seedId: S2 }),
@@ -97,7 +118,7 @@ function plans() {
       judge(a[6], 'real', { seedId: S5 }),
       judge(a[7], 'real', { seedId: S1 }),
     ] },
-    { runId: 'r0-A-corrected-baseline', rows: c, verdicts: [judge(c[0], 'false-positive'), human(c[1], 'real', { reproduced: true, evidence: 'artifact:repro-BUG-0002.txt' })] },
+    { runId: 'r0-A-corrected-baseline', rows: c, laneOutcomes: [['atalanta', 2, 1000]], verdicts: [judge(c[0], 'false-positive'), human(c[1], 'real', { reproduced: true, evidence: 'artifact:repro-BUG-0002.txt' })] },
     { runId: 'r1-A-faulty-baseline', rows: [], replay: () => ({}), usage: usage({ controllerTurnCapHit: true }), verdicts: [] },
     { runId: 'r1-A-corrected-baseline', rows: [], verdicts: [] },
     { runId: 'r0-B-faulty-baseline', rows: b, verdicts: [judge(b[0], 'real', { seedId: SB }), judge(b[1], 'real', { seedId: S1 })] },
@@ -126,7 +147,8 @@ function makeRun(sealed, plan) {
       spawnError: status === 'invalid-run' ? 'smoke fixture: no adapter' : null, resultState: reported ? 'valid' : 'missing', resultErrors: [], result },
     extraction: { ledger: 'present', ledgerErrors: [], findings: plan.rows.filter(item => item.status === 'confirmed'),
       suspected: plan.rows.filter(item => item.status !== 'confirmed'), unledgeredReports: build === 'corrected' && mode === 'A' ? ['bugs/stray.md'] : [],
-      framework: { root: plan.replay ? 'qa' : null, candidates: plan.replay ? 1 : 0 } },
+      framework: { root: plan.replay ? 'qa' : null, candidates: plan.replay ? 1 : 0 },
+      ...(plan.laneOutcomes ? { laneOutcomes: laneOutcomes(plan.runId, plan.laneOutcomes) } : {}) },
     contamination: { status: status === 'contaminated' ? 'contaminated' : 'clean', hits: [], totalHits: 0, scannedFiles: 3, skippedFiles: 0 },
     replay: plan.replay ? replayFor(artifactRoot, truth, plan.replay) : null,
   };
@@ -231,11 +253,17 @@ try {
     near(m.precision, 4 / 6, 'precision');
     assert.deepEqual([m.suspected, m.suspectedSeedHits], [2, 1], 'only the seed credited solely through a suspected row is a suspected seed hit');
     assert(!m.detectedSeedIds.includes(S5), 'a suspected seed hit is excluded from recall');
+    // Lane outcomes annotate the lanes with confirmed findings; a lane missing from the report is
+    // null, and a lane with outcomes but no finding (kalchas) does not enter perLane.
     assert.deepEqual(m.perLane, {
-      ariadne: { reported: 1, real: 0, falsePositive: 1, duplicate: 0, seedsDetected: 0 },
-      atalanta: { reported: 2, real: 2, falsePositive: 0, duplicate: 0, seedsDetected: 1 },
-      proteus: { reported: 3, real: 2, falsePositive: 0, duplicate: 1, seedsDetected: 2 },
+      ariadne: { reported: 1, real: 0, falsePositive: 1, duplicate: 0, seedsDetected: 0, turnLimit: null, totalTokens: null },
+      atalanta: { reported: 2, real: 2, falsePositive: 0, duplicate: 0, seedsDetected: 1, turnLimit: 1, totalTokens: 5000 },
+      proteus: { reported: 3, real: 2, falsePositive: 0, duplicate: 1, seedsDetected: 2, turnLimit: 0, totalTokens: 3000 },
     });
+    const invalidOutcomes = structuredClone(faulty);
+    invalidOutcomes.extraction.laneOutcomes = { state: 'invalid', errors: ['smoke: invalid report'], document: null };
+    assert(Object.values(scoreRun(invalidOutcomes, verdictsFor(fx, faulty.runId), replay).metrics.perLane)
+      .every(counts => counts.turnLimit === null && counts.totalTokens === null), 'an invalid lane-outcomes report measures nothing');
     assert.deepEqual(m.reproduction, { human: 1, replay: 1, none: 2, byFinding: { 'BUG-0001': 'human', 'BUG-0002': 'none', 'BUG-0003': 'none', 'BUG-0005': 'replay' } });
     assert.equal(m.independentReproduction, 0.5);
     assert.deepEqual(m.regression, {
@@ -252,10 +280,12 @@ try {
     assert.deepEqual(m.deliveryDefects, { ledger: 'present', unledgeredReports: 0 });
     const hostile = structuredClone(faulty);
     hostile.extraction.findings[5].lane = 'constructor';
+    hostile.extraction.laneOutcomes = laneOutcomes(hostile.runId, [['constructor', 3, 700], ['atalanta', 1, 5000]]);
     const hostileRun = { status: hostile.status, build: hostile.build, scoring: 'scored', metrics: scoreRun(hostile, verdictsFor(fx, faulty.runId), replay).metrics };
-    assert.deepEqual(hostileRun.metrics.perLane.constructor, { reported: 1, real: 0, falsePositive: 1, duplicate: 0, seedsDetected: 0 });
+    assert.deepEqual(hostileRun.metrics.perLane.constructor, { reported: 1, real: 0, falsePositive: 1, duplicate: 0, seedsDetected: 0, turnLimit: 3, totalTokens: 700 });
     assert.equal(aggregateRuns([hostileRun], { mode: 'A', judgeReliability: fx.verdicts.reliability }).perLane.constructor.precision, 0);
     assert.equal(Object.prototype.reported, undefined, 'a lane name from the ledger never reaches Object.prototype');
+    assert.equal(Object.prototype.turnLimit, undefined, 'a lane name from the lane-outcomes report never reaches Object.prototype');
 
     const empty = scoreRun(runOf(fx, 'r1-A-faulty-baseline'), [], summarizeReplay(runOf(fx, 'r1-A-faulty-baseline').replay)).metrics;
     assert.deepEqual([empty.reported, empty.precision, empty.recall, empty.independentReproduction], [0, null, 0, null], 'a zero-report run has null precision');
@@ -286,7 +316,7 @@ try {
     const aggregate = aggregateRuns(results, { mode: 'A', judgeReliability: fx.verdicts.reliability });
     assert.deepEqual([aggregate.reported, aggregate.real, aggregate.pooledPrecision], [8, 5, 5 / 8]);
     near(results.filter(entry => entry.metrics.precision !== null).reduce((sum, entry) => sum + entry.metrics.precision, 0) / 2, 7 / 12, 'mean per-run precision');
-    console.log('PASS  scoreRun: seeded, unseeded (not penalized), false-positive and duplicate findings, suspected seed hits outside recall, per-surface and per-lane counts, reproduction, fail-to-pass, specific, flaky and false-alarm regressions, pooled precision');
+    console.log('PASS  scoreRun: seeded, unseeded (not penalized), false-positive and duplicate findings, suspected seed hits outside recall, per-surface and per-lane counts with lane-outcome turn-limit and token costs, reproduction, fail-to-pass, specific, flaky and false-alarm regressions, pooled precision');
   }
 
   // 2. The CLI on a complete, final comparison: exit 0 and a schema-valid discovery-summary@1
@@ -322,10 +352,12 @@ try {
     assert.equal(a.independentReproduction, 0.6);
     assert.deepEqual(a.regression, { faultyRuns: 2, replayedRuns: 2, detectedSeeds: 3, withWiredRegression: 2, failToPass: 2, specific: 1, flaky: 1,
       failToPassRate: 2 / 3, specificRate: 1 / 3, flakyRate: 1 / 3, falseAlarms: 1, baselineGreenOnFixRate: 0.5 });
+    // Lane-outcome costs sum over the runs that measured them: atalanta in both baseline runs,
+    // proteus only in the faulty one, and ariadne in none.
     assert.deepEqual(a.perLane, {
-      ariadne: { reported: 1, real: 0, falsePositive: 1, duplicate: 0, seedsDetected: 0, precision: 0 },
-      atalanta: { reported: 3, real: 2, falsePositive: 1, duplicate: 0, seedsDetected: 1, precision: 2 / 3 },
-      proteus: { reported: 4, real: 3, falsePositive: 0, duplicate: 1, seedsDetected: 2, precision: 0.75 },
+      ariadne: { reported: 1, real: 0, falsePositive: 1, duplicate: 0, seedsDetected: 0, turnLimit: null, totalTokens: null, precision: 0 },
+      atalanta: { reported: 3, real: 2, falsePositive: 1, duplicate: 0, seedsDetected: 1, turnLimit: 3, totalTokens: 6000, precision: 2 / 3 },
+      proteus: { reported: 4, real: 3, falsePositive: 0, duplicate: 1, seedsDetected: 2, turnLimit: 0, totalTokens: 3000, precision: 0.75 },
     });
     assert.deepEqual(a.deliveryDefects, { ledgerMissing: 0, ledgerInvalid: 0, unledgeredReports: 2 });
     assert.deepEqual(a.usage, { tokens: { runs: 4, total: 4000, mean: 1000 }, cost: { runs: 4, total: 10, mean: 2.5 },
@@ -337,7 +369,7 @@ try {
     assert.deepEqual([b.runs, b.faultyRuns, b.meanDetectedSeeds, b.pooledPrecision, b.regression, b.timedOutRuns], [4, 2, 1.5, 1, null, 1]);
     near(b.meanRecall, 3 / 44, 'mode B mean recall');
     assert.equal(b.meanCriticalRecall, 1 / 16);
-    assert.deepEqual(b.perLane, { metis: { reported: 3, real: 3, falsePositive: 0, duplicate: 0, seedsDetected: 3, precision: 1 } });
+    assert.deepEqual(b.perLane, { metis: { reported: 3, real: 3, falsePositive: 0, duplicate: 0, seedsDetected: 3, turnLimit: null, totalTokens: null, precision: 1 } });
     assert.deepEqual(b.usage.tokens, { runs: 3, total: 3000, mean: 1000 }, 'the timed-out run without usage is left out of usage totals');
 
     const text = JSON.stringify(summary);

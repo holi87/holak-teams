@@ -384,3 +384,31 @@ defect headline and per-status counts, a "Likely, unproven" section (`None.` whe
 review verdict (`APPROVE`, `BLOCK`, `STALE`, `ABSENT`, or `NOT-APPLICABLE`) with its round,
 the runner outcome, and the coverage section with automated re-execution (`n/a` when automation
 is unfunded) and one line per unexecuted critical surface.
+
+## Lane outcomes in 5.0
+
+`argus/lane-outcomes@1` at `ai_agents_internal/lane-outcomes.json` is a count-only runtime
+report, not a canonical solution fragment: it is never an `engagement fragment` input and never
+merged. After the final merges and before cleanup, Odysseus runs
+`argus-assets engagement lane-outcomes --manifest <engagement.json> --controller-token <odysseus-token>`.
+The command accepts only the active Odysseus controller token (checked against the live lease,
+never persisted, never written into the report) and recomputes the report from:
+
+- every `argus/model-decision@3` file under `ai_agents_internal/model-decisions/`, each a
+  single-link regular file whose name, path, engagement, and integrity digest agree;
+- every `argus/model-telemetry-event@3` line in `ai_agents_internal/model-telemetry.jsonl`,
+  each bound to one of those decisions;
+- the merged `solution/bug-ledger.json` (per `lane`) and `solution/automation-status.json`
+  (per `owner`), each only while its file matches its merge digest.
+
+It has one row per selected lane, in manifest order, with integer counts only:
+`decisions` (total, normal, turn-limit, every non-normal signal as `escalations`,
+`no-artifact`, `zero-candidates`, `AUTO_CONTINUE_SELECTED`, `BACKOFF_RETRY_SELECTED`, blocked),
+`telemetry` (events, successes, failures, total tokens, reported cost or null), `ledger` (one
+count per bug-ledger@2 status, `reported`, `wired`, and `severe` = confirmed or suspected
+Blocker/Critical rows), and `automation` (tests, tests covering a bug, failed tests). `sources`
+records the merged ledger and automation-status digests (null when unmerged), the decision and
+event counts, and ledger rows or tests attributed to an unselected lane. No title, path, URL,
+target, token, or evidence is recorded. A decision or event that fails validation fails the whole
+report instead of undercounting it. Recomputation is idempotent and atomically replaces the file
+(mode `0600`).

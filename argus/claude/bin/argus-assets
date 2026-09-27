@@ -53,6 +53,7 @@ import {
   buildGuardAudit,
   claimExclusive,
   cleanupWorker,
+  computeLaneOutcomes,
   conditionalGateRequest,
   createDefaultEngagement,
   deriveFinalSummaryFacts,
@@ -123,6 +124,7 @@ const NATIVE_LAUNCH_AUTHORIZATION_SCHEMA_PATH = join(ROOT, 'schemas', 'native-la
 const NATIVE_LAUNCH_RECEIPT_SCHEMA_PATH = join(ROOT, 'schemas', 'native-launch-receipt.schema.json');
 const MODEL_TRUST_STORE_SCHEMA_PATH = join(ROOT, 'schemas', 'model-trust-store.schema.json');
 const MODEL_TELEMETRY_SCHEMA_PATH = join(ROOT, 'schemas', 'model-telemetry-event.schema.json');
+const LANE_OUTCOMES_SCHEMA_PATH = join(ROOT, 'schemas', 'lane-outcomes.schema.json');
 const PREFLIGHT_REPORT_SCHEMA_PATH = join(ROOT, 'schemas', 'preflight-report.schema.json');
 const BROWSER_RUNTIME_SCHEMA_PATH = join(ROOT, 'schemas', 'browser-runtime.schema.json');
 const ORCHESTRATION_PLAN_PATH = join(ROOT, 'capabilities', 'orchestration-plan.json');
@@ -258,10 +260,11 @@ Usage:
   argus-assets authorization init --target <url-or-path> [options]
   argus-assets authorization check --manifest <path> --lane <slug> --action <action> --target <target> [options]
   argus-assets authorization verify|install --artifact-root <absolute-path> --engagement-id <id> --target <url-or-path> [--manifest <absolute-path>] [--environment <name>]
-  argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup|resolve-gates|report-facts> [options]
+  argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup|resolve-gates|report-facts|lane-outcomes> [options]
   argus-assets engagement allocate --manifest <engagement.json> --lane <slug> --decision <model-decision.json> [--dispatch-authorization <MDA-file>] [--token <lane-token>] [--controller-token <odysseus-token>]
   argus-assets engagement allocate --manifest <engagement.json> --lanes <slug,slug> --controller-token <odysseus-token>
   argus-assets engagement start-attempt --manifest <engagement.json> --lane <slug> --decision <model-decision.json> --token <lane-token> [--controller-token <odysseus-token>] [--dispatch-authorization <MDA-file>] [--wait <true|false>]
+  argus-assets engagement lane-outcomes --manifest <engagement.json> --controller-token <odysseus-token>
   argus-assets schema <list|validate> [options]
   argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--evidence <json>] [--ledger <json>] [--automation-status <json>] [--root <dir>] [--output <json|->]
   argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
@@ -340,6 +343,10 @@ Engagement coordination:
     Read-only. Prints the final-summary facts the merge derives and overwrites (counts,
     unproven, automationReview, runner, coverage, sourceSchemas, statusReasons) plus the
     statusCeiling; the runner outcome comes from reports/argus-runner-result.json when present.
+  lane-outcomes --manifest <path> --controller-token <odysseus-token>
+    Controller only, after the final merges and before cleanup. Recomputes the count-only
+    argus/lane-outcomes@1 report from the model decisions, telemetry, and merged ledger and
+    automation status, and atomically replaces ai_agents_internal/lane-outcomes.json.
 
 Automation review (Aristarchus's canonical solution/automation-review.json):
   digest prints the current test-corpus digest {sha256, fileCount, roots} for a review round.
@@ -2490,10 +2497,11 @@ function engagementCommand(args) {
     if (operation === 'cleanup') return engagementCleanup(rest);
     if (operation === 'resolve-gates') return engagementResolveGates(rest);
     if (operation === 'report-facts') return engagementReportFacts(rest);
+    if (operation === 'lane-outcomes') return engagementLaneOutcomes(rest);
   } catch (error) {
     fail(`engagement ${operation ?? '(missing)'}: ${error.message}`);
   }
-  fail('usage: argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup|resolve-gates|report-facts> [options]');
+  fail('usage: argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup|resolve-gates|report-facts|lane-outcomes> [options]');
 }
 
 function initializeEngagement(args) {
@@ -3075,6 +3083,27 @@ function engagementReportFacts(args) {
     atomicPrivateWrite(outputPath, content);
     console.log(`REPORT-FACTS  status-ceiling=${facts.statusCeiling} reasons=${facts.statusReasons.join(',') || 'none'} output=${outputPath}`);
   }
+  return 0;
+}
+
+// The controller's count-only per-lane outcome report. The argv controller token is checked
+// against the active Odysseus allocation here and again, with its live lease marker, by the
+// runtime; it is never persisted and never enters the report. Recomputation is idempotent, so
+// every call atomically replaces the fixed, non-aliased control artifact.
+function engagementLaneOutcomes(args) {
+  const options = parseNamedOptions(args, new Set(['--manifest', '--controller-token']));
+  requireOptions(options, ['manifest'], 'engagement lane-outcomes');
+  const { manifest: engagement } = loadEngagement(options);
+  requireEngagementControllerToken(engagement, options.controllerToken, 'engagement lane-outcomes');
+  const report = computeLaneOutcomes(engagement, modelPolicy, { controllerToken: options.controllerToken });
+  assertSchemaDocument(compileJsonSchema(readJson(LANE_OUTCOMES_SCHEMA_PATH)), report, 'lane outcomes report');
+  const content = `${JSON.stringify(report, null, 2)}\n`;
+  if (content.includes(options.controllerToken)) fail('lane outcomes report would disclose the controller token');
+  const artifactRoot = realpathSync(engagement.artifactRoot);
+  const output = join(artifactRoot, 'ai_agents_internal', 'lane-outcomes.json');
+  assertPhysicalWithin(artifactRoot, output, 'lane outcomes output');
+  atomicPrivateWrite(output, content);
+  console.log(`LANE_OUTCOMES  recorded output=${output} lanes=${report.lanes.length}`);
   return 0;
 }
 

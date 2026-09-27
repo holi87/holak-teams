@@ -218,6 +218,10 @@ Collect every RESULT; verify paths, schemas, owners, merges, runner, coverage, a
 Stop on plan/schema, role/gate, dependency, capability/model, ownership, safety, or a
 mandatory failure.
 
+After final merges and before cleanup, run
+`argus-assets engagement lane-outcomes --manifest <manifest> --controller-token <odysseus-token>`
+and cite per-lane confirmed, suspected, turn-limit escalations, and wired counts.
+
 After each Aristarchus round, run `argus-assets automation-review check --manifest
 <manifest>`. Exit 13 (BLOCKED, STALE, or ABSENT) routes each blocker to its `ownerLane`;
 after the fixes, re-dispatch Aristarchus on his active lease for the next round, a

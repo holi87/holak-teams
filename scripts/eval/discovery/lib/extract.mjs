@@ -1,14 +1,15 @@
 // Evaluator-side finding extraction. The evaluator never trusts findings reported by a host
-// adapter: it reads the canonical Argus ledger (solution/bug-ledger.json) and the bug reports
-// from the run's artifact root itself. Symbolic links (at any path component) and files over
-// 2 MB are ignored. A missing or invalid ledger scores as zero findings (an Argus delivery
-// defect), never as an invalid run.
+// adapter: it reads the canonical Argus ledger (solution/bug-ledger.json), the bug reports, and
+// the controller's lane-outcomes report from the run's artifact root itself. Symbolic links
+// (at any path component) and files over 2 MB are ignored. A missing or invalid ledger scores
+// as zero findings (an Argus delivery defect), never as an invalid run.
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { formatSchemaErrors, validateArgus } from './schemas.mjs';
 
 export const MAX_EXTRACT_BYTES = 2 * 1024 * 1024;
 export const LEDGER_PATH = 'solution/bug-ledger.json';
+export const LANE_OUTCOMES_PATH = 'ai_agents_internal/lane-outcomes.json';
 export const REPORTS_DIR = 'bugs';
 const FRAMEWORK_DEPTH = 4;
 const FRAMEWORK_SKIP = new Set(['node_modules', 'ai_agents_internal', 'reports', '.git']);
@@ -80,6 +81,39 @@ function readLedger(root) {
     if (classifyLedgerStatus(bug.status) === null) return invalid(`${LEDGER_PATH} bug ${bug.id} has unknown status ${bug.status}`);
   }
   return { ledger: 'present', ledgerErrors: [], document, mtimeMs: entry.stat.mtimeMs };
+}
+
+// The controller's count-only argus/lane-outcomes@1 report, read with the same symbolic-link
+// and size rules as the ledger. It carries no finding text, so it is kept whole once it is
+// schema-valid and names each lane at most once. Like the ledger it is run output, so it only
+// annotates per-lane cost and never feeds recall or precision. A missing or invalid report
+// never invalidates the run; scoring then has no per-lane turn-limit or token counts.
+function readLaneOutcomes(root) {
+  const entry = inspect(root, LANE_OUTCOMES_PATH);
+  const invalid = message => ({ state: 'invalid', errors: [message], document: null });
+  if (entry.state === 'missing') return { state: 'missing', errors: [], document: null };
+  if (entry.state === 'symlink') return invalid(`${LANE_OUTCOMES_PATH} is (or is reached through) a symbolic link`);
+  if (entry.state === 'unreadable') return invalid(`${LANE_OUTCOMES_PATH} is not readable`);
+  if (entry.state !== 'file') return invalid(`${LANE_OUTCOMES_PATH} is not a regular file`);
+  if (entry.stat.size > MAX_EXTRACT_BYTES) return invalid(`${LANE_OUTCOMES_PATH} exceeds ${MAX_EXTRACT_BYTES} bytes`);
+  let document;
+  try {
+    document = JSON.parse(readFileSync(join(root, LANE_OUTCOMES_PATH), 'utf8'));
+  } catch (error) {
+    return invalid(`${LANE_OUTCOMES_PATH} is not valid JSON: ${error.message}`);
+  }
+  const errors = validateArgus('lane-outcomes', document);
+  if (errors.length) {
+    const messages = errors.slice(0, MAX_LEDGER_ERRORS).map(error => formatSchemaErrors([error]));
+    if (errors.length > MAX_LEDGER_ERRORS) messages.push(`... ${errors.length - MAX_LEDGER_ERRORS} more schema errors`);
+    return { state: 'invalid', errors: messages, document: null };
+  }
+  const agents = new Set();
+  for (const lane of document.lanes) {
+    if (agents.has(lane.agent)) return invalid(`${LANE_OUTCOMES_PATH} repeats lane ${lane.agent}`);
+    agents.add(lane.agent);
+  }
+  return { state: 'present', errors: [], document };
 }
 
 // Top-level bugs/*.md reports that are regular files within the size limit, sorted by name.
@@ -182,5 +216,6 @@ export function extractFindings(artifactRoot, { startedAtMs, elapsedMs }) {
     suspected,
     unledgeredReports,
     framework: { root: frameworks[0] ?? null, candidates: frameworks.length },
+    laneOutcomes: readLaneOutcomes(artifactRoot),
   };
 }
