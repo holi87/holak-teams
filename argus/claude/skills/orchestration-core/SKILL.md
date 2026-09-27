@@ -126,6 +126,10 @@ Before framework work run `argus-assets template detect`; persist explicit `temp
 `adapt` forbids scaffolding; `build` allows `template scaffold` only at selected roots. The
 runner defines `baseline`, `defect-evidence`, `candidate-regression`, and `full-suite`;
 preserve product, automation, infrastructure, skip, and policy outcomes with truthful exits.
+You own the exclusive `reset` window: before a lane's `ARGUS_ENVIRONMENT_RESET=execute` run,
+`argus-assets engagement claim --manifest <manifest> --lane odysseus --token
+<controller-token> --resource reset`, and `engagement release` after it. Tyche owns `fault`
+and claims it only while her lease is active; a server fault without it is residual risk.
 
 The validated surface inventory is the coverage denominator. Calculate canonical
 coverage from versioned observations before reporting; test/defect counts contribute

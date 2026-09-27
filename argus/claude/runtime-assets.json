@@ -74,8 +74,8 @@
       "source": "argus/RUNNER-CONTRACT.md",
       "destination": "references/RUNNER-CONTRACT.md",
       "files": 1,
-      "bytes": 29319,
-      "sha256": "7975fe39a34f54b0bcb4454e64f656d7a353b421d422e5b73a866d37fb6499aa"
+      "bytes": 29602,
+      "sha256": "939c60d282b5354e80da6a7e5175856be8102a26591b2218b9cb950d3ef18f1c"
     },
     {
       "id": "template-contract",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 15800,
-      "sha256": "ff504c363a9b6d953f3cd1b3239e45103affc39955f1f6fd12929df44d906128"
+      "bytes": 16152,
+      "sha256": "80ae72ff96eeba8da58b7ac267c2273b4aa354844ff0b77fde33688afe55d581"
     },
     {
       "id": "qa-core-skill",
@@ -146,8 +146,8 @@
       "source": "argus/shared-skills/qa-framework-runner",
       "destination": "skills/qa-framework-runner",
       "files": 1,
-      "bytes": 4522,
-      "sha256": "8b0fd016264b487448fc6038b05c597dff35831c399e3bb54d66e218c5d09fd6"
+      "bytes": 4955,
+      "sha256": "e980250d03ebd88662c1ef520d3e63c8cdb1a9d150fd4300d0e7900c1d9ebd12"
     },
     {
       "id": "qa-coverage-reporting-skill",

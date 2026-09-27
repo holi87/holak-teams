@@ -413,4 +413,7 @@ engagement manifest), `--source-trust` from `ARGUS_AUTHORIZATION_SOURCE_TRUST` (
 `_DURATION`. A missing CLI, lane, target, window, or decision refuses the run with
 `environment policy denied environment-reset-unauthorized` or `fault-injection policy
 denied fault-injection-unauthorized` (exit 13) before anything destructive starts. Outside
-an engagement the opt-in of the operator who owns the target stands.
+an engagement the opt-in of the operator who owns the target stands. Only a window's
+manifest owner (`resourcePolicy.exclusiveOperations`: `reset` Odysseus, `fault` Tyche)
+claims it, with `argus-assets engagement claim --resource <reset|fault>`, and releases it
+after the run; the lane that runs the suite sets `ARGUS_ENGAGEMENT_LANE` to its own slug.

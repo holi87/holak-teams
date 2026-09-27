@@ -582,6 +582,12 @@ test ! -e "$TARGET/app/authorization-audit.jsonl" || fail 'authorization check a
 grep -Eq '^AUTHORIZATION  (ALLOW|DENY) .* audit=/.*/ai_agents_internal/authorization-audit\.jsonl ' "$WORK/authorization-bind.out" \
   || fail "the engagement authorization manifest was not audited in the control directory: $(<"$WORK/authorization-bind.out")"
 rm "$TARGET/app/package.json"
+# The exclusive reset/fault window handshake the prompts document passes the guard as written.
+guard_as main Bash "argus-assets engagement claim --manifest $MANIFEST --lane odysseus --token $CONTROLLER_TOKEN --resource reset" allow
+guard_as argus:tyche Bash "argus-assets engagement claim --manifest $MANIFEST --lane tyche --token $(token_for tyche) --resource fault" allow
+guard_as argus:tyche Bash "argus-assets engagement release --manifest $MANIFEST --lane tyche --token $(token_for tyche) --resource fault" allow
+guard_as argus:atlas Bash 'ARGUS_ENGAGEMENT_LANE=atlas ARGUS_ENVIRONMENT_RESET=execute ./run-tests.sh --mode full-suite' allow
+guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized ./run-tests.sh --mode candidate-regression' allow
 atlas_tmp="$(jq -r .temporaryDirectory "$ALLOCATIONS/atlas.json")"
 guard_shell "argus-assets copy-template typescript $atlas_tmp/template" allow
 guard_shell "argus-assets copy-runner-kit typescript $atlas_tmp/runner-kit" allow
