@@ -288,15 +288,46 @@ the separate authorization decision.
 
 ## Phase barriers, IDs, checkpoints, and resume
 
-The ordered phases are preflight, discovery, hunting, automation, verification,
-reporting, and complete. Before allocation, model-control sealing copies the exact
-dispatchable preflight projection into engagement state. That projection is immutable and
-filters each manifest phase's participants, so deferred/skipped/blocked roles create no
-false barrier and late capability changes cannot silently alter quorum. A projected
-participant records `engagement barrier arrive`; only Odysseus can advance after every
-declared projected participant has arrived. Dispatch for the next phase is forbidden before
-a successful advance. This phase dispatch uses the already selected decision and allocation;
-it does not mint a late normal dispatch or replacement lease.
+Phases are derived, never hard-coded. When the manifest is created, the packaged runtime
+derives `phasePlan` from the packaged orchestration plan for the engagement's mode and
+selected roles: the controller-owned `preflight` and `complete` bracket every plan phase
+active in that mode. Mode A runs discovery, hunting, proof, deep-hunt-1, deep-proof-1,
+deep-hunt-2, deep-proof-2, deep-hunt-3, deep-proof-3, automation, verification, and
+reporting. Each entry records its wave, its kind (`control`, `work`, `proof`, or
+`deep-hunt`), a pass number for proof and deep-hunt phases, whether it is skippable, its
+participants, and its standby lanes. The runtime re-validates this shape on every load, and
+a phase outside the plan is rejected for heartbeats, checkpoints, and barriers.
+
+Before allocation, model-control sealing copies the exact dispatchable preflight projection
+into engagement state. That projection is immutable and filters each manifest phase's
+participants and standby lanes, so deferred/skipped/blocked roles create no false barrier
+and late capability changes cannot silently alter quorum. A projected participant records
+`engagement barrier arrive`; only Odysseus can advance after every declared projected
+participant has arrived. Dispatch for the next phase is forbidden before a successful
+advance. This phase dispatch uses the already selected decision and allocation; it does not
+mint a late normal dispatch or replacement lease.
+
+Standby lanes never arrive at a barrier. They are the lanes a phase may re-dispatch on
+their active lease: filing lanes whose candidates need proof repair and Metis as the
+oracle desk. A phase-scoped re-dispatch reuses the lane's allocation and token, so a
+standby lane keeps its lease until the standby phase has passed (see Cleanup).
+
+A proof phase whose projected participants include Minos cannot advance until Minos has
+merged `solution/bug-ledger.json` during that phase. Each bug-ledger merge records
+`ledgerSnapshots[<current phase>]`: the merged fragment ids, the sorted bug ids per status
+(`confirmed`, `suspected`, `needsOracle`, `bounced`, `quarantined`), `newConfirmed` (the
+confirmed ids that no earlier phase's snapshot had confirmed), and `mergedAt`.
+
+`engagement barrier skip --lane odysseus --reason converged|controller-budget` ends the
+deep hunt early. Only Odysseus may skip, only from the untouched start (no arrivals) of a
+skippable deep-hunt pass, which is pass 2 or later. The skip covers that pass and every
+later deep-hunt and deep-proof pass, and the phase cursor moves to the next unskipped phase.
+`converged` requires the previous proof pass to have a ledger snapshot with zero new
+confirmed defects. `controller-budget` is always accepted but is a named residual: the
+final-summary merge downgrades a `completed` summary to `degraded` while such a skip exists.
+Every skipped phase is recorded in `skippedPhases` with its reason, `skippedAt`, and
+`basis` (the proof phase that proved convergence, or `null`). A skipped phase needs no
+arrivals, rejects arrivals, and is never recorded as completed.
 
 Canonical IDs come from `engagement id --identity <stable-key>`; allocation is serialized,
 owner-restricted, and identity-deduplicated. Replaying the same identity across a resume
@@ -312,9 +343,11 @@ rotating the token. A pre-spawn `model-unavailable` route is different: it binds
 selected decision and active allocation directly and may retry without a checkpoint because
 no worker thread began.
 
-State is `schemaVersion: 2` only and contains no migration surface. Any older,
-unrecognized, or malformed shape is rejected rather than guessed. Active older engagements
-must finish with their original runtime before an Argus 3 upgrade.
+The manifest is `schemaVersion: 2` with the derived phase plan. State is `schemaVersion: 3`
+only, carries `skippedPhases` and `ledgerSnapshots`, and contains no migration surface. Any
+older, unrecognized, or malformed shape is rejected rather than guessed. Argus 5 upgrade:
+a manifest (`schemaVersion: 1`) or state (`schemaVersion: 2`) written by Argus 4 is
+rejected, so an active older engagement must finish with its original runtime.
 
 ## Canonical machine contracts
 
@@ -355,8 +388,14 @@ is removed before a new lease is issued. For an explicitly authorized shared ses
 the final active member removes the shared profile and auth state.
 Released checkpoints move to an allocation-ID archive; retry repairs the exact archive
 reference if a crash occurred after the directory rename but before the state commit.
-For a worker, `success` cleanup requires an arrival in every projected phase whose manifest
-definition names that lane; `failure` and `interrupted` remain available for earlier exits.
+For a worker, `success` cleanup is refused while anything is pending: a projected
+participant phase without the lane's arrival, a participant phase not yet reached, or a
+standby phase at or after the current phase. Skipped phases are never pending. The refusal
+reads `<lane> success cleanup is not yet available: pending <phases in plan order>; the
+lease stays active and Odysseus performs terminal cleanup`, and it leaves the lease intact.
+Each lane therefore keeps one allocation for the whole engagement, and Odysseus performs its
+terminal success cleanup once nothing is pending. `failure` and `interrupted` remain
+available for earlier exits.
 Odysseus verifies no active peer allocation or foreign exclusive lock remains. Its
 `success` cleanup additionally requires the terminal `complete` barrier to be fully
 satisfied, not merely `currentPhase=complete`; earlier shutdown must be recorded truthfully

@@ -26,11 +26,27 @@ import {
   evaluateWriteGuard,
   getEngagementStatus,
   initializeEngagementState,
+  mergeCanonical,
+  skipPhases,
+  validateEngagementManifest,
   writeCheckpoint,
+  writeFragment,
 } from '../argus/runtime/engagement.mjs';
+import { derivePhasePlan } from '../argus/runtime/orchestration-plan.mjs';
 
 const ROOT = new URL('..', import.meta.url);
-const template = JSON.parse(readFileSync(new URL('argus/policies/engagement.template.json', ROOT), 'utf8'));
+const readRepoJson = (path) => JSON.parse(readFileSync(new URL(path, ROOT), 'utf8'));
+const template = readRepoJson('argus/policies/engagement.template.json');
+const orchestrationPlan = readRepoJson('argus/orchestration-plan.json');
+const capabilityMatrix = readRepoJson('argus/capabilities/capability-matrix.json');
+const raci = readRepoJson('argus/raci.json');
+const finalSummaryFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/final-summary.json');
+const bugLedgerFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/bug-ledger.json');
+const evidenceFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/evidence-reference.json');
+const MODE_A_PHASES = [
+  'preflight', 'discovery', 'hunting', 'proof', 'deep-hunt-1', 'deep-proof-1', 'deep-hunt-2', 'deep-proof-2',
+  'deep-hunt-3', 'deep-proof-3', 'automation', 'verification', 'reporting', 'complete',
+];
 const work = mkdtempSync(join(tmpdir(), 'argus-engagement-state-'));
 
 try {
@@ -40,9 +56,14 @@ try {
   testAuthenticatedControllerRecovery();
   testControllerSuccessRequiresFinalBarrier();
   testWorkerSuccessRequiresBarrier();
+  testDerivedPhasePlan();
+  testProofPhaseRequiresLedgerMerge();
+  testLedgerSnapshotNewConfirmed();
+  testConvergedSkip();
+  testStandbyBlocksSuccessCleanup();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
-  console.log('PASS  Argus engagement state: decision-bound leases, authenticated heartbeat, and link defenses');
+  console.log('PASS  Argus engagement state: derived phases, standby, proof ledger gate, recorded skips, decision-bound leases, authenticated heartbeat, and link defenses');
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
@@ -219,17 +240,332 @@ function testControllerSuccessRequiresFinalBarrier() {
 
 function testWorkerSuccessRequiresBarrier() {
   const fixture = createFixture('worker-success-barrier', ['hermes', 'odysseus']);
-  const controller = allocateWorker(fixture.manifest, 'odysseus', { executionBinding: executionBinding('worker-barrier-controller') });
-  const worker = allocateWorker(fixture.manifest, 'hermes', {
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('worker-barrier-controller') });
+  const worker = allocateWorker(manifest, 'hermes', {
     controllerToken: controller.token,
     executionBinding: executionBinding('worker-barrier-hermes'),
   });
-  expectThrow(() => cleanupWorker(fixture.manifest, 'hermes', worker.token, 'success'), 'worker success before its declared barrier arrival');
-  advanceBarrier(fixture.manifest, 'odysseus', controller.token);
-  arriveBarrier(fixture.manifest, 'hermes', worker.token, 'hunting');
-  const cleaned = cleanupWorker(fixture.manifest, 'hermes', worker.token, 'success');
-  assert(cleaned.released === true && cleaned.outcome === 'success', 'worker did not release after its declared barrier arrival');
-  cleanupWorker(fixture.manifest, 'odysseus', controller.token, 'interrupted');
+  expectThrow(() => cleanupWorker(manifest, 'hermes', worker.token, 'success'), 'worker success before its declared barrier arrival');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', worker.token, 'hunting');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'hermes', worker.token, 'success'),
+    'hermes success cleanup is not yet available: pending proof, deep-hunt-1, deep-proof-1, deep-hunt-2, deep-proof-2, deep-hunt-3, deep-proof-3; the lease stays active and Odysseus performs terminal cleanup',
+    'hermes success while its deep-hunt passes and proof standby are pending',
+  );
+  assert(getEngagementStatus(manifest).allocations.hermes.status === 'active', 'refused success cleanup released the lease');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', worker.token, 'deep-hunt-1');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'hermes', worker.token, 'success'),
+    'hermes success cleanup is not yet available: pending deep-proof-1, deep-hunt-2, deep-proof-2, deep-hunt-3, deep-proof-3; the lease stays active and Odysseus performs terminal cleanup',
+    'hermes success after deep-hunt-1 while later passes are pending',
+  );
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'deep-hunt-2', 'phase did not reach deep-hunt-2');
+  arriveBarrier(manifest, 'hermes', worker.token, 'deep-hunt-2');
+  expectThrowMessage(() => skipPhases(manifest, 'odysseus', controller.token, 'controller-budget'), 'phase deep-hunt-2 already has arrivals', 'skip of a started pass');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(() => skipPhases(manifest, 'odysseus', controller.token, 'controller-budget'), 'only a deep-hunt pass can start a skip', 'skip starting at a proof pass');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  // Without a selected validator no proof snapshot exists, so convergence cannot be claimed.
+  expectThrowMessage(
+    () => skipPhases(manifest, 'odysseus', controller.token, 'converged'),
+    'converged skip requires deep-proof-2 to record zero new confirmed defects',
+    'converged skip without a ledger snapshot',
+  );
+  const skip = skipPhases(manifest, 'odysseus', controller.token, 'controller-budget');
+  assert(JSON.stringify(skip.skipped) === JSON.stringify(['deep-hunt-3', 'deep-proof-3']) && skip.currentPhase === 'automation' && skip.reason === 'controller-budget',
+    `controller-budget skip returned an unexpected result: ${JSON.stringify(skip)}`);
+  const skippedState = getEngagementStatus(manifest);
+  assert(skippedState.skippedPhases['deep-hunt-3']?.reason === 'controller-budget' && skippedState.skippedPhases['deep-hunt-3'].basis === null,
+    'controller-budget skip was not recorded with a null basis');
+  assert(!skippedState.completedPhases.includes('deep-hunt-3'), 'a skipped phase was recorded as completed');
+  const cleaned = cleanupWorker(manifest, 'hermes', worker.token, 'success');
+  assert(cleaned.released === true && cleaned.outcome === 'success', 'worker did not release after its passes arrived or were skipped');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+function testDerivedPhasePlan() {
+  const fixture = createFixture('derived-phase-plan');
+  const { manifest, root, statePath } = fixture;
+  assert(manifest.schemaVersion === 2, 'derived manifest did not use schemaVersion 2');
+  assert(JSON.stringify(manifest.phasePlan.map((phase) => phase.id)) === JSON.stringify(MODE_A_PHASES), `Mode A phase ids drifted: ${manifest.phasePlan.map((phase) => phase.id).join(', ')}`);
+  const hunting = manifest.phasePlan.find((phase) => phase.id === 'hunting');
+  const proof = manifest.phasePlan.find((phase) => phase.id === 'proof');
+  assert(JSON.stringify(hunting.participants) === '["hermes"]' && JSON.stringify(proof.participants) === '[]' && JSON.stringify(proof.standby) === '["hermes"]',
+    'derived phase membership was not narrowed to the selected lanes');
+  const state = getEngagementStatus(manifest);
+  assert(state.currentPhase === 'discovery' && JSON.stringify(state.completedPhases) === '["preflight"]', 'initial phase cursor is not the first derived work phase');
+  assert(JSON.stringify(Object.keys(state.barriers)) === JSON.stringify(MODE_A_PHASES), 'barriers are not keyed by the derived phases');
+  assert(JSON.stringify(state.skippedPhases) === '{}' && JSON.stringify(state.ledgerSnapshots) === '{}', 'initial state lacks empty skippedPhases and ledgerSnapshots');
+
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('derived-plan-controller') });
+  const hermesBinding = executionBinding('derived-plan-hermes');
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: controller.token, executionBinding: hermesBinding });
+  expectThrowMessage(() => appendHeartbeat(manifest, 'hermes', hermes.token, 'deep-hunt-9', 0, 1, 'started'), 'heartbeat phase is invalid: deep-hunt-9', 'heartbeat outside the derived plan');
+  expectThrowMessage(() => writeCheckpoint(manifest, 'hermes', hermes.token, 'deep-hunt-9', 1, hermesBinding.dispatchId, 1, {}), 'unknown phase: deep-hunt-9', 'checkpoint outside the derived plan');
+  appendHeartbeat(manifest, 'hermes', hermes.token, 'deep-hunt-3', 0, 1, 'started', '2026-07-12T09:00:00.000Z');
+  expectThrow(() => appendHeartbeat(manifest, 'hermes', hermes.token, 'deep-proof-1', 0, 1, 'running', '2026-07-12T09:00:01.000Z'), 'heartbeat regression to an earlier derived phase');
+  const heartbeat = join(root, 'ai_agents_internal/heartbeat/hermes.log');
+  writeFileSync(heartbeat, readFileSync(heartbeat, 'utf8').replace('\tdeep-hunt-3\t', '\tdeep-hunt-9\t'));
+  expectThrowMessage(
+    () => appendHeartbeat(manifest, 'hermes', hermes.token, 'reporting', 0, 1, 'started', '2026-07-12T09:00:02.000Z'),
+    'heartbeat log for hermes has an invalid record at line 1',
+    'persisted heartbeat record outside the derived plan',
+  );
+  cleanupWorker(manifest, 'hermes', hermes.token, 'interrupted');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+
+  expectThrowMessage(
+    () => createDefaultEngagement({ template, target: root, targetRoot: root, artifactRoot: root, mode: 'A', engagementId: 'no-plan', selectedAgents: ['odysseus'] }),
+    'createDefaultEngagement requires a derived phasePlan',
+    'engagement creation without a derived phase plan',
+  );
+  const legacy = {
+    ...structuredClone(manifest),
+    schemaVersion: 1,
+    phasePlan: ['preflight', 'discovery', 'hunting', 'automation', 'verification', 'reporting', 'complete']
+      .map((id) => ({ id, participants: id === 'preflight' || id === 'complete' ? ['odysseus'] : [] })),
+  };
+  const legacyErrors = validateEngagementManifest(legacy);
+  assert(legacyErrors.includes('schemaVersion must be 2') && legacyErrors.some((error) => error.startsWith('phase preflight must contain exactly')),
+    `pre-5.0 manifest was not rejected: ${legacyErrors.join('; ')}`);
+  for (const [label, mutate, expected] of [
+    ['proof participant other than minos', (plan) => { plan[3].participants = ['hermes']; plan[3].standby = []; }, 'proof phase proof participants must be a subset of minos'],
+    ['skippable first pass', (plan) => { plan[4].skippable = true; }, 'phase deep-hunt-1 skippable must be boolean and true only for a proof or deep-hunt pass of 2 or more'],
+    ['pass on a work phase', (plan) => { plan[2].pass = 1; }, 'phase hunting pass must be an integer 0-3 exactly when kind is proof or deep-hunt'],
+    ['missing pass on a deep-hunt phase', (plan) => { delete plan[6].pass; }, 'phase deep-hunt-2 pass must be an integer 0-3 exactly when kind is proof or deep-hunt'],
+    ['wave regression', (plan) => { plan[10].wave = 'W1'; }, 'phase automation regresses wave W1'],
+    ['unknown phase field', (plan) => { plan[2].owner = 'hermes'; }, 'phase hunting must contain exactly id, wave, kind, pass (proof and deep-hunt only), skippable, participants, and standby'],
+    ['participant and standby overlap', (plan) => { plan[2].standby = ['hermes']; }, 'phase hunting lists hermes as both participant and standby'],
+    ['unselected participant', (plan) => { plan[2].participants = ['hermes', 'kleio']; }, 'phase hunting participants and standby must be unique selected agent slugs'],
+    ['duplicate phase id', (plan) => { plan[5].id = 'deep-hunt-1'; }, 'phasePlan ids must be unique slugs'],
+    ['missing terminal phase', (plan) => { plan.pop(); }, 'phasePlan must start with preflight and end with complete'],
+    ['controller phase in the middle', (plan) => { plan[2].wave = 'controller'; }, 'phase hunting: only preflight and complete may be controller control phases'],
+    ['worker in a control phase', (plan) => { plan[0].participants = ['hermes']; }, 'phase preflight must be a controller control phase with at most odysseus participating and no standby'],
+  ]) {
+    const mutated = structuredClone(manifest);
+    mutate(mutated.phasePlan);
+    const errors = validateEngagementManifest(mutated);
+    assert(errors.includes(expected), `${label} was not rejected with "${expected}": ${errors.join('; ')}`);
+  }
+
+  const current = JSON.parse(readFileSync(statePath, 'utf8'));
+  writeFileSync(statePath, `${JSON.stringify({ ...current, schemaVersion: 2 }, null, 2)}\n`);
+  expectThrowMessage(() => getEngagementStatus(manifest), 'unsupported engagement state schemaVersion: 2', 'pre-5.0 engagement state');
+  const { skippedPhases, ledgerSnapshots, ...withoutNewFields } = current;
+  writeFileSync(statePath, `${JSON.stringify(withoutNewFields, null, 2)}\n`);
+  expectThrow(() => getEngagementStatus(manifest), 'v3 state without skippedPhases and ledgerSnapshots');
+  writeFileSync(statePath, `${JSON.stringify({ ...current, skippedPhases: { proof: { reason: 'converged', skippedAt: '2026-07-12T09:00:00.000Z', basis: null } } }, null, 2)}\n`);
+  expectThrow(() => getEngagementStatus(manifest), 'skip record on a non-skippable phase');
+  writeFileSync(statePath, `${JSON.stringify({ ...current, ledgerSnapshots: { triage: {} } }, null, 2)}\n`);
+  expectThrow(() => getEngagementStatus(manifest), 'ledger snapshot for an unknown phase');
+  writeFileSync(statePath, `${JSON.stringify(current, null, 2)}\n`);
+  assert(getEngagementStatus(manifest).revision === current.revision, 'restored v3 state was not accepted');
+}
+
+function testProofPhaseRequiresLedgerMerge() {
+  const fixture = createFixture('proof-ledger-gate', ['hermes', 'minos', 'odysseus']);
+  const { manifest, root } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('proof-gate-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('proof-gate-minos') });
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: controller.token, executionBinding: executionBinding('proof-gate-hermes') });
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token), 'phase proof is waiting for: minos', 'proof advance before the validator arrives');
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  expectThrowMessage(
+    () => advanceBarrier(manifest, 'odysseus', controller.token),
+    'proof phase proof requires a Minos bug-ledger merge before it can advance',
+    'proof advance without a ledger merge',
+  );
+  assert(getEngagementStatus(manifest).currentPhase === 'proof', 'refused proof advance moved the phase cursor');
+  mergeEmptyLedger(fixture, minos.token, 'proof-ledger');
+  const snapshot = getEngagementStatus(manifest).ledgerSnapshots.proof;
+  assert(JSON.stringify(snapshot?.fragmentIds) === '["proof-ledger"]' && snapshot.confirmed.length === 0 && snapshot.newConfirmed.length === 0 &&
+    snapshot.suspected.length === 0 && snapshot.needsOracle.length === 0 && snapshot.bounced.length === 0 && snapshot.quarantined.length === 0 &&
+    Number.isFinite(Date.parse(snapshot.mergedAt)), `proof ledger snapshot is not exact: ${JSON.stringify(snapshot)}`);
+  const advanced = advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(advanced.completed === 'proof' && advanced.currentPhase === 'deep-hunt-1', 'proof phase did not advance after the Minos ledger merge');
+  assert(existsSync(join(root, 'solution/bug-ledger.json')), 'ledger merge did not write the canonical bug ledger');
+  for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
+function testLedgerSnapshotNewConfirmed() {
+  const fixture = createFixture('ledger-new-confirmed', ['hermes', 'minos', 'odysseus']);
+  const { manifest, root } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('new-confirmed-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('new-confirmed-minos') });
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: controller.token, executionBinding: executionBinding('new-confirmed-hermes') });
+  const evidenceBytes = 'synthetic reproduction request\n';
+  mkdirSync(join(root, 'reports'), { recursive: true });
+  writeFileSync(join(root, 'reports/request-1.txt'), evidenceBytes);
+  const evidence = structuredClone(evidenceFixture);
+  evidence.engagementId = manifest.engagementId;
+  evidence.references = [{ ...evidence.references[0], sha256: createHash('sha256').update(evidenceBytes).digest('hex') }];
+  writeFragment(manifest, 'hermes', hermes.token, 'solution/evidence-reference.json', 'hermes-evidence', `${JSON.stringify(evidence)}\n`);
+  const ledger = { ...structuredClone(bugLedgerFixture), engagementId: manifest.engagementId };
+  writeFragment(manifest, 'minos', minos.token, 'solution/bug-ledger.json', 'confirmed-ledger', `${JSON.stringify(ledger)}\n`);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  mergeCanonical(manifest, 'minos', minos.token, 'solution/bug-ledger.json');
+  const proof = getEngagementStatus(manifest).ledgerSnapshots.proof;
+  assert(JSON.stringify(proof.confirmed) === '["BUG-0001"]' && JSON.stringify(proof.newConfirmed) === '["BUG-0001"]',
+    `first proof snapshot did not count BUG-0001 as newly confirmed: ${JSON.stringify(proof)}`);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'deep-hunt-1');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'deep-proof-1');
+  mergeCanonical(manifest, 'minos', minos.token, 'solution/bug-ledger.json');
+  const deepProof = getEngagementStatus(manifest).ledgerSnapshots['deep-proof-1'];
+  assert(JSON.stringify(deepProof.confirmed) === '["BUG-0001"]' && deepProof.newConfirmed.length === 0,
+    `deep-proof-1 snapshot counted an earlier confirmed defect as new: ${JSON.stringify(deepProof)}`);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  const skip = skipPhases(manifest, 'odysseus', controller.token, 'converged');
+  assert(skip.currentPhase === 'automation', 'converged skip was refused although deep-proof-1 confirmed nothing new');
+  for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
+function testConvergedSkip() {
+  const converged = runToSecondDeepHunt('converged-skip');
+  const { manifest } = converged.fixture;
+  const { controller, hermes, kleio } = converged.tokens;
+  expectThrowMessage(() => skipPhases(manifest, 'hermes', hermes, 'converged'), 'only odysseus may skip phases', 'non-controller skip');
+  expectThrowMessage(() => skipPhases(manifest, 'odysseus', controller, 'bored'), 'skip reason must be converged or controller-budget', 'unknown skip reason');
+  const skip = skipPhases(manifest, 'odysseus', controller, 'converged');
+  assert(JSON.stringify(skip.skipped) === JSON.stringify(['deep-hunt-2', 'deep-proof-2', 'deep-hunt-3', 'deep-proof-3']) && skip.currentPhase === 'automation',
+    `converged skip did not cascade to automation: ${JSON.stringify(skip)}`);
+  const state = getEngagementStatus(manifest);
+  for (const phase of skip.skipped) {
+    const record = state.skippedPhases[phase];
+    assert(record?.reason === 'converged' && record.basis === 'deep-proof-1' && Number.isFinite(Date.parse(record.skippedAt)), `${phase} skip record is not exact`);
+  }
+  expectThrowMessage(() => arriveBarrier(manifest, 'hermes', hermes, 'deep-hunt-2'), 'phase deep-hunt-2 was skipped (converged)', 'arrival at a skipped phase');
+  assert(JSON.stringify(state.barriers['deep-hunt-2']) === '[]', 'skipped phase recorded arrivals');
+  mergeFinalSummary(converged.fixture, kleio);
+  assert(readSolutionJson(converged.fixture, 'final-summary.json').status === 'completed', 'converged skip degraded the final summary');
+  assert(cleanupWorker(manifest, 'hermes', hermes, 'success').released, 'hermes success cleanup was refused after a converged skip');
+
+  const budget = runToSecondDeepHunt('controller-budget-skip');
+  const budgetState = JSON.parse(readFileSync(budget.fixture.statePath, 'utf8'));
+  budgetState.ledgerSnapshots['deep-proof-1'].confirmed = ['BUG-0001'];
+  budgetState.ledgerSnapshots['deep-proof-1'].newConfirmed = ['BUG-0001'];
+  writeFileSync(budget.fixture.statePath, `${JSON.stringify(budgetState, null, 2)}\n`);
+  expectThrowMessage(
+    () => skipPhases(budget.fixture.manifest, 'odysseus', budget.tokens.controller, 'converged'),
+    'converged skip requires deep-proof-1 to record zero new confirmed defects',
+    'converged skip after a pass that confirmed a new defect',
+  );
+  const budgetSkip = skipPhases(budget.fixture.manifest, 'odysseus', budget.tokens.controller, 'controller-budget');
+  assert(budgetSkip.currentPhase === 'automation' && budgetSkip.skipped.length === 4, 'controller-budget skip did not cascade to automation');
+  mergeFinalSummary(budget.fixture, budget.tokens.kleio);
+  assert(readSolutionJson(budget.fixture, 'final-summary.json').status === 'degraded', 'controller-budget skip did not degrade a completed final summary');
+}
+
+function testStandbyBlocksSuccessCleanup() {
+  const fixture = createFixture('standby-cleanup', ['metis', 'minos', 'odysseus']);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('standby-controller') });
+  const metis = allocateWorker(manifest, 'metis', { controllerToken: controller.token, executionBinding: executionBinding('standby-metis') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('standby-minos') });
+  const refusal = (pending) => `metis success cleanup is not yet available: pending ${pending}; the lease stays active and Odysseus performs terminal cleanup`;
+  arriveBarrier(manifest, 'metis', metis.token, 'discovery');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'proof', 'phase did not reach proof');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'metis', metis.token, 'success'),
+    refusal('proof, deep-proof-1, deep-proof-2, deep-proof-3, verification'),
+    'oracle-desk standby success during proof',
+  );
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  mergeEmptyLedger(fixture, minos.token, 'standby-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'metis', metis.token, 'success'),
+    refusal('deep-proof-1, deep-proof-2, deep-proof-3, verification'),
+    'oracle-desk standby success before the deep proof passes',
+  );
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'deep-proof-1');
+  mergeEmptyLedger(fixture, minos.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  skipPhases(manifest, 'odysseus', controller.token, 'converged');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'metis', metis.token, 'success'),
+    refusal('verification'),
+    'metis success before its verification arrival',
+  );
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'metis', metis.token, 'verification');
+  const cleaned = cleanupWorker(manifest, 'metis', metis.token, 'success');
+  assert(cleaned.released === true && cleaned.outcome === 'success', 'metis did not release after its proof standby passed or was skipped');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'minos', minos.token, 'success'),
+    'minos success cleanup is not yet available: pending verification; the lease stays active and Odysseus performs terminal cleanup',
+    'minos success before its verification arrival',
+  );
+  cleanupWorker(manifest, 'minos', minos.token, 'failure');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// Drives a Mode A engagement with a validator and one hunter to the start of deep-hunt-2,
+// with an empty ledger snapshot recorded for proof and deep-proof-1.
+function runToSecondDeepHunt(name) {
+  const fixture = createFixture(name, ['hermes', 'kleio', 'minos', 'odysseus']);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding(`${name}-controller`) });
+  const tokens = { controller: controller.token };
+  for (const lane of ['hermes', 'kleio', 'minos']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`${name}-${lane}`) }).token;
+  }
+  advanceBarrier(manifest, 'odysseus', tokens.controller);
+  arriveBarrier(manifest, 'hermes', tokens.hermes, 'hunting');
+  advanceBarrier(manifest, 'odysseus', tokens.controller);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'proof');
+  mergeEmptyLedger(fixture, tokens.minos, `${name}-proof`);
+  advanceBarrier(manifest, 'odysseus', tokens.controller);
+  expectThrowMessage(() => skipPhases(manifest, 'odysseus', tokens.controller, 'controller-budget'), 'phase deep-hunt-1 is not skippable', 'skip of the first deep-hunt pass');
+  arriveBarrier(manifest, 'hermes', tokens.hermes, 'deep-hunt-1');
+  advanceBarrier(manifest, 'odysseus', tokens.controller);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'deep-proof-1');
+  // bug-ledger@1 is one complete document, so the next proof phase re-merges it.
+  mergeEmptyLedger(fixture, tokens.minos);
+  const state = getEngagementStatus(manifest);
+  assert(state.ledgerSnapshots['deep-proof-1']?.newConfirmed.length === 0 &&
+    JSON.stringify(state.ledgerSnapshots['deep-proof-1'].fragmentIds) === JSON.stringify([`${name}-proof`]) &&
+    state.ledgerSnapshots.proof.mergedAt <= state.ledgerSnapshots['deep-proof-1'].mergedAt,
+  'deep-proof-1 did not record its own snapshot of the re-merged ledger');
+  advanceBarrier(manifest, 'odysseus', tokens.controller);
+  assert(getEngagementStatus(manifest).currentPhase === 'deep-hunt-2', 'phase did not reach deep-hunt-2');
+  return { fixture, tokens };
+}
+
+// Writes the empty ledger fragment when an id is given, then merges the canonical ledger.
+function mergeEmptyLedger(fixture, token, fragmentId) {
+  if (fragmentId) {
+    const ledger = { $schema: 'argus/bug-ledger@1', schemaVersion: 1, engagementId: fixture.manifest.engagementId, bugs: [] };
+    writeFragment(fixture.manifest, 'minos', token, 'solution/bug-ledger.json', fragmentId, `${JSON.stringify(ledger)}\n`);
+  }
+  mergeCanonical(fixture.manifest, 'minos', token, 'solution/bug-ledger.json');
+}
+
+function mergeFinalSummary(fixture, token) {
+  const { coverage, ...summary } = structuredClone(finalSummaryFixture);
+  summary.engagementId = fixture.manifest.engagementId;
+  writeFragment(fixture.manifest, 'kleio', token, 'solution/final-summary.json', 'final-summary', `${JSON.stringify(summary)}\n`);
+  mergeCanonical(fixture.manifest, 'kleio', token, 'solution/final-summary.json');
+}
+
+function readSolutionJson(fixture, name) {
+  return JSON.parse(readFileSync(join(fixture.root, 'solution', name), 'utf8'));
 }
 
 function testAuthenticatedControllerRecovery() {
@@ -302,9 +638,12 @@ function createFixture(name, selectedAgents = ['atlas', 'hermes', 'odysseus']) {
     mode: 'A',
     engagementId: name,
     selectedAgents,
+    phasePlan: derivePhasePlan(orchestrationPlan, capabilityMatrix, 'A', selectedAgents, raci),
   });
+  const manifestErrors = validateEngagementManifest(manifest);
+  assert(manifestErrors.length === 0, `derived engagement manifest is invalid: ${manifestErrors.join('; ')}`);
   const initialized = initializeEngagementState(manifest);
-  assert(initialized.state.schemaVersion === 2, 'new engagement state did not use schemaVersion 2');
+  assert(initialized.state.schemaVersion === 3, 'new engagement state did not use schemaVersion 3');
   assert(!Object.hasOwn(initialized.state, 'migrations'), 'new engagement state retained a migration surface');
   assertPrivateSingleLink(initialized.path, 'new engagement state');
   return { root, manifest, statePath: initialized.path };
@@ -421,6 +760,14 @@ function expectThrow(operation, label) {
   try { operation(); }
   catch { failed = true; }
   assert(failed, `${label} unexpectedly succeeded`);
+}
+
+function expectThrowMessage(operation, expected, label) {
+  let message = null;
+  try { operation(); }
+  catch (error) { message = error.message; }
+  assert(message !== null, `${label} unexpectedly succeeded`);
+  assert(message === expected, `${label} failed with "${message}" instead of "${expected}"`);
 }
 
 function assert(condition, message) {

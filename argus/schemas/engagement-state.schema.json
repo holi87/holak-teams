@@ -5,16 +5,22 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schemaVersion", "engagementId", "revision", "currentPhase", "completedPhases",
-    "dispatchableAgents", "allocations", "barriers", "exclusiveLocks", "nextIds", "idKeys", "checkpoints", "fragments", "merges"
+    "schemaVersion", "engagementId", "revision", "currentPhase", "completedPhases", "skippedPhases",
+    "dispatchableAgents", "allocations", "barriers", "exclusiveLocks", "nextIds", "idKeys", "checkpoints", "fragments", "merges",
+    "ledgerSnapshots"
   ],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 2 },
+    "schemaVersion": { "const": 3 },
     "engagementId": { "type": "string", "minLength": 1 },
     "revision": { "type": "integer", "minimum": 0 },
-    "currentPhase": { "enum": ["preflight", "discovery", "hunting", "automation", "verification", "reporting", "complete"] },
-    "completedPhases": { "type": "array", "uniqueItems": true, "items": { "enum": ["preflight", "discovery", "hunting", "automation", "verification", "reporting", "complete"] } },
+    "currentPhase": { "$ref": "#/$defs/phaseId" },
+    "completedPhases": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/phaseId" } },
+    "skippedPhases": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/phaseId" },
+      "additionalProperties": { "$ref": "#/$defs/phaseSkip" }
+    },
     "dispatchableAgents": {
       "type": ["array", "null"],
       "uniqueItems": true,
@@ -27,9 +33,41 @@
     "idKeys": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^[A-Z][A-Z0-9-]*[0-9]{4}$" } } },
     "checkpoints": { "type": "object", "additionalProperties": { "$ref": "#/$defs/checkpoint" } },
     "fragments": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "object" } } },
-    "merges": { "type": "object", "additionalProperties": { "type": "object" } }
+    "merges": { "type": "object", "additionalProperties": { "type": "object" } },
+    "ledgerSnapshots": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/phaseId" },
+      "additionalProperties": { "$ref": "#/$defs/ledgerSnapshot" }
+    }
   },
   "$defs": {
+    "phaseId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "bugIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "phaseSkip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "skippedAt", "basis"],
+      "properties": {
+        "reason": { "enum": ["converged", "controller-budget"] },
+        "skippedAt": { "type": "string", "format": "date-time" },
+        "basis": { "oneOf": [{ "$ref": "#/$defs/phaseId" }, { "type": "null" }] }
+      }
+    },
+    "ledgerSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fragmentIds", "confirmed", "suspected", "needsOracle", "bounced", "quarantined", "newConfirmed", "mergedAt"],
+      "properties": {
+        "fragmentIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "confirmed": { "$ref": "#/$defs/bugIds" },
+        "suspected": { "$ref": "#/$defs/bugIds" },
+        "needsOracle": { "$ref": "#/$defs/bugIds" },
+        "bounced": { "$ref": "#/$defs/bugIds" },
+        "quarantined": { "$ref": "#/$defs/bugIds" },
+        "newConfirmed": { "$ref": "#/$defs/bugIds" },
+        "mergedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "allocation": {
       "type": "object",
       "additionalProperties": false,
@@ -102,7 +140,7 @@
       "additionalProperties": false,
       "required": ["phase", "sequence", "dispatchId", "attempt", "allocationId", "bindingOrigin", "path", "sha256", "recordedAt"],
       "properties": {
-        "phase": { "enum": ["preflight", "discovery", "hunting", "automation", "verification", "reporting", "complete"] },
+        "phase": { "$ref": "#/$defs/phaseId" },
         "sequence": { "type": "integer", "minimum": 0 },
         "dispatchId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
         "attempt": { "type": "integer", "minimum": 1 },

@@ -60,6 +60,7 @@ import {
   locateEngagementManifest,
   mergeCanonical,
   releaseExclusive,
+  skipPhases,
   startWorkerAttempt,
   validateEngagementManifest,
   writeCheckpoint,
@@ -84,7 +85,7 @@ import {
   validateModelDecisionBinding,
   validateModelPolicy,
 } from '../lib/model-policy.mjs';
-import { projectOrchestrationPlan, validateOrchestrationPlan } from '../lib/orchestration-plan.mjs';
+import { derivePhasePlan, projectOrchestrationPlan, validateOrchestrationPlan } from '../lib/orchestration-plan.mjs';
 import {
   detectTemplateCapabilities,
   materializeTemplateLayout,
@@ -1999,6 +2000,7 @@ function initializeEngagement(args) {
     selectedAgents,
     browserSupport: options.browserSupport ? readJson(resolve(options.browserSupport)) : undefined,
     accessibilityRequirement: options.accessibilityRequirement ? readJson(resolve(options.accessibilityRequirement)) : undefined,
+    phasePlan: derivePhasePlan(orchestrationPlan, matrix, options.mode, selectedAgents, raciContract),
   });
   const errors = validateEngagementManifest(engagement);
   if (errors.length > 0) fail(`generated engagement manifest is invalid: ${errors.join('; ')}`);
@@ -2455,7 +2457,7 @@ function engagementHeartbeat(args) {
 
 function engagementBarrier(args) {
   const [operation, ...rest] = args;
-  const options = parseNamedOptions(rest, new Set(['--manifest', '--lane', '--token', '--phase']));
+  const options = parseNamedOptions(rest, new Set(['--manifest', '--lane', '--token', '--phase', '--reason']));
   const { manifest: engagement } = loadEngagement(options);
   if (operation === 'status') {
     console.log(JSON.stringify(getBarrierStatus(engagement, options.phase), null, 2));
@@ -2471,7 +2473,12 @@ function engagementBarrier(args) {
     console.log(JSON.stringify(advanceBarrier(engagement, options.lane, leaseToken(options))));
     return 0;
   }
-  fail('usage: argus-assets engagement barrier <arrive|status|advance> [options]');
+  if (operation === 'skip') {
+    requireOptions(options, ['lane', 'reason'], 'engagement barrier skip');
+    console.log(JSON.stringify(skipPhases(engagement, options.lane, leaseToken(options), options.reason)));
+    return 0;
+  }
+  fail('usage: argus-assets engagement barrier <arrive|status|advance|skip> [options]');
 }
 
 function engagementCleanup(args) {
@@ -3119,6 +3126,7 @@ async function preflight(argv) {
       selectedAgents: [...selectedSlugs],
       browserSupport: profile.browserSupport,
       accessibilityRequirement: profile.accessibilityRequirement,
+      phasePlan: derivePhasePlan(orchestrationPlan, matrix, mode, [...selectedSlugs], raciContract),
     });
     // Record the operator's opt-out durably, before any decision or allocation can exist,
     // so every model decision minted for this engagement is integrity-bound to it through

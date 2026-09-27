@@ -11,7 +11,7 @@
   ],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "engagementId": { "type": "string", "minLength": 1 },
     "mode": { "enum": ["A", "B", "C", "D"] },
     "target": {
@@ -155,19 +155,7 @@
     "phasePlan": {
       "type": "array",
       "minItems": 2,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["id", "participants"],
-        "properties": {
-          "id": { "enum": ["preflight", "discovery", "hunting", "automation", "verification", "reporting", "complete"] },
-          "participants": {
-            "type": "array",
-            "uniqueItems": true,
-            "items": { "$ref": "#/$defs/slug" }
-          }
-        }
-      }
+      "items": { "$ref": "#/$defs/phase" }
     },
     "writePolicy": {
       "type": "object",
@@ -269,6 +257,42 @@
   },
   "$defs": {
     "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "phase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "wave", "kind", "skippable", "participants", "standby"],
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "wave": { "enum": ["controller", "W0", "W1", "W2", "W3", "W4"] },
+        "kind": { "enum": ["control", "work", "proof", "deep-hunt"] },
+        "pass": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "skippable": { "type": "boolean" },
+        "participants": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+        "standby": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "enum": ["proof", "deep-hunt"] } } },
+          "then": { "required": ["pass"] }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "enum": ["control", "work"] } } },
+          "then": { "properties": { "pass": false } }
+        },
+        {
+          "if": { "required": ["skippable"], "properties": { "skippable": { "const": true } } },
+          "then": { "required": ["pass"], "properties": { "kind": { "enum": ["proof", "deep-hunt"] }, "pass": { "minimum": 2 } } }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "proof" } } },
+          "then": { "properties": { "participants": { "maxItems": 1, "items": { "const": "minos" } } } }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "control" } } },
+          "then": { "properties": { "wave": { "const": "controller" }, "skippable": { "const": false }, "participants": { "maxItems": 1, "items": { "const": "odysseus" } }, "standby": { "maxItems": 0 } } }
+        }
+      ]
+    },
     "runtimeAttestationTrustKey": {
       "type": "object",
       "additionalProperties": false,

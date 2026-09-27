@@ -1,6 +1,6 @@
 {
   "$schema": "../schemas/engagement-manifest.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "engagementId": "argus-template",
   "mode": "A",
   "target": {
@@ -35,13 +35,8 @@
     }
   },
   "phasePlan": [
-    { "id": "preflight", "participants": ["odysseus"] },
-    { "id": "discovery", "participants": ["kalchas"] },
-    { "id": "hunting", "participants": [] },
-    { "id": "automation", "participants": [] },
-    { "id": "verification", "participants": [] },
-    { "id": "reporting", "participants": ["kleio"] },
-    { "id": "complete", "participants": ["odysseus"] }
+    { "id": "preflight", "wave": "controller", "kind": "control", "skippable": false, "participants": ["odysseus"], "standby": [] },
+    { "id": "complete", "wave": "controller", "kind": "control", "skippable": false, "participants": ["odysseus"], "standby": [] }
   ],
   "writePolicy": {
     "auditPath": "ai_agents_internal/immutability-audit.jsonl",
