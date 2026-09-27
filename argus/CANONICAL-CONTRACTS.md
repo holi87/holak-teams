@@ -311,8 +311,11 @@ discovery evidence, and aborts on any failure.
 `argus/automation-review@1` at `solution/automation-review.json` persists Aristarchus's
 verdicts. Aristarchus stays read-only on tests and the target and has no Write tool: he
 submits each cumulative document as one inline single-line `engagement fragment --json`
-object (no apostrophes, newlines, or `;&|>` characters, which the write guard refuses) and
-merges it as the canonical owner. Every round in `reviews` carries:
+object in single quotes and merges it as the canonical owner. A raw apostrophe breaks that
+quoting, and the write guard refuses the command when a newline, carriage return, `;`, `&`,
+`|`, `>`, a backtick, or `$(` appears anywhere in it, including inside the JSON, naming the
+refused character. He writes each such character inside a JSON string as its JSON Unicode
+escape. Every round in `reviews` carries:
 
 - `reviewId` `REV-NN` and `round` equal to its suffix; rounds run contiguously from 1 and
   `supersedes` names the previous round (`null` only for round 1);
