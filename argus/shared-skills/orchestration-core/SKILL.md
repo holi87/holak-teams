@@ -218,6 +218,14 @@ Collect every RESULT; verify paths, schemas, owners, merges, runner, coverage, a
 Stop on plan/schema, role/gate, dependency, capability/model, ownership, safety, or a
 mandatory failure.
 
+After each Aristarchus round, run `argus-assets automation-review check --manifest
+<manifest>`. Exit 13 (BLOCKED, STALE, or ABSENT) routes each blocker to its `ownerLane`;
+after the fixes, re-dispatch Aristarchus on his active lease for the next round, a
+phase-scoped re-dispatch, until APPROVED, three rounds, or the closeout reserve. Defer
+terminal cleanup of Aristarchus and the automation-phase lanes until the loop ends. Exit 14
+is invalid input: stop the loop and report it.
+An unresolved review blocks the final summary and is a named residual.
+
 Run the independent automation blocklist after Aristarchus. If the named independent
 reviewer is unavailable, the controller or Minos runs the exact deterministic blocklist,
 records command and result, and names missing reviewer independence as residual risk;

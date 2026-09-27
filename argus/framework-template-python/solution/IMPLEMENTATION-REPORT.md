@@ -20,12 +20,24 @@
 - Runtime-native reports: `<paths>`
 
 ## 4. Defects
-- Filed: `<n>` origin files in `bugs/`; canonical total: `<n>` in Minos's ledger.
-- Every confirmed bug has native `regression` selection plus `@bug:<canonical-or-origin>` provenance: `<yes/no; list gaps>`.
+Copy every count from `argus-assets engagement report-facts`; never hand-count.
 
-## 5. Deviations, cuts, and debt
+- Filed: `<n>` origin files in `bugs/`; canonical rows: `<n>` in Minos's ledger.
+- Defect headline (confirmed + suspected): `<n>` = confirmed `<n>` + suspected `<n>`
+- Needs oracle: `<n>` · duplicate: `<n>` · rejected: `<n>`
+- Every confirmed bug has native `regression` selection plus `@bug:<canonical-or-origin>` provenance: `<wired n; uncovered: none / BUG-IDs>`.
+
+### Likely, unproven
+<one line per suspected or needs-oracle row: BUG-NNNN (severity, status): title — would be confirmed by: missing proof — detail; `None.` when empty>
+
+## 5. Automation review
+- Aristarchus verdict (`argus-assets automation-review check`): `<APPROVE / BLOCK / STALE / ABSENT / NOT-APPLICABLE>` · review `<REV-NN>` · round `<n>` · blockers `<n>` · warnings `<n>`
+- Reviewed corpus: `<sha256>` · reviewed commit: `<sha / none>`
+- BLOCK, STALE, or ABSENT while Aristarchus was dispatchable makes the delivery NOT-GO.
+
+## 6. Deviations, cuts, and debt
 | Change from plan | Why | Work needed to finish |
 |------------------|-----|-----------------------|
 
-## 6. Residual risk
+## 7. Residual risk
 <Name uncovered surface IDs, scoped outcomes, and evidence gaps; do not use raw defect counts as coverage proof.>

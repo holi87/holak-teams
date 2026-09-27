@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 14867,
-      "sha256": "8a13b135c145f88e53b6b75f78d7b1c77cb78211180581ec1e2507fc31a51b16"
+      "bytes": 15420,
+      "sha256": "e34257594f0a5a5d799bd43c08bb93e13146db0dde74aea655a4688364b773c3"
     },
     {
       "id": "qa-core-skill",
@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 11485,
-      "sha256": "4e1b60e497e4f01730fd6b5c3117187801434beb313d42de4f025efc35fd98dd"
+      "bytes": 11861,
+      "sha256": "049eb78063e775f587cb746dbede27ac46335bc00094465fcb79e4747698a95e"
     },
     {
       "id": "qa-browser-skill",
@@ -137,8 +137,8 @@
       "source": "argus/shared-skills/qa-browser",
       "destination": "skills/qa-browser",
       "files": 1,
-      "bytes": 2370,
-      "sha256": "01feaffbefee9e2f8b7a55964200bfbd00563168c5737613121c36e37c77df3f"
+      "bytes": 2784,
+      "sha256": "464e59ce458df4371adf73031363c769e440cea53cf9f3b9f6b662973c0be6f9"
     },
     {
       "id": "qa-framework-runner-skill",
@@ -155,8 +155,8 @@
       "source": "argus/shared-skills/qa-coverage-reporting",
       "destination": "skills/qa-coverage-reporting",
       "files": 1,
-      "bytes": 2437,
-      "sha256": "398b21f428bb1733ee847668e7f86eed00b9ffa061341579f43db292ca9cc415"
+      "bytes": 2898,
+      "sha256": "f024f654eeeec004d2a840cb876794758c6ef9f3d9e260cb88c3bf1193a2ae47"
     },
     {
       "id": "competition-profile-skill",
@@ -263,8 +263,8 @@
       "source": "argus/framework-template-common",
       "destination": "templates/common",
       "files": 25,
-      "bytes": 95268,
-      "sha256": "1e14e465bb377a1be9011909006328fa5ca36655fc1183a7cbea83b781a117f2"
+      "bytes": 98189,
+      "sha256": "fc97a30d5e3e85593ccf1bced70fbc1d7e751707cd8419ff6b5a192ef964bac2"
     },
     {
       "id": "typescript-template",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 60181,
-    "sha256": "f3970aae0b58feffd16b32529820cf0042b9a44d2ae629c7b10a1d9d96e2b826"
+    "bytes": 60411,
+    "sha256": "642ffe2cc44841a74cd57ed3310d1096c64e919d4873b8ca39592311f4f58deb"
   }
 }
