@@ -200,8 +200,6 @@ function launcherFeatures(launcher) {
   return { usageJson: text.includes('--usage-json'), provisionBrowser: text.includes('--provision-browser') };
 }
 
-const engagementIdFor =runId => `eval-${runId.replace(/[^A-Za-z0-9._:-]/g, '')}`.slice(0, 120);
-
 // The Claude CLI result document the launcher wrote with --usage-json, or null.
 function readUsageDocument(path) {
   const stat = lstatOrNull(path);
@@ -331,7 +329,7 @@ async function hunt(options) {
 
   const features = launcherFeatures(launcher);
   const args = ['claude', '--target', request.target, '--artifact-root', request.artifactRoot, '--mode', request.mode,
-    '--engagement-id', engagementIdFor(request.runId), '--unattested'];
+    '--engagement-id', request.engagementId, '--unattested'];
   if (options.provisionBrowser && features.provisionBrowser) args.push('--provision-browser');
   if (features.usageJson) args.push('--usage-json', request.usagePath);
 

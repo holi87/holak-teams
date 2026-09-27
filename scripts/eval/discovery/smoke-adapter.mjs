@@ -23,7 +23,8 @@ const REAL_PLUGIN = join(REPO, 'argus', 'claude');
 const LAUNCHER_SOURCE = join(REPO, 'argus', 'bin', 'argus-launch');
 const FIXTURE_CLAUDE_DIR = join(REPO, 'scripts', 'fixtures', 'argus-launcher');
 const TARGET = 'http://127.0.0.1:9';
-const RUN_ID = 'r0-B-faulty-baseline';
+const RUN_ID = '0123456789abcdef';
+const ENGAGEMENT_ID = `eval-${RUN_ID}`;
 const API_KEY = 'sk-ant-smoke-not-a-real-key';
 const work = realpathSync(mkdtempSync(join(tmpdir(), 'argus-eval-adapter-')));
 const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -107,7 +108,7 @@ function prepareRun(overrides = {}) {
     resultPath: join(dir, 'result.json'), usagePath: join(dir, 'usage.json'), logPath: join(dir, 'launcher.log'),
   };
   const request = {
-    schema: 'argus-eval/hunt-request@2', runId: RUN_ID, revision, target: TARGET, contractUrl: `${TARGET}/contract`, mode: 'B',
+    schema: 'argus-eval/hunt-request@2', runId: RUN_ID, engagementId: ENGAGEMENT_ID, revision, target: TARGET, contractUrl: `${TARGET}/contract`, mode: 'B',
     artifactRoot: paths.artifacts, resultPath: paths.resultPath, usagePath: paths.usagePath, logPath: paths.logPath,
     budget: { seconds: 600, tokens: null }, ...overrides,
   };
@@ -223,7 +224,7 @@ try {
     const [launch, ...more] = launches(outcome.records);
     assert.equal(more.length, 0, 'the launcher must be started exactly once');
     assert.deepEqual(launch.argv, ['claude', '--target', TARGET, '--artifact-root', run.artifacts, '--mode', 'B',
-      '--engagement-id', `eval-${RUN_ID}`, '--unattested', '--usage-json', run.usagePath]);
+      '--engagement-id', ENGAGEMENT_ID, '--unattested', '--usage-json', run.usagePath]);
     assert.ok(!launch.argv.includes('--trust-store') && !launch.argv.includes('--provision-browser'));
     assert.equal(launch.env.HOME, harnessHome);
     assert.equal(launch.env.PATH, baseEnv.PATH, 'no claude shim may be prepended to PATH');
@@ -427,7 +428,7 @@ writeFileSync('reports/argus-runner-result.json', JSON.stringify({ $schema: 'arg
       const replayDir = directory(join(runDir, 'replay'));
       const replay = (label, testCase, runnerMode, seconds = 120) => {
         const request = {
-          schema: 'argus-eval/replay-request@1', runId: 'r0-A-faulty-baseline', case: testCase, runnerMode, frameworkRoot,
+          schema: 'argus-eval/replay-request@1', runId: RUN_ID, case: testCase, runnerMode, frameworkRoot,
           replayRoot: join(replayDir, label), target: TARGET, seconds, resultPath: join(replayDir, `${label}.result.json`),
         };
         assert.deepEqual(validateEval('replay-request', request), []);

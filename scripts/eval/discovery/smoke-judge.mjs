@@ -60,7 +60,7 @@ function makeRun({ runId, repeat, seed, build, status, root, app, source, enable
   assert.equal(extraction.ledger, 'present', `${runId}: fixture ledger rejected: ${extraction.ledgerErrors.join('; ')}`);
   const valid = status !== 'timed-out';
   return {
-    runId, variant: 'baseline', revision: 'a'.repeat(40), repeat, seed, mode: 'B', build, enabledSeeds, truth: source.truthFor(enabledSeeds),
+    runId, publicId: sha256(runId).slice(0, 16), variant: 'baseline', revision: 'a'.repeat(40), repeat, seed, mode: 'B', build, enabledSeeds, truth: source.truthFor(enabledSeeds),
     url: app.url, port: app.port, contract: app.contract, status, reason: status === 'awaiting-adjudication' ? null : `smoke fixture: ${status}`,
     launchAssurance: 'unattested', startedAt: new Date(STARTED).toISOString(), elapsedMs: ELAPSED, timedOut: status === 'timed-out', overBudget: false,
     artifactRoot: root,

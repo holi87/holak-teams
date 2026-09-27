@@ -63,14 +63,14 @@ const write = (root, path, content, mode = 0o644) => {
 };
 
 // The bug rows follow the packaged example ledger, which the Argus schema gate keeps valid.
-function ledger(runId) {
+function ledger(engagementId) {
   const example = JSON.parse(readFileSync(fileURLToPath(new URL('../../../argus/framework-template/solution/bug-ledger.example.json', import.meta.url)), 'utf8'));
   const template = example.bugs.find(bug => bug.status === 'confirmed' && bug.wired);
   if (!template) fail('the example ledger has no confirmed, wired row');
   const row = (id, origin, testId, title) => ({ ...structuredClone(template), id, origin: [origin], lane: 'atalanta', testId, title });
   return {
     ...example,
-    engagementId: `eval-${runId}`,
+    engagementId,
     bugs: [
       row('BUG-0001', 'ATA-001', 'REG-0001', 'Order quantity above the published limit is accepted'),
       row('BUG-0002', 'ATA-002', 'REG-0002', 'Order confirmation omits the promised delivery window'),
@@ -131,7 +131,7 @@ function hunt(requestPath) {
   const request = readRequest(requestPath, 'hunt-request');
   if (!physical(request.artifactRoot) || readdirSync(request.artifactRoot).length) fail('the artifact root must be physical and empty');
   const root = request.artifactRoot;
-  write(root, 'solution/bug-ledger.json', `${JSON.stringify(ledger(request.runId), null, 2)}\n`);
+  write(root, 'solution/bug-ledger.json', `${JSON.stringify(ledger(request.engagementId), null, 2)}\n`);
   write(root, 'bugs/ATA-001-quantity-limit.md', '# Order quantity above the published limit is accepted\n');
   write(root, 'bugs/ATA-002-delivery-window.md', '# Order confirmation omits the promised delivery window\n');
   write(root, `${FRAMEWORK}/run-tests.sh`, RUN_TESTS, 0o755);

@@ -176,6 +176,7 @@ try {
     assert.deepEqual([summary.runs, summary.status, summary.statuses, summary.assuranceMismatch], [16, 'UNSCORED', { 'awaiting-adjudication': 16 }, undefined]);
     assert.equal(runs.length, 16);
     assert.equal(new Set(runs.map(run => run.runId)).size, 16);
+    assert.equal(new Set(runs.map(run => run.publicId)).size, 16, 'every run gets its own public ID');
     for (const dir of [output, join(output, 'sealed'), join(output, 'sealed', 'runs'), join(output, 'active')]) assert.equal(mode(dir), 0o700, `${dir} must be 0700`);
     assert.deepEqual(readdirSync(join(output, 'active')), [], 'completed runs leave active/');
     assert.equal(mode(summary.privateResults), 0o600);
@@ -200,6 +201,15 @@ try {
       assert(existsSync(run.artifactRoot) && existsSync(join(dirname(run.artifactRoot), 'launcher.log')));
       const request = JSON.parse(readFileSync(join(dirname(run.artifactRoot), 'request.json'), 'utf8'));
       assert.deepEqual(PRIVATE_KEYS.filter(key => key in request), []);
+      // Blindness by value, not only by key: the public ID names the active/ directory, the
+      // request, and the engagement ID, and no value reveals the build, variant, or seeds.
+      assert.match(run.publicId, /^[0-9a-f]{16}$/);
+      assert.deepEqual([request.runId, request.engagementId], [run.publicId, `eval-${run.publicId}`]);
+      assert.equal(request.artifactRoot, join(output, 'active', run.publicId, 'artifacts'));
+      const visible = JSON.stringify(request);
+      for (const word of ['faulty', 'corrected', 'baseline', 'candidate', run.runId, ...seedIds]) {
+        assert(!visible.includes(word), `${run.runId}: the public hunt request reveals ${word}`);
+      }
       assert.equal(mode(join(dirname(run.artifactRoot), 'request.json')), 0o600);
       assert.equal(request.budget.seconds, 30);
       assert.equal(request.budget.tokens, null);
@@ -239,7 +249,7 @@ try {
       assert.deepEqual([row.perMode.A.regression.faultyRuns, row.perMode.A.regression.replayedRuns, row.perMode.A.regression.failToPassRate], [2, 0, null]);
       assert.equal(row.perMode.B.regression, null);
     }
-    console.log('PASS  16 paired comparison protocol runs (modes A and B, faulty and corrected, pinned seeds): public request only, physical 0700 layout, evaluator-side extraction; an empty stub earns zero recall and null pooled precision');
+    console.log('PASS  16 paired comparison protocol runs (modes A and B, faulty and corrected, pinned seeds): public request only, opaque public run IDs (no build, variant, or seed in any request value or path), physical 0700 layout, evaluator-side extraction; an empty stub earns zero recall and null pooled precision');
   }
 
   // 2. A result.json forged inside artifacts/ has no effect: usage and findings come only from

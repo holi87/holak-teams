@@ -15,10 +15,11 @@
 //   <output>/sealed/private-runs.json  private truth and results (chmod 000 during every hunt)
 //   <output>/sealed/canary.txt         contamination canary
 //   <output>/sealed/runs/<runId>/      completed runs, moved out of active/
-//   <output>/active/<runId>/           request.json, result.json, usage.json, launcher.log and
+//   <output>/active/<publicId>/        request.json, result.json, usage.json, launcher.log and
 //                                      artifacts/ (the hunter's only writable root); a replayed
 //                                      run adds replay-requests/<case>-<k>.json and
 //                                      replay/<case>-<k>/ plus replay/<case>-<k>.result.json
+// <runId> is the private r<repeat>-<mode>-<build>-<variant>; <publicId> is 16 random hex digits.
 import { chmodSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -220,7 +221,7 @@ async function replayCase(run, plan, { runDir, requestsDir, replayDir, framework
   try {
     if (app.port !== run.port) return infrastructureReplayCase(plan, `the application bound port ${app.port} instead of the hunt port ${run.port}`);
     const request = assertEval('replay-request', {
-      schema: 'argus-eval/replay-request@1', runId: run.runId, case: plan.case, runnerMode: plan.runnerMode, frameworkRoot,
+      schema: 'argus-eval/replay-request@1', runId: run.publicId, case: plan.case, runnerMode: plan.runnerMode, frameworkRoot,
       replayRoot: join(replayDir, name), target: app.url, seconds, resultPath: join(replayDir, `${name}.result.json`),
     }, 'replay request');
     const requestPath = join(requestsDir, `${name}.json`);
@@ -260,11 +261,16 @@ async function replayRun(run, { runDir, artifactRoot, variant, env }) {
   return { status: replayStatus(cases), reason, cases };
 }
 
+// The private run ID names the repeat, mode, build, and variant; it keys sealed/ and every
+// evaluator document. Everything a hunter can see (the active/ directory and its paths, the
+// hunt and replay requests, and the engagement ID the adapter launches with, which argus-launch
+// puts in the controller prompt) carries only a random public ID instead.
 async function executeRun({ repeat, seed, mode, build, variant }) {
   const runId = `r${repeat}-${mode}-${build}-${variant.name}`;
+  const publicId = randomBytes(8).toString('hex');
   const enabledSeeds = build === 'faulty' ? [...source.seedIds] : [];
   const truth = source.truthFor(enabledSeeds);
-  const runDir = makeDirectory(join(active, runId));
+  const runDir = makeDirectory(join(active, publicId));
   const artifactRoot = makeDirectory(join(runDir, 'artifacts'));
   const requestPath = join(runDir, 'request.json');
   const resultPath = join(runDir, 'result.json');
@@ -274,7 +280,7 @@ async function executeRun({ repeat, seed, mode, build, variant }) {
   let outcome;
   try {
     const request = assertEval('hunt-request', {
-      schema: 'argus-eval/hunt-request@2', runId, revision: variant.revision, target: app.url,
+      schema: 'argus-eval/hunt-request@2', runId: publicId, engagementId: `eval-${publicId}`, revision: variant.revision, target: app.url,
       contractUrl: `${app.url}/contract`, mode, artifactRoot, resultPath, usagePath: join(runDir, 'usage.json'),
       logPath: join(runDir, 'launcher.log'), budget: { seconds, tokens: config.tokens },
     }, 'hunt request');
@@ -289,7 +295,7 @@ async function executeRun({ repeat, seed, mode, build, variant }) {
   const { status, reason } = classify({ outcome, adapter, contamination });
   const totalTokens = adapter.result?.usage.totalTokens;
   const run = {
-    runId, variant: variant.name, revision: variant.revision, repeat, seed, mode, build, enabledSeeds, truth,
+    runId, publicId, variant: variant.name, revision: variant.revision, repeat, seed, mode, build, enabledSeeds, truth,
     url: app.url, port: app.port, contract: app.contract, status, reason,
     launchAssurance: adapter.result?.launchAssurance ?? 'unreported',
     startedAt: new Date(outcome.startedAtMs).toISOString(), elapsedMs: outcome.elapsedMs, timedOut: outcome.timedOut,

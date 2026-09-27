@@ -139,7 +139,7 @@ function makeRun(sealed, plan) {
   const result = reported ? { schema: 'argus-eval/adapter-result@2', status: 'completed', launcherExitCode: 0, usage: plan.usage ?? usage(),
     subject: { pluginVersion: '5.0.0', pluginDigest: plan.digest ?? DIGEST }, reason: null, launchAssurance: 'unattested' } : null;
   return {
-    runId: plan.runId, variant, revision: 'a'.repeat(40), repeat: Number(repeat), seed: 100 + Number(repeat), mode, build, enabledSeeds, truth,
+    runId: plan.runId, publicId: sha256(plan.runId).slice(0, 16), variant, revision: 'a'.repeat(40), repeat: Number(repeat), seed: 100 + Number(repeat), mode, build, enabledSeeds, truth,
     url: 'http://127.0.0.1:40000', port: 40000, contract: { rules: ['Synthetic public rule.'] }, status,
     reason: status === 'awaiting-adjudication' ? null : `smoke fixture: ${status}`, launchAssurance: 'unattested',
     startedAt: new Date(STARTED).toISOString(), elapsedMs: 60_000, timedOut: status === 'timed-out', overBudget: false, artifactRoot,

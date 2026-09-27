@@ -4,10 +4,11 @@
   "title": "Argus discovery evaluation public hunt request v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "runId", "revision", "target", "contractUrl", "mode", "artifactRoot", "resultPath", "usagePath", "logPath", "budget"],
+  "required": ["schema", "runId", "engagementId", "revision", "target", "contractUrl", "mode", "artifactRoot", "resultPath", "usagePath", "logPath", "budget"],
   "properties": {
     "schema": { "const": "argus-eval/hunt-request@2" },
-    "runId": { "type": "string", "pattern": "^r[0-9]{1,2}-[AB]-(?:faulty|corrected)-[a-z][a-z0-9-]{0,31}$" },
+    "runId": { "$ref": "#/$defs/publicId" },
+    "engagementId": { "type": "string", "pattern": "^eval-[a-f0-9]{16}$" },
     "revision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
     "target": { "type": "string", "pattern": "^http://(?:127\\.0\\.0\\.1|localhost|\\[::1\\]):[0-9]{1,5}$" },
     "contractUrl": { "type": "string", "pattern": "^http://(?:127\\.0\\.0\\.1|localhost|\\[::1\\]):[0-9]{1,5}/contract$" },
@@ -27,6 +28,7 @@
     }
   },
   "$defs": {
-    "absolutePath": { "type": "string", "pattern": "^/(?:[^/\\u0000]+/)*[^/\\u0000]+$" }
+    "absolutePath": { "type": "string", "pattern": "^/(?:[^/\\u0000]+/)*[^/\\u0000]+$" },
+    "publicId": { "type": "string", "pattern": "^[a-f0-9]{16}$" }
   }
 }

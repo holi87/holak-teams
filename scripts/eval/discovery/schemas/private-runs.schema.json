@@ -250,9 +250,10 @@
     "run": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["runId", "variant", "revision", "repeat", "seed", "mode", "build", "enabledSeeds", "truth", "url", "port", "contract", "status", "reason", "launchAssurance", "startedAt", "elapsedMs", "timedOut", "overBudget", "artifactRoot", "adapter", "extraction", "contamination", "replay"],
+      "required": ["runId", "publicId", "variant", "revision", "repeat", "seed", "mode", "build", "enabledSeeds", "truth", "url", "port", "contract", "status", "reason", "launchAssurance", "startedAt", "elapsedMs", "timedOut", "overBudget", "artifactRoot", "adapter", "extraction", "contamination", "replay"],
       "properties": {
         "runId": { "type": "string", "pattern": "^r[0-9]{1,2}-[AB]-(?:faulty|corrected)-[a-z][a-z0-9-]{0,31}$" },
+        "publicId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
         "variant": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
         "revision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
         "repeat": { "type": "integer", "minimum": 0, "maximum": 19 },

@@ -41,7 +41,7 @@ function makeRun(runId, build, status, rows) {
   mkdirSync(artifactRoot, { recursive: true, mode: 0o700 });
   const valid = status !== 'invalid-run';
   return {
-    runId, variant: 'baseline', revision: 'a'.repeat(40), repeat, seed: 100 + repeat, mode: 'B', build, enabledSeeds, truth: truthFor(enabledSeeds),
+    runId, publicId: sha256(runId).slice(0, 16), variant: 'baseline', revision: 'a'.repeat(40), repeat, seed: 100 + repeat, mode: 'B', build, enabledSeeds, truth: truthFor(enabledSeeds),
     url: 'http://127.0.0.1:40000', port: 40000, contract: { rules: ['Synthetic public rule.'] }, status,
     reason: status === 'awaiting-adjudication' ? null : `smoke fixture: ${status}`, launchAssurance: 'unattested',
     startedAt: new Date(STARTED).toISOString(), elapsedMs: 60_000, timedOut: status === 'timed-out', overBudget: false, artifactRoot,
