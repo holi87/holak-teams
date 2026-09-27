@@ -4,6 +4,14 @@ Each RED raises AssertionError (the outcome adapter reports a product failure); 
 raises TypeError or ValueError (automation), and a missing OpenAPI document raises
 ArgusPrerequisiteError (infrastructure).
 """
+from .boundary import (
+    BoundaryPoint,
+    BoundaryPoints,
+    MoneyReconciliation,
+    boundary3,
+    money_reconciles,
+    percentages_sum_to_100,
+)
 from .http import (
     REDACTED,
     REST_STATUS,
@@ -17,6 +25,26 @@ from .http import (
     redact,
     redacted_excerpt,
     status_of,
+)
+from .i18n import (
+    I18N_VECTORS,
+    I18nVector,
+    i18n_charset,
+)
+from .identity import (
+    DEFAULT_PASSWORD,
+    IDENTITY_VECTORS,
+    INVALID_EMAILS,
+    CredentialCheck,
+    CredentialReport,
+    Credentials,
+    IdentityVectors,
+    InvalidEmail,
+    UnicodeEdge,
+    Whitespace,
+    case_variants,
+    credential_consistency,
+    valid_email,
 )
 from .openapi import (
     HTTP_METHODS,
@@ -34,6 +62,20 @@ from .openapi import (
     strict_use_site,
     to_pointer,
 )
+from .pagination import (
+    PageRequest,
+    PageResult,
+    PaginationResult,
+    assert_collection_conservation,
+    paginate_all,
+)
+from .partitions import (
+    MAX_GENERATED_LENGTH,
+    PATTERN_MISMATCH_CANDIDATES,
+    Partition,
+    invalid_object_partitions,
+    invalid_partitions,
+)
 from .replay import (
     IdempotencyReplay,
     ReplayResult,
@@ -49,6 +91,13 @@ from .schema import (
 )
 
 __all__ = [
+    # boundary
+    "BoundaryPoint",
+    "BoundaryPoints",
+    "MoneyReconciliation",
+    "boundary3",
+    "money_reconciles",
+    "percentages_sum_to_100",
     # http
     "REDACTED",
     "REST_STATUS",
@@ -62,6 +111,24 @@ __all__ = [
     "redact",
     "redacted_excerpt",
     "status_of",
+    # i18n
+    "I18N_VECTORS",
+    "I18nVector",
+    "i18n_charset",
+    # identity
+    "DEFAULT_PASSWORD",
+    "IDENTITY_VECTORS",
+    "INVALID_EMAILS",
+    "CredentialCheck",
+    "CredentialReport",
+    "Credentials",
+    "IdentityVectors",
+    "InvalidEmail",
+    "UnicodeEdge",
+    "Whitespace",
+    "case_variants",
+    "credential_consistency",
+    "valid_email",
     # openapi
     "HTTP_METHODS",
     "Direction",
@@ -77,6 +144,18 @@ __all__ = [
     "resolve_ref",
     "strict_use_site",
     "to_pointer",
+    # pagination
+    "PageRequest",
+    "PageResult",
+    "PaginationResult",
+    "assert_collection_conservation",
+    "paginate_all",
+    # partitions
+    "MAX_GENERATED_LENGTH",
+    "PATTERN_MISMATCH_CANDIDATES",
+    "Partition",
+    "invalid_object_partitions",
+    "invalid_partitions",
     # replay
     "IdempotencyReplay",
     "ReplayResult",

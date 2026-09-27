@@ -4,9 +4,9 @@
 # the SD-3 inventory, SD-4 expected bugs and SD-10 counterfactual plan from a collect-only
 # pass, turn every SD-5/SD-6 outcome into exactly the expected events (identically under
 # pytest-xdist), fail closed on emission problems, and stay inert without ARGUS_RUNNER_MODE.
-# The qa.oracles self-tests must report a product pass for every case against loopback stubs,
-# and the cf-correct/cf-tamper passes must judge a regression against the in-process
-# counterfactual stub. The created_resources and fault_injector fixtures must report their
+# The qa.oracles contract and data oracle self-tests must report a product pass for every
+# case against loopback stubs, and the cf-correct/cf-tamper passes must judge a regression
+# against the in-process counterfactual stub. The created_resources and fault_injector fixtures must report their
 # failures through the adapter. Finally ./run-tests.sh runs end to end (runner-lib.sh, lane
 # plan, environment baseline, evidence passes) in a scaffold against
 # scripts/fixtures/argus-runtime/faulty-target.mjs. Only loopback stubs and that local
@@ -325,6 +325,28 @@ awk -F'\t' -v prefix="$ORACLE_CASE" \
 [ -z "$(cut -f1 "$WORK/oracles.tsv" | sort | uniq -d)" ] || fail "oracle self-test case ids are not unique"
 if grep -Eq '127[.]0[.]0[.]1|argus-never-print-me|hunter2' "$WORK/oracles.tsv"; then fail "an oracle self-test event carried test details"; fi
 expect_status "ok $oracle_cases" oracles
+
+# (8b) Data oracle self-tests: invalid partitions, pagination conservation, boundary and exact
+# sums, identity vectors with credential consistency, and the i18n round trip. Each passes on
+# a correct in-memory or 127.0.0.1 stub implementation and fails on a faulty one (a duplicate
+# page, total drift, penny drift, byte truncation, one-sided trimming), so a healthy run is
+# `product pass` for every case.
+DATA_ORACLE_TEST=tests/contract/test_oracles_data_selftest.py
+DATA_ORACLE_CASE='tests.contract.test_oracles_data_selftest.py::'
+pytest_run oracles-data-list -- --collect-only -m contract_smoke "$DATA_ORACLE_TEST"
+expect_exit oracles-data-list 0
+data_oracle_cases="$(grep -c '::' "$WORK/oracles-data-list.log" || true)"
+[ "$data_oracle_cases" -gt 0 ] || fail "the data oracle self-tests were not collected"
+pytest_run oracles-data ARGUS_RUNNER_MODE=baseline ARGUS_OUTCOME_FILE="$WORK/oracles-data.tsv" -- -m contract_smoke "$DATA_ORACLE_TEST"
+expect_exit oracles-data 0
+[ -f "$WORK/oracles-data.tsv" ] || fail "the data oracle self-tests emitted no events"
+[ "$(wc -l <"$WORK/oracles-data.tsv" | tr -d ' ')" = "$data_oracle_cases" ] || fail "expected one event per data oracle self-test ($data_oracle_cases)"
+awk -F'\t' -v prefix="$DATA_ORACLE_CASE" \
+  'NF != 7 || index($1, prefix) != 1 || $2 != "product" || $3 != "pass" || $4 != "false" || $5 != "n/a" || $6 != "-" || $7 != "passed" { print "not a data oracle product pass: " $0; bad = 1 } END { exit bad }' \
+  "$WORK/oracles-data.tsv" >&2 || fail "a data oracle self-test event is not a product pass"
+[ -z "$(cut -f1 "$WORK/oracles-data.tsv" | sort | uniq -d)" ] || fail "data oracle self-test case ids are not unique"
+if grep -Eq '127[.]0[.]0[.]1|Qa7' "$WORK/oracles-data.tsv"; then fail "a data oracle self-test event carried test details"; fi
+expect_status "ok $data_oracle_cases" oracles-data
 
 # (9) Counterfactual evidence (SD-6, SD-10). Each cf pass serves solution/counterfactual/BUG-0001.json
 # from the session's 127.0.0.1 stub. API_URL names a closed port, so a request that escaped
@@ -756,4 +778,4 @@ cp "$WORK/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
 expect_event "$E2E_EV" environment infrastructure fail false n/a - environment-not-at-baseline
 stop_target
 
-printf 'PASS  Argus Python runtime adapter: collect-only inventory, ledger join, SD-5/SD-6 events, xdist parity, repetition, fail-closed status, inert default, contract oracle self-tests, SD-10 counterfactual plan, cf-correct/cf-tamper passes against the in-process stub, strict cleanup and fault-restore fixtures, and an end-to-end runner against a faulty target\n'
+printf 'PASS  Argus Python runtime adapter: collect-only inventory, ledger join, SD-5/SD-6 events, xdist parity, repetition, fail-closed status, inert default, contract and data oracle self-tests, SD-10 counterfactual plan, cf-correct/cf-tamper passes against the in-process stub, strict cleanup and fault-restore fixtures, and an end-to-end runner against a faulty target\n'
