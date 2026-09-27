@@ -11,6 +11,7 @@ JUnit 5 provides one tagged runner across lanes; REST Assured and JSON Schema Va
 ```
 <selected-test-root>/qa/support/  Config, role-aware API client, schema oracle,
                                   Playwright fixture, data factory, summary listener
+<selected-test-root>/qa/support/oracles/ the shared oracle library (see below)
 <selected-test-root>/qa/api/      API and contract checks
 <selected-test-root>/qa/ui/       funded risk-derived UI journeys and a11y checks
 <selected-test-root>/qa/perf/     stated-budget gates or characterisation checks
@@ -20,6 +21,29 @@ JUnit 5 provides one tagged runner across lanes; REST Assured and JSON Schema Va
 ```
 
 Tests depend on support helpers; helpers depend on configuration. Tests never hardcode credentials, base URLs, or raw endpoint registries. Atlas owns the shared harness and top-level runner; lane engineers own disjoint test packages.
+
+## Oracle library
+
+The fourteen shared oracle helpers ship as tested reference code in `qa/support/oracles/`: generic, black-box, and one canonical implementation each, so no lane improvises its own check. Every helper throws `AssertionError` on a RED (classified `product fail`) and `IllegalArgumentException` on misuse; each is self-tested in the `contract-smoke` lane against correct and faulty 127.0.0.1 stubs (`qa/contract/Oracles{Contract,Data,Behavior}SelfTest.java`).
+
+| Helper | Class | Contract |
+|---|---|---|
+| `expectStatus` | `Http` | the exact documented status code, never a class such as 2xx or "401 or 403" |
+| `assertRestStatus` | `Http` | the REST state with its exact code: 201 + `Location`, 204 empty, 405 + `Allow`, 404 not 500 |
+| `assertSchema` | `Schema` | the response body against the operationId's documented status and schema, strict by default |
+| `assertSchemaStrict` | `Schema` | a component schema with every object closed, so an undocumented field is RED |
+| `idempotentReplay` | `Replay` | an idempotent request twice: same status, body and state; a replayed idempotency key creates one effect |
+| `invalidPartitions` / `invalidObjectPartitions` | `Partitions` | one invalid value per declared constraint, with fixed labels in a fixed order |
+| `paginateAll` / `assertCollectionConservation` | `Pagination` | two walks at a small page size: no duplicate, nothing missing, a total that matches |
+| `boundary3` / `moneyReconciles` / `percentagesSumTo100` | `Boundary` | B - step, B, B + step with step = the domain's smallest unit; exact sums in minor units |
+| `IDENTITY_VECTORS` / `credentialConsistency` / `validEmail` / `INVALID_EMAILS` / `caseVariants` | `Identity` | the canonical name/email/password vectors; register and login agree byte for byte |
+| `i18nCharset` | `I18n` | diacritics, emoji and NFD round-trip code point for code point; limits count characters, not bytes |
+| `softDeleteSweep` | `State` | after a delete: the documented delete status, 404 on read-back, absent from every list, login refused with 401 |
+| `doubleSubmit` / `concurrentRace` | `Concurrency` | calls released together behind a start gate: exactly one effect; no 5xx, no overbooking, the invariant holds |
+| `visualBounds` / `evaluateBounds` | `Visual` | at 375px by default: no negative render, no viewport overflow, no horizontal scroll, no occlusion |
+| `n1Scaling` / `analyzeScaling` | `Scaling` | median time and payload per collection size grow sub-linearly (default exponents 0.5 and 0.1), warm-up discarded |
+
+The ADAPT-ME examples in `qa/api`, `qa/ui` and `qa/perf` use these helpers; engagement tests import them rather than re-implementing a check. A helper that no test run by `./run-tests.sh` exercises is not delivered.
 
 ## Runner and evidence contract
 
