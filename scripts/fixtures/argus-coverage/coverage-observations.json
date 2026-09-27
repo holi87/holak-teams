@@ -1,8 +1,20 @@
 {
-  "$schema": "argus/coverage-observations@1", "schemaVersion": 1, "engagementId": "coverage-fixture",
+  "$schema": "argus/coverage-observations@2", "schemaVersion": 2, "engagementId": "coverage-fixture",
   "observations": [
-    { "surfaceId": "SRF-UI-CHECKOUT", "executed": true, "assertions": [{ "id": "AST-UI-1", "oracleId": "ORC-UI-1", "meaningful": true }], "evidenceIds": ["EVD-0101"], "defects": [{ "id": "BUG-0001", "status": "confirmed" }, { "id": "BUG-0001", "status": "duplicate" }] },
-    { "surfaceId": "SRF-API-ORDERS-POST", "executed": true, "assertions": [{ "id": "AST-API-1", "oracleId": "ORC-API-1", "meaningful": true }], "evidenceIds": ["EVD-0102"], "defects": [] },
-    { "surfaceId": "SRF-EVENT-ORDER-CREATED", "executed": false, "assertions": [], "evidenceIds": [], "defects": [{ "id": "RAW-LOW-QUALITY", "status": "unsupported" }] }
+    { "observationId": "atalanta:SRF-API-ORDERS-POST", "lane": "atalanta", "surfaceId": "SRF-API-ORDERS-POST",
+      "executions": [{ "evidenceId": "EVD-0102" }],
+      "assertions": [{ "id": "AST-API-1", "oracleId": "ORC-API-1", "evidenceIds": ["EVD-0102"], "controlEvidenceIds": ["EVD-0103"] }],
+      "evidenceIds": ["EVD-0102"], "defectRefs": ["ATA-001"] },
+    { "observationId": "atlas:SRF-API-ORDERS-POST", "lane": "atlas", "surfaceId": "SRF-API-ORDERS-POST",
+      "executions": [{ "evidenceId": "EVD-0104", "caseId": "api:orders.spec.ts:creates-a-charged-order" }],
+      "assertions": [], "evidenceIds": ["EVD-0104"], "defectRefs": [],
+      "cases": [{ "obligationId": "CASE-API-ORDER-CREATE", "oracleId": "ORC-API-1", "outcome": "passed", "evidenceIds": ["EVD-0104"], "controlEvidenceIds": ["EVD-0103"],
+        "execution": { "evidenceId": "EVD-0104", "caseId": "api:orders.spec.ts:creates-a-charged-order" } }] },
+    { "observationId": "orion:SRF-UI-CHECKOUT", "lane": "orion", "surfaceId": "SRF-UI-CHECKOUT",
+      "executions": [{ "evidenceId": "EVD-0101" }],
+      "assertions": [{ "id": "AST-UI-1", "oracleId": "ORC-UI-1", "evidenceIds": ["EVD-0101"], "controlEvidenceIds": ["EVD-0103"] }],
+      "evidenceIds": ["EVD-0101"], "defectRefs": [] },
+    { "observationId": "proteus:SRF-EVENT-ORDER-CREATED", "lane": "proteus", "surfaceId": "SRF-EVENT-ORDER-CREATED",
+      "executions": [], "assertions": [], "evidenceIds": [], "defectRefs": [] }
   ]
 }

@@ -1,0 +1,119 @@
+{
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
+  "engagementId": "coverage-fixture",
+  "bugs": [
+    {
+      "id": "BUG-0001",
+      "origin": ["ATA-001"],
+      "title": "A created order is missing from the order history",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-2",
+      "status": "confirmed",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": ["EVD-0102"],
+      "verification": {
+        "build": "synthetic-fixture",
+        "disputedOracle": false,
+        "oracle": {
+          "kind": "requirement",
+          "sourceRef": "Synthetic requirement: every created order appears in the order history",
+          "evidenceId": "EVD-0102",
+          "applicability": "Synthetic customer account",
+          "exceptions": []
+        },
+        "reproduction": {
+          "initialState": "Fresh synthetic customer account with an in-stock SKU",
+          "steps": ["Create an order.", "Read the order history."],
+          "attempts": 2,
+          "occurrences": 2,
+          "evidenceIds": ["EVD-0102"]
+        },
+        "independent": {
+          "status": "not-required",
+          "executor": null,
+          "evidenceIds": [],
+          "reason": "Deterministic synthetic reproduction; no independent executor was run."
+        }
+      }
+    },
+    {
+      "id": "BUG-0002",
+      "origin": ["ORI-002"],
+      "title": "Checkout total is not announced to assistive technology",
+      "severity": "Minor",
+      "priority": "P3",
+      "lane": "orion",
+      "oracleId": "ORC-UI-2",
+      "status": "suspected",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": ["EVD-0101"],
+      "missingProof": {
+        "elements": ["independent-reproduction"],
+        "detail": "A screen-reader run from a second lane would confirm the missing live region.",
+        "owner": "atalanta"
+      }
+    },
+    {
+      "id": "BUG-0003",
+      "origin": ["PRO-003"],
+      "title": "order.created is emitted before the payment is captured",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "proteus",
+      "oracleId": null,
+      "status": "needs-oracle",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": [],
+      "missingProof": {
+        "elements": ["oracle"],
+        "detail": "A cited ordering rule for order.created and payment capture would decide it.",
+        "owner": "metis"
+      }
+    },
+    {
+      "id": "BUG-0004",
+      "origin": ["TAL-004"],
+      "title": "Suite case shows a created order missing from the history",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "talos",
+      "oracleId": "ORC-API-2",
+      "status": "duplicate",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": ["EVD-0104"],
+      "duplicateOf": "BUG-0001",
+      "merge": {
+        "rationale": "The suite failure is the same missing history write as BUG-0001.",
+        "causalEvidence": [
+          { "ref": "TAL-004", "evidenceIds": ["EVD-0104"] },
+          { "ref": "BUG-0001", "evidenceIds": ["EVD-0102"] }
+        ]
+      }
+    },
+    {
+      "id": "BUG-0005",
+      "origin": ["ATA-005"],
+      "title": "Audit store is unreadable for the test account",
+      "severity": "Minor",
+      "priority": "P4",
+      "lane": "atalanta",
+      "oracleId": null,
+      "status": "rejected",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": [],
+      "rejection": {
+        "reason": "out-of-scope",
+        "rationale": "The authorization manifest excludes the audit store from this engagement.",
+        "evidenceIds": []
+      }
+    }
+  ]
+}

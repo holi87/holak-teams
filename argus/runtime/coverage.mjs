@@ -3,6 +3,21 @@ const ACCESS = new Set(['testable', 'inaccessible', 'untestable']);
 const RISK = new Set(['critical', 'high', 'medium', 'low']);
 const ID = /^SRF-[A-Z0-9][A-Z0-9-]*$/;
 const EVIDENCE = /^EVD-[0-9]{4}$/;
+const SLUG = /^[a-z][a-z0-9-]*$/;
+const CASE_ID = /^[A-Za-z0-9_.:-]+$/;
+const DEFECT_REF = /^(?:BUG-[0-9]{4}|[A-Z]{3}-[0-9]{3,4})$/;
+// The input versions this module reads; contracts.mjs owns the compatibility policy. This
+// module imports nothing, so the contract validator and the finding reconciler can use it.
+const INPUT_VERSIONS = Object.freeze({ 'surface-inventory': 1, 'coverage-observations': 2 });
+const EVIDENCE_SCHEMA = 'argus/evidence-reference@3';
+const LEDGER_SCHEMA = 'argus/bug-ledger@2';
+// coverage-result sourceSchemas, in emission order; inventory and observations always lead.
+const SOURCE_SCHEMAS = Object.freeze(['argus/surface-inventory@1', 'argus/coverage-observations@2', EVIDENCE_SCHEMA, LEDGER_SCHEMA]);
+// Captures that prove a surface was exercised when their reference names it. A runner result
+// proves execution only through one executed case; text evidence never does.
+const DIRECT_EXECUTION_KINDS = new Set(['http', 'har', 'trace', 'screenshot', 'video', 'dom-snapshot', 'log', 'metric']);
+const RUNNER_CATEGORIES = new Set(['product', 'automation']);
+const RUNNER_OUTCOMES = Object.freeze({ pass: 'passed', fail: 'failed' });
 
 export function validateSurfaceInventory(document) {
   const errors = base(document, 'surface-inventory');
@@ -16,7 +31,7 @@ export function validateSurfaceInventory(document) {
     if (ids.has(item.id)) errors.push(`duplicate surface id: ${item.id}`);
     ids.add(item.id);
     if (!SURFACE_TYPES.has(item.surfaceType)) errors.push(`${item.id}: invalid surfaceType`);
-    if (typeof item.lane !== 'string' || !/^[a-z][a-z0-9-]*$/.test(item.lane)) errors.push(`${item.id}: invalid lane`);
+    if (typeof item.lane !== 'string' || !SLUG.test(item.lane)) errors.push(`${item.id}: invalid lane`);
     if (!RISK.has(item.risk) || !Number.isInteger(item.riskWeight) || item.riskWeight < 1 || item.riskWeight > 5) errors.push(`${item.id}: risk and riskWeight must be explicit`);
     if (typeof item.riskBasis !== 'string' || !item.riskBasis.trim()) errors.push(`${item.id}: riskBasis is required`);
     if (!ACCESS.has(item.accessibility)) errors.push(`${item.id}: invalid accessibility`);
@@ -27,6 +42,8 @@ export function validateSurfaceInventory(document) {
   return unique(errors);
 }
 
+// Observations are a collection keyed by <lane>:<surfaceId>. A record cites evidence; it
+// never declares execution or assertion quality, which resolveCoverage derives.
 export function validateCoverageObservations(document, inventory) {
   const errors = base(document, 'coverage-observations');
   if (!document || typeof document !== 'object') return errors;
@@ -34,69 +51,298 @@ export function validateCoverageObservations(document, inventory) {
   if (!Array.isArray(document.observations)) errors.push('observations must be an array');
   const inventoryIds = new Set((inventory?.items ?? []).map((item) => item.id));
   const ids = new Set();
-  for (const observation of document.observations ?? []) {
-    if (!ID.test(observation.surfaceId ?? '')) errors.push(`invalid observed surface id: ${observation.surfaceId ?? '(missing)'}`);
-    if (ids.has(observation.surfaceId)) errors.push(`duplicate observation: ${observation.surfaceId}`);
-    ids.add(observation.surfaceId);
-    if (inventory && !inventoryIds.has(observation.surfaceId)) errors.push(`unknown observed surface: ${observation.surfaceId}`);
-    if (typeof observation.executed !== 'boolean') errors.push(`${observation.surfaceId}: executed must be boolean`);
-    if (!Array.isArray(observation.assertions)) errors.push(`${observation.surfaceId}: assertions must be an array`);
-    for (const assertion of observation.assertions ?? []) {
-      if (typeof assertion.id !== 'string' || !assertion.id.trim() || typeof assertion.oracleId !== 'string' || !assertion.oracleId.trim() || typeof assertion.meaningful !== 'boolean') errors.push(`${observation.surfaceId}: assertions require id, oracleId, and meaningful`);
+  const obligations = new Set();
+  for (const observation of arrayOf(document.observations)) {
+    const label = observation?.observationId ?? '(missing observationId)';
+    if (!SLUG.test(observation?.lane ?? '')) errors.push(`${label}: invalid lane`);
+    if (!ID.test(observation?.surfaceId ?? '')) errors.push(`invalid observed surface id: ${observation?.surfaceId ?? '(missing)'}`);
+    if (observation?.observationId !== `${observation?.lane}:${observation?.surfaceId}`) errors.push(`${label}: observationId must equal <lane>:<surfaceId>`);
+    if (ids.has(observation?.observationId)) errors.push(`duplicate observation: ${observation.observationId}`);
+    ids.add(observation?.observationId);
+    if (inventory && !inventoryIds.has(observation?.surfaceId)) errors.push(`unknown observed surface: ${observation?.surfaceId}`);
+    if (!Array.isArray(observation?.executions) || !observation.executions.every(validExecution)) errors.push(`${label}: executions are invalid`);
+    else if (new Set(observation.executions.map(executionKey)).size !== observation.executions.length) errors.push(`${label}: executions must be unique`);
+    if (!Array.isArray(observation?.assertions)) errors.push(`${label}: assertions must be an array`);
+    for (const assertion of arrayOf(observation?.assertions)) {
+      if (!nonEmpty(assertion?.id) || !nonEmpty(assertion?.oracleId) || !validEvidence(assertion?.evidenceIds) || assertion.evidenceIds.length === 0 || !validEvidence(assertion?.controlEvidenceIds)) {
+        errors.push(`${label}: assertions require id, oracleId, evidenceIds, and controlEvidenceIds`);
+      } else if (assertion.controlEvidenceIds.some((id) => assertion.evidenceIds.includes(id))) {
+        errors.push(`${label}: assertion ${assertion.id} control evidence must be distinct from its evidence`);
+      }
     }
-    if (!validEvidence(observation.evidenceIds)) errors.push(`${observation.surfaceId}: evidenceIds are invalid`);
-    if (!Array.isArray(observation.defects)) errors.push(`${observation.surfaceId}: defects must be an array`);
-    for (const defect of observation.defects ?? []) {
-      if (typeof defect.id !== 'string' || !defect.id.trim() || !['confirmed', 'duplicate', 'unsupported'].includes(defect.status)) errors.push(`${observation.surfaceId}: defect outcomes are invalid`);
+    if (!validEvidence(observation?.evidenceIds)) errors.push(`${label}: evidenceIds are invalid`);
+    if (!Array.isArray(observation?.defectRefs) || !observation.defectRefs.every((ref) => DEFECT_REF.test(ref ?? '')) || new Set(observation.defectRefs).size !== observation.defectRefs.length) errors.push(`${label}: defectRefs are invalid`);
+    if (observation?.cases !== undefined && !Array.isArray(observation.cases)) errors.push(`${label}: cases must be an array`);
+    for (const item of arrayOf(observation?.cases)) {
+      if (obligations.has(item?.obligationId)) errors.push(`duplicate case observation: ${item.obligationId}`);
+      obligations.add(item?.obligationId);
+      if (item?.execution !== undefined && !validExecution(item.execution)) errors.push(`${item?.obligationId}: case execution is invalid`);
     }
   }
   return unique(errors);
 }
 
-export function calculateCoverage(inventory, observations) {
+// Every evidence ID the coverage inputs cite, each with the place that cites it. The engagement
+// merge and the evidence reconciler use it to decide what must resolve and pass integrity checks.
+export function coverageEvidenceReferences(inventory, observations) {
+  const references = [];
+  const add = (label, ids) => { for (const id of arrayOf(ids)) references.push({ label, id }); };
+  for (const surface of arrayOf(inventory?.items)) add(`${surface.id}: discovery evidence`, surface.discoveryEvidenceIds);
+  for (const row of arrayOf(observations?.observations)) {
+    add(`${row.observationId}: execution`, arrayOf(row.executions).map((item) => item?.evidenceId));
+    for (const assertion of arrayOf(row.assertions)) {
+      add(`${row.observationId}: assertion ${assertion.id} evidence`, assertion.evidenceIds);
+      add(`${row.observationId}: assertion ${assertion.id} control evidence`, assertion.controlEvidenceIds);
+    }
+    add(`${row.observationId}: outcome evidence`, row.evidenceIds);
+    for (const item of arrayOf(row.cases)) {
+      add(`${row.observationId}: case ${item.obligationId} evidence`, item.evidenceIds);
+      add(`${row.observationId}: case ${item.obligationId} control evidence`, item.controlEvidenceIds);
+      if (item.execution) add(`${row.observationId}: case ${item.obligationId} execution`, [item.execution.evidenceId]);
+    }
+  }
+  return references;
+}
+
+// Resolves every citation against the evidence registry and the ledger and derives each
+// surface's flags from evidence alone. Returns every violation instead of throwing, so a
+// validator can report them all; calculateCoverage fails closed on any. readArtifact(source)
+// returns the bytes of a registered capture and must enforce the caller's path boundary.
+export function resolveCoverage(inventory, observations, { evidence = null, ledger = null, readArtifact = null } = {}) {
+  const errors = [];
+  if (evidence && evidence.$schema !== EVIDENCE_SCHEMA) errors.push(`coverage evidence registry must be ${EVIDENCE_SCHEMA}`);
+  if (evidence && evidence.engagementId !== inventory.engagementId) errors.push('coverage evidence engagementId does not match the surface inventory');
+  if (ledger && ledger.$schema !== LEDGER_SCHEMA) errors.push(`coverage bug ledger must be ${LEDGER_SCHEMA}`);
+  if (ledger && ledger.engagementId !== inventory.engagementId) errors.push('coverage bug ledger engagementId does not match the surface inventory');
+  const refs = evidence ? new Map(arrayOf(evidence.references).map((ref) => [ref.id, ref])) : null;
+  if (!refs && coverageEvidenceReferences(inventory, observations).length) errors.push('coverage evidence registry required');
+  const defects = ledger ? ledgerIndex(ledger) : null;
+  const runnerResults = new Map();
+  const loadRunnerResult = (ref) => {
+    if (!runnerResults.has(ref.id)) runnerResults.set(ref.id, parseRunnerResult(ref, readArtifact));
+    return runnerResults.get(ref.id);
+  };
+  const resolved = (at, ids) => arrayOf(ids).filter((id) => {
+    if (!refs) return false;
+    if (!refs.has(id)) errors.push(`${at} ${id} is not in the evidence registry`);
+    return refs.has(id);
+  });
+  // One execution citation; returns the resolved runner document (or null) and event, or
+  // undefined when the citation does not prove execution of this surface.
+  const resolveExecution = (surface, execution, at) => {
+    if (!refs) return undefined;
+    const ref = refs.get(execution.evidenceId);
+    const cited = `${at} ${execution.evidenceId}`;
+    if (!ref) { errors.push(`${cited} is not in the evidence registry`); return undefined; }
+    if (ref.kind === 'runner-result') {
+      if (execution.caseId === undefined) { errors.push(`${cited} is a runner result and requires a caseId`); return undefined; }
+      const loaded = loadRunnerResult(ref);
+      if (loaded.error) { errors.push(`${cited}: ${loaded.error}`); return undefined; }
+      const event = loaded.document.events.find((item) => item?.caseId === execution.caseId && RUNNER_CATEGORIES.has(item.category) && Object.hasOwn(RUNNER_OUTCOMES, item.status));
+      if (!event) { errors.push(`${cited} has no executed product or automation case ${execution.caseId}`); return undefined; }
+      return { runner: loaded.document, event };
+    }
+    if (execution.caseId !== undefined) { errors.push(`${cited} is ${ref.kind} evidence and must not carry a caseId`); return undefined; }
+    if (!DIRECT_EXECUTION_KINDS.has(ref.kind)) { errors.push(`${cited} is ${ref.kind} evidence, which never proves execution`); return undefined; }
+    if (!arrayOf(ref.relatedSurfaceIds).includes(surface.id)) { errors.push(`${cited} does not name ${surface.id} in relatedSurfaceIds`); return undefined; }
+    if (arrayOf(surface.discoveryEvidenceIds).includes(ref.id)) { errors.push(`${cited} is discovery evidence for ${surface.id}`); return undefined; }
+    return { runner: null, event: null };
+  };
+
+  const rowsBySurface = new Map();
+  for (const row of arrayOf(observations?.observations)) {
+    if (!rowsBySurface.has(row.surfaceId)) rowsBySurface.set(row.surfaceId, []);
+    rowsBySurface.get(row.surfaceId).push(row);
+  }
+  const perSurface = {};
+  for (const surface of arrayOf(inventory?.items)) {
+    const rows = rowsBySurface.get(surface.id) ?? [];
+    resolved(`${surface.id}: discovery evidence`, surface.discoveryEvidenceIds);
+    let executed = false;
+    let automated = false;
+    for (const row of rows) {
+      for (const execution of arrayOf(row.executions)) {
+        const result = resolveExecution(surface, execution, `${row.observationId}: execution`);
+        if (!result) continue;
+        executed = true;
+        if (result.runner?.deliveryGate === true) automated = true;
+      }
+    }
+    let assertedByEvidence = false;
+    let outcomeEvidence = 0;
+    const defectIds = new Set();
+    for (const row of rows) {
+      for (const assertion of arrayOf(row.assertions)) {
+        const evidenceIds = arrayOf(assertion.evidenceIds);
+        const controlIds = arrayOf(assertion.controlEvidenceIds);
+        const evidenceResolved = resolved(`${row.observationId}: assertion ${assertion.id} evidence`, evidenceIds).length === evidenceIds.length;
+        const controlResolved = resolved(`${row.observationId}: assertion ${assertion.id} control evidence`, controlIds).length === controlIds.length;
+        const disjoint = !controlIds.some((id) => evidenceIds.includes(id));
+        if (nonEmpty(assertion.oracleId) && evidenceIds.length > 0 && evidenceResolved && controlIds.length > 0 && controlResolved && disjoint) assertedByEvidence = true;
+      }
+      outcomeEvidence += resolved(`${row.observationId}: outcome evidence`, row.evidenceIds).length;
+      for (const ref of arrayOf(row.defectRefs)) {
+        if (!defects) errors.push(`${row.observationId}: defect reference ${ref} requires the canonical bug ledger`);
+        else if (!defects.has(ref)) errors.push(`${row.observationId}: unknown defect reference ${ref}`);
+        else defectIds.add(defects.get(ref));
+      }
+    }
+    const cases = [];
+    for (const row of rows) {
+      for (const item of arrayOf(row.cases)) {
+        const at = `${row.observationId}: case ${item.obligationId}`;
+        resolved(`${at} evidence`, item.evidenceIds);
+        resolved(`${at} control evidence`, item.controlEvidenceIds);
+        const reported = ['passed', 'failed'].includes(item.outcome);
+        if (reported && !executed) errors.push(`${item.obligationId}: executed case on an unexecuted surface`);
+        let proven = true;
+        if (item.execution) {
+          const result = resolveExecution(surface, item.execution, `${at} execution`);
+          if (!result) proven = false;
+          else if (result.event && RUNNER_OUTCOMES[result.event.status] !== item.outcome) {
+            errors.push(`${at} execution ${item.execution.evidenceId} runner outcome ${result.event.status} does not match case outcome ${item.outcome}`);
+            proven = false;
+          }
+        }
+        cases.push({ obligationId: item.obligationId, ran: reported && executed && proven, controlled: arrayOf(item.evidenceIds).length > 0 && arrayOf(item.controlEvidenceIds).length > 0, reason: item.reason });
+      }
+    }
+    perSurface[surface.id] = {
+      surfaceId: surface.id, lane: surface.lane, risk: surface.risk, riskWeight: surface.riskWeight, accessibility: surface.accessibility,
+      executed, asserted: executed && assertedByEvidence, evidenced: executed && outcomeEvidence > 0, automated: executed && automated,
+      defectIds: [...defectIds].sort(compareAscii), cases,
+    };
+  }
+  return { errors: unique(errors), perSurface };
+}
+
+// Fails closed: schema-subset, case-plan, and resolution errors all throw.
+export function calculateCoverage(inventory, observations, context = {}) {
   const errors = [...validateSurfaceInventory(inventory), ...validateCoverageObservations(observations, inventory), ...validateCasePlan(inventory, observations)];
   if (errors.length) throw new Error(errors.join('; '));
-  const byId = new Map(observations.observations.map((item) => [item.surfaceId, item]));
+  const { evidence = null, ledger = null } = context;
+  const { errors: resolutionErrors, perSurface } = resolveCoverage(inventory, observations, context);
+  if (resolutionErrors.length) throw new Error(resolutionErrors.join('; '));
   const lanes = [...new Set(inventory.items.map((item) => item.lane))].sort();
-  const calculations = Object.fromEntries(lanes.map((lane) => [lane, summarize(inventory.items.filter((item) => item.lane === lane), byId)]));
-  const all = summarize(inventory.items, byId);
-  const defects = observations.observations.flatMap((item) => item.defects);
-  const confirmed = [...new Set(defects.filter((item) => item.status === 'confirmed').map((item) => item.id))];
+  const calculations = Object.fromEntries(lanes.map((lane) => [lane, summarize(inventory.items.filter((item) => item.lane === lane), perSurface)]));
+  const surfaces = inventory.items.map((item) => perSurface[item.id]).sort((left, right) => compareAscii(left.surfaceId, right.surfaceId));
   return {
-    $schema: 'argus/coverage-result@1', schemaVersion: 1, engagementId: inventory.engagementId,
-    sourceSchemas: [inventory.$schema, observations.$schema],
+    $schema: 'argus/coverage-result@2', schemaVersion: 2, engagementId: inventory.engagementId,
+    sourceSchemas: [inventory.$schema, observations.$schema, ...(evidence ? [evidence.$schema] : []), ...(ledger ? [ledger.$schema] : [])],
     discovery: { candidates: inventory.discovery.candidates, characterized: inventory.discovery.characterized, completeness: ratio(inventory.discovery.characterized, inventory.discovery.candidates) },
-    overall: all, lanes: calculations,
+    overall: summarize(inventory.items, perSurface), lanes: calculations,
+    surfaces: surfaces.map(({ cases, ...surface }) => surface),
+    criticalUnexecuted: surfaces.filter(isCriticalUnexecuted).map((surface) => surface.surfaceId),
     scopedOutcomes: inventory.items.filter((item) => item.accessibility !== 'testable').map((item) => ({ surfaceId: item.id, accessibility: item.accessibility, reason: item.scopeReason, evidenceIds: item.discoveryEvidenceIds })),
-    defectOutcomes: { uniqueConfirmed: confirmed.length, duplicate: defects.filter((item) => item.status === 'duplicate').length, unsupported: defects.filter((item) => item.status === 'unsupported').length, scoreContribution: 0 },
+    defectOutcomes: defectOutcomes(ledger, new Set(surfaces.flatMap((surface) => surface.defectIds))),
     generatedAt: new Date().toISOString(),
   };
 }
 
-function summarize(items, byId) {
+// Invariants of a calculated result that the schema subset cannot express.
+export function validateCoverageResult(document) {
+  const errors = [];
+  const sources = arrayOf(document?.sourceSchemas);
+  const positions = sources.map((source) => SOURCE_SCHEMAS.indexOf(source));
+  if (sources[0] !== SOURCE_SCHEMAS[0] || sources[1] !== SOURCE_SCHEMAS[1] || positions.some((position, index) => index > 0 && position <= positions[index - 1])) {
+    errors.push('sourceSchemas must list the inventory, the observations, then the evidence registry and the bug ledger when present, in that order');
+  }
+  for (const [label, metric] of [['overall', document?.overall], ...Object.entries(document?.lanes ?? {}).map(([lane, value]) => [`lane ${lane}`, value])]) {
+    const weight = metric?.riskWeight;
+    if (!weight) continue;
+    if (weight.executed > weight.denominator || weight.asserted > weight.executed || weight.evidenced > weight.executed || weight.automated > weight.executed) {
+      errors.push(`${label} risk weights must satisfy asserted, evidenced, automated <= executed <= denominator`);
+    }
+  }
+  const surfaces = arrayOf(document?.surfaces);
+  if (!sortedUnique(surfaces.map((surface) => surface.surfaceId))) errors.push('surfaces must be sorted by unique surfaceId');
+  for (const surface of surfaces) {
+    if (!surface.executed && (surface.asserted || surface.evidenced || surface.automated)) errors.push(`${surface.surfaceId}: asserted, evidenced, and automated require executed`);
+    if (!sortedUnique(arrayOf(surface.defectIds))) errors.push(`${surface.surfaceId}: defectIds must be sorted and unique`);
+  }
+  const critical = surfaces.filter(isCriticalUnexecuted).map((surface) => surface.surfaceId);
+  if (JSON.stringify(arrayOf(document?.criticalUnexecuted)) !== JSON.stringify(critical)) errors.push('criticalUnexecuted must list exactly the unexecuted testable critical surfaces, sorted');
+  const outcomes = document?.defectOutcomes;
+  if (outcomes) {
+    if (outcomes.headline !== outcomes.confirmed + outcomes.suspected) errors.push('defectOutcomes.headline must equal confirmed + suspected');
+    if (outcomes.linked + arrayOf(outcomes.unlinked).length !== outcomes.headline) errors.push('defectOutcomes linked and unlinked must partition the headline defects');
+    if (!sortedUnique(arrayOf(outcomes.unlinked))) errors.push('defectOutcomes.unlinked must be sorted and unique');
+  }
+  return errors;
+}
+
+function summarize(items, perSurface) {
   const testable = items.filter((item) => item.accessibility === 'testable');
+  const weight = (flag) => sum(testable.filter((item) => perSurface[item.id][flag]).map((item) => item.riskWeight));
   const denominator = sum(testable.map((item) => item.riskWeight));
-  const executed = testable.filter((item) => byId.get(item.id)?.executed);
-  const executedWeight = sum(executed.map((item) => item.riskWeight));
-  const assertedWeight = sum(executed.filter((item) => byId.get(item.id).assertions.some((assertion) => assertion.meaningful && assertion.oracleId)).map((item) => item.riskWeight));
-  const evidencedWeight = sum(executed.filter((item) => byId.get(item.id).evidenceIds.length > 0).map((item) => item.riskWeight));
+  const executed = weight('executed');
+  const asserted = weight('asserted');
+  const evidenced = weight('evidenced');
+  const automated = weight('automated');
   return {
-    caseDepth: caseDepth(items, byId),
+    caseDepth: caseDepth(items, perSurface),
     discoveredItems: items.length, testableItems: testable.length, scopedItems: items.length - testable.length,
-    riskWeight: { denominator, executed: executedWeight, asserted: assertedWeight, evidenced: evidencedWeight },
-    executionCoverage: ratio(executedWeight, denominator), assertionQuality: ratio(assertedWeight, executedWeight), evidenceQuality: ratio(evidencedWeight, executedWeight),
+    riskWeight: { denominator, executed, asserted, evidenced, automated },
+    executionCoverage: ratio(executed, denominator), assertionQuality: ratio(asserted, executed), evidenceQuality: ratio(evidenced, executed), automatedExecution: ratio(automated, executed),
   };
+}
+
+// Defect outcomes come from the canonical ledger, never from observations, and never score.
+function defectOutcomes(ledger, linkedIds) {
+  const bugs = arrayOf(ledger?.bugs);
+  const count = (status) => bugs.filter((bug) => bug.status === status).length;
+  const headline = bugs.filter((bug) => bug.status === 'confirmed' || bug.status === 'suspected').map((bug) => bug.id).sort(compareAscii);
+  const linked = headline.filter((id) => linkedIds.has(id));
+  return {
+    confirmed: count('confirmed'), suspected: count('suspected'), needsOracle: count('needs-oracle'), duplicate: count('duplicate'), rejected: count('rejected'),
+    headline: headline.length, linked: linked.length, unlinked: headline.filter((id) => !linkedIds.has(id)), scoreContribution: 0,
+  };
+}
+
+// A defect reference resolves through a ledger ID or any origin alias to the ledger ID.
+function ledgerIndex(ledger) {
+  const index = new Map();
+  for (const bug of arrayOf(ledger.bugs)) {
+    index.set(bug.id, bug.id);
+    for (const origin of arrayOf(bug.origin)) index.set(origin, bug.id);
+  }
+  return index;
+}
+
+function parseRunnerResult(ref, readArtifact) {
+  if (typeof readArtifact !== 'function') return { error: 'runner-result evidence requires an artifact reader' };
+  let document;
+  try { document = JSON.parse(Buffer.from(readArtifact(ref.source)).toString('utf8')); }
+  catch (error) { return { error: `runner result ${ref.source} cannot be read: ${error.message}` }; }
+  if (!document || typeof document !== 'object' || document.$schema !== 'argus/runner-result@1' || !Array.isArray(document.events) || typeof document.deliveryGate !== 'boolean') {
+    return { error: `runner result ${ref.source} is not an argus/runner-result@1 document` };
+  }
+  return { document };
+}
+
+function isCriticalUnexecuted(surface) {
+  return surface.accessibility === 'testable' && surface.risk === 'critical' && !surface.executed;
 }
 
 function base(document, kind) {
   const errors = [];
+  const version = INPUT_VERSIONS[kind];
   if (!document || typeof document !== 'object' || Array.isArray(document)) return ['document must be an object'];
-  if (document.$schema !== `argus/${kind}@1`) errors.push(`$schema must be argus/${kind}@1`);
-  if (document.schemaVersion !== 1) errors.push('schemaVersion must be 1');
+  if (document.$schema !== `argus/${kind}@${version}`) errors.push(`$schema must be argus/${kind}@${version}`);
+  if (document.schemaVersion !== version) errors.push(`schemaVersion must be ${version}`);
   if (typeof document.engagementId !== 'string' || !document.engagementId.trim()) errors.push('engagementId is required');
   return errors;
 }
 function validEvidence(values) { return Array.isArray(values) && values.every((value) => EVIDENCE.test(value)) && new Set(values).size === values.length; }
+function validExecution(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && EVIDENCE.test(value.evidenceId ?? '')
+    && (value.caseId === undefined || CASE_ID.test(value.caseId)) && Object.keys(value).every((key) => key === 'evidenceId' || key === 'caseId');
+}
+function executionKey(value) { return `${value.evidenceId}\u0000${value.caseId ?? ''}`; }
+function nonEmpty(value) { return typeof value === 'string' && value.trim().length > 0; }
+function arrayOf(value) { return Array.isArray(value) ? value : []; }
+function sortedUnique(values) { return values.every((value, index) => index === 0 || compareAscii(values[index - 1], value) < 0); }
+function compareAscii(left, right) { return left < right ? -1 : left > right ? 1 : 0; }
 function ratio(numerator, denominator) { return denominator === 0 ? null : Number((numerator / denominator).toFixed(4)); }
 function sum(values) { return values.reduce((total, value) => total + value, 0); }
 function unique(values) { return [...new Set(values)]; }
@@ -113,14 +359,10 @@ export function validateCasePlan(inventory, observations) {
       if (!item.oracleId || !item.applicability || !Number.isInteger(item.weight) || item.weight < 1 || item.weight > 5) errors.push(`${item.id}: incomplete case obligation`);
     }
   }
-  const seen = new Set();
   for (const observation of observations.observations ?? []) {
     for (const item of observation.cases ?? []) {
-      if (seen.has(item.obligationId)) errors.push(`duplicate case observation: ${item.obligationId}`);
-      seen.add(item.obligationId);
       const obligation = planned.get(item.obligationId);
       if (!obligation || obligation.surfaceId !== observation.surfaceId) errors.push(`unknown or wrong-surface obligation: ${item.obligationId}`);
-      if (['passed', 'failed'].includes(item.outcome) && observation.executed !== true) errors.push(`${item.obligationId}: executed case on an unexecuted surface`);
       if (obligation && item.oracleId !== obligation.oracleId) errors.push(`${item.obligationId}: oracle mismatch`);
       if (!['passed', 'failed', 'blocked'].includes(item.outcome)) errors.push(`${item.obligationId}: invalid outcome`);
       if (!validEvidence(item.evidenceIds) || !validEvidence(item.controlEvidenceIds)) errors.push(`${item.obligationId}: invalid evidence`);
@@ -131,18 +373,20 @@ export function validateCasePlan(inventory, observations) {
   return errors;
 }
 
-function caseDepth(items, byId) {
+// A case counts as run only when its surface is executed and any cited case execution
+// resolves; the executed-case check itself lives in resolveCoverage.
+function caseDepth(items, perSurface) {
   let planned = 0, executed = 0, verified = 0;
   const gaps = [], unplannedSurfaces = [];
   for (const surface of items.filter(item => item.accessibility === 'testable')) {
     if (!surface.obligations?.length) unplannedSurfaces.push(surface.id);
-    const observed = new Map((byId.get(surface.id)?.cases ?? []).map(item => [item.obligationId, item]));
+    const observed = new Map((perSurface[surface.id]?.cases ?? []).map(item => [item.obligationId, item]));
     for (const obligation of surface.obligations ?? []) {
       planned += obligation.weight;
       const result = observed.get(obligation.id);
-      const ran = result && ['passed', 'failed'].includes(result.outcome);
+      const ran = Boolean(result?.ran);
       if (ran) executed += obligation.weight;
-      const supported = ran && result.evidenceIds.length && result.controlEvidenceIds.length;
+      const supported = ran && result.controlled;
       if (supported) verified += obligation.weight;
       else gaps.push({ obligationId: obligation.id, reason: result?.reason || (ran ? 'Missing execution or assertion-control evidence' : 'Not executed') });
     }

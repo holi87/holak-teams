@@ -530,8 +530,13 @@ cp "$E2E/bug-ledger.json" "$E/solution/bug-ledger.json"
 cp "$E2E/BUG-0001.json" "$E/solution/counterfactual/BUG-0001.json"
 cp "$E2E/test-lanes.tsv" "$E2E/environment.tsv" "$E/solution/"
 cp "$E2E/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
-# full-suite runs the surface-coverage gate, which needs a target-derived denominator.
-cp "$ROOT/scripts/fixtures/argus-coverage/surface-inventory.json" "$ROOT/scripts/fixtures/argus-coverage/coverage-observations.json" "$E/solution/"
+# full-suite runs the surface-coverage gate, which needs a target-derived denominator plus the
+# registered evidence its observations cite, rebound to this engagement's ledger.
+for input in surface-inventory coverage-observations evidence-reference; do
+  jq '.engagementId = "typescript-runner-e2e"' "$ROOT/scripts/fixtures/argus-coverage/$input.json" >"$E/solution/$input.json"
+done
+mkdir -p "$E/reports/evidence"
+cp "$ROOT/scripts/fixtures/argus-coverage/reports/evidence/"* "$E/reports/evidence/"
 
 # start_target <buggy|fixed>: (re)starts the faulty target on an ephemeral 127.0.0.1 port.
 start_target() {

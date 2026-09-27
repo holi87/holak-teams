@@ -5,7 +5,7 @@
   "skillsScanned": 7,
   "entrypointsScanned": 1,
   "runtimeFilesScanned": 10,
-  "runtimeImportsScanned": 21,
+  "runtimeImportsScanned": 23,
   "hooksScanned": 1,
   "pluginAssetReferences": [
     {
@@ -2255,6 +2255,12 @@
           "consumer": "bin/argus-assets",
           "kind": "runtime",
           "mechanism": "runtime-import",
+          "reference": "../lib/finding-quality.mjs"
+        },
+        {
+          "consumer": "bin/argus-assets",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
           "reference": "../lib/json-schema.mjs"
         },
         {
@@ -2364,6 +2370,12 @@
           "kind": "runtime",
           "mechanism": "runtime-import",
           "reference": "./json-schema.mjs"
+        },
+        {
+          "consumer": "lib/finding-quality.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./coverage.mjs"
         },
         {
           "consumer": "lib/finding-quality.mjs",

@@ -20,8 +20,8 @@ match with the engagement manifest.
 | `argus/automation-status@2` | `solution/automation-status.json` | Atlas | Deterministically ordered stable test IDs, owners, runner results, covered bugs, and evidence links. |
 | `argus/runner-result@1` | `reports/argus-runner-result.json` | Atlas | Runner mode, strict gate status, standardized exit code, and separate outcome categories. |
 | `argus/surface-inventory@1` | `solution/surface-inventory.json` | Kalchas | Discovered UI/API/event/data denominator, risk basis, accessibility, and discovery evidence. |
-| `argus/coverage-observations@1` | `solution/coverage-observations.json` | Kleio | Execution, meaningful assertions, evidence, and defect outcomes linked to stable surface IDs. |
-| `argus/coverage-result@1` | `solution/coverage-result.json` | Kleio | Traceable discovery, risk-weighted execution, assertion, evidence, scope, and defect-neutral calculations. |
+| `argus/coverage-observations@2` | `solution/coverage-observations.json` | Kleio | Deterministically ordered per-lane observations keyed by `<lane>:<surfaceId>`: cited execution, assertion and control, outcome, and case evidence plus ledger defect references; execution and assertion quality are derived, never declared. |
+| `argus/coverage-result@2` | `solution/coverage-result.json` | Kleio | Traceable discovery, evidence-derived per-surface flags, risk-weighted execution, assertion, evidence, and automated-execution ratios, unexecuted critical surfaces, scope, and ledger-derived defect outcomes that never score. |
 | `argus/final-summary@1` | `solution/final-summary.json` | Kleio | Engagement outcome, counts, source contracts, final narrative. |
 
 Every solution document has an exact `$schema` ID, its matching `schemaVersion`, and the
@@ -29,17 +29,18 @@ active `engagementId`; the runner-owned report has its exact schema/version and 
 through the final summary. The generated human summary at `solution/FINAL-SUMMARY.md` is derived
 only from `final-summary.json` and starts with its source schema ID.
 
-Lane-plan, evidence-reference, and automation-status documents are multi-record
-collections. Contributors may submit independently valid collection fragments; the named
-owner merges them by stable key (`lane`, `id`, or `testId`). Duplicate keys fail closed,
-and the canonical arrays are sorted by that key so fragment arrival order cannot change
-the resulting bytes.
+Lane-plan, evidence-reference, automation-status, and coverage-observations documents are
+multi-record collections. Contributors may submit independently valid collection fragments;
+the named owner merges them by stable key (`lane`, `id`, `testId`, or `observationId`).
+Duplicate keys fail closed, and the canonical arrays are sorted by that key so fragment
+arrival order cannot change the resulting bytes.
 
-Argus 5 accepts only the current forms of these three collections: lane-plan and
-automation-status `@2`, evidence-reference `@3`. The retired single-record `@1` schemas,
-`argus/evidence-reference@2`, and their migrations are absent. Other solution contracts keep their
-current version. Active older engagements must finish with their original runtime before
-upgrading.
+Argus 5 accepts only the current forms of these four collections: lane-plan,
+automation-status, and coverage-observations `@2`, evidence-reference `@3`. The retired
+single-record `@1` schemas, `argus/evidence-reference@2`, and their migrations are absent.
+`argus/coverage-result@1` is retired with them; coverage-result is read only at `@2`.
+Other solution contracts keep their current version. Active older engagements must finish
+with their original runtime before upgrading.
 
 ## Runtime report schema registry
 
@@ -140,8 +141,8 @@ credentials. Keep credentials, tokens, and connection strings out of `summary` a
 | Automation status | `tests[]`: `testId`, `owner`, `runner`, `status`, `coversBugIds`, `evidenceIds`, `updatedAt` | Per test: `planned → implemented → passed/failed/skipped` | Unique, sorted `TST/REG-NNNN`, runner output reference, linked bugs/evidence. |
 | Runner result | `mode`, `status`, `exitCode`, `categories`, `events` | Terminal `pass` or `fail` for one named mode | Raw adapter events classified by the portable evaluator. |
 | Surface inventory | `items`, `discovery` | Discovery expands monotonically; accessibility changes require evidence | Stable `SRF-*` IDs, enumerated denominator dimensions, risk basis, and discovery evidence. |
-| Coverage observations | `surfaceId`, `executed`, `assertions`, `evidenceIds`, `defects` | Append or replace one stable surface observation | Inventory link plus named oracle and evidence IDs. |
-| Coverage result | `discovery`, `overall`, `lanes`, `scopedOutcomes`, `defectOutcomes` | Deterministically recalculated from canonical inputs | Exact input schema IDs and stable surface/evidence links; defect score contribution is always zero. |
+| Coverage observations | `observations[]`: `observationId`, `lane`, `surfaceId`, `executions`, `assertions`, `evidenceIds`, `defectRefs`, `cases` | One immutable record per lane and surface, merged by `observationId` | Inventory link; every execution, assertion, control, outcome, and case citation resolves to a registered `EVD-NNNN`, and every defect reference to a ledger ID or origin. |
+| Coverage result | `discovery`, `overall`, `lanes`, `surfaces`, `criticalUnexecuted`, `scopedOutcomes`, `defectOutcomes` | Deterministically recalculated from canonical inputs | Exact input schema IDs (inventory, observations, and the evidence registry and bug ledger when present) and stable surface/evidence links; defect score contribution is always zero. |
 | Model escalation request | `engagementId`, `dispatchId`, `attempt`, `agent`, `signal`, `checkpointRef`, `resumable` | Worker stops; controller validates, routes, records prior-attempt telemetry, and rebinds the active allocation with `engagement start-attempt`; it replaces the consumed token with the returned token before opening the next thread | `argus/model-escalation-request@1`, current engagement state, the prior selected decision, and the referenced monotonic checkpoint. The signal is worker-declared only; `no-artifact` and `zero-candidates` are invalid here. Pre-spawn `model-unavailable` instead uses an availability binding, and a controller-observed outcome uses an outcome binding. |
 | Final summary | `status`, `counts`, `runner`, `sourceSchemas`, `summary`, `generatedAt` | Terminal `completed`, `degraded`, or `blocked` | All linked source schemas, runner categories, and final barrier/merge evidence. |
 
@@ -275,5 +276,6 @@ by `ai_agents_internal/authorization.json` (`audit.path`, default
 `timestamp == review.auditTimestamp`. Any failure aborts that merge with `evidence registry
 verification failed`. Minos's ledger merge applies the same checks, including the reviewer
 registration and the audit binding, to the evidence each row cites; a failure there
-quarantines the citing rows. Case-depth coverage re-validates the content of the evidence
-its cases cite.
+quarantines the citing rows. Kleio's coverage-result merge applies the digest, capture-time,
+and content checks to every evidence ID the coverage inputs cite, including the inventory's
+discovery evidence, and aborts on any failure.

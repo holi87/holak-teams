@@ -1,5 +1,5 @@
-import { calculateCoverage } from './coverage.mjs';
-import { ledgerEvidenceIds, quarantineFindings, reconcileCaseEvidence, reconcileFindings } from './finding-quality.mjs';
+import { calculateCoverage, coverageEvidenceReferences } from './coverage.mjs';
+import { ledgerEvidenceIds, quarantineFindings, reconcileCoverageEvidence, reconcileFindings } from './finding-quality.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import {
   chmodSync,
@@ -475,13 +475,18 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
         };
         const inventory = readDocument('surface-inventory', 'solution/surface-inventory.json');
         const observations = readDocument('coverage-observations', 'solution/coverage-observations.json');
-        if (observations.observations.some(row => row.cases?.length)) {
-          const evidence = readDocument('evidence-reference', 'solution/evidence-reference.json');
-          const errors = reconcileCaseEvidence(inventory, observations, evidence,
-            source => readManagedFile(engagementPath(manifest, source), 'coverage evidence'));
+        const evidence = existsSync(engagementPath(manifest, 'solution/evidence-reference.json'))
+          ? readDocument('evidence-reference', 'solution/evidence-reference.json') : null;
+        // Defect outcomes follow the canonical ledger; only an engagement without Minos may omit it.
+        let ledger = null;
+        if (state.merges['solution/bug-ledger.json']) ledger = readDocument('bug-ledger', 'solution/bug-ledger.json');
+        else if ((state.dispatchableAgents ?? manifest.selectedAgents).includes('minos')) throw new Error('coverage defect outcomes require the canonical bug ledger');
+        const readArtifact = source => readManagedFile(engagementPath(manifest, source), 'coverage evidence');
+        if (evidence && coverageEvidenceReferences(inventory, observations).length) {
+          const errors = reconcileCoverageEvidence(inventory, observations, evidence, readArtifact);
           if (errors.length) throw new Error(errors.join('; '));
         }
-        const calculated = calculateCoverage(inventory, observations);
+        const calculated = calculateCoverage(inventory, observations, { evidence, ledger, readArtifact });
         const canonicalJson = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
           ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
         if (canonicalJson({ ...document, generatedAt: null }) !== canonicalJson({ ...calculated, generatedAt: null })) throw new Error('coverage result does not match canonical inputs');
@@ -1928,7 +1933,10 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
 const PACKAGED_QUERY_OPTIONS = Object.freeze({
   technique: Object.freeze({ scopes: ['--role'], select: ['--role', '--inventory'] }),
   raci: Object.freeze({ list: [], route: ['--surface', '--activity', '--artifact', '--transition'] }),
-  coverage: Object.freeze({ validate: ['--inventory', '--observations'], calculate: ['--inventory', '--observations', '--output'] }),
+  coverage: Object.freeze({
+    validate: ['--inventory', '--observations', '--evidence', '--ledger', '--root'],
+    calculate: ['--inventory', '--observations', '--evidence', '--ledger', '--root', '--output'],
+  }),
 });
 
 function classifyPackagedQuery(primary, operation, args, allow, deny) {

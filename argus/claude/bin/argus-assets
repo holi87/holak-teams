@@ -70,7 +70,8 @@ import {
   writeFragment,
 } from '../lib/engagement.mjs';
 import { CONTRACT_KINDS, schemaId, validateCanonicalDocument } from '../lib/contracts.mjs';
-import { calculateCoverage, validateCasePlan, validateCoverageObservations, validateSurfaceInventory } from '../lib/coverage.mjs';
+import { calculateCoverage, resolveCoverage, validateCasePlan, validateCoverageObservations, validateSurfaceInventory } from '../lib/coverage.mjs';
+import { reconcileCoverageEvidence } from '../lib/finding-quality.mjs';
 import { compileJsonSchema } from '../lib/json-schema.mjs';
 import {
   adapterSnapshotSha256,
@@ -251,7 +252,7 @@ Usage:
   argus-assets engagement allocate --manifest <engagement.json> --lanes <slug,slug> --controller-token <odysseus-token>
   argus-assets engagement start-attempt --manifest <engagement.json> --lane <slug> --decision <model-decision.json> --token <lane-token> [--controller-token <odysseus-token>] [--dispatch-authorization <MDA-file>] [--wait <true|false>]
   argus-assets schema <list|validate> [options]
-  argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]
+  argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--evidence <json>] [--ledger <json>] [--root <dir>] [--output <json|->]
   argus-assets raci <list|route> [--surface <surface> --activity <activity> | --artifact <path> | --transition <machine:from:to>]
   argus-assets model list
   argus-assets model benchmark
@@ -2089,27 +2090,41 @@ function raciReproduceRoute(raci, route) {
 
 function coverageCommand(args) {
   const [operation, ...rest] = args;
-  if (!['validate', 'calculate'].includes(operation)) fail('usage: argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--output <json|->]');
-  const allowed = operation === 'calculate' ? new Set(['--inventory', '--observations', '--output']) : new Set(['--inventory', '--observations']);
-  const options = parseNamedOptions(rest, allowed);
+  const usage = 'usage: argus-assets coverage <validate|calculate> --inventory <json> --observations <json> [--evidence <json>] [--ledger <json>] [--root <dir>] [--output <json|->]';
+  if (!['validate', 'calculate'].includes(operation)) fail(usage);
+  const inputs = ['--inventory', '--observations', '--evidence', '--ledger', '--root'];
+  const options = parseNamedOptions(rest, new Set(operation === 'calculate' ? [...inputs, '--output'] : inputs));
   requireOptions(options, ['inventory', 'observations'], `coverage ${operation}`);
   let inventory;
   let observations;
+  let evidence = null;
+  let ledger = null;
   try {
     inventory = JSON.parse(readTextInput(options.inventory));
     observations = JSON.parse(readTextInput(options.observations));
+    if (options.evidence) evidence = JSON.parse(readTextInput(options.evidence));
+    if (options.ledger) ledger = JSON.parse(readTextInput(options.ledger));
   } catch (error) {
     fail(`coverage ${operation}: input is not valid JSON: ${error.message}`);
   }
-  const errors = [...validateCanonicalDocument('surface-inventory', inventory), ...validateCanonicalDocument('coverage-observations', observations)];
+  const errors = [
+    ...validateCanonicalDocument('surface-inventory', inventory),
+    ...validateCanonicalDocument('coverage-observations', observations),
+    ...(evidence ? validateCanonicalDocument('evidence-reference', evidence).map((error) => `evidence: ${error}`) : []),
+    ...(ledger ? validateCanonicalDocument('bug-ledger', ledger).map((error) => `ledger: ${error}`) : []),
+  ];
   if (!errors.length) errors.push(...validateCoverageObservations(observations, inventory), ...validateCasePlan(inventory, observations));
   if (errors.length) fail(`coverage ${operation}: ${errors.join('; ')}`);
+  const readArtifact = coverageArtifactReader(options.root ?? '.');
+  if (evidence) errors.push(...reconcileCoverageEvidence(inventory, observations, evidence, readArtifact));
+  errors.push(...resolveCoverage(inventory, observations, { evidence, ledger, readArtifact }).errors);
+  if (errors.length) fail(`coverage ${operation}: ${[...new Set(errors)].join('; ')}`);
   if (operation === 'validate') {
-    console.log(`PASS  coverage inventory=${options.inventory} observations=${options.observations}`);
+    console.log(`PASS  coverage inventory=${options.inventory} observations=${options.observations}${evidence ? ` evidence=${options.evidence}` : ''}${ledger ? ` ledger=${options.ledger}` : ''}`);
     return 0;
   }
   const output = options.output ?? '-';
-  const content = `${JSON.stringify(calculateCoverage(inventory, observations), null, 2)}\n`;
+  const content = `${JSON.stringify(calculateCoverage(inventory, observations, { evidence, ledger, readArtifact }), null, 2)}\n`;
   if (output === '-') process.stdout.write(content);
   else {
     const outputPath = resolve(output);
@@ -2119,6 +2134,24 @@ function coverageCommand(args) {
     console.log(`COVERAGE  calculated output=${outputPath}`);
   }
   return 0;
+}
+
+// Evidence sources are relative to --root (default: the working directory). A source may not
+// be absolute or contain '..', and its physical path must stay under the physical root, so a
+// symbolic link cannot redirect a registered capture outside it.
+function coverageArtifactReader(rootOption) {
+  const lexicalRoot = resolve(rootOption);
+  if (!statSafe(lexicalRoot)?.isDirectory()) fail(`coverage --root must be an existing directory: ${lexicalRoot}`);
+  const root = realpathSync(lexicalRoot);
+  return (source) => {
+    if (typeof source !== 'string' || source === '' || source.startsWith('/') || source.split(/[\\/]/).includes('..')) {
+      throw new Error(`evidence source must be a relative path without '..' segments: ${String(source)}`);
+    }
+    const physical = realpathSync(resolve(root, source));
+    if (!isWithin(root, physical)) throw new Error(`evidence source escapes --root through a symbolic link: ${source}`);
+    if (!statSync(physical).isFile()) throw new Error(`evidence source is not a regular file: ${source}`);
+    return readFileSync(physical);
+  };
 }
 
 function schemaCommand(args) {

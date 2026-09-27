@@ -536,12 +536,17 @@ counts as a non-dispatched predecessor, and its unmet gates remain a named resid
 
 The installed `schemas/` directory defines the versioned, machine-readable contracts:
 `argus/bug-ledger@2`, `argus/lane-plan@2`, `argus/evidence-reference@3`,
-`argus/automation-status@2`, `argus/runner-result@1`, and the inventory, coverage, and
-final-summary contracts. Canonical solution JSON documents are single-owner
+`argus/automation-status@2`, `argus/runner-result@1`, `argus/surface-inventory@1`,
+`argus/coverage-observations@2`, `argus/coverage-result@2`, and the final-summary contract.
+Canonical solution JSON documents are single-owner
 `json-document` artifacts; the runner result is validated at its runner-owned report path.
-Lane-plan, evidence-reference, and
-automation-status accept multiple valid collection fragments; their owner merges records
-in stable-key order and rejects duplicate keys across fragments. The controller validates
+Lane-plan, evidence-reference, automation-status, and coverage-observations (keyed by
+`<lane>:<surfaceId>`) accept multiple valid collection fragments; their owner merges records
+in stable-key order and rejects duplicate keys across fragments. Coverage observations cite
+evidence and ledger references only: the coverage-result merge derives each surface's
+execution, assertion, evidence, and automation flags from the canonical evidence registry,
+takes defect outcomes from the canonical bug ledger (required whenever Minos is
+dispatchable), and rejects a Kleio result that differs from that recalculation. The controller validates
 every fragment before it is persisted, verifies its `engagementId`, then validates the
 deterministic merged document again; malformed, incompatible, duplicate, or
 cross-engagement content cannot reach a canonical file.

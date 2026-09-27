@@ -64,7 +64,7 @@ for rule in \
   fi
 done
 
-for retired in lane-plan:1 evidence-reference:1 evidence-reference:2 automation-status:1 bug-ledger:1; do
+for retired in lane-plan:1 evidence-reference:1 evidence-reference:2 automation-status:1 bug-ledger:1 coverage-observations:1 coverage-result:1; do
   kind="${retired%%:*}" version="${retired#*:}"
   jq --arg schema "argus/$kind@$version" --argjson version "$version" '."$schema"=$schema | .schemaVersion=$version' \
     "$FIXTURES/valid/$kind.json" >"$WORK/$kind-retired-v$version.json"
@@ -134,8 +134,33 @@ jq -e '."$schema" == "argus/evidence-reference@3" and .schemaVersion == 3 and .r
 "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/evidence-reference.json >/dev/null
 jq -e '.references | map(.id) == ["EVD-0001", "EVD-0002"]' "$TARGET/solution/evidence-reference.json" >/dev/null || fail 'evidence fragments were not merged in deterministic ID order'
 
-# Exercise the actual canonical merge gate, not only the standalone validator.
+# Coverage observations cite registered evidence; coverage-result merges only against the
+# canonical ledger while Minos is dispatchable. The Kleio fragment is calculated with the ledger
+# that Minos merges next, so the refused merge succeeds unchanged once that ledger exists.
+node --input-type=module - "$WORK" <<'NODE'
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+const work=process.argv[2];
+const inventory={$schema:'argus/surface-inventory@1',schemaVersion:1,engagementId:'schema-fixture',owner:'kalchas',discovery:{candidates:1,characterized:1},items:[{id:'SRF-API-ORDER',surfaceType:'api',lane:'api',risk:'critical',riskWeight:5,riskBasis:'Ownership invariant',accessibility:'testable',denominators:['role','state'],discoveryEvidenceIds:['EVD-0002'],obligations:['OWNER','OTHER'].map(role=>({id:`CASE-${role}`,dimensions:{role,state:'active'},oracleId:'ORC-ACCESS',applicability:'Two synthetic actors',weight:5}))}]};
+const observations={$schema:'argus/coverage-observations@2',schemaVersion:2,engagementId:'schema-fixture',observations:[{observationId:'atalanta:SRF-API-ORDER',lane:'atalanta',surfaceId:'SRF-API-ORDER',executions:[{evidenceId:'EVD-0001'}],assertions:[{id:'A1',oracleId:'ORC-ACCESS',evidenceIds:['EVD-0001'],controlEvidenceIds:['EVD-0002']}],evidenceIds:['EVD-0001'],defectRefs:['ATA-001'],cases:[{obligationId:'CASE-OWNER',oracleId:'ORC-ACCESS',outcome:'passed',evidenceIds:['EVD-0001'],controlEvidenceIds:['EVD-0002']}]}]};
+writeFileSync(join(work,'inventory.json'),JSON.stringify(inventory));writeFileSync(join(work,'observations.json'),JSON.stringify(observations));
+NODE
 jq '.engagementId = "schema-fixture"' "$FIXTURES/valid/bug-ledger.json" >"$WORK/proven-ledger.json"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane kalchas --token "$KALCHAS" --canonical solution/surface-inventory.json --id case-plan --input "$WORK/inventory.json" >/dev/null
+"$CLI" engagement merge --manifest "$MANIFEST" --owner kalchas --token "$KALCHAS" --canonical solution/surface-inventory.json >/dev/null
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane atalanta --token "$ATALANTA" --canonical solution/coverage-observations.json --id cases --input "$WORK/observations.json" >/dev/null
+"$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/coverage-observations.json >/dev/null
+jq -e '."$schema" == "argus/coverage-observations@2" and (.observations | map(.observationId)) == ["atalanta:SRF-API-ORDER"]' "$TARGET/solution/coverage-observations.json" >/dev/null || fail 'coverage observations were not merged as a v2 collection'
+"$CLI" coverage calculate --inventory "$WORK/inventory.json" --observations "$WORK/observations.json" \
+  --evidence "$TARGET/solution/evidence-reference.json" --ledger "$WORK/proven-ledger.json" --root "$TARGET" >"$WORK/case-coverage.json"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/coverage-result.json --id case-result --input "$WORK/case-coverage.json" >/dev/null
+if "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/coverage-result.json >"$WORK/coverage-no-ledger.out" 2>&1; then
+  fail 'coverage-result merged without the canonical bug ledger while Minos is dispatchable'
+fi
+grep -Fq 'coverage defect outcomes require the canonical bug ledger' "$WORK/coverage-no-ledger.out" || fail "coverage merge without a ledger failed for another reason: $(<"$WORK/coverage-no-ledger.out")"
+test ! -e "$TARGET/solution/coverage-result.json" || fail 'a refused coverage merge wrote the canonical result'
+
+# Exercise the actual canonical merge gate, not only the standalone validator.
 ledger_fragment="$("$CLI" engagement fragment --manifest "$MANIFEST" --lane minos --token "$MINOS" --canonical solution/bug-ledger.json --id proven-ledger --input "$WORK/proven-ledger.json")"
 # The triager must not wait for the reporter's later canonical registry.
 mv "$TARGET/solution/evidence-reference.json" "$WORK/published-registry.json"
@@ -248,21 +273,10 @@ jq -e '.tests | map(.testId) == ["REG-0001", "TST-0002"]' "$TARGET/solution/auto
 if "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/final-summary.json --id foreign --input "$FIXTURES/valid/final-summary.json" >/dev/null 2>&1; then
   fail "cross-engagement canonical fragment unexpectedly passed"
 fi
-node --input-type=module - "$WORK" <<'NODE'
-import {writeFileSync} from 'node:fs';
-import {join} from 'node:path';
-const work=process.argv[2];
-const inventory={$schema:'argus/surface-inventory@1',schemaVersion:1,engagementId:'schema-fixture',owner:'kalchas',discovery:{candidates:1,characterized:1},items:[{id:'SRF-API-ORDER',surfaceType:'api',lane:'api',risk:'critical',riskWeight:5,riskBasis:'Ownership invariant',accessibility:'testable',denominators:['role','state'],discoveryEvidenceIds:['EVD-0001'],obligations:['OWNER','OTHER'].map(role=>({id:`CASE-${role}`,dimensions:{role,state:'active'},oracleId:'ORC-ACCESS',applicability:'Two synthetic actors',weight:5}))}]};
-const observations={$schema:'argus/coverage-observations@1',schemaVersion:1,engagementId:'schema-fixture',observations:[{surfaceId:'SRF-API-ORDER',executed:true,assertions:[{id:'A1',oracleId:'ORC-ACCESS',meaningful:true}],evidenceIds:['EVD-0001'],defects:[],cases:[{obligationId:'CASE-OWNER',oracleId:'ORC-ACCESS',outcome:'passed',evidenceIds:['EVD-0001'],controlEvidenceIds:['EVD-0002']}]}]};
-writeFileSync(join(work,'inventory.json'),JSON.stringify(inventory));writeFileSync(join(work,'observations.json'),JSON.stringify(observations));
-NODE
-"$CLI" engagement fragment --manifest "$MANIFEST" --lane kalchas --token "$KALCHAS" --canonical solution/surface-inventory.json --id case-plan --input "$WORK/inventory.json" >/dev/null
-"$CLI" engagement merge --manifest "$MANIFEST" --owner kalchas --token "$KALCHAS" --canonical solution/surface-inventory.json >/dev/null
-"$CLI" engagement fragment --manifest "$MANIFEST" --lane atalanta --token "$ATALANTA" --canonical solution/coverage-observations.json --id cases --input "$WORK/observations.json" >/dev/null
-"$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/coverage-observations.json >/dev/null
-"$CLI" coverage calculate --inventory "$WORK/inventory.json" --observations "$WORK/observations.json" >"$WORK/case-coverage.json"
-"$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/coverage-result.json --id case-result --input "$WORK/case-coverage.json" >/dev/null
 "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/coverage-result.json >/dev/null
+jq -e '."$schema" == "argus/coverage-result@2" and (.sourceSchemas | length) == 4 and .surfaces[0].executed and .surfaces[0].asserted
+  and .criticalUnexecuted == [] and .defectOutcomes.headline == 2 and .defectOutcomes.linked == 1 and .defectOutcomes.unlinked == ["BUG-0002"]' \
+  "$TARGET/solution/coverage-result.json" >/dev/null || fail 'the merged coverage result does not derive execution and ledger outcomes'
 jq -e '.overall.caseDepth.coverage == 0.5 and (.overall.caseDepth.gaps | length) == 1' "$TARGET/solution/coverage-result.json" >/dev/null || fail 'case depth overstated partial coverage'
 cp "$TARGET/reports/runner.log" "$WORK/original-control.txt"
 printf 'changed control proof' >"$TARGET/reports/runner.log"

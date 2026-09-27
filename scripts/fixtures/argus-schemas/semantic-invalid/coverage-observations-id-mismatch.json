@@ -1,0 +1,1 @@
+{"$schema":"argus/coverage-observations@2","schemaVersion":2,"engagementId":"fixture-engagement","observations":[{"observationId":"atalanta:SRF-API-HEALTH","lane":"talos","surfaceId":"SRF-API-HEALTH","executions":[{"evidenceId":"EVD-0002"}],"assertions":[],"evidenceIds":["EVD-0002"],"defectRefs":[]}]}

@@ -1,0 +1,7 @@
+Discovery crawl for engagement coverage-fixture (synthetic)
+Candidates: 5; characterized: 4
+SRF-UI-CHECKOUT ui GET /checkout: checkout form of the revenue journey
+SRF-API-ORDERS-POST api POST /api/orders: creates a charged order
+SRF-EVENT-ORDER-CREATED event order.created: starts fulfilment after checkout
+SRF-DATA-AUDIT data audit store: the read-only test account has no access
+Uncharacterized: one admin route answered 403 before it could be characterized
