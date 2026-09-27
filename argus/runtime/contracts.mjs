@@ -242,6 +242,8 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
     `- Confirmed: ${bugs.confirmed}`,
     `- Suspected: ${bugs.suspected}`,
     `- Needs oracle: ${bugs.needsOracle}`,
+    `- Bounced (repair pending): ${bugs.bounced}`,
+    `- Quarantined (integrity failure): ${bugs.quarantined}`,
     `- Duplicate: ${bugs.duplicate}`,
     `- Rejected: ${bugs.rejected}`,
     `- Confirmed with verified regression: ${regression.wired} (uncovered: ${regression.uncovered.length ? regression.uncovered.join(', ') : 'none'})`,
@@ -252,6 +254,11 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
     '',
     ...(document.unproven.length ? document.unproven.map((entry) =>
       `- ${entry.id} (${entry.severity}, ${entry.status}): ${entry.title} — would be confirmed by: ${entry.missing.join(', ')} — ${entry.detail}`) : ['None.']),
+    '',
+    '## Held back: bounced and quarantined',
+    '',
+    ...(document.held.length ? document.held.map((entry) =>
+      `- ${entry.id} (${entry.severity}, ${entry.status}): ${entry.title} — ${entry.status === 'bounced' ? 'missing' : 'quarantined for'}: ${entry.reasons.join('; ')}`) : ['None.']),
     '',
     '## Automation review',
     '',
@@ -523,7 +530,8 @@ function validateAutomationReview(document) {
 
 // The final-summary facts are derived from the canonical ledger, automation status, coverage
 // result, and review record at merge; these rules keep a submitted document self-consistent, so
-// no summary can headline fewer defects than it counts or drop a likely, unproven finding.
+// no summary can headline fewer defects than it counts or drop a likely, unproven finding or a
+// bounced or quarantined one.
 function validateFinalSummary(document) {
   const errors = [];
   const { bugs, regression } = document.counts;
@@ -534,6 +542,11 @@ function validateFinalSummary(document) {
   const unprovenWith = (status) => document.unproven.filter((entry) => entry.status === status).length;
   if (unprovenWith('suspected') !== bugs.suspected || unprovenWith('needs-oracle') !== bugs.needsOracle) {
     errors.push('unproven statuses must match counts.bugs.suspected and counts.bugs.needsOracle');
+  }
+  if (!isSortedUnique(document.held.map((entry) => entry.id))) errors.push('held entries must be sorted by unique id');
+  const heldWith = (status) => document.held.filter((entry) => entry.status === status).length;
+  if (heldWith('bounced') !== bugs.bounced || heldWith('quarantined') !== bugs.quarantined) {
+    errors.push('held must list exactly the bounced and quarantined bugs');
   }
   if (!isSortedUnique(regression.uncovered)) errors.push('counts.regression.uncovered must be sorted and unique');
   if (regression.wired + regression.uncovered.length !== bugs.confirmed) errors.push('counts.regression wired and uncovered must partition the confirmed bugs');

@@ -163,7 +163,7 @@ credentials. Keep credentials, tokens, and connection strings out of `summary` a
 | Coverage observations | `observations[]`: `observationId`, `lane`, `surfaceId`, `executions`, `assertions`, `evidenceIds`, `defectRefs`, `cases` | One record per lane and surface, written by that lane and superseded by its later fragment of the same `observationId` | Inventory link; every execution, assertion, control, outcome, and case citation resolves to a registered `EVD-NNNN`, every runner-result execution to an executed runner case (mapped to the surface by the merged automation status), and every defect reference to a ledger ID or origin. |
 | Coverage result | `discovery`, `overall`, `lanes`, `surfaces`, `criticalUnexecuted`, `runnerCaseMapping`, `scopedOutcomes`, `defectOutcomes` | Deterministically recalculated from canonical inputs, including the merged automation status | Exact input schema IDs (inventory, observations, and the evidence registry and bug ledger when present) and stable surface/evidence links; `runnerCaseMapping` is `verified` only when a merged automation status mapped every credited runner case; defect score contribution is always zero. |
 | Model escalation request | `engagementId`, `dispatchId`, `attempt`, `agent`, `signal`, `checkpointRef`, `resumable` | Worker stops; controller validates, routes, records prior-attempt telemetry, and rebinds the active allocation with `engagement start-attempt`; it replaces the consumed token with the returned token before opening the next thread | `argus/model-escalation-request@1`, current engagement state, the prior selected decision, and the referenced monotonic checkpoint. The signal is worker-declared only; `no-artifact` and `zero-candidates` are invalid here. Pre-spawn `model-unavailable` instead uses an availability binding, and a controller-observed outcome uses an outcome binding. |
-| Final summary | Kleio: `status`, `summary`, `generatedAt`. Merge-derived and overwritten: `statusReasons`, `counts`, `unproven`, `automationReview`, `runner`, `coverage`, `sourceSchemas` | Terminal `completed`, `degraded`, or `blocked`, never better than the derived status ceiling | `headline` = confirmed + suspected; `unproven` lists exactly the suspected and needs-oracle rows; `completed` carries no status reason; every fact re-derived from the merge-verified canonical inputs and `reports/argus-runner-result.json`. |
+| Final summary | Kleio: `status`, `summary`, `generatedAt`. Merge-derived and overwritten: `statusReasons`, `counts`, `unproven`, `held`, `automationReview`, `runner`, `coverage`, `sourceSchemas` | Terminal `completed`, `degraded`, or `blocked`, never better than the derived status ceiling | `headline` = confirmed + suspected; `unproven` lists exactly the suspected and needs-oracle rows and `held` the bounced and quarantined rows; `completed` carries no status reason; every fact re-derived from the merge-verified canonical inputs and `reports/argus-runner-result.json`. |
 | Automation review | `reviews[]`: `reviewId`, `round`, `supersedes`, `verdict`, `reviewedAt`, `corpus`, `reviewedCommit`, `blockers`, `warnings`, `resolved`, `uncoveredConfirmedBugs`, `evidenceCommands` | `pending → approved/blocked`, `blocked → approved`, and `approved → blocked` when a stale corpus is re-reviewed; a published round never changes | Contiguous `REV-NN` rounds, each superseding its predecessor; `corpus.sha256` equals `argus-assets automation-review digest` at merge time; each round's `resolved` accounts for every blocker of the round before it. |
 
 Only the controller changes coordination state: worker allocation, token generation,
@@ -348,7 +348,7 @@ active-engagement write guard; it never writes a lease token.
 owns only its narrative (`summary`, `generatedAt`) and the status she proposes. She builds her
 fragment from `argus-assets engagement report-facts --manifest <engagement.json> [--output
 <json|->]`, which is read-only, takes no lease token, and prints the derived fields plus their
-`statusCeiling`. The merge derives the same facts again, overwrites `counts`, `unproven`,
+`statusCeiling`. The merge derives the same facts again, overwrites `counts`, `unproven`, `held`,
 `automationReview`, `runner`, `coverage`, `sourceSchemas`, and `statusReasons`, and sets the
 status to the worse of Kleio's status and the ceiling (`completed` < `degraded` < `blocked`); it
 never raises a status. Because Kleio may supersede her fragment, re-running the merge after a
@@ -357,11 +357,14 @@ late ledger, coverage, runner, or corpus change re-derives every fact.
 Each input counts only once merged and only while its file matches its merge digest:
 
 - `counts.bugs` from `solution/bug-ledger.json` (required while Minos is dispatchable;
-  otherwise every bug count is 0): `confirmed`, `suspected`, `needsOracle`, `duplicate`,
-  `rejected`, and `headline` = confirmed + suspected;
+  otherwise every bug count is 0): one count per ledger status (`confirmed`, `suspected`,
+  `needsOracle`, `bounced`, `quarantined`, `duplicate`, `rejected`) and `headline` =
+  confirmed + suspected;
 - `unproven`: every `suspected` and `needs-oracle` row, sorted by ID, with its
   `missingProof.elements` as `missing` and its `missingProof.detail`, so no likely finding is
   dropped from the report;
+- `held`: every `bounced` row with its `repair.missing` elements and every `quarantined` row
+  with its `quarantine.reasons`, sorted by ID, as `reasons`; neither counts in the headline;
 - `counts.regression`: `wired` counts the confirmed bugs covered by an `implemented`,
   `passed`, or `failed` automation-status test; `uncovered` lists the rest; `counts.automated`
   counts those tests and `counts.evidence` the canonical evidence references (0 when unmerged);
@@ -379,6 +382,7 @@ Each input counts only once merged and only while its file matches its merge dig
 |---|---|---|
 | `automation-review-blocked`, `automation-review-stale`, `automation-review-absent` | `blocked` | The review is BLOCK, an APPROVE of a changed corpus, or missing while Aristarchus is dispatchable. |
 | `confirmed-bug-without-regression` | `blocked` | A runner ran and a confirmed bug has no wired regression. |
+| `bounced-findings`, `quarantined-findings` | `degraded` | A ledger row is still bounced (its proof repair did not land) or quarantined (its evidence failed reconciliation). |
 | `critical-surface-unexecuted` | `degraded` | `coverage.criticalUnexecuted` is non-empty. |
 | `case-depth-gaps` | `degraded` | Case depth is missing, not fully planned, or has gaps or unplanned surfaces. |
 | `runner-not-delivery-gate` | `degraded` | A runner result exists but is not a delivery gate. |

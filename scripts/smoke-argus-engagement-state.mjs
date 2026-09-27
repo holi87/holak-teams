@@ -768,8 +768,8 @@ function mergeFinalSummary(fixture, token) {
 
   const summary = structuredClone(finalSummaryFixture);
   summary.engagementId = fixture.manifest.engagementId;
-  Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [] });
-  summary.counts = { bugs: { confirmed: 0, suspected: 0, needsOracle: 0, duplicate: 0, rejected: 0, headline: 0 }, regression: { wired: 0, uncovered: [] }, automated: 0, evidence: 0 };
+  Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [], held: [] });
+  summary.counts = { bugs: { confirmed: 0, suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, headline: 0 }, regression: { wired: 0, uncovered: [] }, automated: 0, evidence: 0 };
   summary.automationReview = { status: 'not-applicable', reviewId: null, round: null, blockers: 0, warnings: 0 };
   writeFragment(fixture.manifest, 'kleio', token, 'solution/final-summary.json', 'final-summary', `${JSON.stringify(summary)}\n`);
   mergeCanonical(fixture.manifest, 'kleio', token, 'solution/final-summary.json');

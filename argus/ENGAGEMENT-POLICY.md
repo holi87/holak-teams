@@ -666,11 +666,12 @@ BLOCKED, STALE, or ABSENT (a new round is required), and 14 for invalid input. S
 `solution/final-summary.json` is the canonical final record. Kleio supplies the narrative
 and a proposed status from `argus-assets engagement report-facts` (read-only, no token); the
 merge re-derives the counts (headline = confirmed + suspected), the likely-but-unproven
-findings, the automation-review verdict, the runner outcome, the required coverage, and the
+findings, the bounced and quarantined findings held back from the headline, the
+automation-review verdict, the runner outcome, the required coverage, and the
 source schemas from the merge-verified canonical inputs and `reports/argus-runner-result.json`,
 overwrites them, and caps the status by the derived `statusReasons`: a BLOCK, STALE, or ABSENT
-review or a confirmed bug without regression blocks; an unexecuted critical surface, case-depth
-gaps, a non-delivery-gate runner, runner exit codes 11 to 15, or a non-converged deep-hunt skip
+review or a confirmed bug without regression blocks; a bounced or quarantined finding, an
+unexecuted critical surface, case-depth gaps, a non-delivery-gate runner, runner exit codes 11 to 15, or a non-converged deep-hunt skip
 degrade. It never raises a status. The merge also renders `solution/FINAL-SUMMARY.md` with an
 explicit `Source schema:` line and one `Status reason:` line per reason, so the human-facing
 summary is traceable to the machine contract. The lane-plan `lanes`, evidence-reference

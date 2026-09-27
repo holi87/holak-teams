@@ -438,8 +438,9 @@ summary_fragment() {
 summary_merge() { "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/final-summary.json; }
 cp "$FIXTURES/valid/runner-result.json" "$TARGET/reports/argus-runner-result.json"
 "$CLI" engagement report-facts --manifest "$MANIFEST" >"$WORK/report-facts.json"
-jq -e '.statusCeiling == "degraded" and .statusReasons == ["case-depth-gaps"]
-  and .counts.bugs == {confirmed: 1, suspected: 1, needsOracle: 1, duplicate: 1, rejected: 1, headline: 2}
+jq -e '.statusCeiling == "degraded" and .statusReasons == ["bounced-findings", "case-depth-gaps", "quarantined-findings"]
+  and .counts.bugs == {confirmed: 1, suspected: 1, needsOracle: 1, bounced: 1, quarantined: 1, duplicate: 1, rejected: 1, headline: 2}
+  and (.held | map([.id, .status, .reasons])) == [["BUG-0006", "bounced", ["reproduction"]], ["BUG-0007", "quarantined", ["The original capture was replaced after collection; fresh evidence is required."]]]
   and .counts.regression == {wired: 1, uncovered: []} and .counts.automated == 2 and .counts.evidence == 3
   and (.unproven | map([.id, .status, .missing])) == [["BUG-0002", "suspected", ["independent-reproduction"]], ["BUG-0003", "needs-oracle", ["oracle"]]]
   and .automationReview == {status: "approved", reviewId: "REV-02", round: 2, blockers: 0, warnings: 0}
@@ -461,14 +462,20 @@ grep -Fxq '## Likely, unproven' "$SUMMARY_MD" || fail 'rendered summary has no L
 grep -Fxq -- '- BUG-0002 (Major, suspected): Cart total accepts a negative quantity — would be confirmed by: independent-reproduction — An independent reproduction from fresh synthetic accounts would confirm it.' "$SUMMARY_MD" || \
   fail 'rendered summary dropped the suspected finding'
 grep -Fq -- '- BUG-0003 (Minor, needs-oracle): Order total rounds half-cent amounts down — would be confirmed by: oracle' "$SUMMARY_MD" || fail 'rendered summary dropped the needs-oracle finding'
+grep -Fxq -- '- Bounced (repair pending): 1' "$SUMMARY_MD" && grep -Fxq -- '- Quarantined (integrity failure): 1' "$SUMMARY_MD" || fail 'rendered summary does not count bounced and quarantined rows'
+grep -Fxq '## Held back: bounced and quarantined' "$SUMMARY_MD" || fail 'rendered summary has no held-back section'
+grep -Fxq -- '- BUG-0006 (Major, bounced): Coupon applies twice after a retried checkout — missing: reproduction' "$SUMMARY_MD" || fail 'rendered summary dropped the bounced finding'
+grep -Fxq -- '- BUG-0007 (Minor, quarantined): Order history omits cancelled orders — quarantined for: The original capture was replaced after collection; fresh evidence is required.' "$SUMMARY_MD" || \
+  fail 'rendered summary dropped the quarantined finding'
+grep -Fxq 'Status reason: bounced-findings' "$SUMMARY_MD" && grep -Fxq 'Status reason: quarantined-findings' "$SUMMARY_MD" || fail 'rendered summary does not name the held-back status reasons'
 grep -Fq 'APPROVE (REV-02' "$SUMMARY_MD" || fail 'rendered summary has no automation review verdict'
 grep -Fq 'Required-case depth: 50%' "$SUMMARY_MD" || fail "rendered summary has no surface-derived coverage"
 grep -Fxq -- '- Automated re-execution: 0%' "$SUMMARY_MD" || fail 'rendered summary has no automated re-execution ratio'
-jq -e '.status == "degraded" and .statusReasons == ["case-depth-gaps"]' "$TARGET/solution/final-summary.json" >/dev/null || fail 'the merged summary is not degraded by case-depth gaps'
+jq -e '.status == "degraded" and .statusReasons == ["bounced-findings", "case-depth-gaps", "quarantined-findings"]' "$TARGET/solution/final-summary.json" >/dev/null || fail 'the merged summary is not degraded by held-back findings and case-depth gaps'
 
 # An internally consistent but inflated, completed fragment supersedes the first one and merges
 # to the derived facts; only the narrative is Kleio's.
-jq -c '.counts.bugs = {confirmed: 9, suspected: 0, needsOracle: 2, duplicate: 0, rejected: 0, headline: 9} | .counts.regression = {wired: 9, uncovered: []}
+jq -c '.counts.bugs = {confirmed: 9, suspected: 0, needsOracle: 2, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, headline: 9} | .counts.regression = {wired: 9, uncovered: []} | .held = []
   | .counts.automated = 40 | .counts.evidence = 99 | .unproven |= map(.status = "needs-oracle") | .coverage.executionCoverage = 1
   | .coverage.caseDepth = {plannedWeight: 10, executedWeight: 10, verifiedWeight: 10, coverage: 1, unplannedSurfaces: [], gaps: []}
   | .automationReview = {status: "not-applicable", reviewId: null, round: null, blockers: 0, warnings: 0}
@@ -478,8 +485,8 @@ jq -c '.counts.bugs = {confirmed: 9, suspected: 0, needsOracle: 2, duplicate: 0,
 summary_fragment summary-inflated "$WORK/final-summary-inflated.json"
 summary_merge >/dev/null
 jq -e --slurpfile facts "$WORK/report-facts.json" '.counts == $facts[0].counts and .unproven == $facts[0].unproven and .coverage == $facts[0].coverage
-  and .runner == $facts[0].runner and .automationReview == $facts[0].automationReview and .sourceSchemas == $facts[0].sourceSchemas
-  and .status == "degraded" and .statusReasons == ["case-depth-gaps"] and .summary == "A corrected narrative."' \
+  and .held == $facts[0].held and .runner == $facts[0].runner and .automationReview == $facts[0].automationReview and .sourceSchemas == $facts[0].sourceSchemas
+  and .status == "degraded" and .statusReasons == ["bounced-findings", "case-depth-gaps", "quarantined-findings"] and .summary == "A corrected narrative."' \
   "$TARGET/solution/final-summary.json" >/dev/null || fail "an inflated fragment overstated the merged summary: $(<"$TARGET/solution/final-summary.json")"
 "$CLI" engagement status --manifest "$MANIFEST" | jq -e '.merges["solution/final-summary.json"].effectiveFragment == "summary-inflated"' >/dev/null || \
   fail 'the final-summary merge did not publish the superseding narrative'
@@ -500,11 +507,11 @@ summary_fragment summary-restored "$WORK/final-summary.json"
 cp "$TARGET/tests/a.spec.ts" "$WORK/a.spec.ts.summary"
 printf "test('late edit', async () => { expect(await total()).toBe(42); });\n" >>"$TARGET/tests/a.spec.ts"
 summary_merge >/dev/null
-jq -e '.status == "blocked" and .statusReasons == ["automation-review-stale", "case-depth-gaps"] and .automationReview.status == "stale"' \
+jq -e '.status == "blocked" and .statusReasons == ["automation-review-stale", "bounced-findings", "case-depth-gaps", "quarantined-findings"] and .automationReview.status == "stale"' \
   "$TARGET/solution/final-summary.json" >/dev/null || fail "a stale automation review did not block the final summary: $(<"$TARGET/solution/final-summary.json")"
 grep -Fxq 'Status reason: automation-review-stale' "$SUMMARY_MD" && grep -Fq 'STALE (REV-02' "$SUMMARY_MD" || fail 'the rendered summary does not report the stale review'
 cp "$WORK/a.spec.ts.summary" "$TARGET/tests/a.spec.ts"
 summary_merge >/dev/null
-jq -e '.status == "degraded" and .statusReasons == ["case-depth-gaps"]' "$TARGET/solution/final-summary.json" >/dev/null || fail 'restoring the approved corpus did not re-derive the degraded summary'
+jq -e '.status == "degraded" and .statusReasons == ["bounced-findings", "case-depth-gaps", "quarantined-findings"]' "$TARGET/solution/final-summary.json" >/dev/null || fail 'restoring the approved corpus did not re-derive the degraded summary'
 
 printf 'PASS  Argus schemas: current fixtures, retired version rejection, deterministic collection merges, fragment rejection, per-bug ledger quarantine, latest-revision ledgers, append-only corpus-bound automation reviews, reviewer-registered audited binary evidence, stable IDs, runner results, and a source-versioned final summary whose facts and status ceiling are derived at merge\n'

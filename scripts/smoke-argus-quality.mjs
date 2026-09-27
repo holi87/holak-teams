@@ -184,8 +184,9 @@ obs.cases[1].oracleId = 'invented'; assert(validateCasePlan(inventory, observati
 const finalSummary = read('./fixtures/argus-schemas/valid/final-summary.json');
 const rendered = renderFinalSummary(finalSummary).split('\n');
 const statusAt = rendered.indexOf('Status: degraded');
-assert.deepEqual(rendered.slice(statusAt, statusAt + 3), ['Status: degraded', 'Status reason: case-depth-gaps', 'Status reason: critical-surface-unexecuted']);
-for (const line of ['- Defect headline (confirmed + suspected): 2', '- Needs oracle: 1', '- Confirmed with verified regression: 1 (uncovered: none)', '- Automated tests: 2', '## Likely, unproven',
+assert.deepEqual(rendered.slice(statusAt, statusAt + 5), ['Status: degraded', 'Status reason: bounced-findings', 'Status reason: case-depth-gaps', 'Status reason: critical-surface-unexecuted', 'Status reason: quarantined-findings']);
+for (const line of ['- Defect headline (confirmed + suspected): 2', '- Needs oracle: 1', '- Bounced (repair pending): 1', '- Quarantined (integrity failure): 1', '## Held back: bounced and quarantined',
+  '- BUG-0006 (Major, bounced): Coupon applies twice after a retried checkout — missing: reproduction', '- Confirmed with verified regression: 1 (uncovered: none)', '- Automated tests: 2', '## Likely, unproven',
   '- BUG-0003 (Minor, needs-oracle): Order total rounds half-cent amounts down — would be confirmed by: oracle — A cited rounding rule for order totals would decide whether this is a defect.',
   '- Verdict: APPROVE (REV-02, round 2, blockers 0, warnings 0)', '- Delivery gate: yes', '- Automated re-execution: 100%', '- Critical surface not executed: SRF-UI-HOME', '- Required-case depth: unknown (not fully planned)']) {
   assert(rendered.includes(line), `rendered final summary lacks: ${line}`);
@@ -206,6 +207,9 @@ for (const mutate of [
   (document) => { document.counts.bugs.headline = 1; },
   (document) => { document.unproven = document.unproven.slice(1); },
   (document) => { document.unproven.reverse(); },
+  (document) => { document.held = document.held.slice(1); },
+  (document) => { document.held.reverse(); },
+  (document) => { document.counts.bugs.quarantined = 0; },
   (document) => { document.status = 'completed'; },
   (document) => { document.counts.regression.wired = 0; },
   (document) => { document.automationReview.reviewId = null; },
