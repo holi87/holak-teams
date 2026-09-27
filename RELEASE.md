@@ -134,7 +134,7 @@ This major release acts on the owner's 23 effectiveness recommendations. Each re
 | 22 | Prompt budgets that allow needed growth | `prompt-budgets` v2 sets absolute ceilings and drops the 35% reduction rule. The corpus hash also covers the doctrine profiles. Approval comes from benchmark evidence or a pending record bound to one release | H-1, H-8 |
 | 23 | Less launch friction | Preflight report v3: a blocked non-essential lane becomes `deferred` with a named residual risk. Essential lanes (Kalchas, Metis, Minos, Kleio, and Atlas outside Mode B) and the mode's mandatory hunters still stop the engagement | P-02 |
 
-The release tail after the version bump finishes the list. T-24 adds the strict template evaluator, removes the legacy paths, and sets the final asset budgets (items 6 and 16). H-8 restamps the prompt corpus for 5.0.0 (item 22). D-1 writes the operator documentation for the new launch flags, sandbox policy, dispositions, and gate resolution (items 1, 10, and 23).
+The release tail after the version bump finished the list. T-24 added the strict template evaluator, removed the legacy paths, and set the final asset budgets (items 6 and 16). H-8 restamped the prompt corpus for 5.0.0 (item 22). D-1 wrote the operator documentation for the new launch flags, sandbox policy, dispositions, and gate resolution (items 1, 10, and 23).
 
 ### Breaking contract versions
 
@@ -166,6 +166,6 @@ Where a recommendation would have weakened a boundary, 5.0 ships the safe varian
 ### Known limits
 
 - **The discovery baseline is not recorded.** `scripts/eval/discovery/baseline.json` has status `not-recorded`, so `node scripts/eval/discovery/gate.mjs --check` prints SKIP. The model-quality gate stays inactive until the owner adjudicates a real engagement and runs `record-baseline.mjs --write`. This release claims no measured improvement in discovery quality.
-- **Prompt corpus approval is pending.** `argus/prompt-budgets.json` carries a pending `approvedCorpus` with no benchmark evidence. A pending approval is valid only for the Argus release it names, so each release restamps it with `approve-argus-prompts.mjs --benchmark-pending`. It stays pending until the owner runs the paired discovery evaluation (`run.mjs`, judge, spot-check, `adjudicate.mjs`) and records the result with `approve-argus-prompts.mjs --benchmark`.
+- **Prompt corpus approval is pending.** `argus/prompt-budgets.json` carries a pending `approvedCorpus` with no benchmark evidence. The shipped corpus `122e986fc87c` is 81,397 raw and 140,670 effective Claude words, and an estimated 252,705 Codex tokens. A pending approval is valid only for the Argus release it names, so each release restamps it with `approve-argus-prompts.mjs --benchmark-pending`. It stays pending until the owner runs the paired discovery evaluation (`run.mjs`, judge, spot-check, `adjudicate.mjs`) and records the result with `approve-argus-prompts.mjs --benchmark`.
 - **Headless Chromium under the Linux bubblewrap sandbox is unverified.** `scripts/smoke-argus-launcher.sh` requires the browser probe on macOS. On Linux it only warns unless `REQUIRE_BROWSER_PROBE=1`, which makes the probe mandatory and forbids a skip.
 - **Codex dispatch still fails closed,** because the Codex CLI has no native hard turn cap.
