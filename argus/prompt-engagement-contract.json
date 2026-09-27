@@ -42,7 +42,7 @@
       { "id": "ui-hunt", "source": "orion", "markers": ["bugs/ORI-", "screenshot", "--console", "--net", "--fail-next"] },
       { "id": "api-hunt", "source": "atalanta", "markers": ["bugs/ATA-", "OpenAPI", "mass-assignment"] },
       { "id": "ui-automation", "source": "daidalos", "markers": ["tests/ui/", "RED", "a11y"] },
-      { "id": "api-automation", "source": "talos", "markers": ["tests/api/", "expectMatchesSchema", "@e2e"] },
+      { "id": "api-automation", "source": "talos", "markers": ["tests/api/", "assertSchema", "@e2e"] },
       { "id": "canonical-triage", "source": "minos", "markers": ["solution/BUG-LEDGER.md", "BUG-NNNN", "dedup"] },
       { "id": "final-report", "source": "kleio", "markers": ["solution/IMPLEMENTATION-REPORT.md", "coverage-result.json", "go/no-go"] },
       { "id": "target-immutability", "source": "qa-core", "markers": ["Never modify target application source", "write guard", "untrusted data"] },
