@@ -376,11 +376,16 @@ Each input counts only once merged and only while its file matches its merge dig
   counts those tests and `counts.evidence` the canonical evidence references (0 when unmerged);
 - `automationReview` from `argus-assets automation-review check` semantics;
 - `runner`: mode, status, exit code, categories, and `deliveryGate` copied from a valid
-  `reports/argus-runner-result.json`, which a non-null runner requires; `runner: null` is valid
-  only in Mode B with no automated test;
+  `reports/argus-runner-result.json`, which a non-null runner requires, and `evidenceId`, the
+  `runner-result` reference in the merged evidence registry whose SHA-256 equals that file's
+  bytes (none fails the merge, so an unregistered or since-overwritten result never counts);
+  `runner: null` is valid only in Mode B with no automated test;
 - `coverage` (required) from the merged `argus/coverage-result@2`: discovery completeness, the
   overall ratios including `automatedExecution`, the scoped-outcome count,
-  `criticalUnexecuted`, and `caseDepth` when recorded;
+  `criticalUnexecuted`, and `caseDepth` when recorded. Its merge record keeps the digest of each
+  canonical coverage input (surface inventory, observations, evidence registry, bug ledger,
+  automation status); if any of them changed since, the coverage result is stale and the
+  summary fails until it is merged again;
 - `sourceSchemas` in the order ledger, evidence, automation status, runner result, coverage
   result, automation review, for the inputs present.
 

@@ -271,7 +271,7 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
     `- Status: ${document.runner.status}`,
     `- Exit code: ${document.runner.exitCode}`,
     `- Delivery gate: ${document.runner.deliveryGate ? 'yes' : 'no'}`,
-    `- Result: ${document.runner.resultPath}`,
+    `- Result: ${document.runner.resultPath} (registered evidence ${document.runner.evidenceId})`,
     `- Product: ${document.runner.categories.product}`,
     `- Automation: ${document.runner.categories.automation}`,
     `- Infrastructure: ${document.runner.categories.infrastructure}`,

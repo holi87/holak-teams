@@ -670,8 +670,9 @@ and a proposed status from `argus-assets engagement report-facts` (read-only, no
 merge re-derives the counts (headline = confirmed + suspected), the likely-but-unproven
 findings, the bounced and quarantined findings held back from the headline, the
 automation-review verdict, the runner outcome, the required coverage, and the
-source schemas from the merge-verified canonical inputs and `reports/argus-runner-result.json`,
-overwrites them, and caps the status by the derived `statusReasons`: a BLOCK, STALE, or ABSENT
+source schemas from the merge-verified canonical inputs and `reports/argus-runner-result.json`
+(which must be registered `runner-result` evidence, byte for byte; the coverage result must be
+merged after its latest input change), overwrites them, and caps the status by the derived `statusReasons`: a BLOCK, STALE, or ABSENT
 review or a confirmed bug without regression blocks; a bounced or quarantined finding, an
 unexecuted critical surface, case-depth gaps, a non-delivery-gate runner, runner exit codes 11 to 15, or a non-converged deep-hunt skip
 degrade. It never raises a status. The merge also renders `solution/FINAL-SUMMARY.md` with an

@@ -441,6 +441,15 @@ NODE
 if "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/final-summary.json --id foreign --input "$FIXTURES/valid/final-summary.json" >/dev/null 2>&1; then
   fail "cross-engagement canonical fragment unexpectedly passed"
 fi
+# The final summary reports a runner outcome only as registered runner-result evidence, so Atlas
+# archives the run and registers it before Kleio's closeout merges.
+cp "$FIXTURES/valid/runner-result.json" "$TARGET/reports/evidence/runner-result-full-suite.json"
+jq -nc --arg sha "$(shasum -a 256 "$TARGET/reports/evidence/runner-result-full-suite.json" | cut -d' ' -f1)" --arg at "$(node -e 'process.stdout.write(new Date().toISOString())')" \
+  '{"$schema": "argus/evidence-reference@3", schemaVersion: 3, engagementId: "schema-fixture", references: [{id: "EVD-0004", kind: "runner-result",
+    mediaType: "application/json", source: "reports/evidence/runner-result-full-suite.json", collectedBy: "atlas", capturedAt: $at, redaction: "synthetic",
+    sha256: $sha, relatedBugIds: [], relatedSurfaceIds: []}]}' >"$WORK/evidence-runner.json"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane atlas --token "$ATLAS" --canonical solution/evidence-reference.json --id evidence-runner --input "$WORK/evidence-runner.json" >/dev/null
+"$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/evidence-reference.json >/dev/null || fail 'the registered runner result did not merge'
 "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/coverage-result.json >/dev/null
 jq -e '."$schema" == "argus/coverage-result@2" and (.sourceSchemas | length) == 4 and .surfaces[0].executed and .surfaces[0].asserted
   and .criticalUnexecuted == [] and .defectOutcomes.headline == 2 and .defectOutcomes.linked == 1 and .defectOutcomes.unlinked == ["BUG-0002"]' \
@@ -465,14 +474,20 @@ cp "$FIXTURES/valid/runner-result.json" "$TARGET/reports/argus-runner-result.jso
 jq -e '.statusCeiling == "degraded" and .statusReasons == ["bounced-findings", "case-depth-gaps", "quarantined-findings"]
   and .counts.bugs == {confirmed: 1, suspected: 1, needsOracle: 1, bounced: 1, quarantined: 1, duplicate: 1, rejected: 1, headline: 2}
   and (.held | map([.id, .status, .reasons])) == [["BUG-0006", "bounced", ["reproduction"]], ["BUG-0007", "quarantined", ["The original capture was replaced after collection; fresh evidence is required."]]]
-  and .counts.regression == {wired: 1, uncovered: []} and .counts.automated == 2 and .counts.evidence == 3
+  and .counts.regression == {wired: 1, uncovered: []} and .counts.automated == 2 and .counts.evidence == 4
   and (.unproven | map([.id, .status, .missing])) == [["BUG-0002", "suspected", ["independent-reproduction"]], ["BUG-0003", "needs-oracle", ["oracle"]]]
   and .automationReview == {status: "approved", reviewId: "REV-02", round: 2, blockers: 0, warnings: 0}
-  and .runner.resultPath == "reports/argus-runner-result.json" and .runner.exitCode == 0 and .runner.deliveryGate == true
+  and .runner.resultPath == "reports/argus-runner-result.json" and .runner.evidenceId == "EVD-0004" and .runner.exitCode == 0 and .runner.deliveryGate == true
   and .coverage.criticalUnexecuted == [] and .coverage.caseDepth.coverage == 0.5 and (.coverage.caseDepth.gaps | length) == 1
   and .sourceSchemas == ["argus/bug-ledger@2", "argus/evidence-reference@3", "argus/automation-status@2", "argus/runner-result@1", "argus/coverage-result@2", "argus/automation-review@1"]' \
   "$WORK/report-facts.json" >/dev/null || fail "report-facts did not derive the canonical facts: $(<"$WORK/report-facts.json")"
 (cd "$TARGET" && "$CLI" engagement report-facts --manifest "$MANIFEST" --output reports/report-facts.json) >/dev/null
+# A runner result whose bytes were never registered (hand-written or overwritten by a later run) is refused.
+jq -c . "$FIXTURES/valid/runner-result.json" >"$TARGET/reports/argus-runner-result.json"
+if "$CLI" engagement report-facts --manifest "$MANIFEST" >"$WORK/report-facts-unregistered.out" 2>&1; then fail 'report-facts accepted an unregistered runner result'; fi
+grep -Fq 'reports/argus-runner-result.json (sha256 ' "$WORK/report-facts-unregistered.out" && grep -Fq 'is not registered runner-result evidence' "$WORK/report-facts-unregistered.out" || \
+  fail "an unregistered runner result failed for another reason: $(<"$WORK/report-facts-unregistered.out")"
+cp "$FIXTURES/valid/runner-result.json" "$TARGET/reports/argus-runner-result.json"
 cmp -s "$WORK/report-facts.json" "$TARGET/reports/report-facts.json" || fail 'report-facts --output wrote different facts than stdout'
 jq --slurpfile facts "$WORK/report-facts.json" '.engagementId = "schema-fixture" | . + ($facts[0] | del(.statusCeiling)) | .status = $facts[0].statusCeiling' \
   "$FIXTURES/valid/final-summary.json" >"$WORK/final-summary.json"
@@ -493,6 +508,7 @@ grep -Fxq -- '- BUG-0007 (Minor, quarantined): Order history omits cancelled ord
   fail 'rendered summary dropped the quarantined finding'
 grep -Fxq 'Status reason: bounced-findings' "$SUMMARY_MD" && grep -Fxq 'Status reason: quarantined-findings' "$SUMMARY_MD" || fail 'rendered summary does not name the held-back status reasons'
 grep -Fq 'APPROVE (REV-02' "$SUMMARY_MD" || fail 'rendered summary has no automation review verdict'
+grep -Fxq -- '- Result: reports/argus-runner-result.json (registered evidence EVD-0004)' "$SUMMARY_MD" || fail 'rendered summary does not cite the registered runner evidence'
 grep -Fq 'Required-case depth: 50%' "$SUMMARY_MD" || fail "rendered summary has no surface-derived coverage"
 grep -Fxq -- '- Automated re-execution: 0%' "$SUMMARY_MD" || fail 'rendered summary has no automated re-execution ratio'
 jq -e '.status == "degraded" and .statusReasons == ["bounced-findings", "case-depth-gaps", "quarantined-findings"]' "$TARGET/solution/final-summary.json" >/dev/null || fail 'the merged summary is not degraded by held-back findings and case-depth gaps'
@@ -537,5 +553,22 @@ grep -Fxq 'Status reason: automation-review-stale' "$SUMMARY_MD" && grep -Fq 'ST
 cp "$WORK/a.spec.ts.summary" "$TARGET/tests/a.spec.ts"
 summary_merge >/dev/null
 jq -e '.status == "degraded" and .statusReasons == ["bounced-findings", "case-depth-gaps", "quarantined-findings"]' "$TARGET/solution/final-summary.json" >/dev/null || fail 'restoring the approved corpus did not re-derive the degraded summary'
+
+# A coverage input that changes after the coverage merge makes the published coverage stale: a
+# second discovery pass adds a critical surface, and the summary refuses until coverage re-merges.
+jq -c '.discovery = {candidates: 2, characterized: 2} | .items += [.items[0] | .id = "SRF-UI-REPORTS" | .surfaceType = "ui" | .lane = "ui" | .obligations |= map(.id |= sub("^CASE-"; "CASE-REPORTS-"))]' "$WORK/inventory.json" >"$WORK/inventory-2.json"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane kalchas --token "$KALCHAS" --canonical solution/surface-inventory.json --id case-plan-2 --input "$WORK/inventory-2.json" >/dev/null
+"$CLI" engagement merge --manifest "$MANIFEST" --owner kalchas --token "$KALCHAS" --canonical solution/surface-inventory.json >/dev/null
+if summary_merge >"$WORK/summary-stale-coverage.out" 2>&1; then fail 'the final summary merged a coverage result calculated before the inventory changed'; fi
+grep -Fq 'solution/coverage-result.json is stale: solution/surface-inventory.json changed after it was merged' "$WORK/summary-stale-coverage.out" || \
+  fail "stale coverage failed for another reason: $(<"$WORK/summary-stale-coverage.out")"
+if "$CLI" engagement report-facts --manifest "$MANIFEST" >/dev/null 2>&1; then fail 'report-facts derived facts from a stale coverage result'; fi
+(cd "$TARGET" && "$CLI" coverage calculate --inventory solution/surface-inventory.json --observations solution/coverage-observations.json \
+  --evidence solution/evidence-reference.json --ledger solution/bug-ledger.json --automation-status solution/automation-status.json --root "$TARGET") >"$WORK/coverage-2.json"
+"$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/coverage-result.json --id case-result-2 --input "$WORK/coverage-2.json" >/dev/null
+"$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/coverage-result.json >/dev/null
+summary_merge >/dev/null
+jq -e '.coverage.criticalUnexecuted == ["SRF-UI-REPORTS"] and (.statusReasons | index("critical-surface-unexecuted")) != null' "$TARGET/solution/final-summary.json" >/dev/null || \
+  fail "the re-merged coverage did not reach the final summary: $(<"$TARGET/solution/final-summary.json")"
 
 printf 'PASS  Argus schemas: current fixtures, retired version rejection, deterministic collection merges, fragment rejection, per-bug ledger quarantine, latest-revision ledgers, append-only corpus-bound automation reviews, reviewer-registered audited binary evidence, stable IDs, runner results, and a source-versioned final summary whose facts and status ceiling are derived at merge\n'

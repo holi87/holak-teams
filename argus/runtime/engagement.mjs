@@ -474,6 +474,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     const latest = canonical.merge === 'latest-revision' ? latestFragmentRevision(canonical, records) : null;
     let quarantined = [];
     let effective = null;
+    let coverageInputs = null;
     let output;
     if (canonical.format === 'json-document') {
       let documents = contents.map((content) => JSON.parse(content));
@@ -513,6 +514,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
         const canonicalJson = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
           ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
         if (canonicalJson({ ...document, generatedAt: null }) !== canonicalJson({ ...calculated, generatedAt: null })) throw new Error('coverage result does not match canonical inputs');
+        coverageInputs = coverageInputDigests(manifest);
       }
       if (canonical.schema === 'final-summary') applyFinalSummaryFacts(manifest, state, document);
       if (canonical.schema === 'bug-ledger' && document.bugs.some(bug => ledgerEvidenceIds(bug).length > 0)) {
@@ -550,6 +552,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     if (latest) Object.assign(result, { revision: latest.revision, supersededFragments: records.length - 1 });
     if (effective) Object.assign(result, { effectiveFragment: effective.id, supersededFragments: records.length - 1 });
     if (canonical.schema === 'bug-ledger') result.quarantined = quarantined;
+    if (coverageInputs) result.inputs = coverageInputs;
     state.merges[canonical.path] = result;
     if (canonical.schema === 'bug-ledger') {
       state.ledgerSnapshots[state.currentPhase] = ledgerSnapshot(manifest, state, JSON.parse(output), records, result.mergedAt);
@@ -710,6 +713,13 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   const automationStatus = readMergedCanonical(manifest, state, 'solution/automation-status.json', 'automation-status');
   const coverageResult = readMergedCanonical(manifest, state, FINAL_SUMMARY_COVERAGE_RESULT, 'coverage-result');
   if (!coverageResult) throw new Error(`final summary coverage requires the merged canonical ${FINAL_SUMMARY_COVERAGE_RESULT}`);
+  // The coverage merge recalculated its result from these canonical inputs; any later change to
+  // one of them (a superseding inventory, new observations or evidence, a re-merged ledger or
+  // automation status) makes the published coverage stale until it is merged again.
+  const recorded = state.merges[FINAL_SUMMARY_COVERAGE_RESULT].inputs;
+  if (!recorded) throw new Error(`${FINAL_SUMMARY_COVERAGE_RESULT} merge records no canonical inputs; merge it again`);
+  const changed = Object.entries(coverageInputDigests(manifest)).filter(([path, digest]) => recorded[path] !== digest).map(([path]) => path);
+  if (changed.length) throw new Error(`${FINAL_SUMMARY_COVERAGE_RESULT} is stale: ${changed.join(', ')} changed after it was merged; merge it again`);
   const review = readAutomationReview(manifest, state);
   const automationReview = automationReviewStatus(manifest, state);
 
@@ -752,13 +762,21 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
       reasons: [...new Set(bug.status === 'bounced' ? bug.repair.missing : bug.quarantine.reasons)],
     }));
 
-  const runnerResult = (fragment ? fragment.runner !== null : Boolean(lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))))
+  const runnerRead = (fragment ? fragment.runner !== null : Boolean(lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))))
     ? readRunnerResult(manifest) : null;
+  const runnerResult = runnerRead?.document ?? null;
+  // The live runner result counts only as the registered runner-result evidence with its exact
+  // bytes, so a hand-written or since-overwritten file cannot stand in for a recorded run.
+  const runnerEvidence = runnerRead && (evidence?.references ?? []).find((ref) => ref.kind === 'runner-result' && ref.sha256 === runnerRead.sha256);
+  if (runnerRead && !runnerEvidence) {
+    throw new Error(`${FINAL_SUMMARY_RUNNER_RESULT} (sha256 ${runnerRead.sha256}) is not registered runner-result evidence in the merged solution/evidence-reference.json; archive and register it, then merge the registry again`);
+  }
   const runner = runnerResult && {
     mode: runnerResult.mode,
     status: runnerResult.status,
     exitCode: runnerResult.exitCode,
     resultPath: FINAL_SUMMARY_RUNNER_RESULT,
+    evidenceId: runnerEvidence.id,
     categories: Object.fromEntries(['product', 'automation', 'infrastructure', 'skip', 'policy'].map((category) => [category, runnerResult.categories[category]])),
     deliveryGate: runnerResult.deliveryGate,
   };
@@ -828,9 +846,22 @@ function readMergedCanonical(manifest, state, path, schema) {
 function readRunnerResult(manifest) {
   const path = engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT);
   if (!lstatEntry(path)) throw new Error(`final summary runner outcome requires ${FINAL_SUMMARY_RUNNER_RESULT}`);
-  const { errors, document } = validateCanonicalFragment('runner-result', readManagedFile(path, FINAL_SUMMARY_RUNNER_RESULT));
+  const content = readManagedFile(path, FINAL_SUMMARY_RUNNER_RESULT);
+  const { errors, document } = validateCanonicalFragment('runner-result', content);
   if (errors.length) throw new Error(`${FINAL_SUMMARY_RUNNER_RESULT} is invalid: ${errors.join('; ')}`);
-  return document;
+  return { document, sha256: sha256(content) };
+}
+
+// The digest of each canonical coverage input file as it is now, or null when it does not exist.
+const COVERAGE_RESULT_INPUTS = Object.freeze([
+  'solution/surface-inventory.json', 'solution/coverage-observations.json', 'solution/evidence-reference.json',
+  'solution/bug-ledger.json', 'solution/automation-status.json',
+]);
+function coverageInputDigests(manifest) {
+  return Object.fromEntries(COVERAGE_RESULT_INPUTS.map((path) => {
+    const absolute = engagementPath(manifest, path);
+    return [path, lstatEntry(absolute) ? sha256(readManagedFile(absolute, path)) : null];
+  }));
 }
 
 const LANE_OUTCOMES_SCHEMA_ID = 'argus/lane-outcomes@1';

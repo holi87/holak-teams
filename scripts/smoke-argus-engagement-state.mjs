@@ -749,8 +749,9 @@ function mergeEmptyLedger(fixture, token, fragmentId) {
 
 // The final-summary merge derives its facts from a merged coverage result and the runner result.
 // These fixtures have no Kalchas to publish the coverage inputs, so the helper seeds a complete,
-// merge-recorded coverage result and a delivery-gate runner result; with the empty ledger every
-// fact is clean, and the only status reasons left are the recorded phase skips.
+// merge-recorded coverage result bound to the current input files, and a delivery-gate runner
+// result registered as runner-result evidence; with the empty ledger every fact is clean, and
+// the only status reasons left are the recorded phase skips.
 function mergeFinalSummary(fixture, token) {
   const coverage = structuredClone(coverageResultFixture);
   coverage.engagementId = fixture.manifest.engagementId;
@@ -758,12 +759,26 @@ function mergeFinalSummary(fixture, token) {
   coverage.criticalUnexecuted = [];
   coverage.overall.caseDepth = { plannedWeight: 5, executedWeight: 5, verifiedWeight: 5, coverage: 1, unplannedSurfaces: [], gaps: [] };
   const coverageContent = `${JSON.stringify(coverage, null, 2)}\n`;
+  const runnerContent = `${JSON.stringify(runnerResultFixture)}\n`;
+  const digest = (content) => createHash('sha256').update(content).digest('hex');
+  const registry = { $schema: 'argus/evidence-reference@3', schemaVersion: 3, engagementId: fixture.manifest.engagementId, references: [{
+    id: 'EVD-0001', kind: 'runner-result', mediaType: 'application/json', source: 'reports/evidence/runner-result.json', collectedBy: 'atlas',
+    capturedAt: new Date().toISOString(), redaction: 'synthetic', sha256: digest(runnerContent), relatedBugIds: [], relatedSurfaceIds: [] }] };
+  const registryContent = `${JSON.stringify(registry, null, 2)}\n`;
   mkdirSync(join(fixture.root, 'solution'), { recursive: true });
-  mkdirSync(join(fixture.root, 'reports'), { recursive: true });
+  mkdirSync(join(fixture.root, 'reports', 'evidence'), { recursive: true });
   writeFileSync(join(fixture.root, 'solution', 'coverage-result.json'), coverageContent);
-  writeFileSync(join(fixture.root, 'reports', 'argus-runner-result.json'), `${JSON.stringify(runnerResultFixture)}\n`);
+  writeFileSync(join(fixture.root, 'solution', 'evidence-reference.json'), registryContent);
+  writeFileSync(join(fixture.root, 'reports', 'evidence', 'runner-result.json'), runnerContent);
+  writeFileSync(join(fixture.root, 'reports', 'argus-runner-result.json'), runnerContent);
+  const inputs = Object.fromEntries(['surface-inventory', 'coverage-observations', 'evidence-reference', 'bug-ledger', 'automation-status'].map((name) => {
+    const path = join(fixture.root, 'solution', `${name}.json`);
+    return [`solution/${name}.json`, existsSync(path) ? digest(readFileSync(path)) : null];
+  }));
   const state = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
-  state.merges['solution/coverage-result.json'] = { owner: 'kleio', fragments: 1, sha256: createHash('sha256').update(coverageContent).digest('hex'), mergedAt: new Date().toISOString() };
+  const mergedAt = new Date().toISOString();
+  state.merges['solution/evidence-reference.json'] = { owner: 'kleio', fragments: 1, sha256: digest(registryContent), mergedAt };
+  state.merges['solution/coverage-result.json'] = { owner: 'kleio', fragments: 1, sha256: digest(coverageContent), mergedAt, inputs };
   writeFileSync(fixture.statePath, `${JSON.stringify(state, null, 2)}\n`);
 
   const summary = structuredClone(finalSummaryFixture);
