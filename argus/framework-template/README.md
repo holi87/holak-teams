@@ -38,7 +38,8 @@ or 10-15 per `RUNNER-CONTRACT.md`, never Playwright's own.
 - **Lanes.** Each product lane (`api`, `ui`, `perf`, `security`, `db`, `resilience`) is a
   Playwright project. `solution/test-lanes.tsv` enables or disables each one with an owner,
   its prerequisite variables, and a reason; only enabled lanes are selected
-  (`--project=<lane>`), and `full-suite` refuses a lane still marked `not-yet-planned`.
+  (`--project=<lane>` plus its `<lane>-<variant>` browser/device projects, such as
+  `ui-firefox`), and `full-suite` refuses a lane still marked `not-yet-planned`.
   Tests never skip themselves on a missing prerequisite: `requireEnv` reports it.
 - **Environment.** `solution/environment.tsv` declares a reset and a read-only verify
   script under `scripts/`. The reset runs only with `ARGUS_ENVIRONMENT_RESET=execute`
@@ -58,7 +59,7 @@ or 10-15 per `RUNNER-CONTRACT.md`, never Playwright's own.
 
 **Before the engagement:** walk `ai_agents_internal/PRE-EVENT-CHECKLIST.md` top to bottom (free ports, docker, browsers pre-downloaded, agents + skill installed).
 
-**Visual regression** is pre-configured (`toHaveScreenshot`: 1% diff ratio, animations disabled): first run creates baselines, `--update-snapshots` refreshes them; baselines are render-environment-specific — never accept a diff without eyeballing it. **Browser matrix:** the checked-in Chromium project is only a starter. Adapt the Playwright projects to every browser/device/viewport entry derived in `ai_agents_internal/engagement.json`; each omission is a named residual risk, never a fixed-quota decision.
+**Visual regression** is pre-configured (`toHaveScreenshot`: 1% diff ratio, animations disabled): first run creates baselines, `--update-snapshots` refreshes them; baselines are render-environment-specific — never accept a diff without eyeballing it. **Browser matrix:** the checked-in Chromium project is only a starter. Adapt the Playwright projects to every browser/device/viewport entry derived in `ai_agents_internal/engagement.json`, naming each one `<lane>-<variant>` so its lane's selection runs it; each omission is a named residual risk, never a fixed-quota decision.
 
 ## Solution documents (`solution/`)
 | File | Owner | Answers |

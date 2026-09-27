@@ -56,14 +56,19 @@ argus_native_inventory() {
 }
 
 # argus_native_run <baseline|full|regression> <lanes-csv> <pass> [passthrough...]
-# One Playwright project per enabled lane (the ui lane pulls in `setup` through its
-# dependencies). Quarantined tests are never selected; framework arguments come last.
+# Every Playwright project of each enabled lane: the lane's own project plus its
+# `<lane>-<variant>` browser/device projects (for example `ui-firefox`), which the outcome
+# adapter inventories in that lane. The ui lane pulls in `setup` through its dependencies.
+# Quarantined tests are never selected; framework arguments come last.
 argus_native_run() {
   local selection="$1" lanes="$2" lane
   local lane_list=() args=()
   shift 3
   IFS=, read -r -a lane_list <<<"$lanes"
-  for lane in ${lane_list[@]+"${lane_list[@]}"}; do args+=("--project=$lane"); done
+  for lane in ${lane_list[@]+"${lane_list[@]}"}; do
+    args+=("--project=$lane")
+    case "$lane" in api|ui|perf|security|db|resilience) args+=("--project=$lane-*") ;; esac
+  done
   case "$selection" in
     baseline) args+=(--grep-invert '@regression|@quarantine') ;;
     regression) args+=(--grep '@regression' --grep-invert '@quarantine') ;;

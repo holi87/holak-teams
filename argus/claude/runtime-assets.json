@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 61,
-      "bytes": 443159,
-      "sha256": "eb9ac0b9dc321eddf01cef8acee483b8947952eb1ef3a7a5f4227e2e51d43f43"
+      "bytes": 443662,
+      "sha256": "66ff7b248150c77c9102a93b88ef2be8c558af184c3553ee0ebe3512ca435696"
     },
     {
       "id": "java-template",

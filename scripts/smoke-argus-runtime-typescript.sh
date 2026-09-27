@@ -608,6 +608,18 @@ expect_line "$E2E_EV" "e2e baseline test" "$E2E_HEALTH_ID" product pass false n/
 expect_line "$E2E_EV" "e2e baseline api lane executed" lane.api policy pass false n/a - lane-executed
 if grep -Fq -- "$E2E_ID" "$E2E_EV"; then show "$E2E_EV"; fail "e2e: baseline selected the regression"; fi
 
+# A `<lane>-<variant>` browser/device project is inventoried in its lane, so the lane's
+# selection runs it too; otherwise its rows are selected-test-not-executed (exit 15).
+cp "$E/playwright.config.ts" "$WORK/playwright.config.ts"
+awk -v q="'" '{ print } index($0, "{ name: " q "api" q ", testDir:") { sub("name: " q "api" q, "name: " q "api-replica" q); print }' \
+  "$WORK/playwright.config.ts" >"$E/playwright.config.ts"
+grep -Fq "name: 'api-replica'" "$E/playwright.config.ts" || fail "e2e: the api variant project was not added"
+e2e variant-baseline 0 baseline
+cp "$WORK/playwright.config.ts" "$E/playwright.config.ts"
+expect_line "$E2E_EV" "e2e variant project" "api-replica:${E2E_HEALTH_ID#api:}" product pass false n/a - passed
+expect_line "$E2E_EV" "e2e variant lane project" "$E2E_HEALTH_ID" product pass false n/a - passed
+if grep -Fq selected-test-not-executed "$E2E_EV"; then show "$E2E_EV"; fail "e2e: a variant project was inventoried but not selected"; fi
+
 start_target fixed
 e2e candidate 0 candidate-regression
 expect_line "$E2E_EV" "e2e regression green" "$E2E_ID" product pass false fixed BUG-0001 regression-green
