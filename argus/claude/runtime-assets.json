@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 34714,
-      "sha256": "55acd724b9980000342ec25b3c766a3d0bb0a53ba3993ce9ae16b2bd3cf2519d"
+      "bytes": 35942,
+      "sha256": "993be8acc08425f0f48ca72d9cf31f2b39da3375aabe8e1cef8bdd406c4bbcd3"
     },
     {
       "id": "browser-isolation",
@@ -38,8 +38,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 9569,
-      "sha256": "9512199fceb47cbeec3a9169788d9ad742bfbcd15c4548180303724ad536dfb3"
+      "bytes": 12462,
+      "sha256": "6d2be22b66527ea31aa6ab23e0235e220ff6f66fd5eadce2dcccb54b9b3fadec"
     },
     {
       "id": "authorization-policy",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 9,
-      "bytes": 293843,
-      "sha256": "d2d3d2a5fd35f9bc125c27861e4c203ebb632cc28f28a546526ec3fbe1fa7aee"
+      "bytes": 293974,
+      "sha256": "4155a2a9ef2e2ee1880bc6d2ad89bdc55f8a08f776c230ae5b8440bd83194265"
     },
     {
       "id": "common-template",
@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 50,
-      "bytes": 256941,
-      "sha256": "080dde0e58d18ad879ca2a1c5409e584a4a9f19ab78ce08ce6a5964f47e1f21d"
+      "bytes": 264556,
+      "sha256": "38096bd80542a9958bdd1a135f2dc4d774a5899897d9b1e895d8aa9567f7723e"
     },
     {
       "id": "java-template",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 57340,
-    "sha256": "2926d003da7388d05658a28bc09a501642504a2f7438b980a670840e08e2333e"
+    "bytes": 57536,
+    "sha256": "aaf63fcadaa1eb9b1e9e7076004820a7d3b272d45fff77cbe01d87834d0bf7f6"
   }
 }
