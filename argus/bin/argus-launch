@@ -28,10 +28,12 @@ fail() { printf 'FAIL  %s\n' "$*" >&2; exit 2; }
 capability_file=''
 sandbox_probe_dir=''
 browser_probe_work=''
+usage_tmp=''
 cleanup_launch_files() {
   if [ -n "$capability_file" ] && [ -e "$capability_file" ]; then rm -f "$capability_file"; fi
   if [ -n "$sandbox_probe_dir" ] && [ -d "$sandbox_probe_dir" ]; then rmdir "$sandbox_probe_dir" 2>/dev/null || true; fi
   if [ -n "$browser_probe_work" ] && [ -d "$browser_probe_work" ]; then rm -rf "$browser_probe_work"; fi
+  if [ -n "$usage_tmp" ] && [ -e "$usage_tmp" ]; then rm -f "$usage_tmp"; fi
 }
 trap cleanup_launch_files EXIT
 
@@ -54,11 +56,13 @@ Usage:
     --runtime-key-id <id> --request-output <absolute-path> \
     --launch-authorization <absolute-path> [--workspace <absolute-path>] \
     [--wait-seconds <30..300>] [--feature <capability-id>]... [--provision-browser] \
-    [--authorization <absolute-path>] [--environment <local|test|staging|production>] [--dry-run]
+    [--authorization <absolute-path>] [--environment <local|test|staging|production>] \
+    [--usage-json <absolute-path>] [--dry-run]
   argus-launch claude --target <url-or-absolute-path> --artifact-root <absolute-path> \
     --mode <A|B|C|D> --engagement-id <id> --unattested [--workspace <absolute-path>] \
     [--feature <capability-id>]... [--provision-browser] \
-    [--authorization <absolute-path>] [--environment <local|test|staging|production>] [--dry-run]
+    [--authorization <absolute-path>] [--environment <local|test|staging|production>] \
+    [--usage-json <absolute-path>] [--dry-run]
 
 The launcher writes an unsigned, process-bound request to --request-output, then waits for
 the isolated runtime-attestation signer to create --launch-authorization. The signer must
@@ -112,6 +116,18 @@ production-signal targets stay read-only without a production override. An attes
 records the choice as unsigned operatorAuthorization data in its launch payload, an unattested
 launch in its prompt, and --dry-run (which verifies but installs nothing) reports
 authorizationSource=<operator|environment|preflight> targetEnvironment=<environment|none>.
+
+--usage-json <absolute-path> writes Claude's final JSON result (usage, total_cost_usd,
+num_turns, subtype such as error_max_turns) to a new file outside the artifact root; it
+changes no turn cap, model, effort, or signed binding. For attested and unattested launches
+alike, Claude runs with --output-format json and the unsandboxed launcher captures its stdout
+in a private temporary file beside the report, moves it into place once Claude exits
+(successfully or not), prints only the result text, and exits with Claude's status. The path
+is one-shot (it may not exist yet), its parent must be a physical directory owned by the
+current user and not group/world writable, and it must be physically disjoint from the
+artifact root and a path target and differ from --request-output and --launch-authorization.
+It is not part of the signed launch request; --dry-run validates it and reports
+usageReport=json.
 
 Sandbox policy os-native-target-readonly@3 adds to @2 only org.chromium-scoped mach names and
 the RootDomainUserClient IOKit user client; file writes stay confined to the artifact root.
@@ -228,6 +244,61 @@ operator_authorization_step() {
     sed -n 's/^AUTHORIZATION  [a-z]* source=[a-z]* environment=[a-z]* sha256=\([0-9a-f]\{64\}\) manifest=.*$/\1/p')"
   [ -n "$authorization_manifest_environment" ] && [ -n "$authorization_sha256" ] || \
     fail "argus-assets authorization $operation reported no manifest binding"
+}
+
+# Validates the one-shot --usage-json report path against an artifact root: the physical
+# candidate before the root exists, then the physical root. The unsandboxed launcher writes
+# the report from Claude's stdout, so it stays outside everything the sandboxed controller can
+# write, never replaces existing content, and never collides with an operator handshake file.
+validate_usage_report_path() {
+  local root="$1" parent
+  absolute_normalized "$usage_json" 'usage report'
+  [ ! -e "$usage_json" ] && [ ! -L "$usage_json" ] || fail 'usage report already exists; usage reports are one-shot'
+  parent="$(physical_directory "$(dirname "$usage_json")" 'usage report directory')"
+  [ "$parent" = "$(dirname "$usage_json")" ] || fail 'usage report directory must be physical'
+  secure_owned_directory "$parent" 'usage report directory'
+  assert_disjoint "$root" "$usage_json" 'artifact root and usage report'
+  if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$usage_json" 'target and usage report'; fi
+  if ! $unattested; then
+    [ "$usage_json" != "$request_output" ] && [ "$usage_json" != "$launch_authorization" ] || \
+      fail 'usage report must differ from the request and authorization paths'
+  fi
+}
+
+# Prints the result text of a Claude JSON result document (an object, or the last result
+# entry of an array), or warns when the report is not one. It never changes the launcher's
+# exit status, which stays Claude's own.
+print_usage_report_result() {
+  jq -r 'if type == "array" then map(select(type == "object" and .type == "result")) | last else . end
+    | if type == "object" then .result // empty else empty end' "$1" 2>/dev/null || \
+    printf 'WARN  usage report %s is not a Claude JSON result document\n' "$1" >&2
+}
+
+# Runs the prepared controller command inside the sandbox and returns its status. With
+# --usage-json, the unsandboxed launcher redirects Claude's stdout (its final JSON result) to a
+# private temporary file beside the report and moves it into place once Claude exits,
+# successfully or not. A report path that appeared meanwhile is never replaced.
+run_controller() {
+  local status=0 kept
+  if [ -z "$usage_json" ]; then
+    sandbox_exec "$artifact_root" "$workspace" env -i "${child_env[@]}" "${command[@]}" || status=$?
+    return "$status"
+  fi
+  usage_tmp="$(mktemp "$(dirname "$usage_json")/.argus-usage.XXXXXX")" || fail 'cannot create the usage report temporary file'
+  chmod 600 "$usage_tmp" || fail 'cannot restrict the usage report temporary file'
+  sandbox_exec "$artifact_root" "$workspace" env -i "${child_env[@]}" "${command[@]}" >"$usage_tmp" || status=$?
+  kept="$usage_tmp"
+  if [ -e "$usage_json" ] || [ -L "$usage_json" ]; then
+    usage_tmp=''
+    fail "usage report $usage_json appeared during the launch; Claude exited with status $status and its result stays in $kept"
+  fi
+  if ! mv "$kept" "$usage_json"; then
+    usage_tmp=''
+    fail "cannot move the usage report into place; Claude exited with status $status and its result stays in $kept"
+  fi
+  usage_tmp=''
+  print_usage_report_result "$usage_json"
+  return "$status"
 }
 
 claude_supports_native_turn_cap() {
@@ -576,6 +647,7 @@ provision_browser=false
 launch_features_json='[]'
 operator_authorization=''
 operator_environment=''
+usage_json=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --target) [ "$#" -ge 2 ] || fail '--target requires a value'; target="$2"; shift 2 ;;
@@ -593,6 +665,7 @@ while [ "$#" -gt 0 ]; do
     --provision-browser) provision_browser=true; shift ;;
     --authorization) [ "$#" -ge 2 ] || fail '--authorization requires a path'; operator_authorization="$2"; shift 2 ;;
     --environment) [ "$#" -ge 2 ] || fail '--environment requires a value'; operator_environment="$2"; shift 2 ;;
+    --usage-json) [ "$#" -ge 2 ] || fail '--usage-json requires a path'; usage_json="$2"; shift 2 ;;
     --dry-run) dry_run=true; shift ;;
     *) fail "unknown option: $1" ;;
   esac
@@ -665,6 +738,15 @@ if [ -n "$operator_authorization" ]; then
   assert_disjoint "$artifact_candidate" "$operator_authorization" 'artifact root and authorization manifest'
   if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$operator_authorization" 'target and authorization manifest'; fi
 fi
+# --usage-json only switches Claude's stdout to its JSON result document and names where the
+# unsandboxed launcher stores it; the turn cap, model, effort, and signed bindings are unchanged.
+output_format_arguments=()
+usage_report_suffix=''
+if [ -n "$usage_json" ]; then
+  validate_usage_report_path "$artifact_candidate"
+  output_format_arguments=(--output-format json)
+  usage_report_suffix=' usageReport=json'
+fi
 # Refuse an unbound or conflicting manifest before the artifact root exists.
 if [ "$authorization_source" != preflight ]; then operator_authorization_step verify "$artifact_candidate"; fi
 artifact_existed=false
@@ -703,6 +785,7 @@ if ! $unattested; then
     if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$operator_path" 'target and operator authorization path'; fi
   done
 fi
+if [ -n "$usage_json" ]; then validate_usage_report_path "$artifact_root"; fi
 
 command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
 claude_executable="$(command -v claude)"
@@ -731,11 +814,11 @@ if $unattested; then
   if [ "$authorization_source" != preflight ]; then
     prompt="$prompt authorizationSource=$authorization_source targetEnvironment=$authorization_manifest_environment authorizationSha256=$authorization_sha256"
   fi
-  command=("$claude_executable" -p --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+  command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
   if $dry_run; then
-    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@3 environment=argus-launch-unattested@1 attestation=UNATTESTED browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s\n' \
+    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@3 environment=argus-launch-unattested@1 attestation=UNATTESTED browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s%s\n' \
       "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$browser_provisioning" \
-      "$authorization_source" "${authorization_manifest_environment:-none}" "${launch_features_csv:-none}"
+      "$authorization_source" "${authorization_manifest_environment:-none}" "${launch_features_csv:-none}" "$usage_report_suffix"
     exit 0
   fi
   child_env=(
@@ -749,7 +832,7 @@ if $unattested; then
     if [ -n "${!name:-}" ]; then child_env+=("$name=${!name}"); fi
   done
   sandbox_status=0
-  sandbox_exec "$artifact_root" "$workspace" env -i "${child_env[@]}" "${command[@]}" || sandbox_status=$?
+  run_controller || sandbox_status=$?
   exit "$sandbox_status"
 fi
 
@@ -797,16 +880,16 @@ launch_payload="$(jq -cn \
   --argjson operatorAuthorization "$operator_authorization_json" \
   '{target:$target,"artifact-root":$artifactRoot,mode:$mode,"engagement-id":$engagementId,"launch-authorization":$launchAuthorization,"launch-receipt":$launchReceipt,"trust-store":$trustStore,features:$features,operatorAuthorization:$operatorAuthorization}')"
 prompt="/argus:run authenticatedLaunch=$launch_payload"
-command=("$claude_executable" -p --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
 
 if $dry_run; then
   rm -f "$capability_file"
   capability_file=''
   rmdir "$sandbox_probe_dir"
   sandbox_probe_dir=''
-  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist@1 browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s\n' \
+  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist@1 browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s%s\n' \
     "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$(jq -r .launchId "$receipt")" "$browser_provisioning" \
-    "$authorization_source" "${authorization_manifest_environment:-none}" "${launch_features_csv:-none}"
+    "$authorization_source" "${authorization_manifest_environment:-none}" "${launch_features_csv:-none}" "$usage_report_suffix"
   exit 0
 fi
 
@@ -829,7 +912,7 @@ for name in USER LOGNAME SHELL LANG LC_ALL LC_CTYPE TERM NO_COLOR FORCE_COLOR AN
 done
 
 sandbox_status=0
-sandbox_exec "$artifact_root" "$workspace" env -i "${child_env[@]}" "${command[@]}" || sandbox_status=$?
+run_controller || sandbox_status=$?
 rmdir "$sandbox_probe_dir"
 sandbox_probe_dir=''
 exit "$sandbox_status"
