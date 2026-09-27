@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 15385,
-      "sha256": "c959051038589a9ce0ccbf269e0d56fb75f2ef191104acfb1ead990dc59cdbc8"
+      "bytes": 15563,
+      "sha256": "1ec323df5aeb6eae872fc08513b25fe36be035e1863384f5865acd230e034079"
     },
     {
       "id": "runner-contract",
@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 8991,
-      "sha256": "ae3778616f776d47a43ab395cef55b049502a39340ef03d43dd7f5a08acb0cea"
+      "bytes": 9674,
+      "sha256": "6ac2b7f4650dd74c6acb9ec57db4f9f93b8754458a6ad2f96feb3f51dc85e690"
     },
     {
       "id": "qa-browser-skill",
@@ -146,8 +146,8 @@
       "source": "argus/shared-skills/qa-framework-runner",
       "destination": "skills/qa-framework-runner",
       "files": 1,
-      "bytes": 1807,
-      "sha256": "cc764060b56da7bfcaf972833388d5a4651ff509f7f56ab8ed21633a4ef0b4cc"
+      "bytes": 2419,
+      "sha256": "49e54f90eab5fc3fb18a6ea593bb8f84e9d3b486787f95127ee9fc65e18ac343"
     },
     {
       "id": "qa-coverage-reporting-skill",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 9,
-      "bytes": 269052,
-      "sha256": "8653795fe5901b5df9c9cfb3b711d9a358f3b626143ad5e25d193d6d2293d307"
+      "bytes": 269347,
+      "sha256": "b8acf94bd500551f1b1f28fba0ef0059068c30d448c9c54be2beaca41c9b6106"
     },
     {
       "id": "common-template",
@@ -263,8 +263,8 @@
       "source": "argus/framework-template-common",
       "destination": "templates/common",
       "files": 23,
-      "bytes": 78911,
-      "sha256": "a3280755b255ec7f5087c00fce7cf035c7d7ff6a3ad2113992fd60173d2ca614"
+      "bytes": 79018,
+      "sha256": "8da039edf992be5703027cb28835ed0341299972fc760ed157fa90dd33614c15"
     },
     {
       "id": "typescript-template",

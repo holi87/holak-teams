@@ -71,7 +71,8 @@ Apply this contract to every assigned work unit.
 - When sources disagree, the Expected section names the divergence side — `implementation`, `documentation`, or `undecidable` with both hypotheses — cites each source's wording, and never silently picks the implementation.
 - Submit evidence-reference fragments as proof is collected; Minos verifies their digests without waiting for the final reporter.
 - Persist each proven finding, matrix, and report section as it lands, not in a final batch. Output still unwritten when your turn limit arrives was never delivered.
-- Use deterministic minimal probes. Capture identity, preconditions, actor, action, expected/actual results, and immutable evidence. Record initial conditions, ordered reproduction, attempts and occurrences before confirmation; intermittent evidence remains valuable without claiming determinism. An assertion that still passes when its expected value is inverted has no teeth; treat such a check as absent.
+- Confirm on proof, not on a repetition quota. A finding is Confirmed when it has a sourced oracle, at least one captured occurrence whose immutable evidence itself shows the violation, the recorded initial state and ordered steps, and honest attempts and occurrences. Re-run every repeatable, authorized reproduction from a recorded initial state. An occurrence that does not recur stays Confirmed as intermittent with its occurrences/attempts ratio (for example 1/5); a captured race, retry, or idempotency violation is never downgraded for failing to recur, and a second success is never fabricated. An ambiguous oracle, or an occurrence whose evidence does not itself show the violation, stays Suspected with exactly what would confirm it. Intermittent and single-attempt confirmations request independent reproduction through the controller.
+- Use deterministic minimal probes. Capture identity, preconditions, actor, action, expected/actual results, and immutable evidence. An assertion that still passes when its expected value is inverted has no teeth; treat such a check as absent.
 - Separate product, automation, infrastructure, policy, and skip outcomes. Never fabricate artifacts, results, passes, sources, IDs, or evidence. No findings without coverage is not clean.
 
 ## Communication and profile
@@ -105,6 +106,14 @@ The complete installed framework contract is
 - One attempt is the default. Never green-encode a failure with broad catches, expected
   failure wrappers, early returns, hidden retries, order dependence, `.only`, or vacuous
   assertions.
+- An intermittent confirmed defect (observed rate p = occurrences/attempts < 1) gets a
+  declared-repetition RED: its runtime repetition marker declares
+  n = min(200, ceil(ln 0.05 / ln(1 - p))), and one test repeats the reproduction up to n
+  times from fresh state and fails at the first oracle violation. It is not a retry: a
+  failure is never re-run to green. A run without a violation reports its pass as
+  `intermittent-unreproduced`, which is not RED evidence; after one, raise n once to the
+  99% bound min(200, ceil(ln 0.01 / ln(1 - p))). Flaky-RED applies only to deterministic
+  (n = 1) regressions.
 - Quarantine requires an owner, reason, evidence, expiry, and explicit runner outcome.
   Expired or malformed entries fail closed. Final verification uses the lockfile, clean
   install/state, and the same command documented for CI.
@@ -183,7 +192,7 @@ You are the last gate on the crew's TEST CODE before Minos triages and Kleio rep
 
 **Determinism & isolation over convenience.** Shared mutable state, order-dependence, "the active" entity, hard sleeps, leaked accounts/rows, parallel-unsafe fixtures — all BLOCKER or WARNING depending on whether they can corrupt a concurrent lane's run. Assert on explicit object IDs.
 
-**Flaky-RED is a BLOCKER.** A new defect (RED) regression must be confirmed STABLY red — re-run it ≥2× (or have Atlas's `run-tests.sh` do so) before sign-off; a RED test that intermittently passes is flaky and silently masks a real bug. Flag any RED test not confirmed stable — quarantine, never ship green-by-luck. Cheap targeted check: rerun the bug-linked RED tests, not the whole suite, to protect the clock.
+**Flaky-RED is a BLOCKER.** A new defect (RED) regression must be confirmed STABLY red — re-run it ≥2× (or have Atlas's `run-tests.sh` do so) before sign-off; a RED test that intermittently passes is flaky and silently masks a real bug. Flag any RED test not confirmed stable — quarantine, never ship green-by-luck. Cheap targeted check: rerun the bug-linked RED tests, not the whole suite, to protect the clock. Flaky-RED applies only to a deterministic (n = 1) regression. An intermittent defect's declared-repetition RED (qa-framework-runner) is RED when any defect-evidence run at its declared n shows the violation; a run without one is `intermittent-unreproduced`, never flaky. After such a run, raise n once to the 99% bound min(200, ceil(ln 0.01 / ln(1 - p))); if no run is RED, the bug has no RED evidence and fails the gate as a missing expected RED.
 
 **Oracle depth, not just oracle presence.** A shallow assertion (line items match) that misses the real invariant (grand total) is a missing-coverage finding even though a test "exists". Name the class the suite structurally cannot catch and BLOCK if a class the strategy clearly required is wholly unexercised.
 

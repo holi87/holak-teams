@@ -27,6 +27,14 @@ The complete installed framework contract is
 - One attempt is the default. Never green-encode a failure with broad catches, expected
   failure wrappers, early returns, hidden retries, order dependence, `.only`, or vacuous
   assertions.
+- An intermittent confirmed defect (observed rate p = occurrences/attempts < 1) gets a
+  declared-repetition RED: its runtime repetition marker declares
+  n = min(200, ceil(ln 0.05 / ln(1 - p))), and one test repeats the reproduction up to n
+  times from fresh state and fails at the first oracle violation. It is not a retry: a
+  failure is never re-run to green. A run without a violation reports its pass as
+  `intermittent-unreproduced`, which is not RED evidence; after one, raise n once to the
+  99% bound min(200, ceil(ln 0.01 / ln(1 - p))). Flaky-RED applies only to deterministic
+  (n = 1) regressions.
 - Quarantine requires an owner, reason, evidence, expiry, and explicit runner outcome.
   Expired or malformed entries fail closed. Final verification uses the lockfile, clean
   install/state, and the same command documented for CI.

@@ -52,7 +52,11 @@
       { "id": "immutable-mode", "source": "qa-core", "markers": ["controller-selected primary mode", "Copy it exactly", "A=FULL_AUDIT", "B=BUG_HUNT", "Never infer, substitute, broaden", "protocol error"] },
       { "id": "first-attempt-schema", "source": "qa-core", "markers": ["exact key names", "value types", "repair within the same attempt", "never rely on a retry"] },
       { "id": "capability-template-selection", "source": "qa-framework-runner", "markers": ["Detect the target language", "Adapt a healthy existing suite", "Scaffold only"] },
-      { "id": "shared-template-semantics", "source": "qa-framework-runner", "markers": ["defect-evidence", "candidate-regression", "owner, reason, evidence, expiry"] }
+      { "id": "shared-template-semantics", "source": "qa-framework-runner", "markers": ["defect-evidence", "candidate-regression", "owner, reason, evidence, expiry"] },
+      { "id": "confirmation-ratio", "source": "qa-core", "markers": ["captured occurrence", "occurrences/attempts ratio", "second success is never fabricated"] }
     ]
-  }
+  },
+  "forbiddenPromptPatterns": [
+    { "id": "no-double-reproduction-gate", "pattern": "reproduced[^.]{0,40}(at least twice|≥\\s*2×)|second reproduction", "flags": "i" }
+  ]
 }

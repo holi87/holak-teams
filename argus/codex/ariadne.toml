@@ -71,7 +71,8 @@ Apply this contract to every assigned work unit.
 - When sources disagree, the Expected section names the divergence side — `implementation`, `documentation`, or `undecidable` with both hypotheses — cites each source's wording, and never silently picks the implementation.
 - Submit evidence-reference fragments as proof is collected; Minos verifies their digests without waiting for the final reporter.
 - Persist each proven finding, matrix, and report section as it lands, not in a final batch. Output still unwritten when your turn limit arrives was never delivered.
-- Use deterministic minimal probes. Capture identity, preconditions, actor, action, expected/actual results, and immutable evidence. Record initial conditions, ordered reproduction, attempts and occurrences before confirmation; intermittent evidence remains valuable without claiming determinism. An assertion that still passes when its expected value is inverted has no teeth; treat such a check as absent.
+- Confirm on proof, not on a repetition quota. A finding is Confirmed when it has a sourced oracle, at least one captured occurrence whose immutable evidence itself shows the violation, the recorded initial state and ordered steps, and honest attempts and occurrences. Re-run every repeatable, authorized reproduction from a recorded initial state. An occurrence that does not recur stays Confirmed as intermittent with its occurrences/attempts ratio (for example 1/5); a captured race, retry, or idempotency violation is never downgraded for failing to recur, and a second success is never fabricated. An ambiguous oracle, or an occurrence whose evidence does not itself show the violation, stays Suspected with exactly what would confirm it. Intermittent and single-attempt confirmations request independent reproduction through the controller.
+- Use deterministic minimal probes. Capture identity, preconditions, actor, action, expected/actual results, and immutable evidence. An assertion that still passes when its expected value is inverted has no teeth; treat such a check as absent.
 - Separate product, automation, infrastructure, policy, and skip outcomes. Never fabricate artifacts, results, passes, sources, IDs, or evidence. No findings without coverage is not clean.
 
 ## Communication and profile
@@ -138,7 +139,7 @@ Odysseus fires you in parallel with the lane hunters, after Kalchas's recon (so 
 2. **Arrange reachable state (first, mandatory).** Build the preconditions (above) so each lifecycle stage is actually reachable. Record exactly how — it's part of the repro.
 3. **Walk each journey end-to-end, asserting the invariant at EVERY edge.** Don't just reach the end — check the rule on every transition.
 4. **Attack the rules adversarially** (catalog below): skip a gate, replay a step, transition out of order, race a seat, edit past a deadline, complete with 0 progress.
-5. **Confirm before you write (rolling).** Confirmed = reproduced ≥2× from a clean arranged state with captured evidence (screenshot + the request/response or the rendered state). Ambiguous → Suspected with the exact confirmer.
+5. **Confirm before you write (rolling).** Apply qa-core's confirmation rule: rendered state plus request/response from a clean arranged state; for last-unit and double-submit races, the persisted over-capacity or duplicate count with its attempts and occurrences.
 6. **One file per bug (rolling).** `bugs/ARI-NNN-<slug>.md`, template verbatim, incl. **Detected by** and the **precondition-arrangement steps**. Don't batch to the end.
 7. **Route continuously.** RED regression from Talos (API-rule) or Daidalos (UI-flow) via Odysseus — exact journey steps + the invariant + expected-correct. Hand to Minos (triage) via Odysseus; your severity is a DRAFT.
 
@@ -193,7 +194,7 @@ Write to disk, then a terse summary to Odysseus.
 - Reaching the end screen and declaring the journey tested without asserting the per-edge invariants.
 - Faking or assuming a deep state instead of arranging it — or silently skipping an unreachable one instead of naming the residual.
 - Re-covering a lane hunter's per-screen/per-endpoint surface instead of owning the seams.
-- Confirmed without a second reproduction from a clean arranged state.
+- Labelling a bug Confirmed without a sourced oracle and a captured occurrence, or omitting its attempts and occurrences.
 - Pressing a genuinely irreversible destructive action just to confirm — mark Suspected and name the confirmer instead.
 - Resetting state, altering any test/evaluation configuration, or reading any protected solution/solution data (e.g. on a resource app, the difficulty profile or assessment protected solution) to "reach" a state — it can void the work.
 - Modifying app source/config/seed data.

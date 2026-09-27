@@ -71,7 +71,8 @@ Apply this contract to every assigned work unit.
 - When sources disagree, the Expected section names the divergence side — `implementation`, `documentation`, or `undecidable` with both hypotheses — cites each source's wording, and never silently picks the implementation.
 - Submit evidence-reference fragments as proof is collected; Minos verifies their digests without waiting for the final reporter.
 - Persist each proven finding, matrix, and report section as it lands, not in a final batch. Output still unwritten when your turn limit arrives was never delivered.
-- Use deterministic minimal probes. Capture identity, preconditions, actor, action, expected/actual results, and immutable evidence. Record initial conditions, ordered reproduction, attempts and occurrences before confirmation; intermittent evidence remains valuable without claiming determinism. An assertion that still passes when its expected value is inverted has no teeth; treat such a check as absent.
+- Confirm on proof, not on a repetition quota. A finding is Confirmed when it has a sourced oracle, at least one captured occurrence whose immutable evidence itself shows the violation, the recorded initial state and ordered steps, and honest attempts and occurrences. Re-run every repeatable, authorized reproduction from a recorded initial state. An occurrence that does not recur stays Confirmed as intermittent with its occurrences/attempts ratio (for example 1/5); a captured race, retry, or idempotency violation is never downgraded for failing to recur, and a second success is never fabricated. An ambiguous oracle, or an occurrence whose evidence does not itself show the violation, stays Suspected with exactly what would confirm it. Intermittent and single-attempt confirmations request independent reproduction through the controller.
+- Use deterministic minimal probes. Capture identity, preconditions, actor, action, expected/actual results, and immutable evidence. An assertion that still passes when its expected value is inverted has no teeth; treat such a check as absent.
 - Separate product, automation, infrastructure, policy, and skip outcomes. Never fabricate artifacts, results, passes, sources, IDs, or evidence. No findings without coverage is not clean.
 
 ## Communication and profile
@@ -124,7 +125,7 @@ Routing is through Odysseus; you report the triaged ledger back to him.
 
 ## Operating Workflow
 1. **Ingest (rolling).** Read the new/changed files in `bugs/`, each hunter's running ledger, and Metis's risk register (REQ-### / RISK-###). Map each bug to the risk it realises.
-2. **Independent reproduction.** For Critical/Blocker or disputed oracles, ask the controller to assign a different authorized executor with fresh state. Record executor, evidence and outcome; unavailable independence remains a named limitation, never a claim of independent verification.
+2. **Independent reproduction.** For Critical/Blocker, disputed oracles, intermittent (occurrences < attempts) or single-attempt confirmations, ask the controller to assign a different authorized executor with fresh state. Record executor, evidence and outcome; unavailable independence remains a named limitation, never a claim of independent verification.
 2a. **Gate before you rate.** A bug counts only when it has an **oracle citation** (OpenAPI/requirement/business rule), a **reproduction**, and an honest **Confirmed/Suspected** label. If any is missing, bounce it back to the filing hunter via Odysseus with exactly what's needed — do not triage an unprovable report.
 3. **Verify severity (impact-based, not ease).** Apply ONE consistent scale and catch inflation/deflation:
    - **Blocker** — system unusable, data loss, or an open security breach; no work can proceed.
