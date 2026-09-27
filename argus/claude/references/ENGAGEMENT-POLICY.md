@@ -59,6 +59,26 @@ directories plus the exact isolated-driver files. It never broadly allows `src/`
 many repositories. After read-only recon, the operator may add the target's proven test
 roots to the manifest; an agent or fetched file may not infer or broaden them.
 
+Lane-owned roots are writable in place by their owners only. `writePolicy.ownedArtifactRoots`
+lists exact canonical paths with their owners: Atlas for `solution/test-lanes.tsv`,
+`solution/environment.tsv`, and the runner-kit files under `scripts/` (never `scripts/`
+itself); Atlas and Asklepios for `solution/quarantine.tsv`; Atlas and the lane automation
+engineers for `solution/counterfactual/`. The guard takes the writing lane from the
+PreToolUse payload that Claude Code writes (`agent_type` `argus:<slug>` for a subagent; the
+main thread is the controller). A non-owner, the controller when it is not an owner, an
+unidentified writer, and an owned root reached through a symbolic link are denied with
+`GUARD-OWNED-ARTIFACT`. A packaged command checks its own outputs without a lane identity,
+so it never writes an owned path: write to `reports/` and copy the result in place.
+`writePolicy.selectedTemplateRoots` adds the roots of the operator's explicit
+`ai_agents_internal/template-selection.json`, which no lane can write: its `testRoot` joins
+the generated test roots and its `harnessRoot` is owned by `harnessRootOwners` (Atlas, the
+lane automation engineers, and Asklepios, who extend the shared layer). The record
+must be schema-valid and name the artifact or target root. Each root must lie below the
+artifact root through real directories, outside `ai_agents_internal`, and clear of every
+canonical, owned, and control path (the harness root also of every shared artifact root). It
+must also be physically disjoint from the target root, so an artifact root that is the
+target grants nothing. Any doubtful record grants nothing.
+
 The hook does not replace host sandboxing or permissions. Managed Claude Code settings
 may disable non-managed plugin hooks; preflight detects a missing packaged hook and blocks
 the engagement rather than claiming protection.

@@ -52,6 +52,23 @@ guard_shell() {
   fi
 }
 
+# A PreToolUse payload as Claude Code writes it: a subagent carries agent_id and agent_type,
+# "main" is the main thread (the controller) and carries neither, and "untyped" is a subagent
+# without an agent_type. The optional fifth argument is the working directory.
+guard_as() {
+  local agent="$1" tool="$2" subject="$3" expected_rule="$4" cwd="${5:-$TARGET}" output
+  output="$(jq -nc --arg agent "$agent" --arg tool "$tool" --arg subject "$subject" --arg cwd "$cwd" '
+    {hook_event_name:"PreToolUse",session_id:"smoke-session",tool_name:$tool,cwd:$cwd,
+     tool_input:(if $tool == "Bash" then {command:$subject} else {file_path:$subject,content:"not audited"} end)}
+    + (if $agent == "main" then {} elif $agent == "untyped" then {agent_id:"smoke-untyped"}
+       else {agent_id:("smoke-" + ($agent | gsub("[^a-z0-9-]"; "-"))),agent_type:$agent} end)' | "$CLI" guard)"
+  if [ "$expected_rule" = allow ]; then
+    [ -z "$output" ] || fail "allowed $tool by $agent was denied: $subject: $output"
+  else
+    grep -Fq "$expected_rule" <<<"$output" || fail "$tool $subject by $agent did not return $expected_rule: $output"
+  fi
+}
+
 TARGET="$WORK/target"
 ALLOCATIONS="$WORK/allocations"
 mkdir -p "$TARGET/app" "$TARGET/tests" "$TARGET/reports" "$TARGET/solution" "$ALLOCATIONS"
@@ -475,6 +492,173 @@ guard_shell "argus-assets automation-review check --manifest $MANIFEST --output 
 guard_shell "argus-assets automation-review approve --manifest $MANIFEST" 'GUARD-SHELL-AMBIGUOUS: unknown automation-review operation'
 guard_shell "argus-assets engagement fragment --manifest $MANIFEST --lane aristarchus --token lease-token --canonical solution/automation-review.json --id review-r01 --json '{\"owner\":\"aristarchus\",\"reviews\":[]}'" allow
 guard_shell "argus-assets engagement fragment --manifest $MANIFEST --lane aristarchus --token lease-token --canonical solution/automation-review.json --id review-r01 --json @reports/review.json" 'GUARD-SHELL-AMBIGUOUS: batch --json input must be one inline single-line JSON object'
+# The automation review stays canonical: no lane writes it directly, and only Aristarchus
+# submits its single-document fragments.
+guard_as argus:aristarchus Write solution/automation-review.json GUARD-CANONICAL-SINGLE-WRITER
+if "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$(token_for kleio)" \
+  --canonical solution/automation-review.json --id foreign-review --input "$WORK/ledger.json" >"$WORK/foreign-review.out" 2>&1; then
+  fail 'a non-owner submitted an automation-review fragment'
+fi
+grep -Fq 'solution/automation-review.json is a single-document contract; only aristarchus may submit fragments' "$WORK/foreign-review.out" \
+  || fail "non-owner automation-review fragment failed for the wrong reason: $(<"$WORK/foreign-review.out")"
+
+# The 5.0 harness declarations and runner kit are lane-owned (writePolicy.ownedArtifactRoots):
+# the PreToolUse payload names the writing lane, the declared owners write in place, and every
+# other lane, the controller, and an unidentified writer are denied. Ownership opens exact
+# files only; the rest of scripts/ and every canonical artifact stay closed.
+for path in solution/test-lanes.tsv solution/environment.tsv scripts/runner-lib.sh scripts/runner-contract.sh \
+  scripts/outcome-event.sh scripts/quarantine-contract.sh scripts/lane-plan.sh scripts/environment-gate.sh \
+  scripts/inventory-gate.sh scripts/evidence-gate.sh scripts/argus-playwright-reporter.mjs scripts/baseline-coverage.mjs; do
+  guard_as argus:atlas Write "$path" allow
+  guard_as argus:talos Write "$path" "GUARD-OWNED-ARTIFACT: lane-owned $path is written only by atlas, not talos"
+done
+guard_as atlas Write solution/test-lanes.tsv allow
+guard_as main Write solution/test-lanes.tsv 'GUARD-OWNED-ARTIFACT: lane-owned solution/test-lanes.tsv is written only by atlas, not odysseus'
+guard_write solution/test-lanes.tsv 'GUARD-OWNED-ARTIFACT: lane-owned solution/test-lanes.tsv is written only by atlas; the writing lane is not identified'
+guard_write scripts/runner-lib.sh 'the writing lane is not identified'
+guard_as untyped Write solution/environment.tsv 'GUARD-OWNED-ARTIFACT: lane-owned solution/environment.tsv is written only by atlas; the writing lane is not identified'
+guard_as other:atlas Write solution/environment.tsv 'the writing lane is not identified'
+guard_as general-purpose Write solution/environment.tsv 'written only by atlas, not general-purpose'
+for lane in atlas asklepios; do guard_as "argus:$lane" Write solution/quarantine.tsv allow; done
+guard_as argus:talos Write solution/quarantine.tsv 'GUARD-OWNED-ARTIFACT: lane-owned solution/quarantine.tsv is written only by atlas, asklepios, not talos'
+for lane in atlas talos daidalos nike aegis mnemosyne; do
+  guard_as "argus:$lane" Write solution/counterfactual/BUG-0001.json allow
+done
+guard_as argus:minos Write solution/counterfactual/BUG-0001.json 'GUARD-OWNED-ARTIFACT: lane-owned solution/counterfactual is written only by atlas, talos, daidalos, nike, aegis, mnemosyne, not minos'
+guard_as argus:kleio Write solution/counterfactual/nested/BUG-0002.json GUARD-OWNED-ARTIFACT
+guard_as argus:atlas Write scripts/generated-helper.sh GUARD-TARGET-IMMUTABLE
+guard_as argus:atlas Write solution/test-lanes.tsv.orig GUARD-TARGET-IMMUTABLE
+guard_as argus:atlas Write src/application.ts GUARD-TARGET-IMMUTABLE
+guard_as argus:atlas Write app/source.ts GUARD-TARGET-IMMUTABLE
+guard_as argus:atlas Write run-tests.sh GUARD-CANONICAL-SINGLE-WRITER
+guard_as argus:atlas Bash "cp $atlas_tmp/runner-kit/scripts/runner-lib.sh scripts/runner-lib.sh" allow
+guard_as argus:talos Bash "cp $atlas_tmp/runner-kit/scripts/runner-lib.sh scripts/runner-lib.sh" GUARD-OWNED-ARTIFACT
+guard_as argus:atlas Bash 'cp reports/lanes.tsv solution/test-lanes.tsv' allow
+guard_as argus:kleio Bash 'cp reports/lanes.tsv solution/test-lanes.tsv' GUARD-OWNED-ARTIFACT
+guard_as argus:talos Bash 'printf x > solution/counterfactual/BUG-0003.json' allow
+guard_as argus:hermes Bash 'printf x > solution/counterfactual/BUG-0003.json' GUARD-OWNED-ARTIFACT
+guard_as argus:talos Bash 'argus-assets redact --input reports/result.txt --output solution/counterfactual/BUG-0004.json' allow
+guard_as argus:hermes Bash 'argus-assets redact --input reports/result.txt --output solution/counterfactual/BUG-0004.json' GUARD-OWNED-ARTIFACT
+# A packaged command checks its own outputs without a lane identity, so it never writes a
+# lane-owned path; the owner redacts into reports/ and copies the result in place.
+if (cd "$TARGET" && "$CLI" redact --input reports/result.txt --output solution/counterfactual/BUG-0004.json) >"$WORK/owned-redact.out" 2>&1; then
+  fail 'the packaged redactor wrote a lane-owned path without a lane identity'
+fi
+grep -Fq 'redaction output denied by active engagement rule GUARD-OWNED-ARTIFACT' "$WORK/owned-redact.out" \
+  || fail "unidentified owned-path redaction failed for the wrong reason: $(<"$WORK/owned-redact.out")"
+test ! -e "$TARGET/solution/counterfactual/BUG-0004.json" || fail 'a denied redaction created a lane-owned file'
+# An owned root reached through a symbolic link is denied to its owners as well.
+ln -s ../app "$TARGET/solution/counterfactual"
+guard_as argus:talos Write solution/counterfactual/BUG-0005.json 'GUARD-OWNED-ARTIFACT: lane-owned solution/counterfactual crosses a symbolic link'
+guard_as argus:talos Write app/BUG-0005.json GUARD-OWNED-ARTIFACT
+rm "$TARGET/solution/counterfactual"
+# The template selection that grants the harness and test roots lives in the control plane,
+# which no lane can write, through a direct tool or through `template select`.
+guard_as argus:atlas Write ai_agents_internal/template-selection.json GUARD-TARGET-IMMUTABLE
+guard_as main Bash "argus-assets template select --target $TARGET --runtime typescript --package-manager npm --test-root quality/specs --harness-root quality/support --output ai_agents_internal/template-selection.json" GUARD-TARGET-IMMUTABLE
+# Manifest validation keeps owned roots canonical, disjoint, and outside the canonical set.
+node --input-type=module - "$ROOT" "$MANIFEST" <<'NODE'
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const [root, manifestPath] = process.argv.slice(2);
+const { validateEngagementManifest } = await import(pathToFileURL(join(root, 'argus/claude/lib/engagement.mjs')).href);
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+const errorsFor = (mutate) => {
+  const copy = structuredClone(manifest);
+  mutate(copy.writePolicy);
+  return validateEngagementManifest(copy);
+};
+const expectErrors = (label, errors, expected) => {
+  if (expected === null ? errors.length !== 0 : !errors.includes(expected)) throw new Error(`${label}: ${JSON.stringify(errors)}`);
+};
+expectErrors('declared owned roots', errorsFor(() => {}), null);
+expectErrors('omitted owned roots', errorsFor((policy) => { delete policy.ownedArtifactRoots; delete policy.selectedTemplateRoots; }), null);
+const invalid = 'owned artifact root path or owners are invalid';
+expectErrors('nested owned root', errorsFor((policy) => policy.ownedArtifactRoots.push({ path: 'solution/counterfactual/nested', owners: ['atlas'] })), 'owned artifact roots overlap: solution/counterfactual/nested');
+expectErrors('canonical owned root', errorsFor((policy) => policy.ownedArtifactRoots.push({ path: 'run-tests.sh', owners: ['atlas'] })), 'owned artifact root is a canonical artifact: run-tests.sh');
+expectErrors('control-plane owned root', errorsFor((policy) => policy.ownedArtifactRoots.push({ path: 'ai_agents_internal/reports/lanes.tsv', owners: ['atlas'] })), invalid);
+expectErrors('traversing owned root', errorsFor((policy) => policy.ownedArtifactRoots.push({ path: 'solution/../app', owners: ['atlas'] })), invalid);
+expectErrors('trailing-slash owned root', errorsFor((policy) => policy.ownedArtifactRoots.push({ path: 'solution/fixtures/', owners: ['atlas'] })), invalid);
+expectErrors('ownerless root', errorsFor((policy) => policy.ownedArtifactRoots.push({ path: 'solution/fixtures', owners: [] })), invalid);
+expectErrors('invalid owner', errorsFor((policy) => policy.ownedArtifactRoots.push({ path: 'solution/fixtures', owners: ['Atlas'] })), invalid);
+expectErrors('extra owned key', errorsFor((policy) => policy.ownedArtifactRoots.push({ path: 'solution/fixtures', owners: ['atlas'], mode: 'open' })), invalid);
+expectErrors('invalid harness owners', errorsFor((policy) => { policy.selectedTemplateRoots = { harnessRootOwners: [] }; }), 'writePolicy.selectedTemplateRoots must name unique harnessRootOwners');
+NODE
+
+# The operator's explicit template selection grants its roots only in a disjoint layout: the
+# test root to every lane and the shared harness root to Atlas, the lane automation engineers,
+# and Asklepios. Any doubtful record grants nothing.
+HARNESS_OWNERS='atlas, talos, daidalos, nike, aegis, mnemosyne, asklepios'
+SELECTED="$WORK/selected-roots"
+SELECTED_ROOT="$SELECTED/artifacts"
+SELECTION="$SELECTED_ROOT/ai_agents_internal/template-selection.json"
+mkdir -p "$SELECTED/target/src" "$SELECTED_ROOT"
+printf 'export const app = 1;\n' >"$SELECTED/target/src/app.ts"
+"$CLI" engagement init --target "$SELECTED/target" --artifact-root "$SELECTED_ROOT" --mode A --engagement-id selected-roots >/dev/null
+guard_as argus:atlas Write quality/support/config.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+"$CLI" template select --target "$SELECTED_ROOT" --runtime typescript --package-manager npm \
+  --test-root quality/specs --harness-root quality/support --output "$WORK/selected-roots.json" >/dev/null
+cp "$WORK/selected-roots.json" "$SELECTION"
+for lane in atlas talos daidalos nike aegis mnemosyne asklepios; do
+  guard_as "argus:$lane" Write quality/support/config.ts allow "$SELECTED_ROOT"
+done
+guard_as argus:atlas Bash 'mkdir -p quality/support/fixtures' allow "$SELECTED_ROOT"
+guard_as argus:hermes Write quality/support/config.ts "GUARD-OWNED-ARTIFACT: lane-owned quality/support is written only by $HARNESS_OWNERS, not hermes" "$SELECTED_ROOT"
+guard_as argus:kleio Bash 'printf x > quality/support/report.ts' GUARD-OWNED-ARTIFACT "$SELECTED_ROOT"
+guard_as main Write quality/support/config.ts 'not odysseus' "$SELECTED_ROOT"
+guard_as untyped Write quality/support/config.ts 'the writing lane is not identified' "$SELECTED_ROOT"
+guard_as argus:talos Write quality/specs/api/orders.spec.ts allow "$SELECTED_ROOT"
+guard_as argus:daidalos Write quality/specs/ui/cart.spec.ts allow "$SELECTED_ROOT"
+guard_as argus:hermes Write quality/specs/perf/probe.spec.ts allow "$SELECTED_ROOT"
+guard_as argus:atlas Write quality/other.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:atlas Write "$SELECTED/target/src/app.ts" GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:atlas Write solution/test-lanes.tsv allow "$SELECTED_ROOT"
+selected_record() {
+  jq "$@" "$WORK/selected-roots.json" >"$SELECTION"
+}
+selected_record '.harnessRoot = "ai_agents_internal/support"'
+guard_as argus:atlas Write ai_agents_internal/support/config.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:talos Write quality/specs/api/orders.spec.ts allow "$SELECTED_ROOT"
+selected_record '.harnessRoot = "scripts"'
+guard_as argus:atlas Write scripts/generated-helper.sh GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:atlas Write scripts/runner-lib.sh allow "$SELECTED_ROOT"
+selected_record '.harnessRoot = "reports"'
+guard_as argus:talos Write reports/run.json allow "$SELECTED_ROOT"
+selected_record '.harnessRoot = "solution"'
+guard_as argus:atlas Write solution/harness.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+selected_record '.harnessRoot = "../target/src"'
+guard_as argus:atlas Write ../target/src/app.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+selected_record '.choiceSource = "inferred"'
+guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+selected_record --arg root "$SELECTED/target" '.targetRoot = $root'
+guard_as argus:talos Write quality/specs/api/orders.spec.ts allow "$SELECTED_ROOT"
+selected_record '.targetRoot = "/nonexistent/argus-selection-root"'
+guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+# An ADAPT record may nest the test root inside the harness root; the nested test root stays open.
+selected_record '.action = "adapt" | .harnessRoot = "quality" | .testRoot = "quality/specs"'
+guard_as argus:atlas Write quality/support/config.ts allow "$SELECTED_ROOT"
+guard_as argus:hermes Write quality/support/config.ts "GUARD-OWNED-ARTIFACT: lane-owned quality is written only by $HARNESS_OWNERS, not hermes" "$SELECTED_ROOT"
+guard_as argus:hermes Write quality/specs/api/orders.spec.ts allow "$SELECTED_ROOT"
+# A symbolic link on a selected root, or a linked record, grants nothing.
+cp "$WORK/selected-roots.json" "$SELECTION"
+mkdir -p "$SELECTED_ROOT/quality"
+ln -s ../ai_agents_internal "$SELECTED_ROOT/quality/support"
+guard_as argus:atlas Write quality/support/forged.json GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:talos Write quality/specs/api/orders.spec.ts allow "$SELECTED_ROOT"
+rm "$SELECTED_ROOT/quality/support"
+rm "$SELECTION"
+ln -s "$WORK/selected-roots.json" "$SELECTION"
+guard_as argus:atlas Write quality/support/config.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+rm "$SELECTION"
+# When the artifact root is the target root, a selection would cover target source: nothing is granted.
+jq --arg root "$TARGET" '.targetRoot = $root | .harnessRoot = "app"' "$WORK/selected-roots.json" >"$TARGET/ai_agents_internal/template-selection.json"
+guard_as argus:atlas Write app/source.ts GUARD-TARGET-IMMUTABLE
+guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE
+rm "$TARGET/ai_agents_internal/template-selection.json"
 # Executed from inside the engagement, the allowed queries leave the artifact tree untouched.
 COVERAGE_FIXTURES="$ROOT/scripts/fixtures/argus-coverage"
 COVERAGE_EVIDENCE=(--evidence "$COVERAGE_FIXTURES/evidence-reference.json" --ledger "$COVERAGE_FIXTURES/bug-ledger.json" --root "$COVERAGE_FIXTURES")

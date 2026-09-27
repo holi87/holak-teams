@@ -158,6 +158,7 @@ export function validateEngagementManifest(manifest) {
       errors.push(...canonicalMergeErrors(item));
     }
   }
+  validateOwnedWritePolicy(policy, errors);
   const bypass = policy.bypass;
   if (!plainObject(bypass) || typeof bypass.enabled !== 'boolean' || !stringList(bypass.allowedPaths, false) || !bypass.allowedPaths.every(safeRelative)) {
     errors.push('writePolicy.bypass is invalid');
@@ -1271,6 +1272,8 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
     }
   } else return guardDecision('allow', 'GUARD-ALLOW', 'tool is outside the filesystem-write matcher', [], commandSha256);
   if (paths.length === 0) return guardDecision('deny', 'GUARD-PATH-UNRESOLVED', 'write tool has no recognized destination', [], commandSha256);
+  const lane = guardLaneIdentity(payload);
+  const selectedRoots = selectedTemplateWriteRoots(manifest);
 
   const evaluated = [];
   for (const rawPath of [...new Set(paths)]) {
@@ -1300,9 +1303,16 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
       return guardDecision('deny', 'GUARD-CANONICAL-SINGLE-WRITER', 'canonical artifacts require immutable fragments and owner merge', evaluated, commandSha256);
     }
     if (isBypassed(manifest, physical, bypassToken, now)) continue;
+    const owned = ownedWriteRootFor(manifest, physical, selectedRoots);
+    if (owned) {
+      const denial = ownedWriteDenial(owned, lane);
+      if (denial) return guardDecision('deny', 'GUARD-OWNED-ARTIFACT', denial, evaluated, commandSha256);
+      continue;
+    }
     const allowedRoots = [
       ...manifest.writePolicy.allowedArtifactRoots,
       ...manifest.writePolicy.generatedTestRoots,
+      ...selectedRoots.generated,
       manifest.writePolicy.workerRoot,
       manifest.writePolicy.fragmentRoot,
       manifest.writePolicy.checkpointRoot,
@@ -1328,6 +1338,136 @@ export function buildGuardAudit({ manifest, payload, decision, timestamp }) {
     paths: decision.paths,
     commandSha256: decision.commandSha256,
   };
+}
+
+// Lane-owned write roots: every writePolicy.ownedArtifactRoots entry, plus the harness root of
+// the operator's template selection, is writable only by its listed owners. Ownership outranks
+// every ordinary write root, except that a selected test root nested inside the selected
+// harness root stays open to every lane.
+function validateOwnedWritePolicy(policy, errors) {
+  if (policy.ownedArtifactRoots !== undefined) {
+    if (!Array.isArray(policy.ownedArtifactRoots)) errors.push('writePolicy.ownedArtifactRoots must be an array');
+    else {
+      const canonical = new Set(Array.isArray(policy.canonicalArtifacts) ? policy.canonicalArtifacts.map((item) => item?.path) : []);
+      const declared = [];
+      for (const item of policy.ownedArtifactRoots) {
+        if (!plainObject(item) || Object.keys(item).some((key) => !['path', 'owners'].includes(key)) || !canonicalCorpusRoot(item.path) ||
+            item.path.split('/')[0] === 'ai_agents_internal' || !stringList(item.owners, true) || !item.owners.every(validSlug)) {
+          errors.push('owned artifact root path or owners are invalid');
+        } else if (canonical.has(item.path)) errors.push(`owned artifact root is a canonical artifact: ${item.path}`);
+        else if (declared.some((path) => overlappingPaths(path, item.path))) errors.push(`owned artifact roots overlap: ${item.path}`);
+        else declared.push(item.path);
+      }
+    }
+  }
+  const selected = policy.selectedTemplateRoots;
+  if (selected !== undefined && (!plainObject(selected) || Object.keys(selected).some((key) => key !== 'harnessRootOwners') ||
+      !stringList(selected.harnessRootOwners, true) || !selected.harnessRootOwners.every(validSlug))) {
+    errors.push('writePolicy.selectedTemplateRoots must name unique harnessRootOwners');
+  }
+}
+
+// Claude Code, not the model, writes the PreToolUse payload: a subagent carries agent_id and its
+// agent_type (`argus:<slug>`), while the main thread, which is the controller, carries no
+// agent_id. A payload without the PreToolUse event name (such as the packaged CLI's own write
+// check) or with any other agent shape identifies no lane.
+function guardLaneIdentity(payload) {
+  if (payload?.hook_event_name !== 'PreToolUse') return null;
+  const agentType = payload.agent_type ?? null;
+  if (agentType === null) return (payload.agent_id ?? null) === null ? 'odysseus' : null;
+  const match = typeof agentType === 'string' ? /^(?:argus:)?([a-z][a-z0-9-]*)$/.exec(agentType) : null;
+  return match ? match[1] : null;
+}
+
+// The owned root that physically contains the destination, or null; declared and selected owned
+// roots never overlap. A root whose path crosses a symbolic link, or that cannot be resolved,
+// is returned as unsafe, so the write is denied.
+function ownedWriteRootFor(manifest, physical, selectedRoots) {
+  for (const root of [...(manifest.writePolicy.ownedArtifactRoots ?? []), ...selectedRoots.owned]) {
+    try {
+      const artifactPhysical = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
+      const rootPhysical = resolvePhysical(root.path, artifactPhysical);
+      if (!within(rootPhysical, physical)) continue;
+      if ((root.open ?? []).some((path) => within(resolvePhysical(path, artifactPhysical), physical))) return null;
+      return { ...root, safe: rootPhysical === join(artifactPhysical, ...root.path.split('/')) };
+    } catch {
+      return { ...root, safe: false };
+    }
+  }
+  return null;
+}
+
+function ownedWriteDenial(owned, lane) {
+  const owners = owned.owners.join(', ');
+  if (!owned.safe) return `lane-owned ${owned.path} crosses a symbolic link`;
+  if (!lane) return `lane-owned ${owned.path} is written only by ${owners}; the writing lane is not identified`;
+  if (!owned.owners.includes(lane)) return `lane-owned ${owned.path} is written only by ${owners}, not ${lane}`;
+  return null;
+}
+
+// Roots granted by the operator's explicit template selection. The record sits in the control
+// plane, which no worker can write, and counts only when it is schema-valid and names this
+// artifact or target root. The test root joins the generated test roots; the harness root is
+// owned by selectedTemplateRoots.harnessRootOwners. A root is granted only below the artifact
+// root through real directories, outside ai_agents_internal, clear of every canonical, owned,
+// and control path (and, for the harness root, of every shared artifact root), and physically
+// disjoint from the target root. Anything else grants nothing, so a doubtful record fails closed.
+function selectedTemplateWriteRoots(manifest) {
+  const none = { generated: [], owned: [] };
+  const policy = manifest.writePolicy.selectedTemplateRoots;
+  if (!plainObject(policy)) return none;
+  try {
+    const selection = reviewTemplateSelection(manifest);
+    if (!selection || !selectionNamesEngagementRoot(manifest, selection.targetRoot)) return none;
+    const testRoot = grantableTemplateRoot(manifest, selection.testRoot, { owned: false }) ? selection.testRoot : null;
+    const harnessRoot = grantableTemplateRoot(manifest, selection.harnessRoot, { owned: true }) ? selection.harnessRoot : null;
+    return {
+      generated: testRoot ? [testRoot] : [],
+      owned: harnessRoot
+        ? [{ path: harnessRoot, owners: [...policy.harnessRootOwners], open: testRoot && testRoot.startsWith(`${harnessRoot}/`) ? [testRoot] : [] }]
+        : [],
+    };
+  } catch {
+    return none;
+  }
+}
+
+function selectionNamesEngagementRoot(manifest, targetRoot) {
+  if (!nonEmpty(targetRoot) || !isAbsolute(targetRoot) || !existsSync(targetRoot)) return false;
+  const named = realpathSync(targetRoot);
+  return [manifest.artifactRoot, manifest.target?.root].some((root) => nonEmpty(root) && existsSync(root) && realpathSync(root) === named);
+}
+
+function grantableTemplateRoot(manifest, root, { owned }) {
+  if (!canonicalCorpusRoot(root) || root.split('/')[0] === 'ai_agents_internal') return false;
+  const policy = manifest.writePolicy;
+  const reserved = [
+    ...policy.canonicalArtifacts.map((item) => item.path),
+    ...(policy.ownedArtifactRoots ?? []).map((item) => item.path),
+    policy.auditPath, policy.fragmentRoot, policy.checkpointRoot, policy.workerRoot, manifest.statePath,
+    ...(owned ? policy.allowedArtifactRoots : []),
+  ].map((path) => path.replace(/\/+$/, ''));
+  if (reserved.some((path) => overlappingPaths(path, root))) return false;
+  const artifactPhysical = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
+  let cursor = artifactPhysical;
+  for (const part of root.split('/')) {
+    cursor = join(cursor, part);
+    let stats;
+    try { stats = lstatSync(cursor); }
+    catch (error) {
+      if (error.code === 'ENOENT') break;
+      throw error;
+    }
+    if (stats.isSymbolicLink() || !stats.isDirectory()) return false;
+  }
+  if (!nonEmpty(manifest.target?.root)) return true;
+  const rootPhysical = resolvePhysical(root, artifactPhysical);
+  const targetPhysical = resolvePhysical(manifest.target.root, artifactPhysical);
+  return !within(targetPhysical, rootPhysical) && !within(rootPhysical, targetPhysical);
+}
+
+function overlappingPaths(left, right) {
+  return left === right || right.startsWith(`${left}/`) || left.startsWith(`${right}/`);
 }
 
 export function engagementPath(manifest, relativePath) {
