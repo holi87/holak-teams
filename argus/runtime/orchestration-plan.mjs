@@ -32,6 +32,7 @@ export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
   const knownGates = new Set(Object.keys(capabilityMatrix.capabilities ?? {}));
   compareSets(planBySlug.keys(), matrixBySlug.keys(), 'role roster', errors);
   let proofCandidates = null;
+  let reproduceRoutes = null;
   if (raci !== undefined) {
     if (!isObject(raci) || !Array.isArray(raci.agents)) errors.push('RACI must contain an agents array');
     else {
@@ -41,6 +42,7 @@ export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
         .filter((agent) => PROOF_CANDIDATE_PERSISTENCE.includes(agent.persistence))
         .map((agent) => agent.slug)
         .sort();
+      reproduceRoutes = Array.isArray(raci.surfaceRoutes) ? raci.surfaceRoutes.filter(isObject) : [];
     }
   }
 
@@ -161,6 +163,7 @@ export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
   validatePhases(plan, phases, planBySlug, proofCandidates, errors);
   validateProofLoop(plan.proofLoop, planBySlug, proofCandidates, errors);
   validateDependencies(planBySlug, phases, errors);
+  if (reproduceRoutes !== null) validateReproduceRoutes(reproduceRoutes, planBySlug, phases, errors);
   return [...new Set(errors)];
 }
 
@@ -473,6 +476,28 @@ function validateProofLoop(proofLoop, planBySlug, proofCandidates, errors) {
   }
   if (stringList(proofLoop.justifiedInvariantClasses).length > 0 && !stringList(proofLoop.acceptedOracleKinds).includes('justified-invariant')) {
     errors.push('proofLoop.justifiedInvariantClasses: requires the justified-invariant oracle kind');
+  }
+}
+
+// Independent reproduction runs inside the proof phases on a lane that already holds an
+// allocation, so every reproducer a RACI surface route names must first participate before
+// the first proof phase, and the lane that discovers a surface can never reproduce it.
+function validateReproduceRoutes(routes, planBySlug, phases, errors) {
+  const firstProof = phases.findIndex((phase) => phase.kind === 'proof');
+  if (firstProof === -1) return;
+  const firstPhase = firstPhaseIndexes(phases);
+  for (const route of routes) {
+    const surface = String(route.surface);
+    for (const slug of stringList(route.reproduce)) {
+      if (slug === route.discover) {
+        errors.push(`raci reproduce candidate ${slug} for ${surface} is the surface discover owner`);
+        continue;
+      }
+      const first = firstPhase.get(slug);
+      if (planBySlug.get(slug)?.dispatch !== true || first === undefined || first >= firstProof) {
+        errors.push(`raci reproduce candidate ${slug} for ${surface} is not dispatched before the first proof phase`);
+      }
+    }
   }
 }
 
