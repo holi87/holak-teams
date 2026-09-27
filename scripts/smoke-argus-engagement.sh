@@ -458,8 +458,22 @@ guard_shell "argus-assets preflight --target app --artifact-root app --mode A" G
 guard_shell "argus-assets copy-browser-driver $TARGET" allow
 guard_shell "argus-assets copy-browser-driver $WORK/outside-target" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets browser provision --artifact-root $TARGET" GUARD-SHELL-AMBIGUOUS
-# Binary-evidence reviews bind to the real audit timestamp, so the test clock override is refused.
-guard_shell "argus-assets authorization check --manifest ai_agents_internal/authorization.json --lane orion --action binary-evidence --target $TARGET --source-trust user --binary-reviewed true" allow
+# Binary-evidence reviews bind to the collector's audited decision at its real timestamp: a lane
+# asks only for itself, as the PreToolUse payload names it, and the test clock override is refused.
+AUTH_CHECK="argus-assets authorization check --manifest ai_agents_internal/authorization.json --action binary-evidence --target $TARGET --source-trust user --binary-reviewed true"
+guard_as orion Bash "$AUTH_CHECK --lane orion" allow
+guard_as main Bash "$AUTH_CHECK --lane odysseus" allow
+guard_as lynceus Bash "$AUTH_CHECK --lane atalanta" 'GUARD-SHELL-AMBIGUOUS: authorization check --lane must name the calling lane lynceus'
+guard_as main Bash "$AUTH_CHECK --lane atalanta" 'GUARD-SHELL-AMBIGUOUS: authorization check --lane must name the calling lane odysseus'
+guard_as untyped Bash "$AUTH_CHECK --lane orion" 'GUARD-SHELL-AMBIGUOUS: authorization check requires an identified calling lane'
+guard_shell "$AUTH_CHECK --lane orion" 'GUARD-SHELL-AMBIGUOUS: authorization check requires an identified calling lane'
+# The hunt driver runs its own binary-evidence check as --agent, so that agent must be the caller.
+guard_as lynceus Bash "ARGUS_BINARY_EVIDENCE_REVIEWED=true node scripts/hunt-driver.mjs --agent lynceus --goto / --shot home" allow
+guard_as lynceus Bash "ARGUS_BINARY_EVIDENCE_REVIEWED=true node scripts/hunt-driver.mjs --agent atalanta --goto / --shot home" \
+  'GUARD-SHELL-AMBIGUOUS: the packaged hunt driver --agent must name the calling lane lynceus'
+guard_as lynceus Bash "node scripts/hunt-driver.mjs --agent 'atal'anta --goto / --shot home" 'GUARD-SHELL-AMBIGUOUS: the packaged hunt driver --agent must name the calling lane lynceus'
+guard_as untyped Bash "node scripts/hunt-driver.mjs --agent orion --goto /" 'GUARD-SHELL-AMBIGUOUS: the packaged hunt driver requires an identified calling lane'
+guard_as lynceus Bash "wc -l scripts/hunt-driver.mjs" allow
 guard_shell "argus-assets authorization check --manifest ai_agents_internal/authorization.json --lane orion --action binary-evidence --target $TARGET --source-trust user --binary-reviewed true --at 2026-07-10T12:00:00.000Z" GUARD-SHELL-AMBIGUOUS
 if (cd "$TARGET" && "$CLI" authorization check --manifest ai_agents_internal/authorization.json --lane orion --action read --target "$TARGET" --source-trust manifest --at 2026-07-10T12:00:00.000Z) >"$WORK/authorization-at.out" 2>&1; then
   fail 'authorization check accepted --at inside an active engagement'

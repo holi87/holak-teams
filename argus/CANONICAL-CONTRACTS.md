@@ -33,8 +33,14 @@ only from `final-summary.json` and starts with its source schema ID.
 Lane-plan, evidence-reference, automation-status, and coverage-observations documents are
 multi-record collections. Contributors may submit independently valid collection fragments;
 the named owner merges them by stable key (`lane`, `id`, `testId`, or `observationId`).
-Duplicate keys fail closed, and the canonical arrays are sorted by that key so fragment
-arrival order cannot change the resulting bytes.
+Automation-status tests and coverage observations are owned records: a test belongs to its
+`owner` and an observation to its `lane`, and only that lane or the canonical's merging owner
+(Atlas, Kleio) may write it, so a foreign record is refused when the fragment is written. A
+later fragment of the same key (a higher write `sequence`) supersedes the earlier record, so a
+lane updates a test status or re-records an observation in a later pass; a key never changes
+owner. Lane-plan and evidence-reference records are immutable: a key repeated across
+fragments fails closed. The canonical arrays are sorted by key so fragment arrival order
+cannot change the resulting bytes.
 
 Bug-ledger, surface-inventory, coverage-result, final-summary, and automation-review
 documents are single documents. Only the registry owner submits their fragments, and a newer fragment (a higher
@@ -154,10 +160,10 @@ credentials. Keep credentials, tokens, and connection strings out of `summary` a
 | Automation status | `tests[]`: `testId`, `owner`, `runner`, `status`, `coversBugIds`, `evidenceIds`, `updatedAt`, optional `caseIds` and `surfaceIds` | Per test: `planned → implemented → passed/failed/skipped` | Unique, sorted `TST/REG-NNNN`, runner output reference, linked bugs/evidence. An `implemented`, `passed`, or `failed` test maps each of its runner `caseIds` to each of its `surfaceIds`; once merged, coverage credits a runner case only to a surface it maps. |
 | Runner result | `mode`, `status`, `exitCode`, `categories`, `events` | Terminal `pass` or `fail` for one named mode | Raw adapter events classified by the portable evaluator. |
 | Surface inventory | `items`, `discovery` | Discovery expands monotonically; accessibility changes require evidence | Stable `SRF-*` IDs, enumerated denominator dimensions, risk basis, and discovery evidence. |
-| Coverage observations | `observations[]`: `observationId`, `lane`, `surfaceId`, `executions`, `assertions`, `evidenceIds`, `defectRefs`, `cases` | One immutable record per lane and surface, merged by `observationId` | Inventory link; every execution, assertion, control, outcome, and case citation resolves to a registered `EVD-NNNN`, every runner-result execution to an executed runner case (mapped to the surface by the merged automation status), and every defect reference to a ledger ID or origin. |
+| Coverage observations | `observations[]`: `observationId`, `lane`, `surfaceId`, `executions`, `assertions`, `evidenceIds`, `defectRefs`, `cases` | One record per lane and surface, written by that lane and superseded by its later fragment of the same `observationId` | Inventory link; every execution, assertion, control, outcome, and case citation resolves to a registered `EVD-NNNN`, every runner-result execution to an executed runner case (mapped to the surface by the merged automation status), and every defect reference to a ledger ID or origin. |
 | Coverage result | `discovery`, `overall`, `lanes`, `surfaces`, `criticalUnexecuted`, `runnerCaseMapping`, `scopedOutcomes`, `defectOutcomes` | Deterministically recalculated from canonical inputs, including the merged automation status | Exact input schema IDs (inventory, observations, and the evidence registry and bug ledger when present) and stable surface/evidence links; `runnerCaseMapping` is `verified` only when a merged automation status mapped every credited runner case; defect score contribution is always zero. |
 | Model escalation request | `engagementId`, `dispatchId`, `attempt`, `agent`, `signal`, `checkpointRef`, `resumable` | Worker stops; controller validates, routes, records prior-attempt telemetry, and rebinds the active allocation with `engagement start-attempt`; it replaces the consumed token with the returned token before opening the next thread | `argus/model-escalation-request@1`, current engagement state, the prior selected decision, and the referenced monotonic checkpoint. The signal is worker-declared only; `no-artifact` and `zero-candidates` are invalid here. Pre-spawn `model-unavailable` instead uses an availability binding, and a controller-observed outcome uses an outcome binding. |
-| Final summary | Kleio: `status`, `summary`, `generatedAt`. Merge-derived and overwritten: `statusReasons`, `counts`, `unproven`, `automationReview`, `runner`, `coverage`, `sourceSchemas` | Terminal `completed`, `degraded`, or `blocked`, never better than the derived status ceiling | `headline` = confirmed + suspected; `unproven` lists exactly the suspected and needs-oracle rows; `completed` carries no status reason; every fact re-derived from the merge-verified canonical inputs and `reports/argus-runner-result.json`. |
+| Final summary | Kleio: `status`, `summary`, `generatedAt`. Merge-derived and overwritten: `statusReasons`, `counts`, `unproven`, `residuals`, `automationReview`, `runner`, `coverage`, `sourceSchemas` | Terminal `completed`, `degraded`, or `blocked`, never better than the derived status ceiling | `headline` = confirmed + suspected; `unproven` lists exactly the suspected and needs-oracle rows and `residuals` the bounced and quarantined rows; `completed` carries no status reason; every fact re-derived from the merge-verified canonical inputs and `reports/argus-runner-result.json`. |
 | Automation review | `reviews[]`: `reviewId`, `round`, `supersedes`, `verdict`, `reviewedAt`, `corpus`, `reviewedCommit`, `blockers`, `warnings`, `resolved`, `uncoveredConfirmedBugs`, `evidenceCommands` | `pending → approved/blocked`, `blocked → approved`, and `approved → blocked` when a stale corpus is re-reviewed; a published round never changes | Contiguous `REV-NN` rounds, each superseding its predecessor; `corpus.sha256` equals `argus-assets automation-review digest` at merge time; each round's `resolved` accounts for every blocker of the round before it. |
 
 Only the controller changes coordination state: worker allocation, token generation,
@@ -324,11 +330,17 @@ merges it as the canonical owner. Every round in `reviews` carries:
 
 The corpus roots are `testRoot` and `harnessRoot` from a valid
 `ai_agents_internal/template-selection.json`, otherwise the existing directories among
-`writePolicy.generatedTestRoots`, plus `run-tests.sh` and `scripts/`, resolved against the
-artifact root. Path segments `node_modules`, `.git`, `target`, `build`, `dist`, `.venv`,
-`venv`, `__pycache__`, `.pytest_cache`, `reports`, `test-results`, and `playwright-report`
-and the packaged hunt-driver files under `scripts/` are excluded; a symbolic link fails
-closed. `sha256` covers the sorted lines `<relative path>\0<file sha256>\n`, so any added,
+`writePolicy.generatedTestRoots`, plus `run-tests.sh`, `scripts/`, the target-owned runner
+declarations (`solution/test-lanes.tsv`, `solution/environment.tsv`, `solution/quarantine.tsv`,
+`solution/counterfactual/`), Maven `src/test/resources/`, and the runner and dependency
+configuration files at the artifact root (`playwright.config.*`, `package.json`,
+`package-lock.json`, `tsconfig*.json`, `pyproject.toml`, `conftest.py`, `pytest.ini`,
+`setup.cfg`, `tox.ini`, `requirements*.txt`, `pom.xml`), all resolved against the artifact
+root. Path segments `node_modules`, `.git`, `.venv`, `venv`, `__pycache__`, and
+`.pytest_cache` and the packaged hunt-driver files under `scripts/` are excluded. Build and
+report output (`reports/`, `test-results/`, `target/`) lives at the artifact root outside every
+corpus root, so a test below an output-named directory such as `tests/api/reports/` stays in
+the corpus. A symbolic link fails closed. `sha256` covers the sorted lines `<relative path>\0<file sha256>\n`, so any added,
 removed, or edited corpus file changes it.
 
 A newer fragment must repeat every earlier round unchanged, and the merge publishes only a
@@ -371,11 +383,16 @@ Each input counts only once merged and only while its file matches its merge dig
   counts those tests and `counts.evidence` the canonical evidence references (0 when unmerged);
 - `automationReview` from `argus-assets automation-review check` semantics;
 - `runner`: mode, status, exit code, categories, and `deliveryGate` copied from a valid
-  `reports/argus-runner-result.json`, which a non-null runner requires; `runner: null` is valid
-  only in Mode B with no automated test;
+  `reports/argus-runner-result.json`, which a non-null runner requires, and `evidenceId`, the
+  `runner-result` reference in the merged evidence registry whose SHA-256 equals that file's
+  bytes (none fails the merge, so an unregistered or since-overwritten result never counts);
+  `runner: null` is valid only in Mode B with no automated test;
 - `coverage` (required) from the merged `argus/coverage-result@2`: discovery completeness, the
   overall ratios including `automatedExecution`, the scoped-outcome count,
-  `criticalUnexecuted`, and `caseDepth` when recorded;
+  `criticalUnexecuted`, and `caseDepth` when recorded. Its merge record keeps the digest of each
+  canonical coverage input (surface inventory, observations, evidence registry, bug ledger,
+  automation status); if any of them changed since, the coverage result is stale and the
+  summary fails until it is merged again;
 - `sourceSchemas` in the order ledger, evidence, automation status, runner result, coverage
   result, automation review, for the inputs present.
 
@@ -383,6 +400,7 @@ Each input counts only once merged and only while its file matches its merge dig
 |---|---|---|
 | `automation-review-blocked`, `automation-review-stale`, `automation-review-absent` | `blocked` | The review is BLOCK, an APPROVE of a changed corpus, or missing while Aristarchus is dispatchable. |
 | `confirmed-bug-without-regression` | `blocked` | A runner ran and a confirmed bug has no wired regression. |
+| `unresolved-proof-residuals` | `degraded` | A ledger row is still bounced (its proof repair did not land) or quarantined (its evidence failed reconciliation). |
 | `critical-surface-unexecuted` | `degraded` | `coverage.criticalUnexecuted` is non-empty. |
 | `case-depth-gaps` | `degraded` | Case depth is missing, not fully planned, or has gaps or unplanned surfaces. |
 | `runner-not-delivery-gate` | `degraded` | A runner result exists but is not a delivery gate. |

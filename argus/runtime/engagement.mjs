@@ -22,7 +22,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertSupersession, isCollectionContract, mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalDocument, validateCanonicalFragment } from './contracts.mjs';
+import { assertSupersession, collectionOwnershipErrors, isCollectionContract, mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalDocument, validateCanonicalFragment } from './contracts.mjs';
 import { binaryRegistrationErrors, binaryReviewAuditErrors, isBinaryReference, loadRedactionPatterns, parseAuditLog, validateEvidenceContent } from './evidence.mjs';
 import { compileJsonSchema } from './json-schema.mjs';
 import {
@@ -417,6 +417,9 @@ export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, 
       const registration = document.references.flatMap((ref) => binaryRegistrationErrors(ref, lane));
       if (registration.length) throw new Error(registration.join('; '));
     }
+    // An owned collection record belongs to its lane, so the writer learns of a foreign record now.
+    const ownership = collectionOwnershipErrors(canonical.schema, document, lane, canonical.owner);
+    if (ownership.length) throw new Error(ownership.join('; '));
     const migrated = migrateCanonicalDocument(canonical.schema, document);
     if (migrated !== document) persistedContent = `${JSON.stringify(migrated, null, 2)}\n`;
   }
@@ -471,6 +474,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     const latest = canonical.merge === 'latest-revision' ? latestFragmentRevision(canonical, records) : null;
     let quarantined = [];
     let effective = null;
+    let coverageInputs = null;
     let output;
     if (canonical.format === 'json-document') {
       let documents = contents.map((content) => JSON.parse(content));
@@ -479,7 +483,9 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
         effective = supersedingFragment(manifest, canonical, records, contents);
         documents = [documents[records.indexOf(effective)]];
       }
-      const document = mergeCanonicalDocuments(canonical.schema, documents);
+      // An owned collection record is superseded by its owner's later fragment of the same key.
+      const writers = isCollectionContract(canonical.schema) ? records.map((record) => ({ lane: record.lane, sequence: fragmentSequence(canonical, record) })) : null;
+      const document = mergeCanonicalDocuments(canonical.schema, documents, { writers, canonicalOwner: canonical.owner });
       if (canonical.schema === 'evidence-reference') verifyEvidenceRegistry(manifest, records, documents, document);
       if (canonical.schema === 'automation-review') assertCurrentReviewCorpus(manifest, document);
       if (canonical.schema === 'coverage-result') {
@@ -508,6 +514,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
         const canonicalJson = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
           ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
         if (canonicalJson({ ...document, generatedAt: null }) !== canonicalJson({ ...calculated, generatedAt: null })) throw new Error('coverage result does not match canonical inputs');
+        coverageInputs = coverageInputDigests(manifest);
       }
       if (canonical.schema === 'final-summary') applyFinalSummaryFacts(manifest, state, document);
       if (canonical.schema === 'bug-ledger' && document.bugs.some(bug => ledgerEvidenceIds(bug).length > 0)) {
@@ -545,6 +552,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     if (latest) Object.assign(result, { revision: latest.revision, supersededFragments: records.length - 1 });
     if (effective) Object.assign(result, { effectiveFragment: effective.id, supersededFragments: records.length - 1 });
     if (canonical.schema === 'bug-ledger') result.quarantined = quarantined;
+    if (coverageInputs) result.inputs = coverageInputs;
     state.merges[canonical.path] = result;
     if (canonical.schema === 'bug-ledger') {
       state.ledgerSnapshots[state.currentPhase] = ledgerSnapshot(manifest, state, JSON.parse(output), records, result.mergedAt);
@@ -553,19 +561,24 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
   });
 }
 
-// Aristarchus's review record binds each round to the test corpus it judged. The corpus is the
-// selected template's test and harness roots (or, without a valid selection, the generated test
-// directories) plus the runner entry point and scripts/, minus dependency, build, and report
-// output and the packaged hunt driver. Each line is `<path>\0<sha256>\n`, and the digest covers
-// the sorted lines, so it changes whenever a corpus file is added, removed, or edited.
-const REVIEW_CORPUS_EXCLUDED_SEGMENTS = new Set([
-  'node_modules', '.git', 'target', 'build', 'dist', '.venv', 'venv', '__pycache__', '.pytest_cache',
-  'reports', 'test-results', 'playwright-report',
-]);
+// Aristarchus's review record binds each round to the test corpus it judged: every file that
+// decides what the runner executes and how. The corpus is the selected template's test and
+// harness roots (or, without a valid selection, the generated test directories), the runner
+// entry point and scripts/, the target-owned runner declarations, Maven test resources, and the
+// runner and dependency configuration files at the artifact root, minus dependency and cache
+// directories and the packaged hunt driver. Build and report output lives at the artifact root,
+// outside every corpus root, so a spec below tests/**/reports/ or tests/**/build/ stays in the
+// corpus. Each line is `<path>\0<sha256>\n`, and the digest covers the sorted lines, so it
+// changes whenever a corpus file is added, removed, or edited.
+const REVIEW_CORPUS_EXCLUDED_SEGMENTS = new Set(['node_modules', '.git', '.venv', 'venv', '__pycache__', '.pytest_cache']);
 const REVIEW_CORPUS_EXCLUDED_FILES = new Set([
   'scripts/hunt-driver.mjs', 'scripts/driver.config.json', 'scripts/driver.config.example.json', 'scripts/driver-config.schema.json',
 ]);
-const REVIEW_CORPUS_FIXED_ROOTS = ['run-tests.sh', 'scripts'];
+const REVIEW_CORPUS_FIXED_ROOTS = [
+  'run-tests.sh', 'scripts', 'solution/test-lanes.tsv', 'solution/environment.tsv', 'solution/quarantine.tsv',
+  'solution/counterfactual', 'src/test/resources',
+];
+const REVIEW_CORPUS_ROOT_CONFIG = /^(?:playwright\.config\.[cm]?[jt]s|package(?:-lock)?\.json|tsconfig(?:\.[A-Za-z0-9_-]+)?\.json|pyproject\.toml|conftest\.py|pytest\.ini|setup\.cfg|tox\.ini|requirements[A-Za-z0-9_.-]*\.txt|pom\.xml)$/;
 const TEMPLATE_SELECTION_RECORD = 'ai_agents_internal/template-selection.json';
 const TEMPLATE_SELECTION_SCHEMA = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas', 'template-selection.schema.json');
 let templateSelectionValidator = null;
@@ -577,7 +590,9 @@ export function reviewCorpusDigest(manifest) {
     ? [selection.testRoot, selection.harnessRoot]
     : manifest.writePolicy.generatedTestRoots.map((path) => path.replace(/\/+$/, ''))
       .filter((path) => canonicalCorpusRoot(path) && reviewCorpusEntry(root, path)?.isDirectory());
-  const roots = [...new Set([...candidates, ...REVIEW_CORPUS_FIXED_ROOTS])].filter((path) => reviewCorpusEntry(root, path)).sort();
+  const configs = readdirSync(root).filter((name) => REVIEW_CORPUS_ROOT_CONFIG.test(name));
+  const present = [...new Set([...candidates, ...REVIEW_CORPUS_FIXED_ROOTS, ...configs])].filter((path) => reviewCorpusEntry(root, path));
+  const roots = present.filter((path) => !present.some((other) => path.startsWith(`${other}/`))).sort();
   const files = new Map();
   for (const path of roots) collectReviewCorpus(root, path, files);
   const lines = [...files].map(([path, digest]) => `${path}\0${digest}\n`).sort();
@@ -698,6 +713,13 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   const automationStatus = readMergedCanonical(manifest, state, 'solution/automation-status.json', 'automation-status');
   const coverageResult = readMergedCanonical(manifest, state, FINAL_SUMMARY_COVERAGE_RESULT, 'coverage-result');
   if (!coverageResult) throw new Error(`final summary coverage requires the merged canonical ${FINAL_SUMMARY_COVERAGE_RESULT}`);
+  // The coverage merge recalculated its result from these canonical inputs; any later change to
+  // one of them (a superseding inventory, new observations or evidence, a re-merged ledger or
+  // automation status) makes the published coverage stale until it is merged again.
+  const recorded = state.merges[FINAL_SUMMARY_COVERAGE_RESULT].inputs;
+  if (!recorded) throw new Error(`${FINAL_SUMMARY_COVERAGE_RESULT} merge records no canonical inputs; merge it again`);
+  const changed = Object.entries(coverageInputDigests(manifest)).filter(([path, digest]) => recorded[path] !== digest).map(([path]) => path);
+  if (changed.length) throw new Error(`${FINAL_SUMMARY_COVERAGE_RESULT} is stale: ${changed.join(', ')} changed after it was merged; merge it again`);
   const review = readAutomationReview(manifest, state);
   const automationReview = automationReviewStatus(manifest, state);
 
@@ -743,13 +765,21 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
       };
     });
 
-  const runnerResult = (fragment ? fragment.runner !== null : Boolean(lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))))
+  const runnerRead = (fragment ? fragment.runner !== null : Boolean(lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))))
     ? readRunnerResult(manifest) : null;
+  const runnerResult = runnerRead?.document ?? null;
+  // The live runner result counts only as the registered runner-result evidence with its exact
+  // bytes, so a hand-written or since-overwritten file cannot stand in for a recorded run.
+  const runnerEvidence = runnerRead && (evidence?.references ?? []).find((ref) => ref.kind === 'runner-result' && ref.sha256 === runnerRead.sha256);
+  if (runnerRead && !runnerEvidence) {
+    throw new Error(`${FINAL_SUMMARY_RUNNER_RESULT} (sha256 ${runnerRead.sha256}) is not registered runner-result evidence in the merged solution/evidence-reference.json; archive and register it, then merge the registry again`);
+  }
   const runner = runnerResult && {
     mode: runnerResult.mode,
     status: runnerResult.status,
     exitCode: runnerResult.exitCode,
     resultPath: FINAL_SUMMARY_RUNNER_RESULT,
+    evidenceId: runnerEvidence.id,
     categories: Object.fromEntries(['product', 'automation', 'infrastructure', 'skip', 'policy'].map((category) => [category, runnerResult.categories[category]])),
     deliveryGate: runnerResult.deliveryGate,
   };
@@ -819,9 +849,22 @@ function readMergedCanonical(manifest, state, path, schema) {
 function readRunnerResult(manifest) {
   const path = engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT);
   if (!lstatEntry(path)) throw new Error(`final summary runner outcome requires ${FINAL_SUMMARY_RUNNER_RESULT}`);
-  const { errors, document } = validateCanonicalFragment('runner-result', readManagedFile(path, FINAL_SUMMARY_RUNNER_RESULT));
+  const content = readManagedFile(path, FINAL_SUMMARY_RUNNER_RESULT);
+  const { errors, document } = validateCanonicalFragment('runner-result', content);
   if (errors.length) throw new Error(`${FINAL_SUMMARY_RUNNER_RESULT} is invalid: ${errors.join('; ')}`);
-  return document;
+  return { document, sha256: sha256(content) };
+}
+
+// The digest of each canonical coverage input file as it is now, or null when it does not exist.
+const COVERAGE_RESULT_INPUTS = Object.freeze([
+  'solution/surface-inventory.json', 'solution/coverage-observations.json', 'solution/evidence-reference.json',
+  'solution/bug-ledger.json', 'solution/automation-status.json',
+]);
+function coverageInputDigests(manifest) {
+  return Object.fromEntries(COVERAGE_RESULT_INPUTS.map((path) => {
+    const absolute = engagementPath(manifest, path);
+    return [path, lstatEntry(absolute) ? sha256(readManagedFile(absolute, path)) : null];
+  }));
 }
 
 const LANE_OUTCOMES_SCHEMA_ID = 'argus/lane-outcomes@1';
@@ -1457,10 +1500,13 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
   const command = tool === 'Bash' ? String(toolInput.command ?? '') : '';
   const commandSha256 = command ? sha256(command) : null;
   const artifactPhysical = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
+  const lane = guardLaneIdentity(payload);
   let paths = [];
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/i.test(tool)) paths = collectDirectPaths(toolInput);
   else if (tool === 'Bash') {
-    const packaged = classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256);
+    const driverDenial = huntDriverLaneDenial(command, lane);
+    if (driverDenial) return guardDecision('deny', 'GUARD-SHELL-AMBIGUOUS', driverDenial, [], commandSha256);
+    const packaged = classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256, lane);
     if (packaged?.decision) return packaged.decision;
     if (packaged?.paths) paths = packaged.paths;
     else {
@@ -1476,7 +1522,6 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
     }
   } else return guardDecision('allow', 'GUARD-ALLOW', 'tool is outside the filesystem-write matcher', [], commandSha256);
   if (paths.length === 0) return guardDecision('deny', 'GUARD-PATH-UNRESOLVED', 'write tool has no recognized destination', [], commandSha256);
-  const lane = guardLaneIdentity(payload);
   const selectedRoots = selectedTemplateWriteRoots(manifest);
 
   const evaluated = [];
@@ -2500,7 +2545,17 @@ function metacharacterHint(command) {
   return `; it contains ${METACHARACTER_NAMES[found]}${/(?:^|\s)--json\s/.test(command) ? ', which an inline --json value must write as a JSON \\u escape' : ''}`;
 }
 
-function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256) {
+// The packaged hunt driver runs its own `authorization check --lane <--agent>` calls out of the
+// guard's sight, so a command that names the driver and an agent must name the calling lane.
+function huntDriverLaneDenial(command, lane) {
+  const tokens = command.replace(/\\([\s\S])/g, '$1').replace(/["']/g, '').split(/\s+/);
+  const agents = tokens.flatMap((token, index) => (token === '--agent' ? [tokens[index + 1]] : token.startsWith('--agent=') ? [token.slice(8)] : []));
+  if (agents.length === 0 || !tokens.some((token) => /hunt-driver\.mjs$/.test(token))) return null;
+  if (!lane) return 'the packaged hunt driver requires an identified calling lane';
+  return agents.every((agent) => agent === lane) ? null : `the packaged hunt driver --agent must name the calling lane ${lane}`;
+}
+
+function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256, lane) {
   const value = command.trim();
   if (PACKAGED_COMMAND_METACHARACTER.test(value)) return null;
   const tokens = shellTokens(value);
@@ -2531,6 +2586,10 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
   }
   if (primary === 'authorization') {
     if (operation === 'check' && optionNames.includes('--at')) return deny('authorization check --at is a test-only clock override and is refused inside an active engagement');
+    // The audit event records --lane, and a binary capture's review is bound to its collector's
+    // event, so a lane can ask only for itself: Claude Code, not the model, names the caller.
+    if (operation === 'check' && !lane) return deny('authorization check requires an identified calling lane');
+    if (operation === 'check' && optionValue(tokens, '--lane') !== lane) return deny(`authorization check --lane must name the calling lane ${lane}`);
     if (operation === 'check') return allow('packaged authorization audit owns the bounded mutation');
     return deny('authorization init cannot run inside an active engagement');
   }

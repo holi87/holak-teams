@@ -294,6 +294,7 @@ for (const mutate of [
   (document) => { document.residuals = document.residuals.slice(1); },
   (document) => { document.residuals.reverse(); },
   (document) => { document.counts.bugs.bounced = 0; },
+  (document) => { document.counts.bugs.quarantined = 0; },
   (document) => { document.residuals[0].missing = []; },
   (document) => { document.residuals[1].reasons = []; },
   (document) => { document.residuals[0].id = 'BUG-0002'; document.residuals.sort((left, right) => left.id.localeCompare(right.id)); },
