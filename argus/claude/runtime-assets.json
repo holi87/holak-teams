@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 35942,
-      "sha256": "993be8acc08425f0f48ca72d9cf31f2b39da3375aabe8e1cef8bdd406c4bbcd3"
+      "bytes": 38350,
+      "sha256": "af58c4cac48e3f44967aaa370e0cf9e64a5d23903a512eb887db0e284eac5823"
     },
     {
       "id": "browser-isolation",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 10023,
-      "sha256": "55fe2f8008599cd4cc740626c854c3f6308dc3afbe9b3ff03a054d9b85616f7c"
+      "bytes": 10147,
+      "sha256": "eb714d4acac87a534d24e37444a0d02791cd5c810cd75e66ee30d128e59922dc"
     },
     {
       "id": "qa-core-skill",

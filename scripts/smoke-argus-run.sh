@@ -48,6 +48,12 @@ require_text 'Do not read the Odysseus agent as a second policy source.' "$SKILL
 require_text 'ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED' "$SKILL" "run skill does not reject missing authenticated launch coordinates"
 require_text '--engagement-id <engagement-id> --launch-authorization' "$SKILL" "run skill does not bind preflight to the signed engagement and authorization"
 require_text '--launch-receipt <launch-receipt> --trust-store <trust-store>' "$SKILL" "run skill does not bind preflight to the verified receipt and trust store"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'appending `--feature <id>` per optional unsigned `features` entry.' "$SKILL" "run skill does not forward operator-declared launcher features to preflight"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'Launcher `features`' "$CORE" "orchestration core does not treat launcher features as operator-declared evidence"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'pass each verbatim as `--feature`; never add, drop, or' "$CORE" "orchestration core can alter operator-declared launcher features"
 require_text 'name: orchestration-core' "$CORE" "orchestration core has no stable name"
 require_text 'user-invocable: false' "$CORE" "orchestration core must not be user-invoked directly"
 require_text '## Sources of authority' "$CORE" "orchestration core does not define authoritative sources"

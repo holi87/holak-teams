@@ -53,10 +53,10 @@ Usage:
     --mode <A|B|C|D> --engagement-id <id> --trust-store <absolute-path> \
     --runtime-key-id <id> --request-output <absolute-path> \
     --launch-authorization <absolute-path> [--workspace <absolute-path>] \
-    [--wait-seconds <30..300>] [--provision-browser] [--dry-run]
+    [--wait-seconds <30..300>] [--feature <capability-id>]... [--provision-browser] [--dry-run]
   argus-launch claude --target <url-or-absolute-path> --artifact-root <absolute-path> \
     --mode <A|B|C|D> --engagement-id <id> --unattested [--workspace <absolute-path>] \
-    [--provision-browser] [--dry-run]
+    [--feature <capability-id>]... [--provision-browser] [--dry-run]
 
 The launcher writes an unsigned, process-bound request to --request-output, then waits for
 the isolated runtime-attestation signer to create --launch-authorization. The signer must
@@ -84,6 +84,15 @@ launches headless Chromium, or installs the pinned release into
 and Chromium into Playwright's host default cache. It is host preparation, not part of the
 signed launch request: preflight functionally re-probes the runtime inside the sandbox. A
 provisioning failure stops the launch; --dry-run only reports browserProvisioning=requested.
+
+--feature <capability-id> is repeatable and forwards operator-declared capability evidence
+(for example db-access, source-access, non-rest-surface, or multi-service, which the sandbox's
+cleared environment cannot reveal) to preflight as --feature. Each id must be a key of the
+packaged capabilities/capability-matrix.json; ids are deduplicated and sorted. Features only
+widen which lanes preflight marks available: every action remains governed by the
+authorization manifest. They are not part of the signed launch request: an attested launch
+carries them in the unsigned launch payload, an unattested launch in its prompt, and --dry-run
+reports features=<csv|none>.
 
 Sandbox policy os-native-target-readonly@3 adds to @2 only org.chromium-scoped mach names and
 the RootDomainUserClient IOKit user client; file writes stay confined to the artifact root.
@@ -163,6 +172,22 @@ verify_artifact_tree() {
   [ -z "$alias" ] || fail "artifact root contains a symbolic link alias: $alias"
   alias="$(find "$root" -type f -links +1 -print -quit 2>/dev/null || true)"
   [ -z "$alias" ] || fail "artifact root contains a hard-link alias: $alias"
+}
+
+# Adds one operator-declared preflight feature to the sorted, deduplicated JSON array in
+# launch_features_json. The id must be a key of the packaged capability matrix, the same
+# set preflight --feature accepts. Features only widen which lanes preflight marks
+# available; the authorization manifest still governs every action.
+add_launch_feature() {
+  local feature="$1" matrix="$RUNTIME_ROOT/capabilities/capability-matrix.json" features status=0
+  [[ "$feature" =~ ^[a-z][a-z0-9-]*$ ]] || fail "unknown capability feature: $feature"
+  [ -f "$matrix" ] || fail 'packaged capability matrix is unavailable'
+  features="$(jq -ce --arg feature "$feature" --argjson features "$launch_features_json" \
+    'if (.capabilities | type) == "object" and (.capabilities | has($feature)) then $features + [$feature] | unique else false end' \
+    "$matrix" 2>/dev/null)" || status=$?
+  [ "$status" -ne 1 ] || fail "unknown capability feature: $feature"
+  [ "$status" -eq 0 ] || fail 'packaged capability matrix is unreadable'
+  launch_features_json="$features"
 }
 
 claude_supports_native_turn_cap() {
@@ -508,6 +533,7 @@ wait_seconds=300
 dry_run=false
 unattested=false
 provision_browser=false
+launch_features_json='[]'
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --target) [ "$#" -ge 2 ] || fail '--target requires a value'; target="$2"; shift 2 ;;
@@ -521,11 +547,15 @@ while [ "$#" -gt 0 ]; do
     --launch-authorization) [ "$#" -ge 2 ] || fail '--launch-authorization requires a path'; launch_authorization="$2"; shift 2 ;;
     --wait-seconds) [ "$#" -ge 2 ] || fail '--wait-seconds requires a value'; wait_seconds="$2"; shift 2 ;;
     --unattested) unattested=true; shift ;;
+    --feature) [ "$#" -ge 2 ] || fail '--feature requires a capability id'; add_launch_feature "$2"; shift 2 ;;
     --provision-browser) provision_browser=true; shift ;;
     --dry-run) dry_run=true; shift ;;
     *) fail "unknown option: $1" ;;
   esac
 done
+# Operator-declared features are forwarded unsigned: attested launches carry the JSON array in
+# the launch payload, unattested launches a comma-separated list in the prompt.
+launch_features_csv="$(printf '%s' "$launch_features_json" | jq -r 'join(",")')"
 
 [ -n "$target" ] || fail '--target is required'
 [ -n "$artifact_root" ] || fail '--artifact-root is required'
@@ -627,10 +657,11 @@ if $unattested; then
   # attestation is skipped. argus-assets preflight reports this as a named,
   # non-mandatory residual risk (see --unattested-launch / native-host-execution check).
   prompt="/argus:run target=$target artifact-root=$artifact_root mode=$mode unattestedLaunch=true engagementId=$engagement_id"
+  [ -z "$launch_features_csv" ] || prompt="$prompt features=$launch_features_csv"
   command=("$claude_executable" -p --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
   if $dry_run; then
-    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@3 environment=argus-launch-unattested@1 attestation=UNATTESTED browserProvisioning=%s\n' \
-      "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$browser_provisioning"
+    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@3 environment=argus-launch-unattested@1 attestation=UNATTESTED browserProvisioning=%s features=%s\n' \
+      "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$browser_provisioning" "${launch_features_csv:-none}"
     exit 0
   fi
   child_env=(
@@ -685,8 +716,8 @@ signed_max_turns="$(jq -er '.maxTurns' "$launch_authorization")" || fail 'signed
 launch_payload="$(jq -cn \
   --arg target "$target" --arg artifactRoot "$artifact_root" --arg mode "$mode" \
   --arg engagementId "$engagement_id" --arg launchAuthorization "$launch_authorization" \
-  --arg launchReceipt "$receipt" --arg trustStore "$trust_store" \
-  '{target:$target,"artifact-root":$artifactRoot,mode:$mode,"engagement-id":$engagementId,"launch-authorization":$launchAuthorization,"launch-receipt":$launchReceipt,"trust-store":$trustStore}')"
+  --arg launchReceipt "$receipt" --arg trustStore "$trust_store" --argjson features "$launch_features_json" \
+  '{target:$target,"artifact-root":$artifactRoot,mode:$mode,"engagement-id":$engagementId,"launch-authorization":$launchAuthorization,"launch-receipt":$launchReceipt,"trust-store":$trustStore,features:$features}')"
 prompt="/argus:run authenticatedLaunch=$launch_payload"
 command=("$claude_executable" -p --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
 
@@ -695,8 +726,8 @@ if $dry_run; then
   capability_file=''
   rmdir "$sandbox_probe_dir"
   sandbox_probe_dir=''
-  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist@1 browserProvisioning=%s\n' \
-    "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$(jq -r .launchId "$receipt")" "$browser_provisioning"
+  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist@1 browserProvisioning=%s features=%s\n' \
+    "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$(jq -r .launchId "$receipt")" "$browser_provisioning" "${launch_features_csv:-none}"
   exit 0
 fi
 
