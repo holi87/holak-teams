@@ -313,6 +313,86 @@
       "value": "Every mutating CTA creates exactly one effect however often it is activated",
       "rejects": ["runtime"],
       "runtimeIncludes": "missing semantic marker: cited action contract"
+    },
+    {
+      "name": "orion-sniffing-bypass-lane-drift",
+      "catalog": "orion",
+      "operation": "replace",
+      "pointer": "/entries/10/oracles/0",
+      "value": "Every documented restriction is enforced with a clear rejection message, so a silent no-op on an over-limit file is a defect, and a content-sniffing bypass the server accepts is filed here as an upload defect",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: routed to Perseus"
+    },
+    {
+      "name": "ariadne-export-security-half-drift",
+      "catalog": "ariadne",
+      "operation": "replace",
+      "pointer": "/entries/18/oracles/2",
+      "value": "Another principal's rows in your own export stay a journey finding, and every exported cell value is checked here",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: formula or CSV injection"
+    },
+    {
+      "name": "perseus-entry-count",
+      "catalog": "perseus",
+      "operation": "remove",
+      "pointer": "/entries/21",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 22 entries"
+    },
+    {
+      "name": "perseus-foreign-prefix-id",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/0/id",
+      "value": "PRO-T01",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "must equal \"PER-T01\""
+    },
+    {
+      "name": "perseus-unknown-route",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/0/routes/0",
+      "value": "pentest",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "unknown route pentest"
+    },
+    {
+      "name": "perseus-upload-sniffing-marker-drift",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/17/oracles/0",
+      "value": "The server accepts only the file types the upload control declares, neutralises path-traversal in the stored filename, and enforces the size limit",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: content-sniffing bypass"
+    },
+    {
+      "name": "perseus-csrf-token-marker-drift",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/18/oracles/0",
+      "value": "A state-changing request is rejected when it arrives from another origin, and a persisted query or mutation executes only when bound to its registered operation",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: anti-forgery token"
+    },
+    {
+      "name": "perseus-open-redirect-marker-drift",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/19/oracles/0",
+      "value": "The redirect target stays on the application's own pages for every documented flow",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: validated against an allowlist"
+    },
+    {
+      "name": "perseus-download-authentication-only-drift",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/20/oracles/0",
+      "value": "Every download endpoint requires an authenticated session before it returns a file, report, or export",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: per-object authorization"
     }
   ]
 }
