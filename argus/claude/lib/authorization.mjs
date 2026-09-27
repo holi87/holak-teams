@@ -262,6 +262,17 @@ export function validateRedactionPatterns(patterns) {
   return errors;
 }
 
+const JSON_STRING_VALUE = String.raw`"(?:[^"\\]|\\.)*"?`;
+const ESCAPED_JSON_STRING_VALUE = String.raw`\\"(?:[^"\\]|\\[^"])*(?:\\")?`;
+const SINGLE_QUOTED_VALUE = String.raw`'[^'\r\n]*'`;
+
+function redactedValue(secret) {
+  if (secret.startsWith('"')) return '"[REDACTED]"';
+  if (secret.startsWith('\\"')) return '\\"[REDACTED]\\"';
+  if (secret.startsWith("'")) return "'[REDACTED]'";
+  return '[REDACTED]';
+}
+
 // `key` is the JSON key of a string value, or null for free text. A pattern that lists
 // `keys` applies only to the values of those keys, as a label does in free text.
 export function redactText(text, patterns, key = null) {
@@ -286,19 +297,18 @@ export function redactText(text, patterns, key = null) {
       return pattern.replacement;
     });
   }
-  // A key matches bare (`password=x`, `password: x`) and quoted, as in a JSON body or an
-  // escaped JSON string (`"password":"x"`, `\"password\":\"x\"`). A quoted value keeps its
+  // A key matches bare (`password=x`, `password: x`) and quoted, as in a JSON body, JSON
+  // embedded in text (a cut JSON body, page state in a script), or an escaped JSON string
+  // (`"password":"x"`, `'password': 'x'`, `\"password\":\"x\"`). A quoted value is blanked
+  // whole, spaces and escapes included, even when the text ends inside it. It keeps its
   // quotes so a redacted JSON body stays JSON, and every replacement is itself a fixed point.
   for (const key of patterns.sensitiveKeys) {
     const escaped = escapeRegex(key);
-    const regex = new RegExp(`(\\b${escaped}\\b(?:\\\\?["'])?\\s*[:=]\\s*)("(?:[^"\\\\\\r\\n]|\\\\.)*"|'[^'\\r\\n]*'|[^\\s,;]+)`, 'gi');
+    const regex = new RegExp(String.raw`(\b${escaped}\b(?:\\?["'])?\s*[:=]\s*)(${JSON_STRING_VALUE}|${ESCAPED_JSON_STRING_VALUE}|${SINGLE_QUOTED_VALUE}|[^\s,;]+)`, 'gi');
     if (regex.test(value)) {
       findings.add(`key:${key}`);
       regex.lastIndex = 0;
-      value = value.replace(regex, (match, prefix, secret) => {
-        const quote = secret[0] === '"' || secret[0] === "'" ? secret[0] : '';
-        return quote && secret.length > 1 && secret.endsWith(quote) ? `${prefix}${quote}[REDACTED]${quote}` : `${prefix}[REDACTED]`;
-      });
+      value = value.replace(regex, (match, prefix, secret) => `${prefix}${redactedValue(secret)}`);
     }
   }
   return { text: value, findings: [...findings].sort() };

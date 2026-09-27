@@ -38,8 +38,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 17643,
-      "sha256": "ed3bc3ba096a598da66f8e10555563fbfdee4f2af8fd715c093755a1481c43ed"
+      "bytes": 17887,
+      "sha256": "e7e9e4c9e34fd56c8c2822ca413ecd6f8ba6d2e47af73312b46eb4d7f244a381"
     },
     {
       "id": "authorization-policy",
@@ -47,8 +47,8 @@
       "source": "argus/AUTHORIZATION-POLICY.md",
       "destination": "references/AUTHORIZATION-POLICY.md",
       "files": 1,
-      "bytes": 12560,
-      "sha256": "61f6ae75137ae4894e7b6132f13759bd92fb574cab309a8b7cf9e78bd4b39185"
+      "bytes": 12798,
+      "sha256": "1b1a831a2e6d6d44573d7ee83ea0301dbd07a141e376ef80be62d8b5aa5f5866"
     },
     {
       "id": "engagement-policy",
@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 55029,
-      "sha256": "2e615eb419c23bd08cbd457cd31e11c3c038b75289d01fedc3f5eac97a7da51d"
+      "bytes": 55245,
+      "sha256": "5ee09a9b0bb18fa4e61488fe1f266072522021bcd7b1c98056ff8d85ac18c54b"
     },
     {
       "id": "canonical-contracts",
@@ -183,7 +183,7 @@
       "destination": "capabilities/capability-matrix.json",
       "files": 1,
       "bytes": 25604,
-      "sha256": "e324d596ebff2af69cfcc673257308e6edb1a7b187ca16a764059f3b8a8dcaeb"
+      "sha256": "e22700cd81e66f3d65c3a26bc7670fc9b7a083ae8b416ac1d10004827ccf20c3"
     },
     {
       "id": "technique-catalogs-bundle",
@@ -191,8 +191,8 @@
       "source": "argus/technique-catalogs.bundle.b64",
       "destination": "capabilities/technique-catalogs.bundle.b64",
       "files": 1,
-      "bytes": 44765,
-      "sha256": "ceb624172a144112ed8e143332875a95af3295498d2aefb84f4f6145d3407be0"
+      "bytes": 44805,
+      "sha256": "2054f9cd6ff56e9e964b4cd2b2a7ec32be6dffc68495e8ba6beb7944355098d2"
     },
     {
       "id": "orchestration-plan",
@@ -245,8 +245,8 @@
       "source": "argus/policies",
       "destination": "policies",
       "files": 4,
-      "bytes": 14047,
-      "sha256": "bdc9dc7c09df9ca8025afe252861ed1a2688feaa4f79024296b44594b55c4df0"
+      "bytes": 14481,
+      "sha256": "b1d0881dd80857b120ca4cd8aefb2359a8086024edb89228449ea3cc56fa3f94"
     },
     {
       "id": "runtime-library",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 423036,
-      "sha256": "920cb332b6ab291148c222a4fd356e932b02b496648542cfed4a5d52bced6df0"
+      "bytes": 423477,
+      "sha256": "e658c13e848c966fdafb5b9c2684d3d58a3a8b01182d4f6e7ab81679e73a7ab6"
     },
     {
       "id": "common-template",
@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 63,
-      "bytes": 453865,
-      "sha256": "a164e2cb6787c7bcd7df3a8e4ae77bd01838297e208d95ef5f24c1cac3953642"
+      "bytes": 455118,
+      "sha256": "d2cf5cc1c37dbddf72fc627824e02cefcbec93478c45dc90d1fe001f7899f728"
     },
     {
       "id": "java-template",
