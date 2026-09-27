@@ -531,11 +531,18 @@ with none or with more than one.
 - **Outcome lineage.** A controller-observed `no-artifact`, `zero-candidates`, or
   uncheckpointed `turn-limit` is routed without `--request` or `--operator-decision` and is
   bound to the prior selected decision and allocation the same way. The route also records
-  `observedArtifacts`: the agent's RACI accountable artifacts that physically exist under the
-  artifact root without crossing a symbolic link. A `no-artifact` claim they contradict is
-  refused (`route turn-limit instead`). `priorCheckpointlessRetries` counts the outcome-bound
-  selected decisions of earlier attempts on the same dispatch, so the policy grants one fresh
-  restart per dispatch and then returns `AUTO_CONTINUATION_EXHAUSTED`.
+  `observedArtifacts`: the lane's outputs that physically exist under the artifact root
+  without crossing a symbolic link. They are its RACI accountable artifacts, the candidate
+  files it filed under its capability-matrix `bugs/<PREFIX>-*` prefix, the
+  `ownedArtifactRoots` files it alone owns (such as its technique-coverage ledger), and the
+  fragments it submitted. Any of them contradicts a `no-artifact` claim, and a filed candidate
+  contradicts a `zero-candidates` claim; both are refused (`route turn-limit instead`) before
+  a decision exists. A `turn-limit` is uncheckpointed only while the lane holds no checkpoint
+  bound to the active allocation, dispatch, and prior attempt with a matching digest.
+  Otherwise the checkpoint-less route is refused, and the controller persists the envelope
+  with `model request` and routes the checkpoint resume. `priorCheckpointlessRetries` counts
+  the outcome-bound selected decisions of earlier attempts on the same dispatch, so the
+  policy grants one fresh restart per dispatch and then returns `AUTO_CONTINUATION_EXHAUSTED`.
 
 A `BACKOFF_RETRY_SELECTED` decision carries `continuation.backoffSeconds`; its retry may not
 rebind before the decision's `createdAt` plus that backoff. Earlier, `start-attempt` fails
