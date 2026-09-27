@@ -869,7 +869,11 @@ has_event "$label" environment infrastructure pass false n/a - environment-reset
 # The engagement is detected without the caller's help: with its manifest in the harness root
 # (as in a real artifact root) and ARGUS_ENGAGEMENT_MANIFEST unset, an opt-in still needs the
 # lane, the window, and the decision, and the manifest reaches the CLI and the native hooks.
-detected_engagement() { : >"$WORK/$1/ai_agents_internal/engagement.json"; }
+# The library reports a located manifest by its physical path.
+detected_engagement() {
+  : >"$WORK/$1/ai_agents_internal/engagement.json"
+  DETECTED="$(cd "$WORK/$1/ai_agents_internal" && pwd -P)/engagement.json"
+}
 label=detected-fault-no-lane
 prepare "$label" green
 detected_engagement "$label"
@@ -884,9 +888,9 @@ detected_engagement "$label"
 run_case "$label" 0 baseline "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-fault.json" \
   ARGUS_ENGAGEMENT_LANE=tyche ARGUS_FAULT_INJECTION=authorized
 called "$label" "env mode=baseline pass=live outcome=$WORK/$label/reports/outcomes.raw.tsv fault=authorized grant=tyche"
-[ "$(cli_log "$label" | sed -n 1p)" = "engagement status --manifest $WORK/$label/ai_agents_internal/engagement.json" ] ||
+[ "$(cli_log "$label" | sed -n 1p)" = "engagement status --manifest $DETECTED" ] ||
   fail "$label did not read the detected engagement: $(cli_log "$label")"
-[ "$(cli_log "$label" | sed -n 2p | cut -d' ' -f1-8)" = "authorization check --manifest $WORK/$label/ai_agents_internal/authorization.json --lane tyche --action chaos" ] ||
+[ "$(cli_log "$label" | sed -n 2p | cut -d' ' -f1-8)" = "authorization check --manifest $(dirname "$DETECTED")/authorization.json --lane tyche --action chaos" ] ||
   fail "$label did not request the chaos decision from the detected engagement: $(cli_log "$label")"
 
 label=detected-reset-no-window

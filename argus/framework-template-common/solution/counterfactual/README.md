@@ -20,7 +20,7 @@ evidence gate fails a missing, invalid, or incomplete one.
   data, or real hosts.
 - Declare every request the regression makes, login included: a ui-lane test starts without
   a saved session, so declare the login its page performs. Matching is exact on method and
-  path (as the client sends it) plus the listed query parameters. An undeclared request gets
+  path plus the listed query parameters. An undeclared request gets
   `501 {"argusStub": "unmatched"}` and fails as `counterfactual-unmatched-request`.
 - Exchange paths are the paths the target sees, so author them from observed traffic: the
   harness API URL points at the stub in every lane with the path of `API_URL` kept
