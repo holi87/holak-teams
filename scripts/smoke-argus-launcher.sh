@@ -980,6 +980,27 @@ unattested_status=$?
 set -e
 expect_unattested_refusal host-trust-store "$unattested_status" 'a host model trust store exists'
 
+# (e) The guard applies preflight's lstat semantics: a dangling symbolic link is key material,
+# and a store path that cannot be probed is never mistaken for absence.
+mkdir -p "$WORK/unattested-home-dangling-trust-store/.config/argus"
+ln -s "$WORK/missing-trust-store.json" "$WORK/unattested-home-dangling-trust-store/.config/argus/model-trust.json"
+set +e
+run_unattested_case dangling-trust-store
+unattested_status=$?
+set -e
+expect_unattested_refusal dangling-trust-store "$unattested_status" \
+  "a host model trust store exists at $WORK/unattested-home-dangling-trust-store/.config/argus/model-trust.json; --unattested is for hosts with no key material"
+if [ "$(id -u)" -ne 0 ]; then
+  mkdir -p "$WORK/unattested-home-unreadable-trust-store/.config/argus"
+  chmod 000 "$WORK/unattested-home-unreadable-trust-store/.config/argus"
+  set +e
+  run_unattested_case unreadable-trust-store
+  unattested_status=$?
+  set -e
+  chmod 700 "$WORK/unattested-home-unreadable-trust-store/.config/argus"
+  expect_unattested_refusal unreadable-trust-store "$unattested_status" 'model-trust.json is not provably absent (EACCES); --unattested is for hosts with no key material'
+fi
+
 if "$LAUNCHER" codex >/dev/null 2>&1; then fail 'launcher accepted Codex without a native turn cap'; fi
 if PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" claude --target "$WORK/path target" --artifact-root "$WORK/invalid-mode" \
   --mode Z --engagement-id invalid-mode --trust-store "$WORK/path-operator/model-trust.json" \

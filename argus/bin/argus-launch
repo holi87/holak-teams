@@ -213,6 +213,31 @@ verify_artifact_tree() {
   [ -z "$alias" ] || fail "artifact root contains a hard-link alias: $alias"
 }
 
+# Prints why the default host trust store path holds operator key material, or nothing. It
+# applies argus-assets hostAttestationMaterial() semantics, which preflight enforces inside the
+# sandbox: the passwd home directory's ~/.config/argus/model-trust.json is checked with lstat,
+# so a dangling symbolic link counts as present and any probe error other than ENOENT (an
+# unreadable parent directory, for example) is never mistaken for absence. $HOME is checked too.
+default_trust_store_material() {
+  node -e '
+const { lstatSync } = require("node:fs");
+const { join } = require("node:path");
+const { userInfo } = require("node:os");
+const homes = [process.argv[1], userInfo().homedir].filter((home) => home.startsWith("/"));
+for (const home of new Set(homes)) {
+  const path = join(home, ".config", "argus", "model-trust.json");
+  try {
+    lstatSync(path);
+    process.stdout.write(`a host model trust store exists at ${path}`);
+    break;
+  } catch (error) {
+    if (error.code === "ENOENT") continue;
+    process.stdout.write(`the host model trust store path ${path} is not provably absent (${error.code ?? error.message})`);
+    break;
+  }
+}' "${HOME:-}"
+}
+
 # Adds one operator-declared preflight feature to the sorted, deduplicated JSON array in
 # launch_features_json. The id must be a target-kind key of the packaged capability matrix,
 # the same set preflight --feature accepts: browser and MCP capabilities are proven only by
@@ -722,9 +747,9 @@ if $unattested; then
   # host trust store is the operator's kill switch for an in-flight unattested engagement.
   [ -z "${ARGUS_MODEL_TRUST_STORE:-}" ] || \
     fail 'ARGUS_MODEL_TRUST_STORE is set; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id'
-  default_trust_store="${HOME:-}/.config/argus/model-trust.json"
-  [ ! -e "$default_trust_store" ] || \
-    fail "a host model trust store exists at $default_trust_store; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id"
+  trust_store_material="$(default_trust_store_material)" || fail 'cannot check the default host model trust store path'
+  [ -z "$trust_store_material" ] || \
+    fail "$trust_store_material; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id"
 else
   [ -n "$runtime_key_id" ] || fail '--runtime-key-id is required (or pass --unattested to skip signed attestation)'
   [[ "$wait_seconds" =~ ^[0-9]+$ ]] && [ "$wait_seconds" -ge 30 ] && [ "$wait_seconds" -le 300 ] || fail '--wait-seconds must be between 30 and 300'
