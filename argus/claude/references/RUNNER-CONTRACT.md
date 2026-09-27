@@ -413,5 +413,13 @@ engagement manifest), `--source-trust` from `ARGUS_AUTHORIZATION_SOURCE_TRUST` (
 (default `environment:reset` for a reset), `_RATE`, `_CONCURRENCY`, `_TOTAL_REQUESTS`, and
 `_DURATION`. A missing CLI, lane, target, window, or decision refuses the run with
 `environment policy denied environment-reset-unauthorized` or `fault-injection policy
-denied fault-injection-unauthorized` (exit 13) before anything destructive starts. Outside
-an engagement the opt-in of the operator who owns the target stands.
+denied fault-injection-unauthorized` (exit 13) before anything destructive starts. An
+allowed fault opt-in exports `ARGUS_FAULT_INJECTION_GRANT` (the authorized lane) to the
+native hooks, after the library has cleared any inherited value. Inside an engagement the
+packaged fault injectors refuse a server fault without that grant as `prerequisite-missing`,
+so a native run started with the opt-in but without the library never injects. The packaged
+`PreToolUse` guard (`GUARD-ENGAGEMENT-OPT-IN`) admits a Bash command that names either opt-in
+only as one standalone invocation of the engagement's `run-tests.sh` that sets
+`ARGUS_ENGAGEMENT_LANE` to the calling lane and names no other engagement's manifests, and it
+refuses every command that names `ARGUS_FAULT_INJECTION_GRANT`. Outside an engagement the
+opt-in of the operator who owns the target stands.
