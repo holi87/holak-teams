@@ -216,15 +216,22 @@ export async function probe(id, url, contract) {
   return Boolean(await module.probes[id](url, section));
 }
 
+// Host and editor junk that git ignores or never tracks: Finder metadata (.DS_Store and
+// AppleDouble ._* files), editor swap and backup files, and node_modules/ (as lib/plugin-digest.mjs
+// skips it). None of it is corpus content, so it must not move the corpus identity.
+const isHostJunk = name => name === '.DS_Store' || name === 'node_modules' || name.startsWith('._') || /^\..+\.sw[a-p]$/.test(name) || name.endsWith('~');
+
 function listFiles(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    if (isHostJunk(entry.name)) return [];
     const path = join(dir, entry.name);
     if (entry.isDirectory()) return listFiles(path);
     return entry.isFile() ? [path] : [];
   });
 }
 
-// Every regular file under corpus/, as sorted forward-slash relative paths.
+// Every regular corpus file under corpus/ (host and editor junk excluded), as sorted
+// forward-slash relative paths.
 export function corpusFiles() {
   return listFiles(corpusDir).map(file => relative(corpusDir, file).split(sep).join('/')).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }

@@ -3,11 +3,12 @@
 // enabled, every control holds in every build, seeds are independent, and nothing private
 // reaches a hunter-visible endpoint. Scripted harness validation only; no Argus score.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import { connect } from 'node:net';
-import { networkInterfaces } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { deriveId, deriveInt } from './corpus/derive.mjs';
 import { attr, elementById, escapeHtml, hasClass, page, submitForm, tagsByName, textOf } from './corpus/html.mjs';
 import { controls, corpusDigest, corpusDir, corpusFiles, corpusVersion, modules, probe, seedIds, seeds, startApplication, truthFor } from './corpus/index.mjs';
@@ -80,6 +81,28 @@ assert.deepEqual(truthFor(seedIds), seeds.map(({ id, module, surface, severity, 
 assert.deepEqual(truthFor([]), []);
 assert.match(corpusDigest(), /^[0-9a-f]{64}$/);
 assert.equal(corpusDigest(), corpusDigest());
+
+// Host junk never moves the corpus identity: a copy of corpus/ with Finder metadata, AppleDouble,
+// editor swap and backup files, and node_modules/ keeps the digest; a real content change moves it.
+{
+  const copyRoot = realpathSync(mkdtempSync(join(tmpdir(), 'argus-eval-corpus-copy-')));
+  try {
+    const copy = join(copyRoot, 'corpus');
+    cpSync(corpusDir, copy, { recursive: true });
+    const copied = await import(pathToFileURL(join(copy, 'index.mjs')).href);
+    assert.equal(copied.corpusDigest(), corpusDigest(), 'an identical copy has the same digest');
+    for (const junk of ['.DS_Store', 'modules/.DS_Store', 'modules/._orders.mjs', 'modules/.orders.mjs.swp', 'modules/orders.mjs~', 'node_modules/x/index.js']) {
+      mkdirSync(dirname(join(copy, junk)), { recursive: true });
+      writeFileSync(join(copy, junk), 'host junk\n');
+    }
+    assert.equal(copied.corpusDigest(), corpusDigest(), 'host and editor junk must not change the corpus digest');
+    assert.deepEqual(copied.corpusFiles(), files, 'host and editor junk is not a corpus file');
+    writeFileSync(join(copy, 'modules', 'orders.mjs'), `${readFileSync(join(copy, 'modules', 'orders.mjs'), 'utf8')}\n`);
+    assert.notEqual(copied.corpusDigest(), corpusDigest(), 'a content change must change the corpus digest');
+  } finally {
+    rmSync(copyRoot, { recursive: true, force: true });
+  }
+}
 
 // (f) Unknown ids are rejected everywhere.
 await assert.rejects(startApplication({ seed: 1, enabledSeeds: ['no-such-seed'] }), /unknown corpus seed/);
