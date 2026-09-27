@@ -50,7 +50,8 @@ argus_native_prepare() {
 }
 
 # Collect-only pass over every project: the outcome adapter writes reports/test-inventory.tsv,
-# reports/expected-bugs.txt, and reports/counterfactual-plan.tsv.
+# reports/test-case-ids.tsv (the ids every executed pass reuses), reports/expected-bugs.txt,
+# and reports/counterfactual-plan.tsv.
 argus_native_inventory() {
   npx playwright test --list --reporter=./scripts/argus-playwright-reporter.mjs
 }

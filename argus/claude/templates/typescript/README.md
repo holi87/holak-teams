@@ -29,8 +29,8 @@ npm run perf                   # optional light perf probe (PERF_TARGETS="/api/a
 `run-tests.sh` defines only the Playwright hooks; the shared `scripts/runner-lib.sh` owns
 the run. In order: template selection, the lane plan, `npm ci` + `tsc --noEmit` (a suite
 that doesn't typecheck doesn't run), readiness ("ENVIRONMENT NOT READY"), the environment
-baseline, a collect-only inventory (`reports/test-inventory.tsv`, `reports/expected-bugs.txt`,
-`reports/counterfactual-plan.tsv`), the quarantine and inventory gates, the evidence
+baseline, a collect-only inventory (`reports/test-inventory.tsv`, `reports/test-case-ids.tsv`,
+`reports/expected-bugs.txt`, `reports/counterfactual-plan.tsv`), the quarantine and inventory gates, the evidence
 passes, the surface-coverage gate (`scripts/baseline-coverage.mjs`, baseline and full-suite),
 and `reports/argus-runner-result.json` (`argus/runner-result@1`). Exit codes are 0
 or 10-15 per `RUNNER-CONTRACT.md`, never Playwright's own.
@@ -80,11 +80,12 @@ src/api/auth.ts          login + token cache, apiAs(role)
 src/api/api-client.ts    resource-oriented clients (endpoint paths in ONE place)
 src/api/schema.ts        expectMatchesSchema(body, '#/components/schemas/X') — OpenAPI as executable oracle
 src/api/route-mocks.ts   failNext/delayNext/abortNext — page.route() fault injection for UI error states
-src/fixtures/fixtures.ts custom fixtures (DI): apiAsUser/apiAsAdmin, page objects,
+src/fixtures/fixtures.ts custom fixtures (DI) on top of counterfactualTest: apiAsUser/apiAsAdmin, page objects,
                          consoleGuard (wraps `page`: fails UI tests on console errors / 5xx responses),
                          createdResources (strict teardown cleanup when the app has no reset command),
                          faultInjector (resilience faults with a verified restore)
-src/argus/               Argus runner kit: error classes + requireEnv, counterfactual stub, fault injector
+src/argus/               Argus runner kit: error classes + requireEnv, counterfactual stub and its activation
+                         (playwright-fixtures.ts counterfactualTest, api-url.ts), fault injector
 src/pages/*.page.ts      Page Objects: getByRole/getByLabel locators + user-intent methods
 src/data/factory.ts      unique, override-friendly test-data builders
 src/perf/run-perf.mjs    light autocannon probe (`npm run perf`) — characterisation by default; a gate ONLY with PERF_BUDGET_MS (stated budgets, never invented)

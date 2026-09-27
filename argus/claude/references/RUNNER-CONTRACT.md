@@ -153,7 +153,8 @@ leading and trailing `-`. Above 200 characters it keeps the first 187 characters
 Collisions get `.2`, `.3`, … in declaration order over the full collection, so a mode- or
 lane-filtered run never renumbers them: it reuses the inventory pass's ids (TypeScript
 joins each test to `reports/test-case-ids.tsv`, `<sha256 of the raw identity><TAB><id>`,
-and a test it cannot join fails the adapter status). Pass suffixes are `.repeat`,
+and a test it cannot join fails the adapter status; only a run with no map at all, a plain
+`playwright test` outside the runner, numbers its own suite). Pass suffixes are `.repeat`,
 `.cf-correct`, `.cf-<tamperId>`, and `.cf` (exemption); a secondary cleanup event uses
 `.cleanup`.
 
