@@ -75,6 +75,15 @@ for (const fragment of [
 ]) {
   assert(controllerContract.includes(fragment), `orchestration-core lost required controller semantic: ${fragment}`);
 }
+// A backoff retry blocks inside `start-attempt --wait true` for up to the longest policy
+// backoff (and never past the command's own wait ceiling), so the controller's Bash timeout
+// must outlast both and stay within the tool's 600000 ms maximum; the default is 120000 ms.
+const waitTimeout = /`start-attempt --wait true` with an explicit Bash `timeout` of (\d+) ms/u.exec(controllerContract);
+const longestBackoffMs = Math.max(...modelPolicy.fallbackPolicies['frontier-fail-closed'].autoContinue.unavailableBackoffSeconds) * 1000;
+const commandWaitCeiling = /const maxWaitMs = ([\d_]+);/u.exec(readFileSync(join(ROOT, 'argus/claude/bin/argus-assets'), 'utf8'));
+assert(waitTimeout && commandWaitCeiling, 'orchestration-core must give `start-attempt --wait true` an explicit Bash timeout');
+assert(Number(waitTimeout[1]) > Math.max(longestBackoffMs, Number(commandWaitCeiling[1].replaceAll('_', ''))) && Number(waitTimeout[1]) <= 600000,
+  `the start-attempt wait timeout ${waitTimeout[1]} ms must exceed the ${longestBackoffMs} ms backoff and the command wait ceiling`);
 assert(!controllerSkill.includes('qa-doctrine'), 'orchestration-core references legacy qa-doctrine instead of modular skills');
 assert(!controllerContract.includes('Rerun after provisioning'), 'orchestration-core still reruns preflight after provisioning instead of resolving gates');
 assert(plan.roles.length === 27, `expected 27 roles, found ${plan.roles.length}`);
