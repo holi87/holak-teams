@@ -2,8 +2,9 @@ import { isDeepStrictEqual } from 'node:util';
 
 const SUPPORTED_KEYWORDS = new Set([
   '$defs', '$id', '$ref', '$schema', 'additionalProperties', 'allOf', 'const',
-  'enum', 'format', 'if', 'items', 'maximum', 'maxItems', 'minItems', 'minLength', 'minimum',
-  'pattern', 'properties', 'required', 'then', 'title', 'type', 'uniqueItems',
+  'enum', 'exclusiveMinimum', 'format', 'if', 'items', 'maximum', 'maxItems', 'maxLength',
+  'minItems', 'minLength', 'minimum', 'pattern', 'properties', 'required', 'then', 'title',
+  'type', 'uniqueItems',
 ]);
 
 export function compileJsonSchema(schema) {
@@ -52,6 +53,9 @@ function validateNode(schema, value, root, instancePath, schemaPath, errors) {
 function validateString(schema, value, instancePath, schemaPath, errors) {
   if (schema.minLength !== undefined && [...value].length < schema.minLength) {
     addError(errors, instancePath, `${schemaPath}/minLength`, 'minLength', `must NOT have fewer than ${schema.minLength} characters`);
+  }
+  if (schema.maxLength !== undefined && [...value].length > schema.maxLength) {
+    addError(errors, instancePath, `${schemaPath}/maxLength`, 'maxLength', `must NOT have more than ${schema.maxLength} characters`);
   }
   if (schema.pattern !== undefined && !new RegExp(schema.pattern, 'u').test(value)) {
     addError(errors, instancePath, `${schemaPath}/pattern`, 'pattern', `must match pattern ${schema.pattern}`);
@@ -132,6 +136,9 @@ function validateObject(schema, value, root, instancePath, schemaPath, errors) {
 function validateNumber(schema, value, instancePath, schemaPath, errors) {
   if (schema.minimum !== undefined && value < schema.minimum) {
     addError(errors, instancePath, `${schemaPath}/minimum`, 'minimum', `must be >= ${schema.minimum}`);
+  }
+  if (schema.exclusiveMinimum !== undefined && value <= schema.exclusiveMinimum) {
+    addError(errors, instancePath, `${schemaPath}/exclusiveMinimum`, 'exclusiveMinimum', `must be > ${schema.exclusiveMinimum}`);
   }
   if (schema.maximum !== undefined && value > schema.maximum) {
     addError(errors, instancePath, `${schemaPath}/maximum`, 'maximum', `must be <= ${schema.maximum}`);

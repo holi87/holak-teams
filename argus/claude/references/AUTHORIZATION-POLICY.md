@@ -37,6 +37,28 @@ the action. Never reinterpret a denial, retry with weaker parameters without rec
 or split one denied action into smaller calls. Every decision appends a redacted JSONL
 event to the manifest's audit path and names the rule that allowed or denied it.
 
+### Operator manifest at launch
+
+The operator, never an agent, may supply the manifest when starting the engagement:
+
+- `argus-launch claude … --authorization <absolute-path>` takes an operator-owned manifest
+  outside the target and artifact roots. It must be a physical regular file (no symbolic
+  link), satisfy the packaged schema, carry the launch `--engagement-id`, and allow the
+  preflight boundary read of the launch `--target`. The launcher copies it byte-for-byte to
+  `ai_agents_internal/authorization.json` (mode 0600) before the sandbox starts.
+- `--environment <local|test|staging|production>` without `--authorization` installs the
+  default-deny manifest for that environment; `local` is the manifest environment
+  `development`. With `--authorization`, the manifest's `target.environment` must equal it.
+
+The launcher runs the host-only `argus-assets authorization verify` before creating the
+artifact root and `authorization install` before the sandbox starts; the guard denies both
+inside an engagement. An identical existing manifest is kept; a different one is never
+replaced. Both choices are unsigned operator data in the launch payload (or the unattested
+prompt) and in `--dry-run` output (`authorizationSource`, `targetEnvironment`). Preflight
+reloads and validates the installed manifest. Neither flag widens anything the evaluator
+denies: every high-risk action still needs its complete grant, and production-like targets
+still need a production override.
+
 ## 2. Actions and explicit opt-in
 
 Read-only actions are `read`, `browser-read`, `database-read`, and `security-passive`.

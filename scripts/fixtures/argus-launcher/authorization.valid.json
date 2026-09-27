@@ -1,0 +1,65 @@
+{
+  "$schema": "../../../argus/schemas/authorization-manifest.schema.json",
+  "schemaVersion": 1,
+  "engagementId": "launcher-operator-authorization",
+  "target": {
+    "identifiers": ["*"],
+    "environment": "test",
+    "productionLike": false
+  },
+  "accounts": {
+    "allowedAliases": ["argus-alice", "argus-bob"],
+    "syntheticOnly": true
+  },
+  "dataBoundaries": {
+    "allowedNamespaces": ["argus-launcher"],
+    "prohibitedClassifications": ["credentials", "payment-data", "private-keys", "production-pii", "secrets"],
+    "syntheticOnly": true
+  },
+  "allowedMutations": ["browser:state-change"],
+  "prohibitedActions": ["credential-exfiltration", "disable-security-controls", "erase-audit-log", "production-data-copy", "unbounded-load"],
+  "rateLimits": {
+    "requestsPerSecond": 1,
+    "maxConcurrent": 1,
+    "maxTotalRequests": 50,
+    "maxDurationSeconds": 300
+  },
+  "timeWindows": [
+    {
+      "startsAt": "2026-07-10T00:00:00.000Z",
+      "endsAt": "2026-07-11T00:00:00.000Z"
+    }
+  ],
+  "actionGrants": {
+    "binary-evidence": { "enabled": false, "productionOverride": false, "approvedBy": null, "approvedAt": null, "expiresAt": null, "reason": null },
+    "browser-state-change": { "enabled": true, "productionOverride": false, "approvedBy": "launcher-fixture-owner", "approvedAt": "2026-07-10T00:00:00.000Z", "expiresAt": "2026-07-11T00:00:00.000Z", "reason": "Launcher operator-manifest smoke fixture" },
+    "chaos": { "enabled": false, "productionOverride": false, "approvedBy": null, "approvedAt": null, "expiresAt": null, "reason": null },
+    "database-write": { "enabled": false, "productionOverride": false, "approvedBy": null, "approvedAt": null, "expiresAt": null, "reason": null },
+    "destructive": { "enabled": false, "productionOverride": false, "approvedBy": null, "approvedAt": null, "expiresAt": null, "reason": null },
+    "load": { "enabled": false, "productionOverride": false, "approvedBy": null, "approvedAt": null, "expiresAt": null, "reason": null },
+    "persistent-mutation": { "enabled": false, "productionOverride": false, "approvedBy": null, "approvedAt": null, "expiresAt": null, "reason": null },
+    "security-active": { "enabled": false, "productionOverride": false, "approvedBy": null, "approvedAt": null, "expiresAt": null, "reason": null }
+  },
+  "redaction": {
+    "requiredFor": ["bug-reports", "console", "logs", "screenshots", "traces"],
+    "binaryEvidencePolicy": "deny-unless-reviewed",
+    "replacement": "[REDACTED]"
+  },
+  "untrustedContent": {
+    "sources": ["agent-output", "fetched-documents", "issue-text", "repository-content", "target-content", "tool-output"],
+    "mayAuthorizeActions": false,
+    "mayModifyManifest": false
+  },
+  "rollback": {
+    "requiredFor": ["browser-state-change", "chaos", "database-write", "destructive", "persistent-mutation"],
+    "procedure": "Sign out the fixture-owned synthetic accounts and discard their browser state.",
+    "verification": "Confirm the fixture-owned accounts have no active session."
+  },
+  "escalation": {
+    "abortOn": ["authorization-drift", "cross-tenant-impact", "production-signal", "rate-limit-breach", "rollback-failure", "secret-exposure", "target-mismatch"],
+    "contact": "launcher-fixture-owner"
+  },
+  "audit": {
+    "path": "authorization-audit.jsonl"
+  }
+}

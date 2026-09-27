@@ -122,6 +122,7 @@ const BROWSER_RUNTIME_SCHEMA_PATH = join(ROOT, 'schemas', 'browser-runtime.schem
 const ORCHESTRATION_PLAN_PATH = join(ROOT, 'capabilities', 'orchestration-plan.json');
 const TEMPLATE_CONTRACT_PATH = join(ROOT, 'capabilities', 'template-contract.json');
 const AUTHORIZATION_TEMPLATE_PATH = join(ROOT, 'policies', 'authorization.template.json');
+const AUTHORIZATION_MANIFEST_SCHEMA_PATH = join(ROOT, 'schemas', 'authorization-manifest.schema.json');
 const ENGAGEMENT_TEMPLATE_PATH = join(ROOT, 'policies', 'engagement.template.json');
 const REDACTION_PATTERNS_PATH = join(ROOT, 'policies', 'redaction-patterns.json');
 const HOOKS_PATH = join(ROOT, 'hooks', 'hooks.json');
@@ -244,6 +245,7 @@ Usage:
   argus-assets preflight --target <url-or-path> --mode <A|B|C|D> [options]
   argus-assets authorization init --target <url-or-path> [options]
   argus-assets authorization check --manifest <path> --lane <slug> --action <action> --target <target> [options]
+  argus-assets authorization verify|install --artifact-root <absolute-path> --engagement-id <id> --target <url-or-path> [--manifest <absolute-path>] [--environment <name>]
   argus-assets engagement <init|validate|allocate|start-attempt|status|claim|release|fragment|merge|id|checkpoint|heartbeat|barrier|cleanup|resolve-gates> [options]
   argus-assets engagement allocate --manifest <engagement.json> --lane <slug> --decision <model-decision.json> [--dispatch-authorization <MDA-file>] [--token <lane-token>] [--controller-token <odysseus-token>]
   argus-assets engagement allocate --manifest <engagement.json> --lanes <slug,slug> --controller-token <odysseus-token>
@@ -289,6 +291,12 @@ Authorization init options:
   --environment <name>         unknown|development|test|staging|production
   --output <path>              Defaults to ai_agents_internal/authorization.json
   --engagement-id <id>         Stable audit correlation identifier
+
+Authorization verify/install (host-side, run by argus-launch before the sandbox):
+  --manifest <path>            Operator manifest outside the target and artifact roots
+  --environment <name>         Default-deny manifest environment, or the operator manifest's required one
+  verify is read-only; install writes ai_agents_internal/authorization.json (mode 0600),
+  keeps an identical manifest, and refuses to replace a different one
 
 Authorization check boundaries:
   --source-trust <class>       manifest|user|untrusted (required)
@@ -2144,7 +2152,9 @@ function authorizationCommand(args) {
   const [operation, ...rest] = args;
   if (operation === 'init') return initializeAuthorization(rest);
   if (operation === 'check') return checkAuthorization(rest);
-  fail('usage: argus-assets authorization <init|check> [options]');
+  if (operation === 'verify') return verifyOperatorAuthorization(rest);
+  if (operation === 'install') return installOperatorAuthorization(rest);
+  fail('usage: argus-assets authorization <init|check|verify|install> [options]');
 }
 
 function engagementCommand(args) {
@@ -3045,6 +3055,136 @@ function checkAuthorization(args) {
   const safeReason = redactText(decision.reason, patterns).text.replace(/[\r\n]+/g, ' ');
   console.log(`AUTHORIZATION  ${decision.decision.toUpperCase()} rule=${decision.ruleId} reason=${safeReason} audit=${auditPath}`);
   return decision.decision === 'allow' ? 0 : 3;
+}
+
+// Host-side operator verbs that argus-launch runs before the OS sandbox starts. Both bind the
+// operator's manifest (--manifest) or the default-deny manifest for an operator environment
+// (--environment) to one engagement id and launch target. `verify` never writes; `install`
+// places the manifest at <artifact-root>/ai_agents_internal/authorization.json with mode 0600,
+// where preflight loads it. The PreToolUse guard denies every authorization verb except
+// `check` inside an engagement, and the evaluator still decides every action: installing a
+// manifest never widens what it denies.
+function verifyOperatorAuthorization(args) {
+  const prepared = prepareOperatorAuthorization(args, 'verify');
+  reportOperatorAuthorization('verified', prepared);
+  return 0;
+}
+
+function installOperatorAuthorization(args) {
+  const prepared = prepareOperatorAuthorization(args, 'install');
+  if (prepared.installed) {
+    reportOperatorAuthorization('unchanged', prepared);
+    return 0;
+  }
+  mkdirSync(dirname(prepared.destination), { recursive: true, mode: 0o700 });
+  if (!safePhysicalPath(prepared.artifactRoot, prepared.destination)) {
+    fail('authorization manifest destination escapes the artifact root or crosses a symbolic link');
+  }
+  try {
+    writeFileSync(prepared.destination, prepared.raw, { mode: 0o600, flag: 'wx' });
+  } catch (error) {
+    if (error.code === 'EEXIST') fail(`an authorization manifest appeared at ${prepared.destination} during installation; refusing to replace it`);
+    fail(`cannot install the authorization manifest: ${error.message}`);
+  }
+  chmodSync(prepared.destination, 0o600);
+  reportOperatorAuthorization('installed', prepared);
+  return 0;
+}
+
+function prepareOperatorAuthorization(args, operation) {
+  const command = `authorization ${operation}`;
+  const options = parseNamedOptions(args, new Set(['--artifact-root', '--engagement-id', '--target', '--manifest', '--environment']));
+  requireOptions(options, ['artifactRoot', 'engagementId', 'target'], command);
+  if (!options.manifest && !options.environment) fail(`${command} requires --manifest, --environment, or both`);
+  if (options.environment !== undefined && !['unknown', 'development', 'test', 'staging', 'production'].includes(options.environment)) {
+    fail(`${command} --environment must be unknown, development, test, staging, or production`);
+  }
+  requireStableIdentifier(options.engagementId, `${command} --engagement-id`);
+  const target = identifyTarget(options.target);
+  const artifactRoot = options.artifactRoot;
+  if (!artifactRoot.startsWith('/') || resolve(artifactRoot) !== artifactRoot) fail(`${command} --artifact-root must be an absolute normalized path`);
+  // verify runs before the launcher creates the artifact root; install requires it.
+  const artifactRootExists = lstatPresent(artifactRoot);
+  if (artifactRootExists || operation === 'install') existingPhysicalDirectory(artifactRoot, `${command} artifact root`);
+  if (target.targetPath && (isWithin(target.targetPath, artifactRoot) || isWithin(artifactRoot, target.targetPath))) {
+    fail(`${command} target and artifact root must be physically disjoint`);
+  }
+  const destination = join(artifactRoot, 'ai_agents_internal', 'authorization.json');
+  if (artifactRootExists && !safePhysicalPath(artifactRoot, destination)) {
+    fail('authorization manifest destination escapes the artifact root or crosses a symbolic link');
+  }
+  const binding = { engagementId: options.engagementId, targetIdentity: target.targetIdentity, environment: options.environment };
+
+  let source;
+  let raw;
+  let authorization;
+  if (options.manifest) {
+    source = 'operator';
+    const manifestPath = existingPhysicalFile(options.manifest, 'operator authorization manifest');
+    if (isWithin(artifactRoot, manifestPath) || (target.targetPath && isWithin(target.targetPath, manifestPath))) {
+      fail('operator authorization manifest must stay outside the target and artifact roots');
+    }
+    requireSecureOperatorInput(manifestPath, 'operator authorization manifest');
+    raw = readSecureSingleLink(manifestPath, 'operator authorization manifest');
+    try { authorization = JSON.parse(raw.toString('utf8')); }
+    catch (error) { fail(`operator authorization manifest is not valid JSON: ${error.message}`); }
+    const errors = operatorAuthorizationBindingErrors(authorization, binding);
+    if (errors.length > 0) fail(`operator authorization manifest ${errors.join('; ')}`);
+  } else {
+    source = 'environment';
+    authorization = createDefaultAuthorization({
+      template: readJson(AUTHORIZATION_TEMPLATE_PATH),
+      target: target.targetIdentity,
+      environment: options.environment,
+      engagementId: options.engagementId,
+    });
+    const errors = operatorAuthorizationBindingErrors(authorization, binding);
+    if (errors.length > 0) fail(`generated authorization manifest ${errors.join('; ')}`);
+    raw = Buffer.from(`${JSON.stringify(authorization, null, 2)}\n`, 'utf8');
+  }
+
+  // An existing manifest is kept only when it is the same manifest (same canonical digest), so
+  // a relaunch with the same choice is idempotent. Anything else, including a more permissive
+  // manifest from an earlier launch, is refused: the launcher never replaces a manifest.
+  let installed = false;
+  if (artifactRootExists && lstatPresent(destination)) {
+    const current = readSecureSingleLink(destination, 'existing authorization manifest');
+    let existing = null;
+    try { existing = JSON.parse(current.toString('utf8')); } catch { existing = null; }
+    const same = existing !== null && manifestSha256(existing) === manifestSha256(authorization);
+    if (!same) {
+      fail(`a different authorization manifest already exists at ${destination}; remove it or launch into an empty artifact root`);
+    }
+    installed = true;
+  }
+  return { source, raw, authorization, artifactRoot, destination, installed };
+}
+
+function operatorAuthorizationBindingErrors(authorization, { engagementId, targetIdentity, environment }) {
+  const schemaErrors = compileJsonSchema(readJson(AUTHORIZATION_MANIFEST_SCHEMA_PATH))(authorization);
+  if (schemaErrors.length > 0) return [`does not satisfy its schema: ${formatSchemaErrors(schemaErrors)}`];
+  const errors = validateAuthorizationManifest(authorization);
+  if (errors.length > 0) return [`is invalid: ${errors.join('; ')}`];
+  if (authorization.engagementId !== engagementId) return ['engagementId differs from the launch engagement id'];
+  if (environment !== undefined && authorization.target.environment !== environment) {
+    return [`target.environment ${authorization.target.environment} differs from the requested environment ${environment}`];
+  }
+  // The same read the preflight boundary probe evaluates: the manifest must cover the target.
+  const decision = evaluateAuthorization({
+    manifest: authorization,
+    request: { lane: 'odysseus', action: 'read', target: targetIdentity, sourceTrust: 'manifest' },
+  });
+  if (decision.decision !== 'allow') return [`does not allow the preflight boundary read of the launch target (${decision.ruleId}: ${decision.reason})`];
+  return [];
+}
+
+function reportOperatorAuthorization(status, prepared) {
+  console.log(`AUTHORIZATION  ${status} source=${prepared.source} environment=${prepared.authorization.target.environment} sha256=${manifestSha256(prepared.authorization)} manifest=${prepared.destination}`);
+}
+
+function lstatPresent(path) {
+  try { lstatSync(path); return true; }
+  catch { return false; }
 }
 
 function redactCommand(args) {
