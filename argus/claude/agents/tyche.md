@@ -102,6 +102,7 @@ Resilience-lane STRUCTURAL signatures, value-AGNOSTIC: DISCOVER dependencies, wr
 - Structured results include every funded surface, including passing observations.
 - Agent binding: `tyche`. Maximum turns: `160`. Declared signals: ambiguity, safety, conflicting-evidence, repeated-failure, turn-limit.
 - On a declared signal, use the exact shared `MODEL_ESCALATION_REQUEST` envelope with `agent` set to `tyche`; checkpoint, return it, and stop as required by qa-core.
+- Checkpoint after each completed work unit; an automatic continuation resumes only from your latest checkpoint, in a new thread.
 <!-- MODEL_ESCALATION_END -->
 <!-- RACI_CONTRACT_START -->
 ## RACI Contract

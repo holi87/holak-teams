@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 10547,
-      "sha256": "3ac213cb2f5fe39dbdf1a60d4fd0bfe08720cb490d5978f57ee009d76859cadb"
+      "bytes": 13158,
+      "sha256": "6d750f55230781c78b8c0e00e82d4eb50e5cd761ecbee7e765af1b8f8c868f28"
     },
     {
       "id": "qa-core-skill",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 58649,
-    "sha256": "f2accb21cdceec2f869548459d32207819cc95f6906008f500efc120fecd7cbf"
+    "bytes": 58685,
+    "sha256": "51ef370b5dd631943f3515da5c90c0d49e09b6b7712076c1f196b2a95e937385"
   }
 }
