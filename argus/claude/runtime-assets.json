@@ -38,8 +38,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 17261,
-      "sha256": "64f5eb6058b7fafaac56a40727ba27ff1d663ee35e8b95005b3a8f6f556a21a3"
+      "bytes": 17366,
+      "sha256": "634a516874ff680fb83917ed16d823b356706f07830854b384ce1bae0cce2481"
     },
     {
       "id": "authorization-policy",
@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 53110,
-      "sha256": "ba816856af7ac89b31aa08dfb4081c47d17c73001324adf8b4cd9da629235c73"
+      "bytes": 53300,
+      "sha256": "2d4d6767166c2e18e4c41c3d76bfc5273d8de015247380e4c94b0aad488833d0"
     },
     {
       "id": "canonical-contracts",
@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 61,
-      "bytes": 444513,
-      "sha256": "d17e9df34791d99bbbcf9d2af159564739c6701ff270efa3d4c2e2fd9e5e6e25"
+      "bytes": 444547,
+      "sha256": "0f8efbfc80958141d8f0a0caeb2c934736cf1dbded90b208234bb8240d64ae86"
     },
     {
       "id": "java-template",

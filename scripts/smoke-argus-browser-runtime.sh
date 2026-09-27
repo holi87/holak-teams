@@ -264,6 +264,11 @@ status=$?
 set -e
 [ "$status" -ne 0 ] || fail 'managed driver ran with an unavailable browser runtime record'
 grep -Fq 'browser runtime is unavailable' "$WORK/driver-unavailable.out" || { cat "$WORK/driver-unavailable.out" >&2; fail 'unavailable runtime record was not reported'; }
+# Gate resolution is one-shot, so the remedy is a named residual, never "rerun gate resolution".
+for output in driver-unavailable driver-tampered-tree; do
+  grep -Fq 'stop and report a browser-runtime residual to Odysseus' "$WORK/$output.out" && ! grep -Fq 'rerun gate resolution' "$WORK/$output.out" || \
+    { cat "$WORK/$output.out" >&2; fail "$output advised an impossible remedy instead of a browser-runtime residual"; }
+done
 
 # A record naming a copy inside the worker-writable artifact root is refused although its
 # digests match (the tree is labelled relative to the module's parent): no import happens.

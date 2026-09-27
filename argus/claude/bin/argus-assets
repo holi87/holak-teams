@@ -4094,6 +4094,9 @@ async function preflight(argv) {
   const artifactRootCandidate = resolve(options.artifactRoot ?? targetPath ?? process.cwd());
   const artifactRootPath = statSafe(artifactRootCandidate)?.isDirectory() ? realpathSync(artifactRootCandidate) : artifactRootCandidate;
   refuseSealedPreflightRewrite(artifactRootPath, options.output);
+  // After the seal, browser lanes depend on browser-runtime.json, which only the one-shot
+  // `engagement resolve-gates` may rewrite; a diagnostic report keeps its own result.
+  const sealed = Boolean(lstatSafe(join(artifactRootPath, 'ai_agents_internal', 'model-control-seal.json')));
   const nativeLaunch = inspectNativeLaunchForPreflight({
     options,
     modelRuntime,
@@ -4320,7 +4323,7 @@ async function preflight(argv) {
   }
   const browserRuntime = recordBrowserRuntime({
     artifactRootPath,
-    persist: Boolean(artifactWritable && engagementUsable),
+    persist: Boolean(artifactWritable && engagementUsable && !sealed),
     engagementId: engagementUsable ? engagement.engagementId : null,
     probedAt: probeTimestamp,
     result: resolveBrowserRuntime({ targetPath, artifactRootPath, profile, probeAllowed, probedAt: probeTimestamp }),
@@ -5245,7 +5248,8 @@ function resolveNodePackageDirectory(fromDirectory, name) {
 
 // browser-runtime.json is written only when the artifact root is writable and the engagement
 // is usable; otherwise the result is returned unchanged (preflight then fails its mandatory
-// artifact-root or engagement checks and nothing is dispatched). When persistence is due but
+// artifact-root or engagement checks and nothing is dispatched). Once the model-control seal
+// exists, preflight never persists it: only gate resolution does. When persistence is due but
 // the write fails, consumers could not verify the record, so the runtime is reported
 // unavailable instead of silently trusted.
 function recordBrowserRuntime({ artifactRootPath, persist, engagementId, probedAt = new Date().toISOString(), result }) {

@@ -582,6 +582,23 @@ for scenario in full partial; do
       allocation="$(argus_smoke_allocate "$CLI" "$manifest" "$WORK/model-control-host" "$lane" "$odysseus_token")"
       jq -r .token <<<"$allocation" >"$WORK/partial-tokens/$lane"
     done < <(jq -r '.released[]' "$WORK/partial-gates.json")
+    # The released browser lanes import exactly the runtime resolve-gates recorded. A diagnostic
+    # preflight after the seal, including a Codex one that fails its own mandatory check, keeps
+    # its result in its own report and never replaces that record.
+    runtime_record="$target/ai_agents_internal/browser-runtime.json"
+    runtime_record_digest="$(digest_file "$runtime_record")"
+    jq -e '.status == "available" and .source == "host-provisioned"' "$runtime_record" >/dev/null || \
+      fail "resolve-gates did not record the host-provisioned runtime: $(cat "$runtime_record")"
+    "$CLI" preflight --target "$target" --artifact-root "$target" --mode A --profile "$FIXTURES/partial.json" \
+      --environment unknown --output ai_agents_internal/preflight-diagnostic2.json >/dev/null || fail 'a diagnostic preflight after gate resolution was refused'
+    jq -e '.browserRuntime.status == "not-probed"' "$target/ai_agents_internal/preflight-diagnostic2.json" >/dev/null || \
+      fail 'the post-resolution diagnostic preflight did not report its own browser runtime result'
+    if "$CLI" preflight --target "$target" --artifact-root "$target" --mode A --profile "$FIXTURES/partial.json" \
+      --environment unknown --model-runtime codex --output ai_agents_internal/preflight-diagnostic-codex.json >/dev/null 2>&1; then
+      fail 'a Codex diagnostic preflight passed without a native hard turn cap'
+    fi
+    [ "$(digest_file "$runtime_record")" = "$runtime_record_digest" ] || \
+      fail "a diagnostic preflight after the seal replaced browser-runtime.json: $(cat "$runtime_record")"
     if omitted_output="$(argus_smoke_allocate "$CLI" "$manifest" "$WORK/model-control-host" charon "$odysseus_token" 2>&1)"; then
       fail 'a gate-unmet lane allocated after engagement resolve-gates'
     fi

@@ -247,10 +247,12 @@ present an unattested run as attested.
 ## Browser runtime record
 
 `ai_agents_internal/browser-runtime.json` (`argus/browser-runtime@1`) names the Playwright
-runtime that browser lanes may use. Writers: preflight and controller gate resolution; each
-run replaces the whole record atomically, and only when the artifact root is writable and
-the engagement is usable. Readers: the managed hunt driver and browser lanes. No lane edits it.
-The preflight report carries the same result as `browserRuntime`.
+runtime that browser lanes may use. Writers: preflight until the model-control seal exists,
+then only the one-shot controller gate resolution; each write replaces the whole record
+atomically, and only when the artifact root is writable and the engagement is usable. A
+diagnostic preflight after the seal keeps its result in its own report and leaves the record
+the released lanes import untouched. Readers: the managed hunt driver and browser lanes. No
+lane edits it. The preflight report carries the same result as `browserRuntime`.
 
 Preflight never installs a runtime. Once the audited target probe is allowed, it inspects
 candidates read-only, deduplicated by physical path, in this order: the profile's

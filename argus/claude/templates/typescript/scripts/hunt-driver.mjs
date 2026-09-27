@@ -1302,6 +1302,7 @@ function isWithin(root, candidate) {
 // proved and recorded in browser-runtime.json. Both digests are recomputed immediately
 // before the import, so a module changed after the probe is refused instead of executed,
 // and a module tree inside the worker-writable artifact root is never imported at all.
+// Gate resolution runs once, so a refused runtime is a lane residual, never a retry.
 // Without a record (unmanaged runs) the driver imports its own playwright dependency.
 async function loadPlaywright() {
   const recordPath = controlDir ? join(controlDir, 'browser-runtime.json') : null;
@@ -1315,7 +1316,7 @@ async function loadPlaywright() {
   }
   if (record?.$schema !== 'argus/browser-runtime@1') fail(`${recordPath} is not an argus/browser-runtime@1 record`);
   if (record.status !== 'available') {
-    fail(`browser runtime is ${record.status} (${record.evidence ?? 'no evidence'}); ask Odysseus to rerun gate resolution`);
+    fail(`browser runtime is ${record.status} (${record.evidence ?? 'no evidence'}); ${residual}`);
   }
   const modulePath = record.modulePath;
   if (typeof modulePath !== 'string' || !modulePath.startsWith('/')) fail(`${recordPath} has no absolute modulePath`);
@@ -1325,7 +1326,7 @@ async function loadPlaywright() {
       fail(`browser runtime ${root} lies inside the worker-writable artifact root ${writableRoot}; ${residual}`);
     }
   }
-  const changed = (detail) => fail(`browser runtime changed since preflight; ask Odysseus to rerun gate resolution (${detail})`);
+  const changed = (detail) => fail(`browser runtime changed since preflight; ${residual} (${detail})`);
   let tree;
   try {
     if (realpathSync(modulePath) !== modulePath) changed('the module path no longer resolves to itself');
