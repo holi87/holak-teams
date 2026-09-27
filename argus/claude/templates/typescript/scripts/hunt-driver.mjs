@@ -754,8 +754,9 @@ function buildPlan(plan) {
 
 // The ordered `argus-assets authorization check` calls this invocation needs. The main
 // check covers the primary account; every non-anonymous actor account is authorized
-// separately; client-side faults need their own mutation, which never comes from the
-// environment; binary evidence is checked last, unchanged.
+// separately, for a read-only run as for an interactive one, because the driver logs in
+// every such account; client-side faults need their own mutation, which never comes from
+// the environment; binary evidence is checked last, unchanged.
 function authorizationPlan(plan) {
   const verbs = new Set(plan.actions.map(([action]) => action));
   const primaryAccount = plan.role ?? 'anon';
@@ -774,10 +775,19 @@ function authorizationPlan(plan) {
       });
     }
   } else {
+    // An anonymous primary read names no account; an authenticated one stays inside
+    // accounts.allowedAliases, which the evaluator enforces only when an account is passed.
     checks.push({
-      action: 'browser-read', account: null, mutation: null,
+      action: 'browser-read', account: primaryAccount === 'anon' ? null : primaryAccount, mutation: null,
       denial: 'authorization denied browser-read; inspect the shared authorization audit and do not launch the browser',
     });
+    for (const actor of plan.actors) {
+      if (actor.role === 'anon') continue;
+      checks.push({
+        action: 'browser-read', account: actor.role, mutation: null,
+        denial: `authorization denied browser-read for actor ${actor.name}; inspect the shared authorization audit and do not launch the browser`,
+      });
+    }
   }
   if ([...verbs].some((verb) => CLIENT_FAULT_ACTIONS.has(verb))) {
     checks.push({

@@ -245,6 +245,41 @@ if (faults[1].decision !== 'deny' || faults[1].ruleId !== 'AUTH-MUTATION-NOT-ALL
 }
 NODE
 
+# A read-only run still logs in every authenticated account, so each one stays inside
+# accounts.allowedAliases (argus-* here): the primary and every actor, before any launch.
+for read_case in primary actor; do
+  mkdir -p "$WORK/read-$read_case"
+  cp "$FULL_FIXTURE" "$WORK/read-$read_case/authorization.json"
+done
+set +e
+PATH="$ROOT/argus/claude/bin:$PATH" \
+DRIVER_CONFIG="$WORK/dev/driver.config.json" \
+ARGUS_AUTHORIZATION_MANIFEST="$WORK/read-primary/authorization.json" \
+node "$ROOT/argus/framework-template/scripts/hunt-driver.mjs" \
+  --agent orion --role customer-admin --goto / --snapshot \
+  >"$WORK/read-primary/driver.out" 2>&1
+read_primary_code=$?
+PATH="$ROOT/argus/claude/bin:$PATH" \
+DRIVER_CONFIG="$WORK/dev/driver.config.json" \
+ARGUS_AUTHORIZATION_MANIFEST="$WORK/read-actor/authorization.json" \
+node "$ROOT/argus/framework-template/scripts/hunt-driver.mjs" \
+  --agent orion --role argus-orion --actor b=customer-admin --goto / --as b --goto / \
+  >"$WORK/read-actor/driver.out" 2>&1
+read_actor_code=$?
+set -e
+[ "$read_primary_code" -eq 2 ] || fail "browser driver read with an unlisted primary account exited $read_primary_code: $(<"$WORK/read-primary/driver.out")"
+grep -Fq 'authorization denied browser-read;' "$WORK/read-primary/driver.out" || fail "browser driver read bypassed the primary account boundary: $(<"$WORK/read-primary/driver.out")"
+[ "$read_actor_code" -eq 2 ] || fail "browser driver read with an unlisted actor account exited $read_actor_code: $(<"$WORK/read-actor/driver.out")"
+grep -Fq 'authorization denied browser-read for actor b' "$WORK/read-actor/driver.out" || fail "browser driver read bypassed the actor account boundary: $(<"$WORK/read-actor/driver.out")"
+node - "$WORK/read-primary/authorization-audit.jsonl" "$WORK/read-actor/authorization-audit.jsonl" <<'NODE'
+const fs = require('fs');
+const reads = (file) => fs.readFileSync(file, 'utf8').trim().split('\n').map(JSON.parse)
+  .filter((event) => event.lane === 'orion' && event.action === 'browser-read').map((event) => `${event.decision}:${event.ruleId}`);
+const [primary, actor] = process.argv.slice(2).map(reads);
+if (JSON.stringify(primary) !== JSON.stringify(['deny:AUTH-ACCOUNT-BOUNDARY'])) throw new Error(`unlisted primary read audit: ${JSON.stringify(primary)}`);
+if (JSON.stringify(actor) !== JSON.stringify(['allow:AUTH-ALLOW', 'deny:AUTH-ACCOUNT-BOUNDARY'])) throw new Error(`unlisted actor read audit: ${JSON.stringify(actor)}`);
+NODE
+
 # Text artifacts and stdout are redacted; binary screenshots fail closed.
 mkdir -p "$WORK/redaction"
 node - "$WORK/redaction/raw.json" <<'NODE'

@@ -190,8 +190,10 @@ node scripts/hunt-driver.mjs --agent orion --role argus-orion \
   process whose profile lives under the lane's allocated
   `<browserArtifactsDirectory>/actor-profiles/<name>`, so engagement cleanup and crash
   recovery remove it with the rest of the lane's browser artifacts; `--fresh` wipes it
-  too. Every non-anonymous actor account is authorized separately with its own
-  `browser-state-change` check.
+  too. Every non-anonymous account, the primary and each actor, is authorized separately
+  with its own `--account` check: `browser-state-change` for an interactive run,
+  `browser-read` for a read-only one, since the driver logs in every such account either
+  way. An account outside `accounts.allowedAliases` is denied before any launch.
 - **Same semantics as the automation helpers.** `--fail-next`, `--delay-next`, and
   `--abort-next` behave like the TypeScript template's `failNext`, `delayNext`, and
   `abortNext` route mocks (status with an empty JSON body, delay then continue, abort with

@@ -38,7 +38,8 @@ const NEW_FLAGS = [
   '--actor', '--capture-bodies', '--plan', '--version', '--tab', '--as', '--fail-next', '--abort-next', '--delay-next',
   '--unroute', '--offline', '--online', '--wait-ms', '--advance', '--race-arm', '--race-fire', '--bodies',
 ];
-const READ = { action: 'browser-read', account: null, mutation: null };
+const read = (account) => ({ action: 'browser-read', account, mutation: null });
+const READ = read(null);
 const stateChange = (account, mutation = 'browser:state-change') => ({ action: 'browser-state-change', account, mutation });
 const clientFault = (account) => ({ action: 'browser-state-change', account, mutation: 'browser:client-fault' });
 const BINARY = { action: 'binary-evidence', account: null, mutation: null };
@@ -91,8 +92,14 @@ try {
   plan = planOf(['--role', 'argus-orion', '--actor', 'b=argus-x-b', '--actor', 'c=anon', '--click', '#buy']);
   assert.deepEqual(plan.actors, [{ name: 'b', role: 'argus-x-b' }, { name: 'c', role: 'anon' }]);
   assert.deepEqual(plan.authorization, [stateChange('argus-orion'), stateChange('argus-x-b')], 'every non-anonymous actor account needs its own check');
-  plan = planOf(['--role', 'argus-orion', '--actor', 'b=argus-x-b', '--goto', '/', '--as', 'b', '--goto', '/']);
-  assert.deepEqual(plan.authorization, [READ], 'read-only actor runs need no per-account state-change check');
+  // A read-only run logs in the same accounts, so every authenticated account needs its own
+  // browser-read check inside accounts.allowedAliases; anonymous sessions name no account.
+  plan = planOf(['--role', 'argus-orion', '--goto', '/', '--snapshot']);
+  assert.deepEqual(plan.authorization, [read('argus-orion')], 'an authenticated read must name the primary account');
+  plan = planOf(['--role', 'argus-orion', '--actor', 'b=argus-x-b', '--actor', 'c=anon', '--goto', '/', '--as', 'b', '--goto', '/']);
+  assert.deepEqual(plan.authorization, [read('argus-orion'), read('argus-x-b')], 'every non-anonymous actor account needs its own browser-read check');
+  plan = planOf(['--actor', 'b=argus-x-b', '--goto', '/', '--as', 'b', '--goto', '/']);
+  assert.deepEqual(plan.authorization, [READ, read('argus-x-b')], 'an anonymous primary read must still authorize each actor account');
 
   // The client-fault mutation never comes from the environment; the main check's does.
   plan = planOf(['--role', 'argus-orion', '--actor', 'b=argus-x-b', '--offline'], { ARGUS_AUTHORIZATION_MUTATION: 'browser:custom' });

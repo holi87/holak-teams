@@ -58,7 +58,8 @@
       { "id": "shared-template-semantics", "source": "qa-framework-runner", "markers": ["defect-evidence", "candidate-regression", "owner, reason, evidence, expiry", "solution/quarantine.tsv", "expires_on"] },
       { "id": "suite-quarantine-ledger", "source": "asklepios", "markers": ["solution/quarantine.tsv", "reports/test-inventory.tsv", "expires_on"] },
       { "id": "confirmation-ratio", "source": "qa-core", "markers": ["captured occurrence", "occurrences/attempts ratio", "second success is never fabricated"] },
-      { "id": "exploration-loop", "source": "qa-core", "markers": ["Seeded variation", "Differential oracle", "Search around each hit", "consecutive distinct probes", "consistency divergence"] }
+      { "id": "exploration-loop", "source": "qa-core", "markers": ["Seeded variation", "Differential oracle", "Search around each hit", "consecutive distinct probes", "consistency divergence"] },
+      { "id": "coverage-observation-fragments", "source": "qa-core", "markers": ["solution/coverage-observations.json", "in every mode", "<lane>:<surfaceId>", "argus-assets path coverage-contract", "argus-assets engagement fragment"] }
     ]
   },
   "forbiddenPromptPatterns": [
