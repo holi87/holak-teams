@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/scripts/eval/discovery/schemas/replay-result.schema.json",
+  "title": "Argus discovery evaluation Mode A regression replay result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "case", "runnerMode", "exitCode", "timedOut", "sandbox", "runnerResult", "error"],
+  "properties": {
+    "schema": { "const": "argus-eval/replay-result@1" },
+    "case": { "type": "string", "pattern": "^(?:all-on|all-off|all-off-baseline|only-[a-z][a-z0-9-]*)$" },
+    "runnerMode": { "enum": ["defect-evidence", "candidate-regression", "baseline"] },
+    "exitCode": { "type": ["integer", "null"] },
+    "timedOut": { "type": "boolean" },
+    "sandbox": { "enum": ["macos-sandbox-exec", "linux-bwrap", "unsandboxed-test-stub", null] },
+    "runnerResult": { "type": ["object", "null"] },
+    "error": { "type": ["string", "null"], "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "sandbox": { "const": null } } },
+      "then": { "properties": { "error": { "type": "string" } } }
+    }
+  ]
+}

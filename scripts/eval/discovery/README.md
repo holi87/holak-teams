@@ -74,15 +74,15 @@ Write a host-local `argus-eval/comparison-config@2` configuration (`schemas/comp
 - `tokens`: `null` (the default) means uncapped but measured. An integer cap marks a run that exceeds it `overBudget`; that is a flag, not an invalid run.
 - `workRoot`: an absolute directory whose realpath equals itself. The default is the physical system temporary directory (on macOS `/private/var/folders/...`, never the `/var/folders/...` alias that `argus-launch` rejects as non-physical). A relative output directory is created under it. The output directory is always created at its physical location, so every path in a hunt request is physical.
 - `adapterEnv`: extra environment variable names (`^[A-Z][A-Z0-9_]{0,63}$`) passed to the adapter with their values when present. `PATH`, `HOME`, and `TMPDIR` are always passed unchanged and may not be listed; nothing else is passed. The launcher isolates `CLAUDE_CONFIG_DIR` inside the artifact root, so the launched Claude has no stored login: list `ANTHROPIC_API_KEY`.
-- `replay`: reserved for Mode A regression replay; this revision accepts only `{"enabled": false}`.
+- `replay`: Mode A regression replay (see "Mode A regression replay"). `enabled` defaults to true when `modes` includes `A`, and may be true only then. `repeats` (1 to 5, default 2) repeats the all-on and all-off cases; `perSeedMatrix` (default true) adds one case per seed; `secondsPerRunner` (60 to 7200, default 1800) is the budget of one generated-suite run. A disabled replay is recorded as exactly `{"enabled": false}`.
 - `corpusModule`: an optional private corpus (above), resolved relative to the configuration file.
-- `testMode`: smoke tests only; allowed only with `ARGUS_EVAL_SMOKE=1`, and lowers the seconds minimum to 1.
+- `testMode`: smoke tests only; allowed only with `ARGUS_EVAL_SMOKE=1`, and lowers the `secondsByMode` and `secondsPerRunner` minimums to 1.
 
 For every repeat, mode, and build, each variant runs once, in alternating order on odd repeats, against a fresh application started with the repeat seed. Its run ID is `r<repeat>-<mode>-<build>-<variant>`.
 
 ### Host adapter contract
 
-The adapter receives the absolute path of the public `argus-eval/hunt-request@2` (`schemas/hunt-request.schema.json`) as its final argument, with `active/<runId>/` as its working directory:
+The adapter receives the absolute path of the public `argus-eval/hunt-request@2` (`schemas/hunt-request.schema.json`) as its final argument, with `active/<runId>/` as its working directory (a regression replay instead appends `replay <replay-request.json>`; see "Mode A regression replay"):
 
 ```json
 {"schema":"argus-eval/hunt-request@2","runId":"r0-B-faulty-baseline","revision":"<full-baseline-commit>","target":"http://127.0.0.1:53124","contractUrl":"http://127.0.0.1:53124/contract","mode":"B","artifactRoot":"/secure/out/active/r0-B-faulty-baseline/artifacts","resultPath":"/secure/out/active/r0-B-faulty-baseline/result.json","usagePath":"/secure/out/active/r0-B-faulty-baseline/usage.json","logPath":"/secure/out/active/r0-B-faulty-baseline/launcher.log","budget":{"seconds":14400,"tokens":null}}
@@ -105,7 +105,7 @@ The evaluator decides each run's status:
 - `invalid-run`: `result.json` is missing or invalid and the run did not time out, `launchAssurance` is neither `attested` nor `unattested`, the status is not `completed`, or the adapter could not start.
 - `contaminated`: see "Sealing and contamination".
 
-Each run records `launchAssurance` (`unreported` when the result omits it). Paired variants must share the same launch assurance: when valid runs record more than one value, the printed summary gains `"assuranceMismatch": true`. `run.mjs` exits 1 when any run is invalid or contaminated, or on an assurance mismatch.
+Each run records `launchAssurance` (`unreported` when the result omits it). Paired variants must share the same launch assurance: when valid runs record more than one value, the printed summary gains `"assuranceMismatch": true`. When any run was replayed, the summary also gains `replays`, the count of runs per replay status. `run.mjs` exits 1 when any run is invalid or contaminated, or on an assurance mismatch; replay outcomes never change the exit code.
 
 ### Evaluator-side extraction
 
@@ -122,6 +122,72 @@ A missing or invalid ledger scores as zero findings, which is an Argus delivery 
 ```bash
 node scripts/eval/discovery/run.mjs /secure/comparison.json /secure/new-comparison-output
 ```
+
+### Mode A regression replay
+
+Regression replay measures whether the regressions Argus generated catch the seeded defects, and only those. The orchestration is evaluator-side; running the generated tests is delegated to the adapter's sandboxed `replay` phase. A run is replayed when `replay.enabled` is true, its mode is `A`, its build is `faulty`, its status is `awaiting-adjudication` or `timed-out`, and extraction found a framework root. The replay runs after extraction and the contamination scan, before the run directory moves to `sealed/`. Every other run records `"replay": null`.
+
+The hunt application is closed first. Each case then starts a fresh application with the run's seed on the hunt's own port (`run.port`), so hard-coded URLs and derived IDs in the generated suite stay valid. A port still in use after five retries 200 ms apart makes that case `infrastructure`. Cases run in this order (`planReplayCases` in `lib/replay.mjs`):
+
+| Case | Runs | Enabled seeds | Runner mode |
+|---|:--:|---|---|
+| `all-on` | `repeats` | every truth seed | `defect-evidence` |
+| `all-off` | `repeats` | none | `candidate-regression` |
+| `all-off-baseline` | 1 | none | `baseline` |
+| `only-<seedId>` | 1 per truth seed, with `perSeedMatrix` | that seed | `candidate-regression` |
+
+With the built-in corpus and the defaults, that is 27 cases per replayed run, so budget up to 27 times `secondsPerRunner` in the worst case. For each case `<case>-<k>` (`k` numbers the repeats from 0), the evaluator writes the public `argus-eval/replay-request@1` (`schemas/replay-request.schema.json`) to `active/<runId>/replay-requests/<case>-<k>.json` (0600). It then calls the run's own adapter as `<command...> replay <request>` with the same environment allowlist and `sealed/` closed, and kills the adapter's process group `secondsPerRunner + 60` s later, and again after a normal exit:
+
+```json
+{"schema":"argus-eval/replay-request@1","runId":"r0-A-faulty-baseline","case":"all-on","runnerMode":"defect-evidence","frameworkRoot":"/secure/out/active/r0-A-faulty-baseline/artifacts/qa","replayRoot":"/secure/out/active/r0-A-faulty-baseline/replay/all-on-0","target":"http://127.0.0.1:53124","seconds":1800,"resultPath":"/secure/out/active/r0-A-faulty-baseline/replay/all-on-0.result.json"}
+```
+
+`frameworkRoot` is the physical framework directory inside the artifact root. `replayRoot` is a physical path outside the artifact root that does not exist yet, and `resultPath` lies outside the replay root. The request carries no truth, seed list, build, or enabled flags. The case label itself is not blind: `only-<seedId>` names the one enabled seed, and it appears in the request, its file name, and the replay root. The replayed suite was frozen when the hunt ended, and its artifact root was scanned for contamination before the replay began, but a suite that reads its own working directory can see the label.
+
+The adapter copies the framework to `replayRoot`, runs `bash run-tests.sh --mode <runnerMode>` there inside its OS sandbox (only `replayRoot` writable), enforces `seconds` on the runner, and writes `argus-eval/replay-result@1` (`schemas/replay-result.schema.json`) to `resultPath`:
+
+```json
+{"schema":"argus-eval/replay-result@1","case":"all-on","runnerMode":"defect-evidence","exitCode":0,"timedOut":false,"sandbox":"macos-sandbox-exec","runnerResult":{"$schema":"argus/runner-result@1","...":"..."},"error":null}
+```
+
+`sandbox` is `macos-sandbox-exec` or `linux-bwrap`, or `null` with an `error` when no runner was started (for example on an unsupported platform). Only the smoke-test stub adapter reports `unsandboxed-test-stub`, and `run.mjs` accepts it only in `testMode`. `runnerResult` is the framework's `reports/argus-runner-result.json`, validated against `argus/schemas/runner-result.schema.json`, or `null`.
+
+After the runner finishes, when the corpus exports `probe()`, the evaluator re-verifies on the same instance that every truth seed probes true exactly when the case enabled it. The probes run in the evaluator process after a bounded `GET /contract` warm-up, which drops keep-alive sockets left over from the previous instance on that port. Each case gets one status, in this precedence:
+
+- `harness-error`: a seed probe disagreed with the enabled seeds, or failed.
+- `timed-out`: the runner exceeded its budget, or the evaluator killed the adapter group.
+- `adapter-error`: the adapter could not start or wrote no valid result; the result answers another case or runner mode; the runner result is missing, invalid, or for another mode; the reported exit code differs from the runner result's `exitCode`; the adapter reported an error; or the replay ran without an OS sandbox.
+- `infrastructure`: the application could not listen on the hunt port again, so nothing was replayed.
+- `completed`: none of the above.
+
+Whenever a valid runner result for the case's mode comes back, it is classified per bug, over every ledger bug (confirmed and unproven) and every bug ID in its events:
+
+- an event with a non-null `bugId` that failed with category `product` is `caught`;
+- one that passed is `passed`;
+- a failure in any other category (`automation`, `infrastructure`, `policy`) is `broken`;
+- a `skipped` or `denied` event is `skipped`;
+- a ledger bug without an event is `missing`.
+
+When several events carry one bug, the strongest outcome wins: `caught` over `broken` over `skipped` over `passed`. `infrastructureFailures` counts the failed infrastructure events, bug-linked or not. The run records:
+
+```json
+{"status":"completed","frameworkRoot":"/secure/out/sealed/runs/r0-A-faulty-baseline/artifacts/qa","reason":null,"cases":[{"case":"all-on","k":0,"runnerMode":"defect-evidence","exitCode":0,"timedOut":false,"status":"completed","bugs":{"BUG-0001":"caught"},"infrastructureFailures":0,"sandbox":"macos-sandbox-exec","reason":null}]}
+```
+
+`status` is `completed` when every case completed, `partial` when some did, and `unavailable` when none did; `reason` then counts the incomplete cases by status. `frameworkRoot` is the sealed path. The requests, replay roots, and replay results move to `sealed/runs/<runId>/` with the run.
+
+`summarizeReplay(run.replay)` in `lib/replay.mjs` reduces a replay to the per-bug facts that scoring uses, counting only `completed` cases:
+
+- `failsOnFaulty`: `caught` in every `all-on` repeat, and every repeat completed.
+- `passesOnFix`: `passed` in every `all-off` repeat, and every repeat completed.
+- `flaky`: the outcome differs between completed repeats of one case.
+- `specificTo`: the seed IDs whose completed `only-<seedId>` case caught it.
+- `falseAlarm`: `caught` or `broken` in any completed `all-off` repeat.
+- `baselineGreenOnFix` (per run): the `all-off-baseline` case completed with exit code 0.
+
+A bug that no valid runner result named has no entry. Scoring maps bugs to seeds from the final verdicts: a fail-to-pass regression for a seed is a credited bug with `failsOnFaulty` and `passesOnFix` that is not `flaky`, and it is specific when its `specificTo` is exactly that seed.
+
+**Residual risk.** The probes run on the instance the suite just exercised, so suite state can mask an enabled seed. For example, a suite that consumed the single capacity unit without racing leaves nothing for the concurrency probe to over-claim. Such a case is a `harness-error`: it never counts and needs review. Replay executes hunter-written code, so it is only as contained as the adapter's OS sandbox, which confines writes, not reads. Never replay through an unsandboxed adapter outside the smoke tests.
 
 ### First-pass Opus judge
 
@@ -175,4 +241,4 @@ The tool accepts only a `scored` adjudication and reads the `revision`, `runs`, 
 
 ## Baseline and release checks
 
-`node scripts/eval/discovery/smoke-corpus.mjs` runs the corpus probe matrix for three input seeds (all seeds enabled, none enabled, and each seed alone): every seed probe must be true exactly when its seed is enabled, and every control must hold. It asserts exactly 22 seeds with the per-surface counts above and at least 12 controls. It also checks the public endpoints and UI pages for private data and test IDs, contract determinism across restarts and builds, same-port restarts that replay derived IDs, the loopback-only bind, and that `corpus/` imports only `node:` builtins. Because probes run sequentially and the report and latency probes wait on real time, the suite takes about two and a half minutes. `node scripts/eval/discovery/smoke.mjs` tests adjudication handling of false positives, unseeded findings, missing verdicts, and reproduction metrics and the configuration rules, then runs 16 paired protocol runs (modes A and B, both builds, pinned seeds) with a stub adapter, plus stub cases for a forged `result.json` inside the artifact root, contamination, a timed-out budget, the sealed directory, launch assurance, and the token cap. `node scripts/eval/discovery/smoke-extract.mjs` covers evaluator-side extraction: valid, invalid, and missing ledgers, symbolic links, unledgered reports, framework detection, and oversize files. `node scripts/eval/discovery/smoke-judge.mjs` covers the judge with the stub CLI `scripts/fixtures/argus-eval/claude-judge`, which asserts the bare, tool-less flags: seed credit and probe confirmation, the corrected-run seed enum, duplicates, pass disagreement, retries and judge failures, evidence containment, untrusted-content framing, and that no packet carries the private-runs path or the canary. These are deterministic harness baselines, **not an Argus model benchmark**. The release gate runs `node scripts/eval/run-smokes.mjs`, which executes every `smoke*.mjs` under `scripts/eval`. No numerical improvement in Argus recall is claimed by 4.9.1; collect a complete adjudicated paired comparison before setting a model-quality release threshold.
+`node scripts/eval/discovery/smoke-corpus.mjs` runs the corpus probe matrix for three input seeds (all seeds enabled, none enabled, and each seed alone): every seed probe must be true exactly when its seed is enabled, and every control must hold. It asserts exactly 22 seeds with the per-surface counts above and at least 12 controls. It also checks the public endpoints and UI pages for private data and test IDs, contract determinism across restarts and builds, same-port restarts that replay derived IDs, the loopback-only bind, and that `corpus/` imports only `node:` builtins. Because probes run sequentially and the report and latency probes wait on real time, the suite takes about two and a half minutes. `node scripts/eval/discovery/smoke.mjs` tests adjudication handling of false positives, unseeded findings, missing verdicts, and reproduction metrics and the configuration rules, then runs 16 paired protocol runs (modes A and B, both builds, pinned seeds) with a stub adapter, plus stub cases for a forged `result.json` inside the artifact root, contamination, a timed-out budget, the sealed directory, launch assurance, and the token cap. `node scripts/eval/discovery/smoke-replay.mjs` covers regression replay with the test-only stub adapter `scripts/fixtures/argus-eval/stub-adapter.mjs`, which is unsandboxed and refuses to run without `ARGUS_EVAL_SMOKE=1`. It checks case planning, per-bug classification and precedence, case status precedence and consistency checks, the replay summary, the replay configuration rules, and the same-port retry. It then runs two faulty Mode A replays (54 same-port restarts): BUG-0001 fails on the faulty build, passes on the fix, and is specific to `quantity-boundary`, while BUG-0002 is a false alarm. It also asserts that corrected and Mode B runs are not replayed, that replay requests carry no private data and point outside the artifact root, that `sealed/` is closed during the replay, and that an adapter without a replay result and a disagreeing seed probe give `adapter-error` and `harness-error` cases. `node scripts/eval/discovery/smoke-extract.mjs` covers evaluator-side extraction: valid, invalid, and missing ledgers, symbolic links, unledgered reports, framework detection, and oversize files. `node scripts/eval/discovery/smoke-judge.mjs` covers the judge with the stub CLI `scripts/fixtures/argus-eval/claude-judge`, which asserts the bare, tool-less flags: seed credit and probe confirmation, the corrected-run seed enum, duplicates, pass disagreement, retries and judge failures, evidence containment, untrusted-content framing, and that no packet carries the private-runs path or the canary. These are deterministic harness baselines, **not an Argus model benchmark**. The release gate runs `node scripts/eval/run-smokes.mjs`, which executes every `smoke*.mjs` under `scripts/eval`. No numerical improvement in Argus recall is claimed by 4.9.1; collect a complete adjudicated paired comparison before setting a model-quality release threshold.
