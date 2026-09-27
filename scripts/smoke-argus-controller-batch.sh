@@ -153,6 +153,30 @@ grep -Fq 'a different selected normal attempt-1 decision already exists for this
   fail "a re-prefixed batch route was not refused as a conflicting initial decision: $(cat "$WORK/reprefix.err")"
 [ "$(decision_count)" = "$EXPECTED" ] || fail 'a refused re-prefixed batch route persisted a decision'
 
+# A batch that conflicts with an earlier single-lane initial route of a later agent is refused
+# whole: the refusal names that agent, and none of the agents routed before it persists a
+# decision. The fixture runs in a subshell because it pins its own trust store.
+(
+  MIXED="$WORK/mixed-target"
+  mkdir -p "$MIXED"
+  "$CLI" engagement init --target "$MIXED" --artifact-root "$MIXED" --mode A --engagement-id controller-batch-mixed >/dev/null
+  MIXED_MANIFEST="$MIXED/ai_agents_internal/engagement.json"
+  argus_smoke_prepare_model_control "$CLI" "$MIXED_MANIFEST" "$MIXED" "$MIXED" A \
+    "$ROOT/scripts/fixtures/argus-preflight/full.json" "$HOST" claude none
+  mixed_count() { find "$MIXED/ai_agents_internal/model-decisions" -maxdepth 1 -name 'MDR-*.json' | wc -l | tr -d ' '; }
+  "$CLI" model route --manifest "$MIXED_MANIFEST" --agent kalchas --runtime claude --signal normal \
+    --dispatch-id early-kalchas --attempt 1 | jq -e '.status == "selected"' >/dev/null || fail 'the single-lane kalchas route did not select'
+  [ "$(jq -r '[.agents[] | select(.selected and (.status == "ready" or .status == "degraded" or .status == "conditional") and .dispatchAllowed == true and .slug != "odysseus") | .slug] | index("kalchas")' "$MIXED/ai_agents_internal/preflight.json")" -gt 0 ] || \
+    fail 'kalchas is not preceded by another dispatchable lane, so the batch fixture cannot detect a partial persist'
+  if "$CLI" model route --manifest "$MIXED_MANIFEST" --agents dispatchable --runtime claude --signal normal \
+    --dispatch-prefix "$PREFIX" --attempt 1 >"$WORK/mixed.out" 2>"$WORK/mixed.err"; then
+    fail 'a batch route conflicting with an earlier kalchas initial decision was accepted'
+  fi
+  [ "$(mixed_count)" = 1 ] || fail "a refused conflicting batch route persisted $(( $(mixed_count) - 1 )) decisions for the agents before kalchas"
+  grep -Fq 'batch model route kalchas: a different selected normal attempt-1 decision already exists for this agent in the engagement' "$WORK/mixed.err" || \
+    fail "the conflicting batch route did not name kalchas: $(cat "$WORK/mixed.err")"
+)
+
 decision_for() { printf '%s/%s' "$TARGET" "$(jq -r --arg agent "$1" '.decisions[] | select(.agent == $agent) | .relativePath' "$WORK/route.json")"; }
 
 # Batch allocation needs the sealed controller allocation first.

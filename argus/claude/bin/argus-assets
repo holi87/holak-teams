@@ -106,6 +106,10 @@ import {
   validateTemplateSelection,
 } from '../lib/template-policy.mjs';
 
+// Set only while withFailurePrefix runs one member of a batch command; declared before any
+// top-level code so that fail() can always read it.
+let failurePrefix = '';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
 const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
@@ -1037,6 +1041,13 @@ function modelCommand(args) {
 // immutable decision. The caller has already required its options and verified the
 // packaged routing assets.
 function routeModelDecision(options) {
+  const { candidate, engagementContext } = buildModelDecisionCandidate(options);
+  return persistModelDecision(modelPolicy, candidate, engagementContext);
+}
+
+// Validates one exact route and returns its schema-checked immutable decision candidate
+// without persisting anything.
+function buildModelDecisionCandidate(options) {
   const engagementContext = loadModelEngagement(options.manifest, options.agent);
   const attempt = positiveInteger(options.attempt, '--attempt');
   requirePinnedModelTrust(engagementContext);
@@ -1068,15 +1079,17 @@ function routeModelDecision(options) {
   };
   const candidate = resolveModelDecision(modelPolicy, runtimeAdapters, routingInput);
   assertSchemaDocument(validateModelDecisionSchema, candidate, 'model decision');
-  return persistModelDecision(modelPolicy, candidate, engagementContext);
+  return { candidate, engagementContext };
 }
 
 // Batch initial routing persists the normal attempt-1 decision of every listed agent in one
 // controller call before the first allocation. `--agents dispatchable` expands to Odysseus
 // plus every agent the current preflight makes dispatchable (the same projection the
-// model-control seal binds); an explicit list must name only such agents. Every agent is
-// validated before any decision is persisted, each dispatch ID is `<prefix>-<agent>`, and an
-// exact replay returns the already persisted decisions unchanged.
+// model-control seal binds); an explicit list must name only such agents. Every candidate is
+// built, and then checked against the persisted initial set under the initial model-control
+// lock, before any decision is persisted, so a refusal names its agent and persists nothing.
+// Each dispatch ID is `<prefix>-<agent>`, and an exact replay returns the already persisted
+// decisions unchanged.
 function routeModelDecisionBatch(args) {
   const options = parseNamedOptions(args, new Set([
     '--manifest', '--agents', '--runtime', '--signal', '--dispatch-prefix', '--attempt',
@@ -1099,24 +1112,30 @@ function routeModelDecisionBatch(args) {
   }
   const agents = batchRouteAgents(context, options.agents, options.runtime);
   for (const agent of agents) requireStableIdentifier(`${options.dispatchPrefix}-${agent}`, `batch model route dispatch ID for ${agent}`);
-  const decisions = agents.map((agent) => {
-    const decision = routeModelDecision({
-      manifest: options.manifest,
-      agent,
-      runtime: options.runtime,
-      signal: 'normal',
-      dispatchId: `${options.dispatchPrefix}-${agent}`,
-      attempt: '1',
-    });
-    return {
-      agent,
-      dispatchId: decision.dispatchId,
-      decisionId: decision.decisionId,
-      relativePath: decision.relativePath,
-      status: decision.status,
-      reasonCode: decision.reasonCode,
-    };
+  const prepared = agents.map((agent) => withFailurePrefix(`batch model route ${agent}`, () => buildModelDecisionCandidate({
+    manifest: options.manifest,
+    agent,
+    runtime: options.runtime,
+    signal: 'normal',
+    dispatchId: `${options.dispatchPrefix}-${agent}`,
+    attempt: '1',
+  })));
+  const persisted = withInitialModelControlLock(context, () => {
+    for (const { candidate, engagementContext } of prepared) {
+      if (!isInitialSelection(candidate)) continue;
+      withFailurePrefix(`batch model route ${candidate.agent}`, () => requireInitialSelectionAdmissible(engagementContext, candidate));
+    }
+    return prepared.map(({ candidate, engagementContext }) => withFailurePrefix(`batch model route ${candidate.agent}`,
+      () => persistModelDecisionUnlocked(modelPolicy, candidate, engagementContext)));
   });
+  const decisions = persisted.map((decision) => ({
+    agent: decision.agent,
+    dispatchId: decision.dispatchId,
+    decisionId: decision.decisionId,
+    relativePath: decision.relativePath,
+    status: decision.status,
+    reasonCode: decision.reasonCode,
+  }));
   console.log(JSON.stringify({
     schema: 'argus/model-route-batch@1',
     runtime: options.runtime,
@@ -2100,25 +2119,36 @@ function controllerMaxTurns() {
 }
 
 function persistModelDecision(policy, candidate, context) {
-  if (candidate.status === 'selected' && candidate.signal === 'normal' && candidate.attempt === 1) {
+  if (isInitialSelection(candidate)) {
     return withInitialModelControlLock(context, () => {
-      const exact = selectedModelDecisions(context, candidate.agent, candidate.runtime, candidate.dispatchId, candidate.attempt);
-      const allInitial = selectedModelDecisions(context, candidate.agent, undefined, undefined, candidate.attempt)
-        .filter((decision) => decision.signal === 'normal');
-      if (allInitial.some((decision) => !sameSelectedExecution(decision, candidate))) {
-        fail('a different selected normal attempt-1 decision already exists for this agent in the engagement');
-      }
-      if (exact.length === 0) {
-        if (loadModelControlSeal(context, { required: false })) fail('normal attempt 1 cannot be added after the initial model-control set was sealed');
-        const state = getEngagementStatus(context.engagement);
-        if (Object.values(state.allocations).some((allocation) => allocation.status === 'active')) {
-          fail('normal attempt 1 must be selected before any allocation becomes active');
-        }
-      }
+      requireInitialSelectionAdmissible(context, candidate);
       return persistModelDecisionUnlocked(policy, candidate, context);
     });
   }
   return persistModelDecisionUnlocked(policy, candidate, context);
+}
+
+function isInitialSelection(candidate) {
+  return candidate.status === 'selected' && candidate.signal === 'normal' && candidate.attempt === 1;
+}
+
+// Refuses a selected normal attempt-1 candidate that differs from another initial decision
+// of its agent, or that would add a decision after the seal or the first active allocation.
+// The caller holds the initial model-control lock.
+function requireInitialSelectionAdmissible(context, candidate) {
+  const exact = selectedModelDecisions(context, candidate.agent, candidate.runtime, candidate.dispatchId, candidate.attempt);
+  const allInitial = selectedModelDecisions(context, candidate.agent, undefined, undefined, candidate.attempt)
+    .filter((decision) => decision.signal === 'normal');
+  if (allInitial.some((decision) => !sameSelectedExecution(decision, candidate))) {
+    fail('a different selected normal attempt-1 decision already exists for this agent in the engagement');
+  }
+  if (exact.length === 0) {
+    if (loadModelControlSeal(context, { required: false })) fail('normal attempt 1 cannot be added after the initial model-control set was sealed');
+    const state = getEngagementStatus(context.engagement);
+    if (Object.values(state.allocations).some((allocation) => allocation.status === 'active')) {
+      fail('normal attempt 1 must be selected before any allocation becomes active');
+    }
+  }
 }
 
 function persistModelDecisionUnlocked(policy, candidate, context) {
@@ -6177,6 +6207,16 @@ function readSecureJson(path, label) {
 }
 
 function fail(message) {
-  console.error(`FAIL  ${message}`);
+  console.error(`FAIL  ${failurePrefix}${message}`);
   process.exit(1);
+}
+
+// Runs one step of a batch command so that any refusal it raises, including a thrown error,
+// names the batch member it belongs to.
+function withFailurePrefix(label, operation) {
+  const previous = failurePrefix;
+  failurePrefix = `${previous}${label}: `;
+  try { return operation(); }
+  catch (error) { fail(error?.message ?? String(error)); }
+  finally { failurePrefix = previous; }
 }

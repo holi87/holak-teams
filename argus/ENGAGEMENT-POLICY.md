@@ -340,7 +340,9 @@ first allocation: `dispatchable` expands to Odysseus plus every lane the current
 makes dispatchable (the projection the seal binds), Odysseus always comes first, and each
 dispatch ID is `<prefix>-<agent>`. It refuses any other signal or attempt, `--agent`,
 `--dispatch-id`, `--request`, `--operator-decision`, and `--controller-token`, and any
-active allocation. Every listed agent is validated before a decision is persisted, an exact
+active allocation. Every listed agent is validated before a decision is persisted, including
+the conflict, seal, and allocation checks against the persisted initial set under the
+initial model-control lock, so a refusal names its agent and persists nothing. An exact
 replay returns the same decisions, and one `argus/model-route-batch@1` line reports each
 agent's `dispatchId`, `decisionId`, `relativePath`, `status`, and `reasonCode`; the exit code
 is 2 when any decision is blocked. `engagement allocate --manifest <manifest> --lanes
