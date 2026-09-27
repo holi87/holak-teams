@@ -234,6 +234,16 @@ automationPhase.participants = automationPhase.participants.filter((lane) => lan
 assert(validateOrchestrationPlan(lateParticipant, matrix).includes('proof: standby must include daidalos'),
   'a cluster lane with no later phase stayed reachable for proof repair');
 
+// Proof-loop exhaustion is one rule: after maxRepairRounds a finding keeps its non-confirmed
+// status, so Minos's routing contract may not close an exhausted bounce as another status.
+const minosRouting = readFileSync(join(ROOT, 'argus/roles/minos.md'), 'utf8').split('\n');
+const bouncedRouting = minosRouting.find((line) => line.startsWith('- bounced:'));
+const quarantinedRouting = minosRouting.find((line) => line.startsWith('- quarantined:'));
+assert(plan.proofLoop.exhaustion.includes('keeps its non-confirmed status'), 'proofLoop.exhaustion no longer keeps the non-confirmed status');
+assert(bouncedRouting?.includes('stays `bounced` as a named residual') && !/\b(rejected|suspected|needs-oracle)\b/u.test(bouncedRouting),
+  `Minos bounced routing contradicts proofLoop.exhaustion: ${bouncedRouting}`);
+assert(quarantinedRouting?.includes('stays `quarantined` as a named residual'), `Minos quarantined routing has no end state: ${quarantinedRouting}`);
+
 // RACI reproduce routes: independent reproduction runs in the proof phases, so a reproducer
 // must hold a lane before the first proof phase and can never discover the same surface.
 const reproduceErrors = (surface, candidates) => {
