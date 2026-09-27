@@ -38,8 +38,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 17175,
-      "sha256": "bfc92d144fc07a9882b24ce9d1002e6eb1308ce5a2248760ef957e29544f36cc"
+      "bytes": 17452,
+      "sha256": "66d4f1847e46b778a0a95fa0670a9949820345a2d6147913e931223ec6a3f1c6"
     },
     {
       "id": "authorization-policy",
