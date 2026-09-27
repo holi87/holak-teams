@@ -18,6 +18,7 @@ import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
 import qa.support.argus.ArgusCounterfactualExtension;
+import qa.support.argus.FaultInjector;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -152,17 +153,19 @@ public class PlaywrightFixture
      * Auto-guard for every UI test: a {@code console.error} or any HTTP response with status
      * &ge; 500 on the fixture-managed page is collected here and asserted empty in
      * {@link #afterEach}. Silent JS errors and broken XHRs are signals the assertions alone
-     * would miss. Mirrors the TypeScript template's {@code consoleGuard} auto-fixture.
+     * would miss. Errors and 5xx responses observed while a {@link FaultInjector} fault is
+     * active are that fault's intended effect. Mirrors the TypeScript template's
+     * {@code consoleGuard}.
      */
     private void attachConsoleGuard(Page p) {
         consoleGuardViolations = new ArrayList<>();
         p.onConsoleMessage((ConsoleMessage msg) -> {
-            if ("error".equals(msg.type()) && !consoleGuardAllowed(msg.text())) {
+            if ("error".equals(msg.type()) && !FaultInjector.active() && !consoleGuardAllowed(msg.text())) {
                 consoleGuardViolations.add("console.error: " + msg.text());
             }
         });
         p.onResponse((Response res) -> {
-            if (res.status() >= 500 && !consoleGuardAllowed(res.url())) {
+            if (res.status() >= 500 && !FaultInjector.active() && !consoleGuardAllowed(res.url())) {
                 consoleGuardViolations.add(
                         "HTTP " + res.status() + ": " + res.request().method() + " " + res.url());
             }

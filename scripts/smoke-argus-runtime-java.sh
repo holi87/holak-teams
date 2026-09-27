@@ -2,7 +2,10 @@
 # Clean-room validation of the Java runtime adapter: the JUnit Platform outcome listener,
 # the Launcher-discovery inventory, and the SD-4 ledger join, run against a
 # target-independent fixture in a freshly copied Java template; then the contract oracle
-# self-tests in a second copy, and the counterfactual evidence passes (SD-10) in a third.
+# self-tests in a second copy, the counterfactual evidence passes (SD-10) in a third, and an
+# end-to-end run of run-tests.sh (runner-lib.sh, lane plan, environment baseline, evidence
+# passes) in a scaffold against scripts/fixtures/argus-runtime/faulty-target.mjs. Only that
+# local 127.0.0.1 target is ever contacted; no browser is needed.
 
 set -euo pipefail
 
@@ -10,12 +13,26 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLI="${ARGUS_ASSETS:-$ROOT/argus/claude/bin/argus-assets}"
 FIXTURES="$ROOT/scripts/fixtures/argus-runtime/java"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
-# The adapter reads these; a caller's environment must not leak into the clean room.
-unset ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY ARGUS_OUTCOME_FILE ARGUS_CONTRACT_SMOKE
+TARGET_PID="" TARGET_URL=""
+
+# stop_target: stops the end-to-end target started by start_target, if any.
+stop_target() {
+  if [ -n "$TARGET_PID" ]; then
+    kill "$TARGET_PID" 2>/dev/null || true
+    wait "$TARGET_PID" 2>/dev/null || true
+    TARGET_PID=""
+  fi
+}
+trap 'stop_target; rm -rf "$WORK"' EXIT
+# The adapter reads these; a caller's environment must not leak into the clean room. The
+# same holds for the runner library's inputs in the end-to-end section.
+unset ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY ARGUS_OUTCOME_FILE ARGUS_CONTRACT_SMOKE \
+  ARGUS_API_ROUTE_PATTERN OPENAPI_PATH ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET \
+  ARGUS_FAULT_INJECTION ARGUS_READINESS_URLS ARGUS_TEST_ROOT ARGUS_AUTH_DIRECTORY ARGUS_RESET_TIMEOUT_SECONDS \
+  ARGUS_VERIFY_TIMEOUT_SECONDS UI_URL PERF_BUDGET_MS SECURITY_ENABLED DB_URL
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
-for tool in java mvn jq; do command -v "$tool" >/dev/null 2>&1 || fail "$tool is required"; done
+for tool in java mvn jq node; do command -v "$tool" >/dev/null 2>&1 || fail "$tool is required"; done
 
 APP="$WORK/java"
 C=qa.contract.ClassificationFixtureTest
@@ -418,4 +435,135 @@ if grep -Eq '^counterfactual[.]BUG-000[14]'$'\t' "$WORK/cf-proof.tsv"; then
 fi
 expect_event "$WORK/cf-proof.tsv" counterfactual.BUG-0003 policy denied false n/a BUG-0003 counterfactual-missing
 
-printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, inert activation, contract oracle self-tests, and the SD-10 counterfactual plan, passes and evidence\n'
+# (6) End-to-end runner against a local faulty target. A scaffold from `template select` +
+# `template scaffold` (non-default layout) runs ./run-tests.sh end to end: runner-lib.sh, the
+# lane plan, readiness, the environment baseline, the inventory, the quarantine, inventory,
+# and evidence gates, and every evidence pass. scripts/fixtures/argus-runtime/faulty-target.mjs
+# answers GET /widgets/1 with 500 (buggy) or the specified widget (fixed).
+E="$WORK/e2e"
+E2E="$FIXTURES/e2e"
+E2E_TESTS="$E/quality/java-tests"
+E2E_ID=qa.api.WidgetRegressionTest.widget_read_returns_the_specified_widget
+E2E_HEALTH_ID=qa.api.WidgetRegressionTest.health_endpoint_reports_ok
+E2E_EV="$E/reports/outcomes.raw.tsv"
+mkdir -p "$WORK/e2e-target"
+"$CLI" template select --target "$WORK/e2e-target" --runtime java --package-manager maven \
+  --test-root quality/java-tests --harness-root quality/java-support --output "$WORK/e2e-selection.json" >/dev/null
+"$CLI" template scaffold --selection "$WORK/e2e-selection.json" --destination "$E" >/dev/null
+# The ADAPT-ME examples go before the first compile, so no stale class reaches the inventory.
+for lane in api ui perf security db resilience; do rm -f "$E2E_TESTS/qa/$lane/"*.java; done
+[ -z "$(find "$E2E_TESTS" -name '*.java' ! -path '*/qa/contract/*' -print -quit)" ] || fail "e2e: an ADAPT-ME example test survived"
+cp "$E2E/WidgetRegressionTest.java" "$E2E_TESTS/qa/api/WidgetRegressionTest.java"
+cp "$E2E/bug-ledger.json" "$E/solution/bug-ledger.json"
+cp "$E2E/BUG-0001.json" "$E/solution/counterfactual/BUG-0001.json"
+cp "$E2E/test-lanes.tsv" "$E2E/environment.tsv" "$E/solution/"
+# The same read-only verify as the TypeScript end-to-end fixture: the target holds no state.
+cp "$ROOT/scripts/fixtures/argus-runtime/typescript/e2e/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
+
+# start_target <buggy|fixed>: (re)starts the faulty target on an ephemeral 127.0.0.1 port.
+start_target() {
+  local port="" attempt
+  stop_target
+  : >"$WORK/target.log"
+  FAULTY_MODE="$1" PORT=0 node "$ROOT/scripts/fixtures/argus-runtime/faulty-target.mjs" >"$WORK/target.log" 2>&1 &
+  TARGET_PID=$!
+  for attempt in $(seq 1 100); do
+    port="$(sed -n 's/^listening \([0-9][0-9]*\)$/\1/p' "$WORK/target.log")"
+    [ -z "$port" ] || break
+    sleep 0.1
+  done
+  [ -n "$port" ] || { cat "$WORK/target.log" >&2; fail "the faulty target did not start after $attempt checks"; }
+  TARGET_URL="http://127.0.0.1:$port"
+}
+
+# e2e <log> <expected-exit> <mode> [VAR=value ...] [-- passthrough...]
+e2e() {
+  local log="$1" expected="$2" mode="$3" code
+  local environment=() passthrough=()
+  shift 3
+  while [ "$#" -gt 0 ] && [ "$1" != -- ]; do environment+=("$1"); shift; done
+  if [ "$#" -gt 0 ]; then shift; passthrough=(-- "$@"); fi
+  set +e
+  (cd "$E" && env "API_URL=$TARGET_URL" "ARGUS_READINESS_URLS=$TARGET_URL/health" PLAYWRIGHT_INSTALL=0 \
+    ${environment[@]+"${environment[@]}"} ./run-tests.sh --mode "$mode" ${passthrough[@]+"${passthrough[@]}"}) >"$WORK/e2e-$log.log" 2>&1
+  code=$?
+  set -e
+  if [ "$code" -ne "$expected" ]; then
+    tail -60 "$WORK/e2e-$log.log" >&2
+    cat "$E2E_EV" >&2 2>/dev/null || true
+    fail "e2e $log exited $code instead of $expected"
+  fi
+  jq -e --arg mode "$mode" --argjson code "$expected" '.mode == $mode and .exitCode == $code' "$E/reports/argus-runner-result.json" >/dev/null ||
+    fail "e2e $log: the result does not record mode $mode and exit $expected"
+}
+# pass_summary <pass> <jq filter>: the collected summary of one evidence pass.
+pass_summary() {
+  jq -e "$2" "$E/reports/evidence/passes/$1/summary.json" >/dev/null
+}
+
+start_target buggy
+e2e defect-evidence 0 defect-evidence
+expect_event "$E2E_EV" "$E2E_ID" product fail true reproduced BUG-0001 expected-red
+expect_event "$E2E_EV" "$E2E_ID.repeat" product fail true reproduced BUG-0001 expected-red-repeat
+expect_event "$E2E_EV" "$E2E_ID.cf-correct" product pass false reproduced BUG-0001 counterfactual-correct-pass
+expect_event "$E2E_EV" "$E2E_ID.cf-observed-defect" product fail true reproduced BUG-0001 counterfactual-tamper-red
+expect_event "$E2E_EV" "$E2E_ID.cf-missing-field" product fail true reproduced BUG-0001 counterfactual-tamper-red
+expect_event "$E2E_EV" environment infrastructure pass false n/a - environment-baseline-verified
+# Each pass keeps its own native evidence: the RED passes and the green cf-correct pass.
+for pass in live repeat cf-correct cf-tamper-1 cf-tamper-2; do
+  [ -f "$E/reports/evidence/passes/$pass/surefire-reports/TEST-qa.api.WidgetRegressionTest.xml" ] &&
+    [ -f "$E/reports/evidence/passes/$pass/summary.json" ] && [ -f "$E/reports/evidence/passes/$pass/summary.html" ] ||
+    fail "e2e: pass $pass kept no native evidence"
+done
+for pass in live repeat cf-tamper-1 cf-tamper-2; do
+  pass_summary "$pass" '.total == 1 and .failed == 1 and .passed == 0' || fail "e2e: pass $pass evidence is not its own RED run"
+done
+pass_summary cf-correct '.total == 1 and .passed == 1 and .failed == 0' || fail "e2e: cf-correct evidence is not its own green run"
+
+# A regression that checks only the status lets the missing-field tamper survive.
+cp "$E2E_TESTS/qa/api/WidgetRegressionTest.java" "$WORK/WidgetRegressionTest.java"
+grep -v 'argus-smoke: strict body' "$WORK/WidgetRegressionTest.java" >"$E2E_TESTS/qa/api/WidgetRegressionTest.java"
+e2e weakened 11 defect-evidence
+cp "$WORK/WidgetRegressionTest.java" "$E2E_TESTS/qa/api/WidgetRegressionTest.java"
+expect_event "$E2E_EV" "$E2E_ID.cf-missing-field" automation fail false n/a BUG-0001 counterfactual-tamper-survived
+
+# baseline stays strict green while the known bug is RED: it never selects the regression.
+e2e baseline 0 baseline
+expect_event "$E2E_EV" "$E2E_HEALTH_ID" product pass false n/a - passed
+expect_event "$E2E_EV" lane.api policy pass false n/a - lane-executed
+if grep -Fq -- "$E2E_ID" "$E2E_EV"; then cat "$E2E_EV" >&2; fail "e2e: baseline selected the regression"; fi
+
+start_target fixed
+e2e candidate 0 candidate-regression
+expect_event "$E2E_EV" "$E2E_ID" product pass false fixed BUG-0001 regression-green
+if grep -Fq -- "$E2E_HEALTH_ID" "$E2E_EV"; then cat "$E2E_EV" >&2; fail "e2e: candidate-regression selected a non-regression test"; fi
+e2e full 0 full-suite
+jq -e '.deliveryGate == true' "$E/reports/argus-runner-result.json" >/dev/null || fail "e2e: full-suite is not the delivery gate"
+expect_event "$E2E_EV" "$E2E_ID" product pass false fixed BUG-0001 regression-green
+expect_event "$E2E_EV" "$E2E_HEALTH_ID" product pass false n/a - passed
+expect_event "$E2E_EV" lane.api policy pass false n/a - lane-executed
+for lane in ui perf security db resilience; do
+  expect_event "$E2E_EV" "lane.$lane" policy pass false n/a - lane-disabled.residual.not-in-fixture
+done
+# The contract-smoke self-tests stay in the scaffold but belong to the contract smoke only.
+if grep -Fq -- qa.contract. "$E2E_EV"; then cat "$E2E_EV" >&2; fail "e2e: full-suite selected a contract-smoke test"; fi
+e2e full-narrowed 13 full-suite -- -Dtest=WidgetRegressionTest
+expect_event "$E2E_EV" runner-selection policy denied false n/a - full-suite-narrowing-forbidden
+
+# Lane and environment decisions are enforced before any test runs.
+cp "$E/solution/test-lanes.tsv" "$WORK/test-lanes.tsv"
+awk 'BEGIN { FS = OFS = "\t" } $1 == "ui" { $2 = "enabled"; $5 = "-" } { print }' "$WORK/test-lanes.tsv" >"$E/solution/test-lanes.tsv"
+e2e ui-without-url 13 full-suite
+expect_event "$E2E_EV" lane.ui policy denied false n/a - lane-prerequisite-missing
+awk 'BEGIN { FS = OFS = "\t" } $1 == "perf" { $5 = "not-yet-planned" } { print }' "$WORK/test-lanes.tsv" >"$E/solution/test-lanes.tsv"
+e2e undecided-lane 13 full-suite
+expect_event "$E2E_EV" lane.perf policy denied false n/a - lane-decision-missing
+cp "$WORK/test-lanes.tsv" "$E/solution/test-lanes.tsv"
+cp "$E/scripts/verify-baseline.sh" "$WORK/verify-baseline.sh"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$E/scripts/verify-baseline.sh"
+e2e not-at-baseline 12 full-suite
+cp "$WORK/verify-baseline.sh" "$E/scripts/verify-baseline.sh"
+expect_event "$E2E_EV" environment infrastructure fail false n/a - environment-not-at-baseline
+stop_target
+
+printf 'PASS  Argus Java runtime adapter: Launcher-discovery inventory, SD-2 case ids, SD-4 ledger states, SD-5 classification, SD-6 live/repeat/candidate events, fail-closed passes, inert activation, contract oracle self-tests, the SD-10 counterfactual plan, passes and evidence, and an end-to-end runner against a faulty target\n'
