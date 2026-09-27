@@ -100,6 +100,7 @@ expect_check 0 AUTH-ALLOW "$WORK/dev/binary-reviewed.out" \
   --manifest "$DEV_MANIFEST" --lane orion --action binary-evidence \
   --target /tmp/target --source-trust user --binary-reviewed true \
   --at 2026-07-10T12:00:00.000Z
+grep -Fq 'at=2026-07-10T12:00:00.000Z' "$WORK/dev/binary-reviewed.out" || fail "authorization check did not print the audit timestamp a binary-evidence review binds to"
 expect_check 3 AUTH-TARGET-MISMATCH "$WORK/default/target.out" \
   --manifest "$DEFAULT_MANIFEST" --lane hermes --action read \
   --target https://other.example.com --source-trust manifest --at 2026-07-10T12:00:00.000Z

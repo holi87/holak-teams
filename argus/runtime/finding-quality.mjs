@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { loadRedactionPatterns, validateEvidenceContent } from './evidence.mjs';
 
 // Rows whose proof blocks carry confirmed-grade verification.
 const PROVEN_STATUSES = new Set(['confirmed', 'quarantined']);
@@ -21,27 +22,50 @@ export function ledgerEvidenceIds(bug) {
 // Reconcile only at the canonical merge boundary, after evidence owners have published.
 // readArtifact must enforce the engagement's physical-path boundary and alias policy.
 // `errors` abort the merge; `byBug` holds per-row failures, which quarantine that row.
-export function reconcileFindings(ledger, evidence, readArtifact) {
+// Intact bytes are re-validated against their reference (options.patterns defaults to the
+// packaged redaction policy); options.verifyReference(ref) may add caller-bound checks, such
+// as the binary-evidence audit binding, and returns their errors.
+export function reconcileFindings(ledger, evidence, readArtifact, options = {}) {
   if (ledger.engagementId !== evidence.engagementId) return { errors: ['evidence engagementId does not match ledger'], byBug: {} };
   const refs = new Map(evidence.references.map(item => [item.id, item]));
+  const checkEvidence = evidenceChecker(readArtifact, options);
   const byBug = {};
   for (const bug of ledger.bugs) {
     const errors = [];
     for (const id of ledgerEvidenceIds(bug)) {
       const ref = refs.get(id);
       if (!ref) { errors.push(`${bug.id}: unresolved evidence ${id}`); continue; }
-      try {
-        const bytes = readArtifact(ref.source);
-        const hash = createHash('sha256').update(bytes).digest('hex');
-        if (hash !== ref.sha256) errors.push(`${bug.id}: evidence digest drift ${id}`);
-        if (!Number.isFinite(Date.parse(ref.capturedAt)) || Date.parse(ref.capturedAt) > Date.now() + 60000) errors.push(`${bug.id}: invalid evidence time ${id}`);
-      } catch { errors.push(`${bug.id}: missing or unsafe evidence ${id}`); }
+      errors.push(...checkEvidence(ref).map(error => `${bug.id}: ${error}`));
     }
     if (bug.status === 'confirmed') errors.push(...confirmedLinkageErrors(bug, refs));
     if (bug.merge) errors.push(...mergeCollectorErrors(bug, refs));
     if (errors.length) (byBug[bug.id] ??= []).push(...errors);
   }
   return { errors: [], byBug };
+}
+
+// Per-reference checks, memoized so a capture cited by several rows is read once per merge.
+function evidenceChecker(readArtifact, { patterns, verifyReference } = {}) {
+  const results = new Map();
+  let loadedPatterns = patterns;
+  return (ref) => {
+    if (results.has(ref.id)) return results.get(ref.id);
+    const errors = [];
+    let bytes = null;
+    try { bytes = readArtifact(ref.source); }
+    catch { errors.push(`missing or unsafe evidence ${ref.id}`); }
+    if (bytes !== null) {
+      if (createHash('sha256').update(bytes).digest('hex') !== ref.sha256) errors.push(`evidence digest drift ${ref.id}`);
+      else errors.push(...validateEvidenceContent(ref, bytes, { patterns: loadedPatterns ??= loadRedactionPatterns() }));
+      if (!Number.isFinite(Date.parse(ref.capturedAt)) || Date.parse(ref.capturedAt) > Date.now() + 60000) errors.push(`invalid evidence time ${ref.id}`);
+    }
+    if (verifyReference) {
+      try { errors.push(...verifyReference(ref)); }
+      catch (error) { errors.push(`evidence ${ref.id} cannot be verified: ${error.message}`); }
+    }
+    results.set(ref.id, errors);
+    return errors;
+  };
 }
 
 // Demotes every row with a reconciliation failure to quarantined, in place. The row keeps
@@ -158,18 +182,21 @@ function proofErrors(bug) {
   return errors;
 }
 
-export function reconcileCaseEvidence(inventory, observations, evidence, readArtifact) {
+export function reconcileCaseEvidence(inventory, observations, evidence, readArtifact, options = {}) {
   const errors = [];
   if (inventory.engagementId !== observations.engagementId || inventory.engagementId !== evidence.engagementId) return ['coverage evidence engagement mismatch'];
   const refs = new Map(evidence.references.map(item => [item.id, item]));
+  let patterns = options.patterns;
   for (const observation of observations.observations) {
     for (const item of observation.cases ?? []) {
       for (const id of [...item.evidenceIds, ...item.controlEvidenceIds]) {
         const ref = refs.get(id);
         if (!ref) { errors.push(`${item.obligationId}: unresolved evidence ${id}`); continue; }
-        try {
-          if (createHash('sha256').update(readArtifact(ref.source)).digest('hex') !== ref.sha256) errors.push(`${item.obligationId}: stale evidence ${id}`);
-        } catch { errors.push(`${item.obligationId}: missing or unsafe evidence ${id}`); }
+        let bytes;
+        try { bytes = readArtifact(ref.source); }
+        catch { errors.push(`${item.obligationId}: missing or unsafe evidence ${id}`); continue; }
+        if (createHash('sha256').update(bytes).digest('hex') !== ref.sha256) errors.push(`${item.obligationId}: stale evidence ${id}`);
+        else errors.push(...validateEvidenceContent(ref, bytes, { patterns: patterns ??= loadRedactionPatterns() }).map(error => `${item.obligationId}: ${error}`));
       }
     }
   }

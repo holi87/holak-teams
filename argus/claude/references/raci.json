@@ -11,7 +11,8 @@
     { "activity": "report", "accountable": "kleio", "responsible": ["kleio"], "consulted": ["minos", "atlas", "metis"] },
     { "activity": "repair", "accountable": "odysseus", "responsible": ["originating-specialist"], "consulted": ["minos"], "handoff": "Re-dispatch the filing lane under its active allocation with the exact repair.missing items; the lane updates its own candidate file and evidence, then Minos re-judges." },
     { "activity": "reproduce", "accountable": "minos", "responsible": ["independent-reproducer"], "consulted": ["originating-specialist"], "handoff": "Odysseus assigns the first eligible surface-route reproduce candidate; the reproducer arranges fresh state and records evidence collected under its own slug." },
-    { "activity": "source-oracle", "accountable": "metis", "responsible": ["metis"], "consulted": ["minos"], "handoff": "Metis answers needs-oracle requests with an ORC addendum, a justified-invariant class, both readings, or an explicit no-oracle residual." }
+    { "activity": "source-oracle", "accountable": "metis", "responsible": ["metis"], "consulted": ["minos"], "handoff": "Metis answers needs-oracle requests with an ORC addendum, a justified-invariant class, both readings, or an explicit no-oracle residual." },
+    { "activity": "review-evidence", "accountable": "minos", "responsible": ["minos"], "consulted": ["originating-specialist"], "handoff": "The collector runs the binary-evidence authorization check before capture and hands Minos the masked or synthetic derivative with the printed audit timestamp; Minos inspects it and registers the reference and review in his own evidence fragment. Kleio reviews a capture Minos collected." }
   ],
   "surfaceRoutes": [
     { "surface": "ui-functional", "discover": "orion", "reproduce": ["ariadne", "lynceus", "daidalos"], "baseline": "penelope", "automate": "daidalos", "validate": "minos", "report": "kleio" },

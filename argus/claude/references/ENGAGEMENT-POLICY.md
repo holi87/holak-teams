@@ -482,7 +482,7 @@ counts as a non-dispatched predecessor, and its unmet gates remain a named resid
 ## Canonical machine contracts
 
 The installed `schemas/` directory defines the versioned, machine-readable contracts:
-`argus/bug-ledger@2`, `argus/lane-plan@2`, `argus/evidence-reference@2`,
+`argus/bug-ledger@2`, `argus/lane-plan@2`, `argus/evidence-reference@3`,
 `argus/automation-status@2`, `argus/runner-result@1`, and the inventory, coverage, and
 final-summary contracts. Canonical solution JSON documents are single-owner
 `json-document` artifacts; the runner result is validated at its runner-owned report path.

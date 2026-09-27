@@ -16,7 +16,7 @@ match with the engagement manifest.
 |---|---|---|---|
 | `argus/lane-plan@2` | `solution/lane-plan.json` | Odysseus | Deterministically ordered lane phases, dependencies, expected outputs, and audited state transitions. |
 | `argus/bug-ledger@2` | `solution/bug-ledger.json` | Minos | Every defect candidate with its status (`confirmed`, `suspected`, `needs-oracle`, `bounced`, `quarantined`, `duplicate`, `rejected`), stable bug IDs, severity, oracle, wiring, causal merges, and evidence links. |
-| `argus/evidence-reference@2` | `solution/evidence-reference.json` | Kleio | Deterministically ordered redacted evidence identities, sources, integrity digests, collection metadata, and defect links. |
+| `argus/evidence-reference@3` | `solution/evidence-reference.json` | Kleio | Deterministically ordered redacted evidence identities, kinds and media types, sources, integrity digests, collection metadata, second-agent reviews of binary captures, and defect and surface links. |
 | `argus/automation-status@2` | `solution/automation-status.json` | Atlas | Deterministically ordered stable test IDs, owners, runner results, covered bugs, and evidence links. |
 | `argus/runner-result@1` | `reports/argus-runner-result.json` | Atlas | Runner mode, strict gate status, standardized exit code, and separate outcome categories. |
 | `argus/surface-inventory@1` | `solution/surface-inventory.json` | Kalchas | Discovered UI/API/event/data denominator, risk basis, accessibility, and discovery evidence. |
@@ -35,8 +35,9 @@ owner merges them by stable key (`lane`, `id`, or `testId`). Duplicate keys fail
 and the canonical arrays are sorted by that key so fragment arrival order cannot change
 the resulting bytes.
 
-Argus 3 accepts only the current `@2` forms of these three collections. Their retired
-single-record `@1` schemas and migrations are absent. Other solution contracts keep their
+Argus 5 accepts only the current forms of these three collections: lane-plan and
+automation-status `@2`, evidence-reference `@3`. The retired single-record `@1` schemas,
+`argus/evidence-reference@2`, and their migrations are absent. Other solution contracts keep their
 current version. Active older engagements must finish with their original runtime before
 upgrading.
 
@@ -135,7 +136,7 @@ credentials. Keep credentials, tokens, and connection strings out of `summary` a
 |---|---|---|---|
 | Lane plan | `lanes[]`: `lane`, `owner`, `phase`, `dependsOn`, `outputContracts`, `status`, `transitions` | Per lane: `planned → running → completed`, or `planned/running → blocked` | Unique, sorted `lane`; append-only transition records with `to`, `at`, `by`; phase barrier state remains in `engagement-state.json`. |
 | Bug ledger | `id`, `origin`, `title`, `severity`, `priority`, `lane`, `oracleId`, `status`, `wired`, `testId`, `evidenceIds`, `verification`, `merge`, `missingProof`, `repair`, `duplicateOf`, `rejection`, `quarantine` | `candidate → bounced/needs-oracle/suspected/confirmed`; `bounced → needs-oracle/suspected/confirmed`; `needs-oracle → suspected → confirmed`; `confirmed → quarantined → confirmed/suspected`; `suspected/needs-oracle → rejected`; `suspected/needs-oracle/confirmed → duplicate`; `wired: false → true` | Stable `BUG-NNNN` from Minos's identity allocation; oracle/test/evidence references. The canonical merge also quarantines any row whose cited evidence fails reconciliation. |
-| Evidence reference | `references[]`: `id`, `kind`, `source`, `collectedBy`, `capturedAt`, `redaction`, `sha256`, `relatedBugIds` | Each reference is immutable after merge | Unique, sorted `EVD-NNNN`, redaction class, and SHA-256 of retained safe evidence. |
+| Evidence reference | `references[]`: `id`, `kind`, `mediaType`, `source`, `collectedBy`, `capturedAt`, `redaction`, `sha256`, `relatedBugIds`, `relatedSurfaceIds`, and `review` exactly on binary kinds | Each reference is immutable after merge; a binary reference is registered only in its reviewer's own fragment | Unique, sorted `EVD-NNNN`, redaction class, SHA-256 of retained safe evidence re-checked at every merge, and for binary captures the reviewer plus the collector's audited `binary-evidence` allow timestamp. |
 | Automation status | `tests[]`: `testId`, `owner`, `runner`, `status`, `coversBugIds`, `evidenceIds`, `updatedAt` | Per test: `planned → implemented → passed/failed/skipped` | Unique, sorted `TST/REG-NNNN`, runner output reference, linked bugs/evidence. |
 | Runner result | `mode`, `status`, `exitCode`, `categories`, `events` | Terminal `pass` or `fail` for one named mode | Raw adapter events classified by the portable evaluator. |
 | Surface inventory | `items`, `discovery` | Discovery expands monotonically; accessibility changes require evidence | Stable `SRF-*` IDs, enumerated denominator dimensions, risk basis, and discovery evidence. |
@@ -159,8 +160,8 @@ corresponding canonical artifact.
 
 `policies/schema-compatibility.json` (policy `schemaVersion` 4) owns versions per
 contract. Contracts without an override stay at v1. Every override accepts exactly its
-current version: the three collection contracts and the bug ledger read only v2, and the
-preflight report reads only v3. The runtime loads the policy against one table of expected
+current version: lane-plan, automation-status, and the bug ledger read only v2, and
+evidence-reference and the preflight report read only v3. The runtime loads the policy against one table of expected
 contract versions and refuses to start when an override is missing, drifts, or names an
 unknown contract.
 
@@ -225,3 +226,54 @@ sets that row to `quarantined` with the failures as `quarantine.reasons`, re-val
 document, records the quarantined IDs in the merge record, and snapshots the post-quarantine
 ledger. The immutable fragment keeps the submitted status, so restoring the evidence and
 merging again restores it.
+
+## Evidence reference v3 in 5.0
+
+`argus/evidence-reference@3` stays a collection keyed by `id`. Every reference names its
+`kind`, its `mediaType`, and the `relatedSurfaceIds` (`SRF-*`) it proves beside the related
+bug IDs. The schema fixes the media types per kind:
+
+| Kind | Media types | Redaction |
+|---|---|---|
+| `text` | `text/plain`, `text/markdown` | `redacted`, `synthetic`, `public` |
+| `http` | `text/plain`, `application/json`, `message/http` | `redacted`, `synthetic`, `public` |
+| `har` | `application/json` | `redacted`, `synthetic`, `public` |
+| `metric` | `text/plain`, `application/json`, `text/csv` | `redacted`, `synthetic`, `public` |
+| `log` | `text/plain`, `application/json`, `application/x-ndjson` | `redacted`, `synthetic`, `public` |
+| `dom-snapshot` | `text/html`, `application/xhtml+xml`, `text/yaml` | `redacted`, `synthetic`, `public` |
+| `runner-result` | `application/json` | `redacted`, `synthetic`, `public` |
+| `trace` | `application/json`, `text/plain` | `redacted`, `synthetic`, `public` |
+| `trace` | `application/zip` (binary) | `masked`, `synthetic` |
+| `screenshot` | `image/png`, `image/jpeg`, `image/webp` (binary) | `masked`, `synthetic` |
+| `video` | `video/webm`, `video/mp4` (binary) | `masked`, `synthetic` |
+
+A binary reference, and only a binary reference, carries `review` {`reviewer`,
+`reviewedAt`, `method` (`region-mask` or `synthetic-content`), `auditTimestamp`}. The
+reviewer differs from `collectedBy`, reviews no earlier than the capture, and
+`auditTimestamp` is no later than the capture. The fragment that registers a binary
+reference must be written under the reviewer's own lane lease; the collector's fragment is
+refused. See `AUTHORIZATION-POLICY.md` section 5 for the capture and review procedure.
+
+Every merge that reads evidence re-validates the retained bytes after the digest check:
+
+- binary media must start with the signature of its declared media type (PNG, JPEG, WebP,
+  WebM, MP4 `ftyp`, or ZIP);
+- textual evidence must not be binary and must be a fixed point of the packaged redactor,
+  applied as `argus-assets redact` applies it: JSON by value (each NDJSON line for
+  `application/x-ndjson`), any other text by pattern;
+- a HAR must hold `log.entries`, and every `Authorization`, `Proxy-Authorization`,
+  `Cookie`, `Set-Cookie`, `X-Api-Key`, `X-Auth-Token`, `X-CSRF-Token`, and `X-XSRF-Token`
+  header, every cookie value, and every `token`, `access_token`, `api_key`, `apikey`, or
+  `session` query parameter must hold a `[REDACTED...]` placeholder;
+- an HTML DOM snapshot must not contain a password input with a non-empty value; and
+- a runner result must satisfy `argus/runner-result@1` and its category semantics.
+
+Kleio's registry merge applies these checks to every reference and also requires, for each
+binary reference, one `allow` event for `binary-evidence` in the authorization audit named
+by `ai_agents_internal/authorization.json` (`audit.path`, default
+`authorization-audit.jsonl`) with this engagement, `lane == collectedBy`, and
+`timestamp == review.auditTimestamp`. Any failure aborts that merge with `evidence registry
+verification failed`. Minos's ledger merge applies the same checks, including the reviewer
+registration and the audit binding, to the evidence each row cites; a failure there
+quarantines the citing rows. Case-depth coverage re-validates the content of the evidence
+its cases cite.

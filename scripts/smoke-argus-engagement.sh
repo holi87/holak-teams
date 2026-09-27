@@ -310,6 +310,13 @@ guard_shell "argus-assets preflight --target app --artifact-root app --mode A" G
 guard_shell "argus-assets copy-browser-driver $TARGET" allow
 guard_shell "argus-assets copy-browser-driver $WORK/outside-target" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets browser provision --artifact-root $TARGET" GUARD-SHELL-AMBIGUOUS
+# Binary-evidence reviews bind to the real audit timestamp, so the test clock override is refused.
+guard_shell "argus-assets authorization check --manifest ai_agents_internal/authorization.json --lane orion --action binary-evidence --target $TARGET --source-trust user --binary-reviewed true" allow
+guard_shell "argus-assets authorization check --manifest ai_agents_internal/authorization.json --lane orion --action binary-evidence --target $TARGET --source-trust user --binary-reviewed true --at 2026-07-10T12:00:00.000Z" GUARD-SHELL-AMBIGUOUS
+if (cd "$TARGET" && "$CLI" authorization check --manifest ai_agents_internal/authorization.json --lane orion --action read --target "$TARGET" --source-trust manifest --at 2026-07-10T12:00:00.000Z) >"$WORK/authorization-at.out" 2>&1; then
+  fail 'authorization check accepted --at inside an active engagement'
+fi
+grep -Fq 'authorization check --at is a test-only clock override and is refused while an engagement is active' "$WORK/authorization-at.out" || fail "authorization check --at was not refused by the engagement rule: $(<"$WORK/authorization-at.out")"
 atlas_tmp="$(jq -r .temporaryDirectory "$ALLOCATIONS/atlas.json")"
 guard_shell "argus-assets copy-template typescript $atlas_tmp/template" allow
 guard_shell "argus-assets template detect --target $TARGET" allow

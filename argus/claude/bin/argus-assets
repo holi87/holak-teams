@@ -294,7 +294,7 @@ Authorization check boundaries:
   --binary-reviewed <true|false> Confirm synthetic/masked + independently reviewed evidence
   --rate/--concurrency/--total-requests/--duration <positive-number>
   --resource <safe-label>      Optional label; audit output is always redacted
-  --at <ISO-timestamp>         Deterministic evaluation time (tests only)
+  --at <ISO-timestamp>         Deterministic evaluation time (tests only; refused in an engagement)
 
 Engagement coordination:
   init --target <target> --artifact-root <root> --mode <A|B|C|D> [--browser-support <json>] [--accessibility-requirement <json>]
@@ -2863,6 +2863,10 @@ function checkAuthorization(args) {
   for (const required of ['manifest', 'lane', 'action', 'target', 'sourceTrust']) {
     if (!options[required]) fail(`authorization check requires --${camelToKebab(required)}`);
   }
+  // Binary-evidence reviews bind to the audit timestamp, so an engagement never back-dates it.
+  if (options.at && locateEngagementManifest(process.cwd(), process.env.ARGUS_ENGAGEMENT_MANIFEST)) {
+    fail('authorization check --at is a test-only clock override and is refused while an engagement is active');
+  }
   const manifestPath = resolve(options.manifest);
   if (!statSafe(manifestPath)?.isFile() || lstatSync(manifestPath).isSymbolicLink()) fail('authorization manifest must be a real file');
   const authorization = readSecureJson(manifestPath, 'authorization manifest');
@@ -2896,7 +2900,7 @@ function checkAuthorization(args) {
   const event = buildAuditEvent({ manifest: auditManifest, request, decision, timestamp, patterns });
   atomicPrivateAppend(auditPath, `${JSON.stringify(event)}\n`);
   const safeReason = redactText(decision.reason, patterns).text.replace(/[\r\n]+/g, ' ');
-  console.log(`AUTHORIZATION  ${decision.decision.toUpperCase()} rule=${decision.ruleId} reason=${safeReason} audit=${auditPath}`);
+  console.log(`AUTHORIZATION  ${decision.decision.toUpperCase()} rule=${decision.ruleId} reason=${safeReason} audit=${auditPath} at=${event.timestamp}`);
   return decision.decision === 'allow' ? 0 : 3;
 }
 

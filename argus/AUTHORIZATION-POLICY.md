@@ -101,11 +101,32 @@ Never print raw input before redaction. Preserve only the minimum non-sensitive 
 needed to reproduce a defect.
 
 Binary evidence is fail-closed: the redactor refuses screenshots or other binary input.
-Do not capture a secret/PII-bearing view. If a screenshot is indispensable, mask the
-sensitive region in the target or an approved image tool, independently inspect the
-result, enable the exact `binary-evidence` grant, pass `--binary-reviewed true` (the
-hunt-driver uses `ARGUS_BINARY_EVIDENCE_REVIEWED=true`), record that review in the
-audit/report, and attach only the verified derivative.
+Do not capture a secret/PII-bearing view. If a screenshot, video, or zipped trace is
+indispensable, register it only through this procedure:
+
+1. **Grant.** The operator enables the exact `binary-evidence` grant. Before capture, the
+   collecting lane runs `argus-assets authorization check --lane <collector> --action
+   binary-evidence --binary-reviewed true …` (the hunt-driver runs it with
+   `ARGUS_BINARY_EVIDENCE_REVIEWED=true`) and keeps the `at=` timestamp the `ALLOW` line
+   prints. `--at` is a test-only clock override and is refused while an engagement is
+   active, so the timestamp is the real decision time.
+2. **Audit event.** That check appends the `allow` event for `binary-evidence` to
+   `ai_agents_internal/authorization-audit.jsonl`. One event may back several captures
+   by the same lane, because the binding requires only that the decision precede each
+   capture.
+3. **Derived masked file only.** The collector masks the sensitive regions, or produces
+   synthetic content, and retains only that derivative inside the artifact root. The raw
+   capture never leaves the allocated worker root.
+4. **Second-agent review.** A lane other than the collector (Minos by default, Kleio for a
+   capture Minos collected; `argus-assets raci route --activity review-evidence`)
+   inspects the derivative and registers the reference in its own evidence-reference
+   fragment under its own lane lease, with `review` {`reviewer`, `reviewedAt`, `method`,
+   `auditTimestamp`} and `auditTimestamp` copied from the collector's `at=` value.
+
+Evidence-reference@3 enforces the rest: the collector cannot register its own binary
+capture, `reviewer` differs from `collectedBy`, `auditTimestamp <= capturedAt <=
+reviewedAt`, the bytes carry the declared media-type signature, and every merge requires
+the matching audit event (`CANONICAL-CONTRACTS.md`, "Evidence reference v3 in 5.0").
 Raw screenshots, videos, traces, HAR files, or browser profiles containing sensitive
 state never enter `bugs/`, `solution/`, `reports/`, git, or console output.
 

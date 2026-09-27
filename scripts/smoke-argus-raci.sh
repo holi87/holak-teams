@@ -30,6 +30,7 @@ jq -e '.candidates == [] and .accountable == "minos"' <<<"$($CLI raci route --su
 [ "$(jq -r '.accountable' <<<"$($CLI raci route --activity repair)")" = odysseus ] || fail 'proof repair did not route to Odysseus'
 [ "$(jq -r '.accountable' <<<"$($CLI raci route --activity source-oracle)")" = metis ] || fail 'source oracle did not route to Metis'
 [ "$(jq -r '.accountable' <<<"$($CLI raci route --activity reproduce)")" = minos ] || fail 'defect reproduction activity did not route to Minos'
+jq -e '.accountable == "minos" and .responsible == ["minos"]' <<<"$($CLI raci route --activity review-evidence)" >/dev/null || fail 'binary evidence review did not route to Minos'
 [ "$(jq -r '.accountable' <<<"$($CLI raci route --transition engagement:hunting:proof)")" = odysseus ] || fail 'hunting-to-proof transition did not route to Odysseus'
 [ "$(jq -r '.accountable' <<<"$($CLI raci route --transition engagement:deep-hunt-2:verification)")" = odysseus ] || fail 'Mode B deep-hunt skip exit did not route to Odysseus'
 if "$CLI" raci route --transition engagement:hunting:automation >/dev/null 2>&1; then fail 'retired hunting-to-automation transition was accepted'; fi
@@ -68,7 +69,7 @@ expect_raci_failure 'non-controller engagement transition' 'engagement:hunting:p
   '(.stateTransitions[] | select(.stateMachine == "engagement" and .from == "hunting" and .to == "proof") | .accountable) = "minos"'
 expect_raci_failure 'missing quarantine transition' 'missing canonical state transition: defect:confirmed:quarantined' \
   '.stateTransitions |= map(select(.stateMachine != "defect" or .from != "confirmed" or .to != "quarantined"))'
-expect_raci_failure 'missing reproduce activity' 'defect lifecycle must define ten unique activities' \
+expect_raci_failure 'missing reproduce activity' 'defect lifecycle must define eleven unique activities' \
   '.defectLifecycle |= map(select(.activity != "reproduce"))'
 expect_raci_failure 'discover owner as reproducer' 'api-rest: reproduce candidate atalanta is the surface discover owner' \
   '(.surfaceRoutes[] | select(.surface == "api-rest") | .reproduce) = ["atalanta"]'

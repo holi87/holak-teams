@@ -21,6 +21,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalDocument, validateCanonicalFragment } from './contracts.mjs';
+import { binaryRegistrationErrors, binaryReviewAuditErrors, isBinaryReference, loadRedactionPatterns, parseAuditLog, validateEvidenceContent } from './evidence.mjs';
 import {
   modelAuthenticatedDocumentSha256,
   modelConfigSha256,
@@ -403,6 +404,10 @@ export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, 
     const { errors, document } = validateCanonicalFragment(canonical.schema, content);
     if (errors.length) throw new Error(`fragment does not satisfy a compatible ${canonical.schema} contract: ${errors.join('; ')}`);
     if (document.engagementId !== manifest.engagementId) throw new Error(`fragment engagementId does not match ${manifest.engagementId}`);
+    if (canonical.schema === 'evidence-reference') {
+      const registration = document.references.flatMap((ref) => binaryRegistrationErrors(ref, lane));
+      if (registration.length) throw new Error(registration.join('; '));
+    }
     const migrated = migrateCanonicalDocument(canonical.schema, document);
     if (migrated !== document) persistedContent = `${JSON.stringify(migrated, null, 2)}\n`;
   }
@@ -461,6 +466,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     if (canonical.format === 'json-document') {
       const documents = contents.map((content) => JSON.parse(content));
       const document = mergeCanonicalDocuments(canonical.schema, documents);
+      if (canonical.schema === 'evidence-reference') verifyEvidenceRegistry(manifest, records, documents, document);
       if (canonical.schema === 'coverage-result') {
         const readDocument = (kind, path) => {
           const checked = validateCanonicalFragment(kind, readManagedFile(engagementPath(manifest, path), path));
@@ -499,15 +505,20 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
         const evidenceRecords = state.fragments['solution/evidence-reference.json'] ?? [];
         // Minos runs before Kleio's reporting wave. Verify immutable contributions
         // directly; requiring the later canonical evidence merge would deadlock.
+        const registrars = new Map();
         const content = evidenceRecords.length ? JSON.stringify(mergeCanonicalDocuments('evidence-reference', evidenceRecords.map(record => {
           const raw = readManagedFile(engagementPath(manifest, record.path), 'finding evidence fragment');
           if (sha256(raw) !== record.sha256) throw new Error('finding evidence fragment digest drift');
-          return JSON.parse(raw);
+          const fragment = JSON.parse(raw);
+          for (const ref of fragment.references ?? []) registrars.set(ref.id, record.lane);
+          return fragment;
         }))) : readManagedFile(evidencePath, 'finding evidence registry');
         const checked = validateCanonicalFragment('evidence-reference', content);
         if (checked.errors.length) throw new Error(`invalid finding evidence registry: ${checked.errors.join('; ')}`);
+        const binaryAudit = binaryAuditVerifier(manifest);
         const { errors, byBug } = reconcileFindings(document, checked.document,
-          source => readManagedFile(engagementPath(manifest, source), 'finding evidence'));
+          source => readManagedFile(engagementPath(manifest, source), 'finding evidence'),
+          { verifyReference: ref => (registrars.has(ref.id) ? binaryRegistrationErrors(ref, registrars.get(ref.id)) : []).concat(binaryAudit(ref)) });
         if (errors.length) throw new Error(`finding reconciliation failed: ${errors.join('; ')}`);
         quarantined = quarantineLedgerFindings(document, byBug);
       }
@@ -1829,6 +1840,7 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     return deny('unknown engagement controller operation');
   }
   if (primary === 'authorization') {
+    if (operation === 'check' && optionNames.includes('--at')) return deny('authorization check --at is a test-only clock override and is refused inside an active engagement');
     if (operation === 'check') return allow('packaged authorization audit owns the bounded mutation');
     return deny('authorization init cannot run inside an active engagement');
   }
@@ -2036,6 +2048,59 @@ function latestFragmentRevision(canonical, records) {
     if (!latest || record.revision > latest.revision) latest = record;
   }
   return latest;
+}
+
+// Kleio's evidence registry merge re-verifies every reference before publishing it: binary
+// references must come from their reviewer's own fragment, retained bytes must still match
+// their digest and content rules, and binary captures must be bound to the audited grant.
+function verifyEvidenceRegistry(manifest, records, fragments, merged) {
+  const errors = [];
+  fragments.forEach((fragment, index) => {
+    for (const ref of fragment.references) errors.push(...binaryRegistrationErrors(ref, records[index].lane));
+  });
+  const binaryAudit = binaryAuditVerifier(manifest);
+  let patterns = null;
+  for (const ref of merged.references) {
+    let bytes;
+    try { bytes = readManagedFile(engagementPath(manifest, ref.source), `evidence ${ref.id}`); }
+    catch (error) { errors.push(`evidence ${ref.id} is missing or unsafe: ${error.message}`); continue; }
+    if (sha256(bytes) !== ref.sha256) { errors.push(`evidence digest drift ${ref.id}`); continue; }
+    errors.push(...validateEvidenceContent(ref, bytes, { patterns: patterns ??= loadRedactionPatterns() }));
+    errors.push(...binaryAudit(ref));
+  }
+  if (errors.length) throw new Error(`evidence registry verification failed: ${errors.join('; ')}`);
+}
+
+// Returns the audit-binding check for binary references, reading the authorization audit at
+// most once per merge and only when a binary reference needs it.
+function binaryAuditVerifier(manifest) {
+  let events = null;
+  return (ref) => {
+    if (!isBinaryReference(ref)) return [];
+    try {
+      events ??= loadAuthorizationAudit(manifest);
+    } catch (error) {
+      return [`binary evidence ${ref.id} audit binding cannot be verified: ${error.message}`];
+    }
+    return verifyBinaryReviewAudit(manifest, ref, events);
+  };
+}
+
+// A binary reference needs one allow decision for binary-evidence, recorded for its
+// collecting lane in this engagement at exactly review.auditTimestamp.
+function verifyBinaryReviewAudit(manifest, ref, events = loadAuthorizationAudit(manifest)) {
+  return binaryReviewAuditErrors(ref, events, manifest.engagementId);
+}
+
+// The audit log is the plain file named by authorization.json audit.path, beside it under
+// ai_agents_internal/; a missing log holds no decisions.
+function loadAuthorizationAudit(manifest) {
+  const authorization = JSON.parse(readManagedFile(engagementPath(manifest, 'ai_agents_internal/authorization.json'), 'authorization manifest').toString('utf8'));
+  const configured = authorization?.audit?.path;
+  const name = typeof configured === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$/.test(configured) ? configured : 'authorization-audit.jsonl';
+  const path = engagementPath(manifest, join('ai_agents_internal', name));
+  if (!existsSync(path)) return [];
+  return parseAuditLog(readManagedFile(path, 'authorization audit').toString('utf8'));
 }
 
 // A per-bug reconciliation failure quarantines that row instead of failing the merge. The

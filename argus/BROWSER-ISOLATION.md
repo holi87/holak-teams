@@ -73,6 +73,19 @@ requires the `binary-evidence` grant and `ARGUS_BINARY_EVIDENCE_REVIEWED=true`; 
   checks both before Playwright starts. `ARGUS_CAPTURE_TRACE=true` and
   `ARGUS_CAPTURE_VIDEO=true` are permitted only after the same binary-evidence decision.
 
+Browser evidence registers under these `argus/evidence-reference@3` kinds:
+
+| Capture | Kind | Media type | Registration |
+|---|---|---|---|
+| Masked screenshot | `screenshot` | `image/png`, `image/jpeg`, or `image/webp` | Binary: reviewer's own fragment, `review` block, audited `binary-evidence` allow |
+| Masked video | `video` | `video/webm` or `video/mp4` | Binary: reviewer's own fragment, `review` block, audited `binary-evidence` allow |
+| Playwright trace archive | `trace` | `application/zip` | Binary: reviewer's own fragment, `review` block, audited `binary-evidence` allow |
+| DOM or accessibility snapshot | `dom-snapshot` | `text/html`, `application/xhtml+xml`, or `text/yaml` | Text: run it through `argus-assets redact`; no password input may keep a value |
+| Network capture | `har` | `application/json` | Text: run it through `argus-assets redact`, then mask every credential header, cookie value, and token query parameter with a `[REDACTED]` placeholder |
+
+The merge re-checks each kind's content and the binary review binding; see
+`AUTHORIZATION-POLICY.md` section 5.
+
 ### Profile and sensitive-artifact lifecycle
 
 - Profiles, cookies, local/session storage, auth files, downloads, traces, videos, and
