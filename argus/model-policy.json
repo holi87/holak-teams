@@ -1,7 +1,7 @@
 {
   "$schema": "./schemas/model-policy.schema.json",
-  "schemaVersion": 1,
-  "policyId": "argus/model-policy@1",
+  "schemaVersion": 2,
+  "policyId": "argus/model-policy@2",
   "baseline": {
     "decision": "adopt-27-frontier-0-standard",
     "frontierRoles": 27,
@@ -56,9 +56,48 @@
   },
   "fallbackPolicies": {
     "frontier-fail-closed": {
-      "modelUnavailable": "block-and-escalate-operator",
-      "turnLimit": "retain-frontier-and-escalate-operator",
-      "allowWeakerModel": false
+      "modelUnavailable": "backoff-retry-frontier-then-escalate-operator",
+      "turnLimit": "auto-continue-frontier-then-escalate-operator",
+      "allowWeakerModel": false,
+      "autoContinue": {
+        "enabled": true,
+        "workerSignals": [
+          "turn-limit",
+          "repeated-failure"
+        ],
+        "outcomeSignals": [
+          "no-artifact",
+          "zero-candidates"
+        ],
+        "checkpointlessSignals": [
+          "turn-limit",
+          "no-artifact",
+          "zero-candidates"
+        ],
+        "zeroCandidatesRoles": [
+          "antigone",
+          "ariadne",
+          "atalanta",
+          "charon",
+          "hermes",
+          "lynceus",
+          "orion",
+          "perseus",
+          "proteus",
+          "tiresias",
+          "tyche"
+        ],
+        "maxAutoContinuations": 3,
+        "maxCheckpointlessRetries": 1,
+        "unavailableBackoffSeconds": [
+          60,
+          180,
+          300
+        ],
+        "excludedAgents": [
+          "odysseus"
+        ]
+      }
     },
     "upward-only": {
       "modelUnavailable": "escalate-to-frontier",
@@ -111,7 +150,7 @@
   },
   "routing": {
     "decisionDirectory": "ai_agents_internal/model-decisions",
-    "decisionSchema": "argus/model-decision@2",
+    "decisionSchema": "argus/model-decision@3",
     "requiredEnforcements": [
       "model",
       "effort",
@@ -120,7 +159,7 @@
   },
   "telemetry": {
     "defaultPath": "ai_agents_internal/model-telemetry.jsonl",
-    "schema": "argus/model-telemetry-event@2",
+    "schema": "argus/model-telemetry-event@3",
     "allowedFields": [
       "schema",
       "timestamp",

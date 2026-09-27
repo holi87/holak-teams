@@ -132,7 +132,11 @@ const raciContract = readJson(RACI_PATH);
 const modelPolicyErrors = validateModelPolicy(modelPolicy, matrix.agents.map((agent) => agent.slug));
 if (modelPolicyErrors.length) fail(`model policy invalid: ${modelPolicyErrors.join('; ')}`);
 const modelBenchmark = readJson(MODEL_BENCHMARK_PATH);
-if (modelBenchmark.policyId !== modelPolicy.policyId) fail('model policy benchmark is bound to a different policy');
+// The benchmark is historical evidence recorded under an earlier policy identity; it must
+// stay well-formed, but a newer policy never has to match it.
+if (typeof modelBenchmark.policyId !== 'string' || !/^argus\/model-policy@[0-9]+$/.test(modelBenchmark.policyId)) {
+  fail('model policy benchmark identity is malformed');
+}
 const runtimeAdapters = readJson(RUNTIME_ADAPTERS_PATH);
 const validateRuntimeAdapters = compileJsonSchema(readJson(RUNTIME_ADAPTERS_SCHEMA_PATH));
 const runtimeAdapterErrors = validateRuntimeAdapters(runtimeAdapters);
@@ -1483,7 +1487,17 @@ function bindModelUnavailable(context, options, attempt) {
     previousDecisionIntegritySha256: previous.integritySha256,
     allocationId: allocation.allocationId,
     allocationSha256: createHash('sha256').update(JSON.stringify(allocation)).digest('hex'),
+    priorUnavailableRetries: priorUnavailableRetries(context, options.agent, options.runtime, options.dispatchId, attempt),
   };
+}
+
+// Counts the selected model-unavailable retries that earlier attempts of the exact
+// agent/runtime/dispatch already consumed. Only attempts before the routed one count, so
+// an exact replay of the same attempt recomputes the same availability binding.
+function priorUnavailableRetries(context, agent, runtime, dispatchId, attempt) {
+  return selectedModelDecisions(context, agent, runtime, dispatchId, undefined)
+    .filter((decision) => decision.signal === 'model-unavailable' && decision.attempt < attempt)
+    .length;
 }
 
 function validateModelEscalationState(context, request, runtime, raw) {

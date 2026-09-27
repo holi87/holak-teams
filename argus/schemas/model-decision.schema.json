@@ -9,15 +9,16 @@
     "engagementId", "engagementManifestSha256", "dispatchId", "attempt",
     "agent", "runtime", "signal", "status", "reasonCode", "baselineConfig",
     "selectedConfig", "requiredOverrides", "requiredEnforcements", "adapter", "missingCapabilities", "fallbackUsed",
-    "operatorEscalation", "escalationBinding", "availabilityBinding", "operatorDecision", "weakerFallbackAllowed", "reason"
+    "operatorEscalation", "escalationBinding", "availabilityBinding", "outcomeBinding", "continuation", "operatorDecision",
+    "weakerFallbackAllowed", "reason"
   ],
   "properties": {
-    "schema": { "const": "argus/model-decision@2" },
+    "schema": { "const": "argus/model-decision@3" },
     "decisionId": { "type": "string", "pattern": "^MDR-[a-f0-9]{24}$" },
     "integritySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "relativePath": { "type": "string", "pattern": "^ai_agents_internal/model-decisions/MDR-[a-f0-9]{24}\\.json$" },
     "createdAt": { "type": "string", "format": "date-time" },
-    "policyId": { "const": "argus/model-policy@1" },
+    "policyId": { "const": "argus/model-policy@2" },
     "policySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "engagementId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
     "engagementManifestSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
@@ -39,7 +40,10 @@
         "OPERATOR_APPROVAL_SELECTED",
         "OPERATOR_RETRY_SELECTED",
         "OPERATOR_ABORTED",
-        "CAPABILITY_DRIFT"
+        "CAPABILITY_DRIFT",
+        "AUTO_CONTINUE_SELECTED",
+        "BACKOFF_RETRY_SELECTED",
+        "AUTO_CONTINUATION_EXHAUSTED"
       ]
     },
     "baselineConfig": { "$ref": "#/$defs/modelConfig" },
@@ -81,20 +85,53 @@
       "required": ["requestSha256", "checkpointRef", "checkpointSha256", "previousDecisionId"],
       "properties": {
         "requestSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-        "checkpointRef": { "type": ["string", "null"], "minLength": 1 },
-        "checkpointSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "checkpointRef": { "type": "string", "minLength": 1 },
+        "checkpointSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "previousDecisionId": { "type": "string", "pattern": "^MDR-[a-f0-9]{24}$" }
       }
     },
     "availabilityBinding": {
       "type": ["object", "null"],
       "additionalProperties": false,
-      "required": ["previousDecisionId", "previousDecisionIntegritySha256", "allocationId", "allocationSha256"],
+      "required": ["previousDecisionId", "previousDecisionIntegritySha256", "allocationId", "allocationSha256", "priorUnavailableRetries"],
       "properties": {
         "previousDecisionId": { "type": "string", "pattern": "^MDR-[a-f0-9]{24}$" },
         "previousDecisionIntegritySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "allocationId": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
-        "allocationSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        "allocationSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "priorUnavailableRetries": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "outcomeBinding": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "previousDecisionId", "previousDecisionIntegritySha256", "allocationId", "allocationSha256",
+        "priorCheckpointlessRetries", "observedArtifacts"
+      ],
+      "properties": {
+        "previousDecisionId": { "type": "string", "pattern": "^MDR-[a-f0-9]{24}$" },
+        "previousDecisionIntegritySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "allocationId": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+        "allocationSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "priorCheckpointlessRetries": { "type": "integer", "minimum": 0 },
+        "observedArtifacts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" }
+        }
+      }
+    },
+    "continuation": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["kind", "sequence", "perAttemptMaxTurns", "cumulativeTurnBudget", "backoffSeconds"],
+      "properties": {
+        "kind": { "enum": ["checkpoint-resume", "fresh-restart", "backoff-retry"] },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "perAttemptMaxTurns": { "type": "integer", "minimum": 1 },
+        "cumulativeTurnBudget": { "type": "integer", "minimum": 1 },
+        "backoffSeconds": { "type": "integer", "minimum": 0, "maximum": 300 }
       }
     },
     "operatorDecision": {

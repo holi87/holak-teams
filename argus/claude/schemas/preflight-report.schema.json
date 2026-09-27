@@ -118,7 +118,7 @@
             "required": ["schema", "policyId", "agent", "runtime", "status", "baselineConfig", "requiredOverrides", "requiredEnforcements", "adapterId", "adapterSnapshotSha256", "missingCapabilities", "reason"],
             "properties": {
               "schema": { "const": "argus/model-routing-preview@1" },
-              "policyId": { "const": "argus/model-policy@1" },
+              "policyId": { "const": "argus/model-policy@2" },
               "agent": { "type": "string" },
               "runtime": { "enum": ["claude", "codex"] },
               "status": { "enum": ["ready", "blocked"] },

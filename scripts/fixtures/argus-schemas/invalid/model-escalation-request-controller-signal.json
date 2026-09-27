@@ -1,0 +1,11 @@
+{
+  "schema": "argus/model-escalation-request@1",
+  "kind": "MODEL_ESCALATION_REQUEST",
+  "engagementId": "engagement-model-smoke",
+  "dispatchId": "dispatch-orion-001",
+  "attempt": 2,
+  "agent": "orion",
+  "signal": "no-artifact",
+  "checkpointRef": "ai_agents_internal/checkpoints/orion/00000001.json",
+  "resumable": true
+}
