@@ -76,6 +76,11 @@ for (const fragment of [
   '`deferred` record with `downgradedFrom=blocked`', 'report it from `residualRisks`',
   'proofLoop', 'deepHunt', 'engagement barrier skip', 'at most one thread per lane', 'maxRepairRounds', '--activity reproduce',
   'argus-assets engagement lane-outcomes --manifest <manifest> --controller-token <odysseus-token>',
+  // A permanently failed lane is abandoned after its failure cleanup instead of deadlocking its
+  // barriers, and a released lane is never re-allocated on its consumed decision.
+  '`argus-assets engagement barrier abandon --manifest <manifest> --lane <slug> --controller-token <odysseus-token> --reason <continuation-exhausted|worker-failure>`',
+  '`lane-abandoned:<lane>`', 'Never re-allocate a released lane.', 'A permanent Kalchas, Minos, or Kleio failure stops the engagement.',
+  'then abandon each one a pending barrier still lists with `--reason controller-budget`',
 ]) {
   assert(controllerContract.includes(fragment), `orchestration-core lost required controller semantic: ${fragment}`);
 }
@@ -90,9 +95,13 @@ assert(controllerContract.includes('`argus-assets engagement allocate --manifest
   'orchestration-core does not cite the exact Odysseus allocation form');
 // Lane outcomes count only telemetry already recorded and need the live controller lease, so
 // the closeout telemetry batch (Odysseus included) precedes them and every cleanup follows.
+// Odysseus's success cleanup requires the terminal complete phase with its own arrival, so the
+// closeout advances out of reporting and arrives Odysseus at complete before any cleanup.
 const closeout = controllerContract.slice(controllerContract.indexOf('## Validation and closeout'));
 const closeoutOrder = [
   'final merges;',
+  "after Kleio's reporting arrival, `argus-assets engagement barrier advance --manifest <manifest> --lane odysseus --token <odysseus-token>`",
+  'then `argus-assets engagement barrier arrive --manifest <manifest> --lane odysseus --token <odysseus-token> --phase complete`;',
   'one `model telemetry --json` batch for every lane still allocated, Odysseus included;',
   '`argus-assets engagement lane-outcomes --manifest <manifest> --controller-token <odysseus-token>`',
   'the worker `engagement cleanup --json` batch;',

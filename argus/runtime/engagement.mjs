@@ -42,6 +42,11 @@ const PASS_PHASE_KINDS = ['proof', 'deep-hunt'];
 const PHASE_KEYS = ['id', 'wave', 'kind', 'pass', 'skippable', 'participants', 'standby'];
 const PROOF_VALIDATOR = 'minos';
 const SKIP_REASONS = ['converged', 'controller-budget'];
+// A permanently failed or budget-stopped worker lane is abandoned by the controller so the
+// barriers stop waiting for it; the record is exactly these keys.
+const ABANDON_REASONS = ['continuation-exhausted', 'worker-failure', 'controller-budget'];
+const ABANDONABLE_OUTCOMES = ['failure', 'interrupted'];
+const ABANDONED_LANE_KEYS = ['reason', 'phase', 'abandonedAt'];
 const LEDGER_SNAPSHOT_STATUSES = [
   ['confirmed', 'confirmed'], ['suspected', 'suspected'], ['needsOracle', 'needs-oracle'],
   ['bounced', 'bounced'], ['quarantined', 'quarantined'],
@@ -197,6 +202,7 @@ export function createInitialEngagementState(manifest) {
     dispatchableAgents: null,
     conditionalAgents: null,
     gateResolution: null,
+    abandonedLanes: {},
     allocations: {},
     barriers: Object.fromEntries(phases.map((phase) => [phase, []])),
     exclusiveLocks: {},
@@ -289,6 +295,7 @@ export function allocateWorker(manifest, lane, { resumeToken, controllerToken, e
     }
     if (leaseEntry) throw new Error(`unexpected existing lease file for ${lane}`);
     const recoveredFromCrash = existing?.status === 'active';
+    if (Object.hasOwn(state.abandonedLanes, lane)) throw new Error(`${lane} was abandoned (${state.abandonedLanes[lane].reason}) and cannot be allocated again`);
     let binding;
     let dispatchBinding;
     if (recoveredFromCrash) {
@@ -302,6 +309,11 @@ export function allocateWorker(manifest, lane, { resumeToken, controllerToken, e
     } else {
       binding = validateExecutionBinding(executionBinding);
       requireControllerAllocation(manifest, state, lane, controllerToken, { bootstrap: true });
+      // A released allocation consumed its dispatch lineage: its decisions already carry their
+      // one telemetry event each, so a new allocation on that lineage could never record its own.
+      if (existing?.status === 'released' && (existing.dispatchId === binding.dispatchId || existing.modelDecisionId === binding.modelDecisionId)) {
+        throw new Error(`${lane} dispatch ${binding.dispatchId} was consumed by its released allocation; retry on an active lease with engagement start-attempt, or abandon a permanently failed lane with engagement barrier abandon`);
+      }
       dispatchBinding = validateDispatchAuthorization(manifest, lane, binding, dispatchAuthorization);
       if (binding.runtime === 'codex') validateDispatchAuthorizationUse(manifest, state, lane, existing, dispatchBinding, { operation: 'allocation' });
     }
@@ -812,6 +824,7 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   if (runner && FINAL_SUMMARY_DEGRADING_EXIT_CODES.has(runner.exitCode)) ceilings.set(`runner-exit-${runner.exitCode}`, 'degraded');
   for (const reason of skippedPhaseStatusReasons(state)) ceilings.set(reason, 'degraded');
   for (const reason of gateUnmetStatusReasons(state)) ceilings.set(reason, 'degraded');
+  for (const reason of abandonedLaneStatusReasons(state)) ceilings.set(reason, 'degraded');
   const statusReasons = [...ceilings.keys()].sort();
   const statusCeiling = [...ceilings.values()].reduce(worseFinalSummaryStatus, 'completed');
   return { counts, unproven, residuals, automationReview, runner, coverage, sourceSchemas, statusCeiling, statusReasons };
@@ -1312,6 +1325,28 @@ export function skipPhases(manifest, lane, token, reason) {
     if (!next) throw new Error(`phase ${current} has no later phase to continue with`);
     state.currentPhase = next;
     return { result: { skipped, currentPhase: state.currentPhase, reason }, changed: true };
+  });
+}
+
+// Abandons a worker lane that can never arrive again, so no barrier deadlocks on it. Only the
+// active Odysseus controller may abandon, only a lane already released with outcome failure or
+// interrupted, and never a lane the runtime itself depends on (see nonAbandonableLanes). The
+// lane then leaves every phase's participants and standby lanes, like a gate-unmet lane, cannot
+// be allocated again, and the final-summary merge names it as lane-abandoned:<lane>.
+export function abandonLane(manifest, lane, controllerToken, reason) {
+  requireSelected(manifest, lane);
+  if (!ABANDON_REASONS.includes(reason)) throw new Error(`abandon reason must be one of ${ABANDON_REASONS.join(', ')}`);
+  if (nonAbandonableLanes(manifest).includes(lane)) throw new Error(`${lane} cannot be abandoned; its permanent failure stops the engagement`);
+  return mutateState(manifest, (state) => {
+    requireControllerAuthority(manifest, state, lane, controllerToken);
+    requireDispatchableState(state, lane);
+    if (Object.hasOwn(state.abandonedLanes, lane)) throw new Error(`${lane} was already abandoned (${state.abandonedLanes[lane].reason})`);
+    const allocation = state.allocations[lane];
+    if (allocation?.status !== 'released' || !ABANDONABLE_OUTCOMES.includes(allocation.outcome)) {
+      throw new Error(`${lane} can be abandoned only after its cleanup with outcome failure or interrupted`);
+    }
+    state.abandonedLanes[lane] = { reason, phase: state.currentPhase, abandonedAt: new Date().toISOString() };
+    return { result: { lane, ...state.abandonedLanes[lane], barrier: barrierStatus(manifest, state, state.currentPhase) }, changed: true };
   });
 }
 
@@ -2225,10 +2260,19 @@ function standbyLanes(manifest, state, phase) {
 
 function projectedPhaseLanes(state, phase, lanes) {
   if (Object.hasOwn(state.skippedPhases, phase)) return [];
-  if (!Array.isArray(state.dispatchableAgents)) return lanes;
+  const present = lanes.filter((lane) => !Object.hasOwn(state.abandonedLanes, lane));
+  if (!Array.isArray(state.dispatchableAgents)) return present;
   const dispatchable = new Set(state.dispatchableAgents);
   const omitted = omittedConditionalLanes(state);
-  return lanes.filter((lane) => dispatchable.has(lane) && !omitted.has(lane));
+  return present.filter((lane) => dispatchable.has(lane) && !omitted.has(lane));
+}
+
+// Lanes the runtime itself depends on: Odysseus runs the engagement, Kalchas's discovery arrival
+// is the gate-resolution evidence, Minos's merge gates every proof phase, and the final-summary
+// owner writes the only completion record. Abandoning one would silently lift that gate.
+function nonAbandonableLanes(manifest) {
+  const summaryOwner = manifest.writePolicy.canonicalArtifacts.find((item) => item.schema === 'final-summary')?.owner;
+  return [...new Set([...UNCONDITIONAL_LANES, PROOF_VALIDATOR, ...(summaryOwner ? [summaryOwner] : [])])].sort();
 }
 
 function phaseDefinition(manifest, phase) {
@@ -2275,6 +2319,12 @@ function skippedPhaseStatusReasons(state) {
 function gateUnmetStatusReasons(state) {
   const lanes = state.gateResolution?.lanes ?? {};
   return Object.keys(lanes).filter((lane) => lanes[lane] === 'gate-unmet').sort().map((lane) => `gate-unmet:${lane}`);
+}
+
+// Lanes the controller abandoned after a permanent failure or a budget stop. Their reason stays in
+// state.abandonedLanes; each is work the final summary cannot report as completed.
+function abandonedLaneStatusReasons(state) {
+  return Object.keys(state.abandonedLanes).sort().map((lane) => `lane-abandoned:${lane}`);
 }
 
 function publicAllocation(allocation) {
@@ -2386,6 +2436,7 @@ function validateCurrentState(manifest, state) {
     errors.push('dispatchableAgents must be null or an immutable selected projection containing odysseus');
   }
   validateConditionalLanes(state, errors);
+  validateAbandonedLanes(manifest, state, errors);
   if (!plainObject(state.checkpoints)) errors.push('checkpoints must be an object');
   else for (const [lane, checkpoint] of Object.entries(state.checkpoints)) {
     const allocation = state.allocations?.[lane];
@@ -2425,6 +2476,34 @@ function validateSkippedPhases(manifest, state, errors) {
     }
   }
   if (Object.hasOwn(skipped, state.currentPhase)) errors.push('currentPhase must not be a skipped phase');
+}
+
+// An abandoned lane stays released with the failure or interrupted outcome its abandonment
+// required, is never a lane the runtime depends on, and its record is exactly reason, phase,
+// and abandonedAt.
+function validateAbandonedLanes(manifest, state, errors) {
+  const abandoned = state.abandonedLanes;
+  if (!plainObject(abandoned)) {
+    errors.push('abandonedLanes must be an object');
+    return;
+  }
+  const phases = phaseIds(manifest);
+  const protectedLanes = nonAbandonableLanes(manifest);
+  for (const [lane, record] of Object.entries(abandoned)) {
+    const allocation = plainObject(state.allocations) ? state.allocations[lane] : undefined;
+    if (!manifest.selectedAgents.includes(lane) || protectedLanes.includes(lane) ||
+        (Array.isArray(state.dispatchableAgents) && !state.dispatchableAgents.includes(lane))) {
+      errors.push(`abandonedLanes.${lane}: lane must be a dispatchable worker other than ${protectedLanes.join(', ')}`);
+    }
+    if (allocation?.status !== 'released' || !ABANDONABLE_OUTCOMES.includes(allocation.outcome)) {
+      errors.push(`abandonedLanes.${lane}: lane must stay released with outcome ${ABANDONABLE_OUTCOMES.join(' or ')}`);
+    }
+    if (!plainObject(record) || Object.keys(record).length !== ABANDONED_LANE_KEYS.length ||
+        !ABANDONED_LANE_KEYS.every((key) => Object.hasOwn(record, key)) || !ABANDON_REASONS.includes(record.reason) ||
+        !phases.includes(record.phase) || !validDate(record.abandonedAt)) {
+      errors.push(`abandonedLanes.${lane}: record must be exactly ${ABANDONED_LANE_KEYS.join(', ')}`);
+    }
+  }
 }
 
 // conditionalAgents and gateResolution are bound with the dispatchable projection: both stay

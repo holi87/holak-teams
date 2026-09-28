@@ -43,6 +43,7 @@ import {
   validateRedactionPatterns,
 } from '../lib/authorization.mjs';
 import {
+  abandonLane,
   advanceBarrier,
   allocateId,
   allocateWorker,
@@ -340,9 +341,12 @@ Engagement coordination:
   id --manifest <path> --lane <slug> --token <lease> --kind <kind> --identity <stable-key>
   checkpoint --manifest <path> --lane <slug> --token <lease> --phase <phase> --sequence <n> --dispatch-id <id> --attempt <n> --input <json-file|->
   heartbeat --manifest <path> --lane <slug> --token <lease> --phase <phase> --completed <n> --total <n> --status <status>
-  barrier arrive|status|advance|skip --manifest <path> [lease options] [--reason converged|controller-budget]
+  barrier arrive|status|advance|skip|abandon --manifest <path> [lease options] [--reason converged|controller-budget]
     skip is controller only (--lane odysseus) from the untouched start of a deep-hunt pass;
     --reason is required and records why the remaining deep-hunt passes end.
+    abandon --lane <slug> --controller-token <odysseus-token> --reason <continuation-exhausted|worker-failure|controller-budget>
+    is controller only, after the lane's failure or interrupted cleanup; barriers stop waiting
+    for it, it is never allocated again, and the final summary records lane-abandoned:<lane>.
   cleanup --manifest <path> --lane <slug> --token <lease> --outcome <success|failure|interrupted>
   resolve-gates --manifest <path> [--controller-token <odysseus-token>] [--evidence <path>]
     Once, in discovery after Kalchas arrives; --evidence defaults to
@@ -2804,6 +2808,9 @@ function engagementAllocateBatch(args) {
       if (state.allocations?.[lane]?.status === 'active') {
         fail(`${lane} already has an active allocation; batch allocation never resumes, use a single-lane allocate with its current token`);
       }
+      if (state.allocations?.[lane]?.status === 'released') {
+        fail(`${lane} was released; its sealed dispatch is consumed and a released lane is never allocated again`);
+      }
       const conditionalGates = plainObject(state.conditionalAgents) ? state.conditionalAgents[lane] : undefined;
       if (conditionalGates && state.gateResolution?.lanes?.[lane] !== 'released') {
         fail(`${lane} is conditional on ${conditionalGates.join(', ')} and not released by engagement resolve-gates`);
@@ -3327,7 +3334,7 @@ function engagementHeartbeat(args) {
 function engagementBarrier(args) {
   const [operation, ...rest] = args;
   if (operation === 'arrive' && rest.includes('--json')) return engagementBarrierArriveBatch(rest);
-  const options = parseNamedOptions(rest, new Set(['--manifest', '--lane', '--token', '--phase', '--reason']));
+  const options = parseNamedOptions(rest, new Set(['--manifest', '--lane', '--token', '--phase', '--reason', '--controller-token']));
   const { manifest: engagement } = loadEngagement(options);
   if (operation === 'status') {
     console.log(JSON.stringify(getBarrierStatus(engagement, options.phase), null, 2));
@@ -3348,7 +3355,15 @@ function engagementBarrier(args) {
     console.log(JSON.stringify(skipPhases(engagement, options.lane, leaseToken(options), options.reason)));
     return 0;
   }
-  fail('usage: argus-assets engagement barrier <arrive|status|advance|skip> [options]');
+  // Abandonment acts on a released worker lane on controller authority alone; the lane has no
+  // live token left, so --token is refused rather than silently ignored.
+  if (operation === 'abandon') {
+    if (options.token !== undefined) fail('engagement barrier abandon does not accept --token; pass --controller-token');
+    requireOptions(options, ['lane', 'reason', 'controllerToken'], 'engagement barrier abandon');
+    console.log(JSON.stringify(abandonLane(engagement, options.lane, options.controllerToken, options.reason)));
+    return 0;
+  }
+  fail('usage: argus-assets engagement barrier <arrive|status|advance|skip|abandon> [options]');
 }
 
 function engagementCleanup(args) {

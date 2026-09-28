@@ -116,6 +116,12 @@ waits only on dispatched predecessors. The immutable dispatchable projection fil
 participants, so gated roles create no false barrier. Advance after projected arrivals;
 worker `success` requires all declared arrivals, while failure never counts as one.
 Heartbeats bind allocation/dispatch/attempt; retry starts a new generation.
+For a lane that fails permanently, such as `AUTO_CONTINUATION_EXHAUSTED`, emit its telemetry,
+run its `failure` cleanup, then `argus-assets engagement barrier abandon --manifest <manifest>
+--lane <slug> --controller-token <odysseus-token> --reason
+<continuation-exhausted|worker-failure>`; the barriers stop waiting for it and the final summary
+records `lane-abandoned:<lane>`. Never re-allocate a released lane. A permanent Kalchas, Minos,
+or Kleio failure stops the engagement.
 
 Route work through `argus-assets raci route`. Workers write owned outputs or immutable
 fragments; only the RACI owner validates and deterministically merges. Reject malformed,
@@ -183,7 +189,8 @@ wave's estimate:
 
 1. Stop new hunting, deep-hunt, and retry work. Skip an untouched deep-hunt pass 2 or later
    with `argus-assets engagement barrier skip --lane odysseus --reason controller-budget`.
-2. Batch-clean interrupted lanes with `argus-assets engagement cleanup --json`.
+2. Batch-clean interrupted lanes with `argus-assets engagement cleanup --json`, then abandon
+   each one a pending barrier still lists with `--reason controller-budget`.
 3. Inside the reserve, run Minos's final merge, the independent blocklist, coverage, and
    Kleio.
 4. Report every skipped wave, pass, retry, and lane as a named residual.
@@ -237,11 +244,15 @@ Collect every RESULT; verify paths, schemas, owners, merges, runner, coverage, a
 Stop on plan/schema, role/gate, dependency, capability/model, ownership, safety, or a
 mandatory failure.
 
-Close out in order: final merges; one `model telemetry --json` batch for every lane still
+Close out in order: final merges; after Kleio's reporting arrival, `argus-assets engagement
+barrier advance --manifest <manifest> --lane odysseus --token <odysseus-token>`, then
+`argus-assets engagement barrier arrive --manifest <manifest> --lane odysseus --token
+<odysseus-token> --phase complete`; one `model telemetry --json` batch for every lane still
 allocated, Odysseus included; `argus-assets engagement lane-outcomes --manifest <manifest>
 --controller-token <odysseus-token>`, citing per-lane confirmed, suspected, turn-limit
 escalations, and wired counts; the worker `engagement cleanup --json` batch; Odysseus's own
 cleanup last. Lane outcomes count only recorded telemetry and need the live controller lease.
+Odysseus's `success` cleanup requires its `complete` arrival.
 
 After each Aristarchus round, run `argus-assets automation-review check --manifest
 <manifest>`. Exit 13 (BLOCKED, STALE, or ABSENT) routes each blocker to its `ownerLane`;

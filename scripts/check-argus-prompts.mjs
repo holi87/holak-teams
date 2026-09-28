@@ -114,6 +114,7 @@ for (const file of files) {
     assert(body.includes('<!-- MODEL_CONTROLLER_START -->'), 'odysseus: model-controller block missing');
     assert(body.includes('Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`'), 'odysseus: local Mode A/B strategy binding missing');
     assert(count <= budget.budgets.maxOdysseusAgentWords, `odysseus: ${count} words exceeds thin-shell budget`);
+    assertUsableControllerCommands(body);
   } else {
     boundedWorkers += 1;
     assert(body.includes('<!-- MODEL_ESCALATION_START -->'), `${slug}: neutral model-escalation block missing`);
@@ -312,6 +313,24 @@ function assertSharedExecutionEnvelope(qaCore) {
     '"agent": "bound-agent-slug"',
     'continue the task after returning `MODEL_ESCALATION_REQUEST`',
   ]) assert(normalized.includes(marker), `qa-core shared execution envelope missing: ${marker}`);
+}
+
+// Odysseus's model-control block is part of the launched controller's system prompt, so its
+// commands must run as written: the route form carries every option the CLI requires (and a
+// request file, not an id), and no command reads stdin, which the write guard refuses.
+function assertUsableControllerCommands(body) {
+  const block = body.match(/<!-- MODEL_CONTROLLER_START -->([\s\S]*?)<!-- MODEL_CONTROLLER_END -->/)?.[1] ?? '';
+  const route = block.match(/`(argus-assets model route --manifest [^`]*)`/)?.[1];
+  assert(route, 'odysseus: model-controller block has no model route command');
+  const required = read('argus/claude/bin/argus-assets').match(/requireOptions\(options, \[([^\]]*)\], 'model route'\)/)?.[1];
+  assert(required, "argus-assets no longer declares the options 'model route' requires");
+  for (const option of required.split(',').map((item) => item.trim().replace(/^'|'$/g, ''))) {
+    const flag = `--${option.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+    assert(route.includes(`${flag} <`), `odysseus: model route omits the required ${flag}`);
+  }
+  assert(/--controller-token <[^>]+>/.test(route), 'odysseus: model route omits the post-allocation --controller-token');
+  assert(/--request <[^>]+\.json>/.test(route), 'odysseus: model route --request must name the persisted request file');
+  assert(!/--input <[^>]*\|-?>|--input -[\s`]/.test(block), 'odysseus: a model-control command reads stdin, which the write guard refuses');
 }
 
 function assertAdversarialExecutionCases(contract, qaCore) {

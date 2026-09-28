@@ -412,6 +412,7 @@ Each input counts only once merged and only while its file matches its merge dig
 | `runner-exit-11` … `runner-exit-15` | `degraded` | The runner exited with an automation-defect, infrastructure, policy-denial, invalid-input, or unapproved-skip code (`RUNNER-CONTRACT.md`). |
 | `deep-hunt-skipped:<reason>` | `degraded` | A deep-hunt pass was skipped for a reason other than `converged`, for example `controller-budget`. |
 | `gate-unmet:<lane>` | `degraded` | Gate resolution omitted the sealed conditional lane; its unmet gates stay in engagement state `gateResolution`. |
+| `lane-abandoned:<lane>` | `degraded` | The controller abandoned the released lane after its `failure` or `interrupted` cleanup; its reason stays in engagement state `abandonedLanes` (`ENGAGEMENT-POLICY.md` "Cleanup"). |
 
 `solution/FINAL-SUMMARY.md` prints the status with one `Status reason:` line per reason, the
 defect headline and per-status counts, a "Likely, unproven" section (`None.` when empty), the
