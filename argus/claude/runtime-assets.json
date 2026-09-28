@@ -2,8 +2,8 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 2530000,
-    "installedPluginBytes": 3550000
+    "generatedAssetsBytes": 2700000,
+    "installedPluginBytes": 3800000
   },
   "templateCompositions": {
     "typescript": {
@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 54681,
-      "sha256": "f39242b66a24e818ce08026ad4d3a7270547b3a6af50a99fbe25e49eed422d1d"
+      "bytes": 56097,
+      "sha256": "fa658c2ffac470b941e89665a3db56924848d66373426619e5cbf7c937704e3f"
     },
     {
       "id": "browser-isolation",

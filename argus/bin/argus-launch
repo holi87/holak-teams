@@ -22,6 +22,13 @@ ASSETS="$RUNTIME_ROOT/bin/argus-assets"
 # native-launch-receipt schemas, and the cap argus-assets signs into launch requests;
 # scripts/smoke-argus-launcher.sh fails on any drift between these sites.
 readonly CONTROLLER_MAX_TURNS=400
+# Headless permission posture. Claude runs with --permission-mode dontAsk and grants exactly
+# these tools without a prompt: the union of the tools the packaged agents declare, which
+# scripts/smoke-argus-launcher.sh recomputes from agents/*.md and fails on any drift. Every
+# other tool is denied. Permissions are never bypassed (no bypass mode, no skip flag): the
+# packaged PreToolUse write guard still denies each granted call it rejects, and the OS sandbox
+# confines every write to the artifact root. The signed launcherSha256 binds this posture.
+readonly CLAUDE_ALLOWED_TOOLS='Agent,Bash,Edit,Glob,Grep,Read,TaskCreate,TaskGet,TaskList,TaskUpdate,WebFetch,WebSearch,Write,mcp__plugin_context7_context7__query-docs,mcp__plugin_context7_context7__resolve-library-id,mcp__plugin_playwright_playwright__browser_navigate,mcp__plugin_playwright_playwright__browser_snapshot'
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 2; }
 
@@ -150,6 +157,12 @@ usageReport=json.
 
 Sandbox policy os-native-target-readonly@3 adds to @2 only org.chromium-scoped mach names and
 the RootDomainUserClient IOKit user client; file writes stay confined to the artifact root.
+
+Claude runs headless with --permission-mode dontAsk and an explicit --allowedTools list: the
+tools the packaged agents declare, so the controller and its workers can write and run
+commands without a prompt, and every other tool is denied. Permissions are never bypassed: the
+packaged PreToolUse write guard still denies each granted call it rejects, and the sandbox
+confines every write to the artifact root.
 
 Codex execution remains unavailable until its CLI exposes a native hard turn cap.
 EOF
@@ -895,7 +908,7 @@ if $unattested; then
   if [ "$authorization_source" != preflight ]; then
     prompt="$prompt authorizationSource=$authorization_source targetEnvironment=$authorization_manifest_environment authorizationSha256=$authorization_sha256"
   fi
-  command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+  command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS" --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
   if $dry_run; then
     printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@3 environment=argus-launch-unattested@1 attestation=UNATTESTED browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s%s\n' \
       "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$browser_provisioning" \
@@ -964,7 +977,7 @@ launch_payload="$(jq -cn \
   --argjson operatorAuthorization "$operator_authorization_json" \
   '{target:$target,"artifact-root":$artifactRoot,mode:$mode,"engagement-id":$engagementId,"launch-authorization":$launchAuthorization,"launch-receipt":$launchReceipt,"trust-store":$trustStore,features:$features,operatorAuthorization:$operatorAuthorization}')"
 prompt="/argus:run authenticatedLaunch=$launch_payload"
-command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS" --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
 
 if $dry_run; then
   rm -f "$capability_file"

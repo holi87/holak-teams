@@ -58,6 +58,36 @@ for schema_copy in \
     fail "$schema_copy maxTurns const $schema_turns differs from model-policy $policy_controller maxTurns $policy_controller_turns"
 done
 
+# The headless session grants exactly the tools the packaged agents declare (their frontmatter
+# `tools:` union) under --permission-mode dontAsk. A missing tool leaves workers unable to write
+# or run commands in -p mode; an extra one widens the grant beyond any role.
+agents_tool_union="$(for agent_file in "$ROOT"/argus/claude/agents/*.md; do
+  awk 'NR == 1 && $0 == "---" { inside = 1; next } inside && $0 == "---" { exit } inside && /^tools:/ { sub(/^tools:[[:space:]]*/, ""); print }' "$agent_file"
+done | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep . | LC_ALL=C sort -u | paste -sd, -)"
+[ -n "$agents_tool_union" ] || fail 'packaged agents declare no tools'
+for launcher_copy in "$ROOT/argus/bin/argus-launch" "$ROOT/argus/claude/bin/argus-launch"; do
+  launcher_tools="$(sed -n "s/^readonly CLAUDE_ALLOWED_TOOLS='\([^']*\)'$/\1/p" "$launcher_copy")"
+  [ "$(printf '%s\n' "$launcher_tools" | grep -c .)" -eq 1 ] || fail "$launcher_copy must declare readonly CLAUDE_ALLOWED_TOOLS exactly once"
+  [ "$(printf '%s' "$launcher_tools" | tr ',' '\n' | LC_ALL=C sort -u | paste -sd, -)" = "$agents_tool_union" ] || \
+    fail "$launcher_copy CLAUDE_ALLOWED_TOOLS=$launcher_tools differs from the packaged agents' tools union $agents_tool_union"
+  # shellcheck disable=SC2016 # The marker quotes the launcher's literal shell source.
+  [ "$(grep -Fc -- '--permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS"' "$launcher_copy")" -eq 2 ] || \
+    fail "$launcher_copy must start both controller forms with --permission-mode dontAsk --allowedTools \$CLAUDE_ALLOWED_TOOLS"
+  ! grep -Eq -- '--dangerously-skip-permissions|bypassPermissions' "$launcher_copy" || fail "$launcher_copy bypasses permissions"
+done
+
+# Usage: assert_permission_posture <name> <fixture-claude-arguments.txt>
+assert_permission_posture() {
+  local name="$1" arguments="$2"
+  [ "$(grep -Fxc -- '--permission-mode' "$arguments")" -eq 1 ] && \
+    [ "$(grep -Fx -A 1 -- '--permission-mode' "$arguments" | tail -n 1)" = dontAsk ] || \
+    { cat "$arguments" >&2; fail "$name Claude argv does not run with exactly one --permission-mode dontAsk"; }
+  [ "$(grep -Fxc -- '--allowedTools' "$arguments")" -eq 1 ] && \
+    [ "$(grep -Fx -A 1 -- '--allowedTools' "$arguments" | tail -n 1 | tr ',' '\n' | LC_ALL=C sort -u | paste -sd, -)" = "$agents_tool_union" ] || \
+    { cat "$arguments" >&2; fail "$name Claude argv does not grant exactly the packaged agents' tools through one --allowedTools"; }
+  ! grep -Eq -- 'dangerously|bypassPermissions' "$arguments" || fail "$name Claude argv bypasses permissions"
+}
+
 # os-native-target-readonly@3 widens the @2 Darwin profile only by what headless Chromium
 # needs: one scoped IOKit user-client class and the org.chromium mach namespace. A bare or
 # additional iokit, mach, or ipc rule is a sandbox regression.
@@ -198,6 +228,23 @@ run_authenticated_launch() {
   grep -Fxq '400' "$artifact/ai_agents_internal/fixture-claude-arguments.txt" || fail "$name Claude argv omitted the exact 400-turn cap"
   jq -e '.requestedTurns == 401 and .completedTurns == 400 and .outcome == "error_max_turns" and .supervisorObserved == true' \
     "$artifact/ai_agents_internal/fixture-turn-cap-behavior.json" >/dev/null || fail "$name did not observe exact native turn-cap termination behavior"
+  assert_permission_posture "$name" "$artifact/ai_agents_internal/fixture-claude-arguments.txt"
+  # Granted is not unguarded: inside the launch, the plugin's PreToolUse hook still denies a
+  # direct canonical write and, for a path target, a Write or shell redirection into the target,
+  # while a contracted report path stays writable.
+  guard_decisions="$artifact/ai_agents_internal/fixture-guard-decisions.json"
+  jq -e --arg kind "$(jq -r .targetKind "$authorization")" '
+    (map({(.case): .}) | add) as $by
+    | $by["canonical-write"].decision == "deny" and ($by["canonical-write"].reason | startswith("GUARD-CANONICAL-SINGLE-WRITER"))
+    and $by["report-write"].decision == "allow"
+    and (if $kind == "path" then
+        $by["target-write"].decision == "deny" and ($by["target-write"].reason | startswith("GUARD-TARGET-IMMUTABLE"))
+        and $by["target-shell"].decision == "deny" and ($by["target-shell"].reason | startswith("GUARD-TARGET-IMMUTABLE"))
+      else ($by | has("target-write") | not) end)' "$guard_decisions" >/dev/null || \
+    { cat "$guard_decisions" >&2; fail "$name granted tools escaped the packaged PreToolUse write guard"; }
+  if [ "$(jq -r .targetKind "$authorization")" = path ]; then
+    [ ! -e "$(jq -r .target "$authorization")/fixture-guard-probe.txt" ] || fail "$name guard probe reached the target"
+  fi
 
   # The single launch preflight pins the signed runtime and operator anchors while it creates
   # the engagement, so its report already binds the final manifest digest: the session needs no
@@ -1047,6 +1094,7 @@ usage_arguments="$WORK/usage-artifacts-launch/ai_agents_internal/fixture-claude-
 [ "$(grep -Fx -A 1 -- '--output-format' "$usage_arguments" | tail -n 1)" = json ] && \
   [ "$(grep -Fx -A 1 -- '--max-turns' "$usage_arguments" | tail -n 1)" = "$REVIEWED_CONTROLLER_TURNS" ] || \
   { cat "$usage_arguments" >&2; fail "unattested --usage-json launch did not run Claude with --output-format json and --max-turns $REVIEWED_CONTROLLER_TURNS"; }
+assert_permission_posture 'unattested --usage-json launch' "$usage_arguments"
 
 # A controller stopped at its native turn cap still leaves its report, and the launcher exits
 # with Claude's own status.
