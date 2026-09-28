@@ -142,13 +142,21 @@
       "consumers": [
         "ariadne"
       ]
+    },
+    {
+      "value": "templates/common/solution/TEST-STRATEGY.md",
+      "consumers": [
+        "metis"
+      ]
     }
   ],
   "targetFileReferences": [
     {
       "value": "ai_agents_internal/",
       "consumers": [
-        "kleio"
+        "atlas",
+        "kleio",
+        "skill:qa-core"
       ]
     },
     {
@@ -202,6 +210,7 @@
         "ariadne",
         "asklepios",
         "atalanta",
+        "atlas",
         "charon",
         "hermes",
         "kleio",
@@ -212,6 +221,7 @@
         "perseus",
         "pistis",
         "proteus",
+        "skill:qa-core",
         "talos",
         "theseus",
         "tyche"
@@ -339,12 +349,20 @@
       "value": "package.json",
       "consumers": [
         "asklepios",
+        "atlas",
         "tiresias"
+      ]
+    },
+    {
+      "value": "playwright.config.ts",
+      "consumers": [
+        "atlas"
       ]
     },
     {
       "value": "pom.xml",
       "consumers": [
+        "atlas",
         "tiresias"
       ]
     },
@@ -352,12 +370,14 @@
       "value": "pyproject.toml",
       "consumers": [
         "asklepios",
+        "atlas",
         "tiresias"
       ]
     },
     {
       "value": "README.md",
       "consumers": [
+        "atlas",
         "kleio"
       ]
     },
@@ -365,7 +385,8 @@
       "value": "reports/",
       "consumers": [
         "atlas",
-        "kleio"
+        "kleio",
+        "skill:qa-core"
       ]
     },
     {
@@ -446,6 +467,12 @@
       ]
     },
     {
+      "value": "requirements.txt",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
       "value": "run-tests.sh",
       "consumers": [
         "aegis",
@@ -460,6 +487,7 @@
         "minos",
         "mnemosyne",
         "nike",
+        "skill:qa-core",
         "talos"
       ]
     },
@@ -513,7 +541,8 @@
         "aristarchus",
         "atlas",
         "kleio",
-        "minos"
+        "minos",
+        "skill:qa-core"
       ]
     },
     {
@@ -994,6 +1023,12 @@
       "value": "tests/ui/<flow>/",
       "consumers": [
         "metis"
+      ]
+    },
+    {
+      "value": "tsconfig.json",
+      "consumers": [
+        "atlas"
       ]
     }
   ],
@@ -2626,6 +2661,12 @@
           "kind": "command",
           "mechanism": "validated-template-composition",
           "reference": "typescript:common"
+        },
+        {
+          "consumer": "metis",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "templates/common/solution/TEST-STRATEGY.md"
         },
         {
           "consumer": "minos",

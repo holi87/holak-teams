@@ -103,6 +103,14 @@ artifact root through real directories, outside `ai_agents_internal`, and clear 
 canonical, owned, and control path (the harness root also of every shared artifact root). It
 must also be physically disjoint from the target root, so an artifact root that is the
 target grants nothing. Any doubtful record grants nothing.
+The same record grants `rootConfigOwners` (Atlas) the framework's root runner and dependency
+configuration at the artifact root, as lane-owned files under the same checks: every root
+file the review corpus digests (`package.json`, `package-lock.json`, `playwright.config.*`,
+`tsconfig*.json`, `pyproject.toml`, `conftest.py`, `pytest.ini`, `setup.cfg`, `tox.ini`,
+`requirements*.txt`, `pom.xml`) plus the scaffold's `.gitignore`, `argus-template.json`, and
+`scripts/app-source-guard.mjs`. That is the only way root build configuration becomes
+writable, and it never reaches the target. `run-tests.sh` stays Atlas's canonical, and a
+scaffold's `.claude/` and `ai_agents_internal/` are never placed.
 
 The hook does not replace host sandboxing or permissions. Managed Claude Code settings
 may disable non-managed plugin hooks; preflight detects a missing packaged hook and blocks
@@ -133,12 +141,15 @@ and atomically renames it over the canonical path. Repeated merges of the same f
 produce byte-identical output.
 
 A canonical entry may declare `merge`: `concatenate` (the default) or `latest-revision`.
-Only markdown artifacts may use `latest-revision`; Minos's `solution/BUG-LEDGER.md` and
-`solution/WHITEBOX-LEADS.md` do. Their owner alone submits fragments, and any other lane is
+Only markdown and text artifacts may use `latest-revision`; Minos's `solution/BUG-LEDGER.md`
+and `solution/WHITEBOX-LEADS.md` do, and so does Atlas's `run-tests.sh`, which Atlas revises
+as lanes are wired. Their owner alone submits fragments, and any other lane is
 refused with `<path> revisions are written only by <owner>`. Each new fragment id receives
 the next revision number, and replaying an existing fragment returns its original record.
 The merge still digest-checks every revision but publishes only the highest one; the merge
-record adds `revision` and `supersededFragments`.
+record adds `revision` and `supersededFragments`. A text canonical may also declare
+`executable: true`: its merge publishes the file owner-executable (mode 0700), so the merged
+`run-tests.sh` runs as `./run-tests.sh`. Every other canonical is published mode 0600.
 
 ## Unattested launch (no trust store)
 

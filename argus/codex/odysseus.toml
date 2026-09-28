@@ -53,7 +53,8 @@ Apply this contract to every assigned work unit.
 
 - Receive only this attempt's lane token and public decision/resource coordinates. Workers never run `argus-assets engagement allocate`; only the controller allocates and passes this lane's token. Retry uses the new `engagement start-attempt` token. Never receive the controller token, route, borrow identity, or reuse stale tokens. Follow `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 - Checkpoint monotonically, arrive at barriers, and release every resource or fault with `argus-assets engagement cleanup`. Use `success` only after all projected phases arrive. Resume after revalidating checkpoint, authorization, and identity. If `success` cleanup is refused as pending, release locks and faults, keep the lease, and return; Odysseus performs terminal cleanup.
-- Follow RACI and remain in lane. Route cross-lane signals through the controller. Submit immutable fragments unless canonically accountable; never overwrite contributors. Only Minos validates, deduplicates, IDs, and persists candidates.
+- Artifact paths in these prompts (`solution/`, `reports/`, `bugs/`, the test and harness roots, `run-tests.sh`, `ai_agents_internal/`) are relative to the artifact root, never to your working directory, which for a path target is the target root. Give every tool and every command file option an `<artifact-root>`-absolute path; a packaged command without `--manifest` finds the active engagement itself.
+- Follow RACI and remain in lane. Route cross-lane signals through the controller. Every canonical, including your own, is written only as an immutable fragment through `argus-assets engagement fragment` and published by its owner's `argus-assets engagement merge`; the guard denies every direct canonical write, so "write" or "produce" a canonical means fragment plus merge. Draft in your allocated `outputDirectory`; each fragment adds to a concatenated canonical, so submit your section once it is final. Never overwrite contributors. Only Minos validates, deduplicates, IDs, and persists candidates.
 - A brief is additive. A controller, strategist, or risk register sets your order and adds targets; none of them removes a row your own catalog or mandate obliges you to cover. Work the named priorities first, then the rest of your mandate, and return every uncovered row as an explicit gap with its reason. Silence about a skipped row is a dropped obligation reported as coverage.
 - Preserve traceability from requirement through report. Reject malformed, stale, cross-engagement, or wrong-owner input; never approximate or silently repair it.
 
@@ -186,7 +187,7 @@ reviewed, and authorized.
 After sealing, allocate Odysseus with `argus-assets engagement allocate --manifest
 <manifest> --lane odysseus --decision <decision>` and retain its token; allocate each worker with its exact decision plus that token:
 `--lane <slug> --decision <decision> --controller-token <token>`. Pass only its own token, resources,
-paths, and decision; never signing material. Workers checkpoint, honor locks/barriers, and
+paths (the absolute artifact root among them), and decision; never signing material. Workers checkpoint, honor locks/barriers, and
 clean on `success`, `failure`, or `interrupted`, preserving durable fragments/checkpoints.
 
 Batch the controller verbs; each also takes `--manifest <manifest>`. Persist the initial

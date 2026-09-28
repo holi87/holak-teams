@@ -224,6 +224,24 @@ grep -Fq 'solution/BUG-LEDGER.md revisions are written only by minos' "$WORK/for
 cmp -s "$WORK/ledger-r2.md" "$TARGET/solution/BUG-LEDGER.md" || fail 'the markdown ledger merge did not publish only the latest revision'
 "$CLI" engagement status --manifest "$MANIFEST" | jq -e '.merges["solution/BUG-LEDGER.md"] | .revision == 2 and .supersededFragments == 1 and .fragments == 2' >/dev/null || \
   fail 'the markdown ledger merge record does not name its revision'
+# Atlas revises the runner as lanes are wired: run-tests.sh is a latest-revision, executable
+# text canonical, so its merge publishes only the newest revision, mode 0700, runnable as
+# ./run-tests.sh, and only Atlas submits revisions.
+printf '#!/usr/bin/env bash\necho skeleton-runner\n' >"$WORK/run-tests-r1.sh"
+printf '#!/usr/bin/env bash\necho wired-runner\n' >"$WORK/run-tests-r2.sh"
+for revision in r1 r2; do
+  "$CLI" engagement fragment --manifest "$MANIFEST" --lane atlas --token "$ATLAS" --canonical run-tests.sh --id "runner-$revision" --input "$WORK/run-tests-$revision.sh" >/dev/null
+done
+if "$CLI" engagement fragment --manifest "$MANIFEST" --lane talos --token "$TALOS" --canonical run-tests.sh --id foreign-runner --input "$WORK/run-tests-r1.sh" >"$WORK/foreign-runner.out" 2>&1; then
+  fail 'a non-owner wrote a runner revision'
+fi
+grep -Fq 'run-tests.sh revisions are written only by atlas' "$WORK/foreign-runner.out" || fail "the non-owner runner revision failed for another reason: $(<"$WORK/foreign-runner.out")"
+"$CLI" engagement merge --manifest "$MANIFEST" --owner atlas --token "$ATLAS" --canonical run-tests.sh >/dev/null
+cmp -s "$WORK/run-tests-r2.sh" "$TARGET/run-tests.sh" || fail 'the runner merge did not publish only its latest revision'
+[ -n "$(find "$TARGET/run-tests.sh" -maxdepth 0 -type f -perm 700 -print)" ] || fail 'the merged runner is not owner-executable mode 0700'
+[ "$(cd "$TARGET" && ./run-tests.sh)" = wired-runner ] || fail 'the merged runner does not run as ./run-tests.sh'
+"$CLI" engagement merge --manifest "$MANIFEST" --owner minos --token "$MINOS" --canonical solution/BUG-LEDGER.md >/dev/null
+[ -n "$(find "$TARGET/solution/BUG-LEDGER.md" -maxdepth 0 -type f -perm 600 -print)" ] || fail 'a non-executable canonical is not published mode 0600'
 node --input-type=module - "$ROOT/argus/runtime/engagement.mjs" "$MANIFEST" <<'NODE'
 import { readFileSync } from 'node:fs';
 const [runtime, manifestPath] = process.argv.slice(2);
@@ -234,8 +252,18 @@ const withMerge = (path, merge) => {
   copy.writePolicy.canonicalArtifacts.find(item => item.path === path).merge = merge;
   return validateEngagementManifest(copy);
 };
+const withExecutable = (path, executable) => {
+  const copy = structuredClone(manifest);
+  copy.writePolicy.canonicalArtifacts.find(item => item.path === path).executable = executable;
+  return validateEngagementManifest(copy);
+};
 if (validateEngagementManifest(manifest).length) throw new Error('the initialized manifest is invalid');
-if (!withMerge('solution/bug-ledger.json', 'latest-revision').includes('latest-revision merge is valid only for markdown artifacts')) throw new Error('a JSON canonical accepted latest-revision');
+const runner = manifest.writePolicy.canonicalArtifacts.find(item => item.path === 'run-tests.sh');
+if (runner?.merge !== 'latest-revision' || runner.executable !== true || runner.format !== 'text') throw new Error(`the runner canonical is not a latest-revision executable text artifact: ${JSON.stringify(runner)}`);
+if (!withMerge('solution/bug-ledger.json', 'latest-revision').includes('latest-revision merge is valid only for markdown and text artifacts')) throw new Error('a JSON canonical accepted latest-revision');
+const executableError = 'canonical artifact executable is valid only as true on a text artifact';
+if (!withExecutable('solution/BUG-LEDGER.md', true).includes(executableError)) throw new Error('a markdown canonical accepted executable');
+if (!withExecutable('run-tests.sh', false).includes(executableError)) throw new Error('a non-true executable flag was accepted');
 if (!withMerge('solution/BUG-LEDGER.md', 'append').includes('canonical artifact merge must be concatenate or latest-revision')) throw new Error('an unknown canonical merge mode was accepted');
 if (withMerge('solution/TEST-STRATEGY.md', 'concatenate').length) throw new Error('an explicit concatenate merge was rejected');
 NODE

@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 59481,
-      "sha256": "29d45db3f1f7b3f61b8cf1dc408a85733fc1d51ca3c69d03f7ba3822bc667925"
+      "bytes": 54681,
+      "sha256": "f39242b66a24e818ce08026ad4d3a7270547b3a6af50a99fbe25e49eed422d1d"
     },
     {
       "id": "browser-isolation",
@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 59799,
-      "sha256": "830756f704e31d42c49bad013502c4ecda69d966329db7b2b64fe504649330f2"
+      "bytes": 59388,
+      "sha256": "1e01c49f935dd1345ff22957bfd0a2e7703254280142597b407bdce821771151"
     },
     {
       "id": "canonical-contracts",
@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 40558,
-      "sha256": "9997c7694ccbca62a15d137d41669b3f0a7f9e75a197be3ffbad17ec19afb95e"
+      "bytes": 40336,
+      "sha256": "6426127b8f921ee5aba9b515e81a3cfe0e2a2a48190a97dc0204c481d290fd05"
     },
     {
       "id": "runner-contract",
@@ -83,8 +83,8 @@
       "source": "argus/TEMPLATE-CONTRACT.md",
       "destination": "references/TEMPLATE-CONTRACT.md",
       "files": 1,
-      "bytes": 14864,
-      "sha256": "9146c1cd99967a1a4f283f665bad02c39d597f8baa08b762d2d80c8db29f7ac4"
+      "bytes": 15172,
+      "sha256": "222efa339e88fcc3fa7ff67394b1b47b5945cbede50c2a23dc6951bd07731e81"
     },
     {
       "id": "coverage-contract",
@@ -92,8 +92,8 @@
       "source": "argus/COVERAGE-CONTRACT.md",
       "destination": "references/COVERAGE-CONTRACT.md",
       "files": 1,
-      "bytes": 11653,
-      "sha256": "c7aa0b78488b49f0103bc1cb8b6fae26be2c459611319c600f774ff6e97ad481"
+      "bytes": 11801,
+      "sha256": "4175ba0ff35363f27cc6889732a428cfee7641febcd6e53a8e4f10a155edf44b"
     },
     {
       "id": "raci-contract",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 18395,
-      "sha256": "d405bb7c17482485ccc23a724931f6d881b3b1068228a4e095638e7fa7c96962"
+      "bytes": 17282,
+      "sha256": "ac11d1b5bb0468396316051b82ddd0bdff519b20d1fbd4ee5f9b7c98b2fe29d2"
     },
     {
       "id": "qa-core-skill",
@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 12179,
-      "sha256": "8f437c56b6f1c42779f0f5315f8046078df55efd0483b77c3f4e66dc7f1bc61e"
+      "bytes": 12951,
+      "sha256": "085388e64843d37e05d7daf7831974bb98dd016675e5b51e38d854b391fe6a2c"
     },
     {
       "id": "qa-browser-skill",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 42,
-      "bytes": 206407,
-      "sha256": "767e107b64486dd55012de2d08ecddcb1fa350832a70c351ce43cf1a8cc46ea8"
+      "bytes": 205771,
+      "sha256": "d441189c7a7e96534f59d17aca8fa08739103bb3fe419ba09fa934edf34df884"
     },
     {
       "id": "capability-matrix",
@@ -200,8 +200,8 @@
       "source": "argus/orchestration-plan.json",
       "destination": "capabilities/orchestration-plan.json",
       "files": 1,
-      "bytes": 15525,
-      "sha256": "623cc1e7e3cdc6b0319d94dbb434ddb0e91cab62e628fe391cf10a989e155ad0"
+      "bytes": 15518,
+      "sha256": "acb263a7e6bbca9c3d8cd65c6bcc1abe3149e6ee4faf34e136ff0b3d523c857f"
     },
     {
       "id": "model-policy",
@@ -245,8 +245,8 @@
       "source": "argus/policies",
       "destination": "policies",
       "files": 4,
-      "bytes": 14481,
-      "sha256": "b1d0881dd80857b120ca4cd8aefb2359a8086024edb89228449ea3cc56fa3f94"
+      "bytes": 14566,
+      "sha256": "f60943594bafacaa22a6ff7699352c285b18626654273f2c52170ae1122cce93"
     },
     {
       "id": "runtime-library",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 437570,
-      "sha256": "30bf6214d973a92f041fae7631273b6e52c10a026a0a1290867e52d8da6a7cc5"
+      "bytes": 434571,
+      "sha256": "e2eff7d1d718c8b5fca4e2735a944384238bdbb4897c1b085402962e13e3e1d3"
     },
     {
       "id": "common-template",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 63240,
-    "sha256": "73ad0af64fe3762658a9956346889810b44953cae0d645daeb49f2f7cfd66312"
+    "bytes": 64015,
+    "sha256": "84ec28fe3767c523658beeb49d633e2927f8fce9bf455f34fd304dcc8927603c"
   }
 }

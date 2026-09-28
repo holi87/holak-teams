@@ -556,7 +556,7 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
     else if (latest) output = `${contents[records.indexOf(latest)]}\n`;
     else output = `${contents.join('\n\n')}\n`;
     const destination = engagementPath(manifest, canonical.path);
-    atomicWrite(destination, output);
+    atomicWrite(destination, output, canonical.executable ? 0o700 : 0o600);
     if (canonical.schema === 'final-summary') {
       atomicWrite(engagementPath(manifest, 'solution/FINAL-SUMMARY.md'), renderFinalSummary(JSON.parse(output), { launchAssurance: manifest.launchAssurance }));
     }
@@ -1647,9 +1647,11 @@ function validateOwnedWritePolicy(policy, errors) {
     }
   }
   const selected = policy.selectedTemplateRoots;
-  if (selected !== undefined && (!plainObject(selected) || Object.keys(selected).some((key) => key !== 'harnessRootOwners') ||
+  if (selected !== undefined && (!plainObject(selected) || Object.keys(selected).some((key) => !['harnessRootOwners', 'rootConfigOwners'].includes(key)) ||
       !stringList(selected.harnessRootOwners, true) || !selected.harnessRootOwners.every(validSlug))) {
     errors.push('writePolicy.selectedTemplateRoots must name unique harnessRootOwners');
+  } else if (selected?.rootConfigOwners !== undefined && (!stringList(selected.rootConfigOwners, true) || !selected.rootConfigOwners.every(validSlug))) {
+    errors.push('writePolicy.selectedTemplateRoots.rootConfigOwners must name unique owners');
   }
 }
 
@@ -1669,7 +1671,8 @@ function guardLaneIdentity(payload) {
 // roots never overlap. A root whose path crosses a symbolic link, or that cannot be resolved,
 // is returned as unsafe, so the write is denied.
 function ownedWriteRootFor(manifest, physical, selectedRoots) {
-  for (const root of [...(manifest.writePolicy.ownedArtifactRoots ?? []), ...selectedRoots.owned]) {
+  const rootConfig = selectedRootConfigFor(manifest, physical, selectedRoots);
+  for (const root of [...(manifest.writePolicy.ownedArtifactRoots ?? []), ...selectedRoots.owned, ...rootConfig]) {
     try {
       const artifactPhysical = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
       const rootPhysical = resolvePhysical(root.path, artifactPhysical);
@@ -1698,8 +1701,10 @@ function ownedWriteDenial(owned, lane) {
 // root through real directories, outside ai_agents_internal, clear of every canonical, owned,
 // and control path (and, for the harness root, of every shared artifact root), and physically
 // disjoint from the target root. Anything else grants nothing, so a doubtful record fails closed.
+// The same record also grants selectedTemplateRoots.rootConfigOwners the framework's root
+// configuration (see selectedRootConfigFor).
 function selectedTemplateWriteRoots(manifest) {
-  const none = { generated: [], owned: [] };
+  const none = { generated: [], owned: [], rootConfigOwners: null };
   const policy = manifest.writePolicy.selectedTemplateRoots;
   if (!plainObject(policy)) return none;
   try {
@@ -1712,9 +1717,29 @@ function selectedTemplateWriteRoots(manifest) {
       owned: harnessRoot
         ? [{ path: harnessRoot, owners: [...policy.harnessRootOwners], open: testRoot && testRoot.startsWith(`${harnessRoot}/`) ? [testRoot] : [] }]
         : [],
+      rootConfigOwners: stringList(policy.rootConfigOwners, true) ? [...policy.rootConfigOwners] : null,
     };
   } catch {
     return none;
+  }
+}
+
+// The runner and dependency configuration a selected framework keeps at the artifact root:
+// every root file the review corpus digests (REVIEW_CORPUS_ROOT_CONFIG) plus the scaffold's
+// own root files. `run-tests.sh` and `README.md` stay canonical. A valid selection record grants
+// each such file, as a lane-owned path, to rootConfigOwners, under the checks a selected harness
+// root passes: real directories below the artifact root, clear of every reserved path, and
+// physically disjoint from the target root, so an artifact root that is the target grants none.
+const SELECTED_ROOT_CONFIG_FILES = new Set(['.gitignore', 'argus-template.json', 'scripts/app-source-guard.mjs']);
+
+function selectedRootConfigFor(manifest, physical, selectedRoots) {
+  if (!selectedRoots.rootConfigOwners) return [];
+  try {
+    const path = relative(resolvePhysical(manifest.artifactRoot, manifest.artifactRoot), physical).split(sep).join('/');
+    if (!REVIEW_CORPUS_ROOT_CONFIG.test(path) && !SELECTED_ROOT_CONFIG_FILES.has(path)) return [];
+    return grantableTemplateRoot(manifest, path, { owned: true, file: true }) ? [{ path, owners: selectedRoots.rootConfigOwners }] : [];
+  } catch {
+    return [];
   }
 }
 
@@ -1724,7 +1749,9 @@ function selectionNamesEngagementRoot(manifest, targetRoot) {
   return [manifest.artifactRoot, manifest.target?.root].some((root) => nonEmpty(root) && existsSync(root) && realpathSync(root) === named);
 }
 
-function grantableTemplateRoot(manifest, root, { owned }) {
+// A file root (`file`) may already exist as a regular file; every other existing part of the
+// path must be a real directory.
+function grantableTemplateRoot(manifest, root, { owned, file = false }) {
   if (!canonicalCorpusRoot(root) || root.split('/')[0] === 'ai_agents_internal') return false;
   const policy = manifest.writePolicy;
   const reserved = [
@@ -1736,7 +1763,8 @@ function grantableTemplateRoot(manifest, root, { owned }) {
   if (reserved.some((path) => overlappingPaths(path, root))) return false;
   const artifactPhysical = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
   let cursor = artifactPhysical;
-  for (const part of root.split('/')) {
+  const parts = root.split('/');
+  for (const [index, part] of parts.entries()) {
     cursor = join(cursor, part);
     let stats;
     try { stats = lstatSync(cursor); }
@@ -1744,7 +1772,7 @@ function grantableTemplateRoot(manifest, root, { owned }) {
       if (error.code === 'ENOENT') break;
       throw error;
     }
-    if (stats.isSymbolicLink() || !stats.isDirectory()) return false;
+    if (stats.isSymbolicLink() || !(file && index === parts.length - 1 ? stats.isFile() : stats.isDirectory())) return false;
   }
   if (!nonEmpty(manifest.target?.root)) return true;
   const rootPhysical = resolvePhysical(root, artifactPhysical);
@@ -3089,12 +3117,16 @@ function fragmentOrder(a, b) {
 
 // A canonical artifact concatenates its fragments unless it declares latest-revision: then its
 // owner alone writes numbered revisions and a merge publishes only the highest one. Structured
-// documents keep their contract merge, so latest-revision is limited to markdown.
+// documents keep their contract merge, so latest-revision is limited to markdown and text. An
+// `executable` text canonical (the runner script) is published owner-executable (0700).
 function canonicalMergeErrors(item) {
-  if (!plainObject(item) || item.merge === undefined) return [];
-  if (!CANONICAL_MERGE_MODES.includes(item.merge)) return [`canonical artifact merge must be ${CANONICAL_MERGE_MODES.join(' or ')}`];
-  if (item.merge === 'latest-revision' && item.format !== 'markdown') return ['latest-revision merge is valid only for markdown artifacts'];
-  return [];
+  if (!plainObject(item)) return [];
+  const errors = item.executable !== undefined && (item.executable !== true || item.format !== 'text')
+    ? ['canonical artifact executable is valid only as true on a text artifact'] : [];
+  if (item.merge === undefined) return errors;
+  if (!CANONICAL_MERGE_MODES.includes(item.merge)) return [...errors, `canonical artifact merge must be ${CANONICAL_MERGE_MODES.join(' or ')}`];
+  if (item.merge === 'latest-revision' && !['markdown', 'text'].includes(item.format)) return [...errors, 'latest-revision merge is valid only for markdown and text artifacts'];
+  return errors;
 }
 
 function nextFragmentRevision(records) {
@@ -3224,12 +3256,12 @@ function atomicWriteJson(path, value) {
   atomicWrite(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function atomicWrite(path, content) {
+function atomicWrite(path, content, mode = 0o600) {
   mkdirSync(dirname(path), { recursive: true });
   if (existsSync(path)) assertManagedFile(path, 'atomic write destination');
   const temporary = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
   try {
-    createManagedFile(temporary, content, 'atomic write temporary');
+    createManagedFile(temporary, content, 'atomic write temporary', mode);
     assertManagedFile(temporary, 'atomic write temporary');
     if (existsSync(path)) assertManagedFile(path, 'atomic write destination');
     renameSync(temporary, path);
@@ -3239,7 +3271,7 @@ function atomicWrite(path, content) {
   }
 }
 
-function createManagedFile(path, content, label) {
+function createManagedFile(path, content, label, mode = 0o600) {
   mkdirSync(dirname(path), { recursive: true });
   const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0);
   let fd;
@@ -3248,7 +3280,7 @@ function createManagedFile(path, content, label) {
     assertManagedDescriptorPath(fd, path, label);
     writeFileSync(fd, content);
     fsyncSync(fd);
-    fchmodSync(fd, 0o600);
+    fchmodSync(fd, mode);
     assertManagedDescriptorPath(fd, path, label);
   } catch (error) {
     if (fd !== undefined) closeSync(fd);

@@ -188,7 +188,8 @@
           "additionalProperties": false,
           "required": ["harnessRootOwners"],
           "properties": {
-            "harnessRootOwners": { "$ref": "#/$defs/ownerList" }
+            "harnessRootOwners": { "$ref": "#/$defs/ownerList" },
+            "rootConfigOwners": { "$ref": "#/$defs/ownerList" }
           }
         },
         "canonicalArtifacts": {
@@ -203,12 +204,17 @@
               "owner": { "$ref": "#/$defs/slug" },
               "format": { "enum": ["markdown", "text", "json", "json-document"] },
               "schema": { "type": ["string", "null"], "enum": [null, "bug-ledger", "lane-plan", "evidence-reference", "automation-status", "surface-inventory", "coverage-observations", "coverage-result", "final-summary", "automation-review"] },
-              "merge": { "enum": ["concatenate", "latest-revision"] }
+              "merge": { "enum": ["concatenate", "latest-revision"] },
+              "executable": { "const": true }
             },
             "allOf": [
               {
                 "if": { "required": ["merge"], "properties": { "merge": { "const": "latest-revision" } } },
-                "then": { "properties": { "format": { "const": "markdown" } } }
+                "then": { "properties": { "format": { "enum": ["markdown", "text"] } } }
+              },
+              {
+                "if": { "required": ["executable"] },
+                "then": { "properties": { "format": { "const": "text" } } }
               }
             ]
           }

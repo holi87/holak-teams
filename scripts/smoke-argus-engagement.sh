@@ -859,6 +859,11 @@ expectErrors('ownerless root', errorsFor((policy) => policy.ownedArtifactRoots.p
 expectErrors('invalid owner', errorsFor((policy) => policy.ownedArtifactRoots.push({ path: 'solution/fixtures', owners: ['Atlas'] })), invalid);
 expectErrors('extra owned key', errorsFor((policy) => policy.ownedArtifactRoots.push({ path: 'solution/fixtures', owners: ['atlas'], mode: 'open' })), invalid);
 expectErrors('invalid harness owners', errorsFor((policy) => { policy.selectedTemplateRoots = { harnessRootOwners: [] }; }), 'writePolicy.selectedTemplateRoots must name unique harnessRootOwners');
+expectErrors('declared root config owners', errorsFor((policy) => { if (policy.selectedTemplateRoots.rootConfigOwners?.join() !== 'atlas') throw new Error('rootConfigOwners is not atlas'); }), null);
+expectErrors('omitted root config owners', errorsFor((policy) => { delete policy.selectedTemplateRoots.rootConfigOwners; }), null);
+expectErrors('invalid root config owners', errorsFor((policy) => { policy.selectedTemplateRoots.rootConfigOwners = []; }), 'writePolicy.selectedTemplateRoots.rootConfigOwners must name unique owners');
+expectErrors('invalid root config owner', errorsFor((policy) => { policy.selectedTemplateRoots.rootConfigOwners = ['Atlas']; }), 'writePolicy.selectedTemplateRoots.rootConfigOwners must name unique owners');
+expectErrors('extra selected-root key', errorsFor((policy) => { policy.selectedTemplateRoots.configOwners = ['atlas']; }), 'writePolicy.selectedTemplateRoots must name unique harnessRootOwners');
 NODE
 
 # The operator's explicit template selection grants its roots only in a disjoint layout: the
@@ -873,6 +878,7 @@ printf 'export const app = 1;\n' >"$SELECTED/target/src/app.ts"
 "$CLI" engagement init --target "$SELECTED/target" --artifact-root "$SELECTED_ROOT" --mode A --engagement-id selected-roots >/dev/null
 guard_as argus:atlas Write quality/support/config.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
 guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:atlas Write package.json GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
 "$CLI" template select --target "$SELECTED_ROOT" --runtime typescript --package-manager npm \
   --test-root quality/specs --harness-root quality/support --output "$WORK/selected-roots.json" >/dev/null
 cp "$WORK/selected-roots.json" "$SELECTION"
@@ -890,6 +896,83 @@ guard_as argus:hermes Write quality/specs/perf/probe.spec.ts allow "$SELECTED_RO
 guard_as argus:atlas Write quality/other.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
 guard_as argus:atlas Write "$SELECTED/target/src/app.ts" GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
 guard_as argus:atlas Write solution/test-lanes.tsv allow "$SELECTED_ROOT"
+# The selection also grants Atlas, and only Atlas, the framework's root runner and dependency
+# configuration at the artifact root; without it no Mode A/C framework can run there.
+for path in package.json package-lock.json playwright.config.ts tsconfig.json tsconfig.build.json pyproject.toml conftest.py \
+  pytest.ini requirements.txt requirements-dev.txt pom.xml .gitignore argus-template.json scripts/app-source-guard.mjs; do
+  guard_as argus:atlas Write "$path" allow "$SELECTED_ROOT"
+done
+guard_as argus:talos Write package.json 'GUARD-OWNED-ARTIFACT: lane-owned package.json is written only by atlas, not talos' "$SELECTED_ROOT"
+guard_as argus:asklepios Bash 'printf x > tsconfig.json' 'GUARD-OWNED-ARTIFACT: lane-owned tsconfig.json is written only by atlas, not asklepios' "$SELECTED_ROOT"
+guard_as main Write playwright.config.ts 'lane-owned playwright.config.ts is written only by atlas, not odysseus' "$SELECTED_ROOT"
+guard_as untyped Write pom.xml 'lane-owned pom.xml is written only by atlas; the writing lane is not identified' "$SELECTED_ROOT"
+for path in quality/package.json docs/tsconfig.json SECURITY-NOTES.md .claude/settings.json scripts/other.mjs Makefile; do
+  guard_as argus:atlas Write "$path" GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+done
+# A root configuration path through a symbolic link grants only what it physically names.
+ln -s "$SELECTED/target/src/app.ts" "$SELECTED_ROOT/package.json"
+ln -s "$SELECTED/target/src" "$SELECTED_ROOT/scripts"
+guard_as argus:atlas Write package.json GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:atlas Write scripts/app-source-guard.mjs GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+rm "$SELECTED_ROOT/package.json" "$SELECTED_ROOT/scripts"
+# A manifest without rootConfigOwners grants no root configuration.
+SELECTED_MANIFEST="$SELECTED_ROOT/ai_agents_internal/engagement.json"
+cp "$SELECTED_MANIFEST" "$WORK/selected-manifest.json"
+jq 'del(.writePolicy.selectedTemplateRoots.rootConfigOwners)' "$WORK/selected-manifest.json" >"$SELECTED_MANIFEST"
+guard_as argus:atlas Write package.json GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:atlas Write quality/support/config.ts allow "$SELECTED_ROOT"
+cat "$WORK/selected-manifest.json" >"$SELECTED_MANIFEST"
+# A URL target has no target root, and its artifact root receives the same grant.
+URL_ROOT="$WORK/url-selected/artifacts"
+mkdir -p "$URL_ROOT"
+"$CLI" engagement init --target https://shop.example.test --artifact-root "$URL_ROOT" --mode A --engagement-id url-selected >/dev/null
+guard_as argus:atlas Write package.json GUARD-TARGET-IMMUTABLE "$URL_ROOT"
+"$CLI" template select --target "$URL_ROOT" --runtime typescript --package-manager npm \
+  --test-root tests --harness-root harness --output "$WORK/url-selection.json" >/dev/null
+cp "$WORK/url-selection.json" "$URL_ROOT/ai_agents_internal/template-selection.json"
+guard_as argus:atlas Write package.json allow "$URL_ROOT"
+guard_as argus:atlas Write harness/config.ts allow "$URL_ROOT"
+guard_as argus:talos Write playwright.config.ts 'GUARD-OWNED-ARTIFACT: lane-owned playwright.config.ts is written only by atlas, not talos' "$URL_ROOT"
+# Engagement-context scaffold and placement: Atlas scaffolds the selection into its worker
+# staging directory, and the guard admits every staged file Atlas places at the same relative
+# path under the artifact root, except the staged control plane, Claude settings, security
+# notes, example ledger, and canonicals.
+STAGED="$SELECTED_ROOT/ai_agents_internal/workers/atlas/scaffold"
+guard_as argus:atlas Bash "argus-assets template scaffold --selection $SELECTION --destination $STAGED" allow "$SELECTED_ROOT"
+(cd "$SELECTED_ROOT" && "$CLI" template scaffold --selection "$SELECTION" --destination "$STAGED") >/dev/null \
+  || fail 'template scaffold into the Atlas worker staging directory failed inside the engagement'
+CANONICALS="$(jq -r '.writePolicy.canonicalArtifacts[].path' "$SELECTED_MANIFEST")"
+placed=0
+while IFS= read -r path; do
+  case "$path" in
+    .claude/*|ai_agents_internal/*|SECURITY-NOTES.md|solution/bug-ledger.example.json) expected=GUARD-TARGET-IMMUTABLE ;;
+    *) if grep -Fxq "$path" <<<"$CANONICALS"; then expected=GUARD-CANONICAL-SINGLE-WRITER; else expected=allow; placed=$((placed + 1)); fi ;;
+  esac
+  guard_as argus:atlas Bash "cp $STAGED/$path $path" "$expected" "$SELECTED_ROOT"
+done < <(cd "$STAGED" && find . -type f ! -path './quality/*' | sed 's#^\./##' | sort)
+for path in package.json package-lock.json playwright.config.ts tsconfig.json .gitignore argus-template.json scripts/app-source-guard.mjs; do
+  [ -f "$STAGED/$path" ] || fail "the scaffold staged no $path"
+done
+[ "$placed" -ge 20 ] || fail "only $placed staged files are placeable at the artifact root"
+guard_as argus:atlas Bash "cp $STAGED/$(cd "$STAGED" && find quality/support -type f | sort | head -n 1) quality/support/placed.ts" allow "$SELECTED_ROOT"
+guard_as argus:talos Bash "cp $STAGED/$(cd "$STAGED" && find quality/specs -type f | sort | head -n 1) quality/specs/placed.spec.ts" allow "$SELECTED_ROOT"
+rm -rf "$STAGED"
+# A path target's workspace is the target root. A packaged command without --manifest still
+# reaches the launch's engagement there, and from any directory below the artifact root; with
+# no launch source and no engagement above it, it finds none, and a linked manifest is refused.
+(cd "$SELECTED/target" && ARGUS_LAUNCH_ARTIFACT_ROOT="$SELECTED_ROOT" "$CLI" engagement status) | jq -e '.engagementId == "selected-roots"' >/dev/null \
+  || fail 'engagement status without --manifest missed the launch engagement from the target workspace'
+(cd "$SELECTED_ROOT/ai_agents_internal/workers" && "$CLI" engagement status) | jq -e '.engagementId == "selected-roots"' >/dev/null \
+  || fail 'engagement status without --manifest missed the engagement above its working directory'
+if (cd "$SELECTED/target" && "$CLI" engagement status) >"$WORK/no-engagement.out" 2>&1; then
+  fail 'engagement status found an engagement from a workspace with no launch source'
+fi
+grep -Fq 'engagement manifest must be a real file' "$WORK/no-engagement.out" || fail "a workspace without an engagement failed for another reason: $(<"$WORK/no-engagement.out")"
+ln -s "$SELECTED_MANIFEST" "$WORK/linked-engagement.json"
+if (cd "$SELECTED/target" && ARGUS_ENGAGEMENT_MANIFEST="$WORK/linked-engagement.json" "$CLI" engagement status) >"$WORK/linked-engagement.out" 2>&1; then
+  fail 'engagement status accepted a symbolic-link manifest'
+fi
+grep -Fq 'engagement manifest must be a real file' "$WORK/linked-engagement.out" || fail "a linked manifest failed for another reason: $(<"$WORK/linked-engagement.out")"
 selected_record() {
   jq "$@" "$WORK/selected-roots.json" >"$SELECTION"
 }
@@ -908,6 +991,7 @@ guard_as argus:atlas Write ../target/src/app.ts GUARD-TARGET-IMMUTABLE "$SELECTE
 guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
 selected_record '.choiceSource = "inferred"'
 guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
+guard_as argus:atlas Write package.json GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
 selected_record --arg root "$SELECTED/target" '.targetRoot = $root'
 guard_as argus:talos Write quality/specs/api/orders.spec.ts allow "$SELECTED_ROOT"
 selected_record '.targetRoot = "/nonexistent/argus-selection-root"'
@@ -917,6 +1001,7 @@ selected_record '.action = "adapt" | .harnessRoot = "quality" | .testRoot = "qua
 guard_as argus:atlas Write quality/support/config.ts allow "$SELECTED_ROOT"
 guard_as argus:hermes Write quality/support/config.ts "GUARD-OWNED-ARTIFACT: lane-owned quality is written only by $HARNESS_OWNERS, not hermes" "$SELECTED_ROOT"
 guard_as argus:hermes Write quality/specs/api/orders.spec.ts allow "$SELECTED_ROOT"
+guard_as argus:atlas Write pyproject.toml allow "$SELECTED_ROOT"
 # A symbolic link on a selected root, or a linked record, grants nothing.
 cp "$WORK/selected-roots.json" "$SELECTION"
 mkdir -p "$SELECTED_ROOT/quality"
@@ -933,6 +1018,7 @@ rm "$SELECTION"
 jq --arg root "$TARGET" '.targetRoot = $root | .harnessRoot = "app"' "$WORK/selected-roots.json" >"$TARGET/ai_agents_internal/template-selection.json"
 guard_as argus:atlas Write app/source.ts GUARD-TARGET-IMMUTABLE
 guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE
+guard_as argus:atlas Write package.json GUARD-TARGET-IMMUTABLE
 rm "$TARGET/ai_agents_internal/template-selection.json"
 
 # The record reaches the control plane only through the host-side `template verify|install`
@@ -1050,6 +1136,10 @@ for source in receipt root; do
   launched "$source" guard_as argus:talos Write "$INSTALL_ROOT/scripts/runner-lib.sh" GUARD-OWNED-ARTIFACT "$INSTALL_TARGET"
   launched "$source" guard_as argus:atlas Write "$INSTALL_ROOT/quality/support/config.ts" allow "$INSTALL_TARGET"
   launched "$source" guard_as argus:atlas Write "$INSTALL_TARGET/src/app.ts" GUARD-TARGET-IMMUTABLE "$INSTALL_TARGET"
+  # A packaged command without --manifest reaches the launch's engagement from the target workspace.
+  (cd "$INSTALL_TARGET" && launched "$source" "$CLI" engagement status) \
+    | jq -e --arg id "$(jq -r .engagementId "$INSTALL_ROOT/ai_agents_internal/engagement.json")" '.engagementId == $id' >/dev/null \
+    || fail "engagement status without --manifest missed the launch engagement from the target workspace ($source)"
   # The main smoke engagement is a different manifest than the launch names: deny, never pick one.
   launched "$source" guard_as main Bash 'argus-assets list' 'GUARD-MANIFEST-INVALID: the active engagement cannot be resolved' "$TARGET"
   if (cd "$INSTALL_TARGET" && launched "$source" "$CLI" redact --input "$WORK/disjoint-input.json" \
