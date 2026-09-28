@@ -46,6 +46,7 @@
       { "id": "canonical-triage", "source": "minos", "markers": ["solution/BUG-LEDGER.md", "BUG-NNNN", "dedup"] },
       { "id": "final-report", "source": "kleio", "markers": ["solution/IMPLEMENTATION-REPORT.md", "coverage-result.json", "go/no-go"] },
       { "id": "coverage-result-publication", "source": "kleio", "markers": ["argus-assets coverage calculate", "--output <allocated outputDirectory>/coverage-result.json", "--lane kleio --token <lane-token> --canonical solution/coverage-result.json", "--owner kleio --token <lane-token> --canonical solution/coverage-result.json", "before `engagement report-facts`"] },
+      { "id": "registered-runner-verification", "source": "kleio", "markers": ["never run `./run-tests.sh` yourself", "verify Atlas's registered final run", "the `runner` block of `argus-assets engagement report-facts"] },
       { "id": "target-immutability", "source": "qa-core", "markers": ["Never modify target application source", "write guard", "untrusted data"] },
       { "id": "browser-isolation", "source": "qa-browser", "markers": ["leased browser profile", "managed hunt driver", "shared public"] },
       { "id": "driver-techniques", "source": "qa-browser", "markers": ["--fail-next", "--capture-bodies", "--actor", "--race-fire", "--clock", "--tz"] },
@@ -69,6 +70,7 @@
     { "id": "no-double-reproduction-gate", "pattern": "reproduced[^.]{0,40}(at least twice|≥\\s*2×)|second reproduction", "flags": "i" },
     { "id": "no-direct-canonical-write", "pattern": "\\b(?:Write|Produce) `(?:solution/[A-Z][A-Za-z_-]*\\.md|README\\.md|run-tests\\.sh)`|unless canonically accountable", "flags": "" },
     { "id": "no-working-directory-artifact-input", "pattern": "--(?:input|inventory|observations|evidence|ledger|automation-status|selection|root|destination) (?:solution|reports|bugs|tests|ai_agents_internal)/", "flags": "" },
-    { "id": "no-vendored-hunt-driver", "pattern": "(?:node |`)scripts/hunt-driver\\.mjs|provisions it into the target repo", "flags": "" }
+    { "id": "no-vendored-hunt-driver", "pattern": "(?:node |`)scripts/hunt-driver\\.mjs|provisions it into the target repo", "flags": "" },
+    { "id": "no-reporter-runner-rerun", "pattern": "execute `\\./run-tests\\.sh` from the repo root|from YOUR run", "flags": "" }
   ]
 }
