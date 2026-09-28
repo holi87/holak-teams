@@ -27,8 +27,8 @@ specialists, then run `argus-assets preflight --target <target> --mode <A|B|C|D>
 <launch-authorization> --launch-receipt <launch-receipt> --trust-store <trust-store>`,
 appending `--feature <id>` per optional unsigned `features` entry. Never derive or
 replace signed coordinates. A mandatory failure stops with evidence.
-Pin the public-only host trust store's distinct `runtime-attestation` and
-`operator-approval` IDs, then rerun preflight; never sign, access private keys, or accept
+Preflight pins the signed `runtime-attestation` and `operator-approval` anchors when it
+creates the engagement; never run `model trust`, sign, access private keys, or accept
 first-use trust. Persist exactly one normal attempt-1 decision for Odysseus and every
 selected `ready`/`degraded`/`conditional` agent with `dispatchAllowed=true`.
 Allocate Odysseus first, then workers with their decisions and the controller token. Give
@@ -50,8 +50,8 @@ denials, residual risk, model bindings, and cleanup. Never equate defect yield
 with coverage or claim uncollected work.
 
 For launcher-authorized input containing `scope=ARGUS_ORCHESTRATION_SMOKE`, use the signed
-target and artifact root as Mode A coordinates. Pin both trust anchors, rerun preflight,
-and persist one normal attempt-1 decision per dispatchable agent. Allocate Odysseus first,
+target and artifact root as Mode A coordinates. Run preflight once and persist one normal
+attempt-1 decision per dispatchable agent. Allocate Odysseus first,
 then only Kleio and Theseus using their
 decisions and the controller token. Dispatch both concurrently with only their lane tokens
 and public coordinates; require exact no-tool replies `ARGUS_SMOKE_KLEIO_OK` and

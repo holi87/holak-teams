@@ -53,7 +53,7 @@ Usage:
   argus-launch probe-browser [--module <absolute-dir>]
   argus-launch claude --target <url-or-absolute-path> --artifact-root <absolute-path> \
     --mode <A|B|C|D> --engagement-id <id> --trust-store <absolute-path> \
-    --runtime-key-id <id> --request-output <absolute-path> \
+    --runtime-key-id <id> --operator-key-id <id> --request-output <absolute-path> \
     --launch-authorization <absolute-path> [--workspace <absolute-path>] \
     [--wait-seconds <30..300>] [--feature <capability-id>]... [--provision-browser] \
     [--authorization <absolute-path>] [--environment <local|test|staging|production>] \
@@ -68,6 +68,7 @@ The launcher writes an unsigned, process-bound request to --request-output, then
 the isolated runtime-attestation signer to create --launch-authorization. The signer must
 sign the exact canonical payload emitted by `argus-assets model payload --document REQUEST`.
 Neither a private key nor a signing service may be available to this process or its agents.
+The request also signs --operator-key-id, the store's operator-approval key; preflight pins both.
 
 --unattested is an explicit, opt-in alternative to the trust-store/launch-authorization
 handshake above, for operators who cannot provision or use Ed25519 signing keys (e.g. no
@@ -704,6 +705,7 @@ mode=''
 engagement_id=''
 trust_store=''
 runtime_key_id=''
+operator_key_id=''
 request_output=''
 launch_authorization=''
 wait_seconds=300
@@ -724,6 +726,7 @@ while [ "$#" -gt 0 ]; do
     --engagement-id) [ "$#" -ge 2 ] || fail '--engagement-id requires a value'; engagement_id="$2"; shift 2 ;;
     --trust-store) [ "$#" -ge 2 ] || fail '--trust-store requires a path'; trust_store="$2"; shift 2 ;;
     --runtime-key-id) [ "$#" -ge 2 ] || fail '--runtime-key-id requires a value'; runtime_key_id="$2"; shift 2 ;;
+    --operator-key-id) [ "$#" -ge 2 ] || fail '--operator-key-id requires a value'; operator_key_id="$2"; shift 2 ;;
     --request-output) [ "$#" -ge 2 ] || fail '--request-output requires a path'; request_output="$2"; shift 2 ;;
     --launch-authorization) [ "$#" -ge 2 ] || fail '--launch-authorization requires a path'; launch_authorization="$2"; shift 2 ;;
     --wait-seconds) [ "$#" -ge 2 ] || fail '--wait-seconds requires a value'; wait_seconds="$2"; shift 2 ;;
@@ -765,8 +768,8 @@ authorization_sha256=''
 [[ "$engagement_id" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$ ]] || fail '--engagement-id must be a stable identifier'
 absolute_normalized "$artifact_root" 'artifact root'
 if $unattested; then
-  [ -z "$trust_store" ] && [ -z "$runtime_key_id" ] && [ -z "$request_output" ] && [ -z "$launch_authorization" ] || \
-    fail '--unattested cannot be combined with --trust-store/--runtime-key-id/--request-output/--launch-authorization'
+  [ -z "$trust_store" ] && [ -z "$runtime_key_id" ] && [ -z "$operator_key_id" ] && [ -z "$request_output" ] && [ -z "$launch_authorization" ] || \
+    fail '--unattested cannot be combined with --trust-store/--runtime-key-id/--operator-key-id/--request-output/--launch-authorization'
   # Keyless mode exists only for a host that has no operator key material at all. If any
   # is resolvable, refuse here rather than letting the dispatched controller discover it:
   # argus-assets preflight --unattested-launch enforces the same precondition, and the
@@ -778,6 +781,7 @@ if $unattested; then
     fail "$trust_store_material; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id"
 else
   [ -n "$runtime_key_id" ] || fail '--runtime-key-id is required (or pass --unattested to skip signed attestation)'
+  [ -n "$operator_key_id" ] || fail '--operator-key-id is required'
   [[ "$wait_seconds" =~ ^[0-9]+$ ]] && [ "$wait_seconds" -ge 30 ] && [ "$wait_seconds" -le 300 ] || fail '--wait-seconds must be between 30 and 300'
   absolute_normalized "$trust_store" 'trust store'
   absolute_normalized "$request_output" 'request output'
@@ -927,6 +931,7 @@ fi
 "$ASSETS" launch request --target "$target" --workspace "$workspace" --artifact-root "$artifact_root" \
   --mode "$mode" --engagement-id "$engagement_id" --launcher "$LAUNCHER_PATH" --launcher-pid "$$" \
   --claude-executable "$claude_executable" --runtime-key-id "$runtime_key_id" --trust-store "$trust_store" \
+  --operator-key-id "$operator_key_id" \
   --output "$request_output" --ttl-seconds "$wait_seconds" --capability-sha256 "$capability_sha256" \
   --sandbox-probe-path "$sandbox_probe_dir"
 

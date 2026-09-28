@@ -706,6 +706,61 @@ for scenario in full partial; do
   fi
 done
 
+# A signed launch that names its operator-approval anchor (argus-launch --operator-key-id) is
+# routable after exactly one preflight. A URL launch runs in its artifact root, where the
+# PreToolUse guard finds the engagement and denies `model trust`, and a second preflight would
+# have to fit the five-minute launch window. Preflight therefore pins both signed anchors from
+# the launch trust store while it creates the manifest, so its first report binds the final digest.
+signed_root="$WORK/signed-anchor-artifacts"
+mkdir -p "$signed_root"
+signed_root="$(cd "$signed_root" && pwd -P)"
+signed_manifest="$signed_root/ai_agents_internal/engagement.json"
+signed_target='http://127.0.0.1:43999/'
+signed_preflight() {
+  (cd "$signed_root" && ARGUS_SMOKE_OPERATOR_KEY_ID="${1:-}" "$CLI" preflight --target "$signed_target" --mode B \
+    --artifact-root "$signed_root" --engagement-id signed-anchor --profile "$FIXTURES/full.json")
+}
+signed_preflight signed-operator >/dev/null || fail 'signed-anchor launch preflight failed'
+jq -e '.modelTrust.source == "host-trust-store" and .modelTrust.keys.operatorApproval.keyId == "signed-operator"
+  and .modelTrust.keys.operatorApproval.purpose == "operator-approval"
+  and (.modelTrust.keys.runtimeAttestation.keyId | startswith("runtime-"))
+  and .modelTrust.keys.runtimeAttestation.purpose == "runtime-attestation"' "$signed_manifest" >/dev/null || {
+  jq '.modelTrust' "$signed_manifest" >&2
+  fail 'preflight did not pin the signed runtime and operator anchors when it created the engagement'
+}
+signed_guard() {
+  jq -nc --arg cwd "$signed_root" --arg command "$1" \
+    '{hook_event_name:"PreToolUse",session_id:"signed-anchor",cwd:$cwd,tool_name:"Bash",tool_input:{command:$command}}' | "$REAL_CLI" guard
+}
+grep -Fq 'GUARD-SHELL-AMBIGUOUS: model trust pinning is host/operator-only' \
+  <<<"$(signed_guard "argus-assets model trust --manifest $signed_manifest --runtime-key-id runtime --operator-key-id operator")" || \
+  fail 'the guard stopped denying in-session model trust pinning'
+signed_route="argus-assets model route --manifest $signed_manifest --agents dispatchable --dispatch-prefix signed --signal normal --attempt 1 --runtime claude"
+[ -z "$(signed_guard "$signed_route")" ] || fail 'the guard denied the controller batch route after a signed-anchor preflight'
+"$REAL_CLI" ${signed_route#argus-assets } >"$WORK/signed-route.json" || fail 'routing required more than the one signed-anchor preflight'
+jq -e '[.. | objects | select(has("agent") and has("status"))] | length > 0 and all(.status == "selected")' "$WORK/signed-route.json" >/dev/null || {
+  cat "$WORK/signed-route.json" >&2
+  fail 'batch routing after one signed-anchor preflight did not select every dispatchable lane'
+}
+# The pinned bundle is immutable: a relaunch with other signed anchors, and an unpinned manifest
+# that a signed launch meets, are refused instead of re-pinned.
+if signed_preflight signed-operator >"$WORK/signed-relaunch.stdout" 2>&1; then
+  fail 'a relaunch with different signed anchors re-used the pinned engagement'
+fi
+jq -e '[.checks[] | select(.status == "fail") | .evidence] | any(contains("engagement modelTrust is not the trust this launch signed"))' \
+  "$signed_root/ai_agents_internal/preflight.json" >/dev/null || fail 'a relaunch with different signed anchors was not refused by the pinned bundle'
+unpinned_root="$WORK/unpinned-anchor-artifacts"
+mkdir -p "$unpinned_root"
+unpinned_root="$(cd "$unpinned_root" && pwd -P)"
+(cd "$unpinned_root" && "$CLI" preflight --target "$signed_target" --mode B --artifact-root "$unpinned_root" \
+  --engagement-id unpinned-anchor --profile "$FIXTURES/full.json" >/dev/null) || fail 'unsigned-anchor preflight failed'
+jq -e '.modelTrust == null' "$unpinned_root/ai_agents_internal/engagement.json" >/dev/null || fail 'a launch without an operator anchor pinned model trust'
+if (cd "$unpinned_root" && ARGUS_SMOKE_OPERATOR_KEY_ID=signed-operator "$CLI" preflight --target "$signed_target" --mode B \
+  --artifact-root "$unpinned_root" --engagement-id unpinned-anchor --profile "$FIXTURES/full.json" >/dev/null 2>&1); then
+  fail 'a signed-anchor launch accepted an unpinned existing engagement'
+fi
+jq -e '.modelTrust == null' "$unpinned_root/ai_agents_internal/engagement.json" >/dev/null || fail 'a signed-anchor launch rewrote an existing engagement manifest'
+
 # Without Edit, Mode A blocks four essential lanes, which stop the engagement, and six
 # non-essential automation lanes, which become deferred residuals with downgradedFrom=blocked.
 target="$WORK/missing-edit-target"

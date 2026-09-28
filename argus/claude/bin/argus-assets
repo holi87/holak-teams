@@ -283,7 +283,7 @@ Usage:
   argus-assets model route --manifest <engagement.json> --agent <slug> --runtime <claude|codex> --signal <signal> --dispatch-id <id> --attempt <n> [--request <escalation.json>] [--operator-decision <json>] [--controller-token <odysseus-token>]
   argus-assets model route --manifest <engagement.json> --agents <slug,slug|dispatchable> --runtime <claude|codex> --signal normal --dispatch-prefix <id> --attempt 1
   argus-assets model telemetry --manifest <engagement.json> --decision <model-decision.json> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false> [options]
-  argus-assets launch request --target <url-or-path> --workspace <absolute-path> --artifact-root <absolute-path> --mode <A|B|C|D> --engagement-id <id> --launcher <path> --launcher-pid <pid> --claude-executable <path> --runtime-key-id <id> --trust-store <path> --output <path>
+  argus-assets launch request --target <url-or-path> --workspace <absolute-path> --artifact-root <absolute-path> --mode <A|B|C|D> --engagement-id <id> --launcher <path> --launcher-pid <pid> --claude-executable <path> --runtime-key-id <id> [--operator-key-id <id>] --trust-store <path> --output <path>
   argus-assets launch verify --request <json> --authorization <json> --receipt <path> --trust-store <path>
   argus-assets browser provision --artifact-root <absolute-path> [--version <x.y.z>] [--package <absolute .tgz>] [--skip-browser-install] [--json]
   argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--artifact-root <path>] [--output <json|->]
@@ -683,7 +683,7 @@ function launchCommand(args) {
   if (operation === 'request') {
     const options = parseNamedOptions(rest, new Set([
       '--target', '--workspace', '--artifact-root', '--mode', '--engagement-id', '--launcher',
-      '--launcher-pid', '--claude-executable', '--runtime-key-id', '--trust-store', '--output',
+      '--launcher-pid', '--claude-executable', '--runtime-key-id', '--operator-key-id', '--trust-store', '--output',
       '--ttl-seconds', '--capability-sha256',
       '--sandbox-probe-path',
     ]));
@@ -712,6 +712,11 @@ function launchCommand(args) {
     }
     const sandboxProbe = sandboxProbeIdentity(sandboxProbePath, 'launch request sandbox probe', true);
     const trust = loadNativeLaunchTrust(options.runtimeKeyId, options.trustStore, { artifactRoot, targetRoot: target.targetPath });
+    // The signed operator-approval anchor that preflight pins with the runtime key.
+    const { operatorKeyId } = options;
+    if (operatorKeyId && !trust.keys.some((key) => key.keyId === operatorKeyId && key.status === 'active' && key.purpose === 'operator-approval')) {
+      fail(`native launch trust store has no active operator-approval key ${operatorKeyId}`);
+    }
     const ttlSeconds = options.ttlSeconds === undefined ? 300 : positiveInteger(options.ttlSeconds, 'launch request --ttl-seconds');
     if (ttlSeconds < 30 || ttlSeconds > 300) fail('launch request TTL must be between 30 and 300 seconds');
     const output = secureOperatorOutputPath(options.output, [artifactRoot, target.targetPath].filter(Boolean), 'launch request output');
@@ -748,6 +753,7 @@ function launchCommand(args) {
       sandboxProbeUid: sandboxProbe.uid,
       sandboxProbeMode: sandboxProbe.mode,
       environmentPolicy: 'argus-launch-allowlist@1',
+      ...(operatorKeyId && { operatorKeyId }),
       issuedBy: trust.record.subjectId,
       issuedAt: issuedAt.toISOString(),
       expiresAt: new Date(issuedAt.getTime() + ttlSeconds * 1000).toISOString(),
@@ -1032,7 +1038,7 @@ function loadNativeLaunchTrust(keyId, explicitStorePath, { artifactRoot, targetR
   if (!record || record.status !== 'active' || record.purpose !== 'runtime-attestation') {
     fail(`native launch trust store has no active runtime-attestation key ${keyId}`);
   }
-  return { record, path: explicitStorePath, sha256: createHash('sha256').update(raw).digest('hex') };
+  return { record, keys: document.keys, path: explicitStorePath, sha256: createHash('sha256').update(raw).digest('hex') };
 }
 
 function modelCommand(args) {
@@ -1486,17 +1492,11 @@ function pinModelTrust(options) {
   if (modelLaunchAssurance(context.engagement.launchAssurance) === 'unattested') {
     fail('an unattested engagement cannot pin model trust; rerun preflight without --unattested-launch on a fresh artifact root to run attested');
   }
-  const runtimeTrust = loadHostModelTrust(options.runtimeKeyId, 'runtime-attestation', context);
-  const operatorTrust = loadHostModelTrust(options.operatorKeyId, 'operator-approval', context);
-  if (runtimeTrust.sha256 !== operatorTrust.sha256) fail('model trust keys must come from the same secure host trust-store snapshot');
-  const runtimeKey = pinnedTrustKey(runtimeTrust.record);
-  const operatorKey = pinnedTrustKey(operatorTrust.record);
-  if (runtimeKey.keyId === operatorKey.keyId || runtimeKey.keyFingerprintSha256 === operatorKey.keyFingerprintSha256) {
-    fail('runtime-attestation and operator-approval trust anchors must be distinct');
-  }
+  const bundle = modelTrustBundle(options.runtimeKeyId, options.operatorKeyId, context);
+  const { runtimeAttestation: runtimeKey, operatorApproval: operatorKey } = bundle.keys;
   const existing = context.engagement.modelTrust;
   if (existing) {
-    if (existing.keys?.runtimeAttestation?.keyId === runtimeKey.keyId && existing.keys?.operatorApproval?.keyId === operatorKey.keyId && existing.trustStoreSha256 === runtimeTrust.sha256) {
+    if (existing.keys?.runtimeAttestation?.keyId === runtimeKey.keyId && existing.keys?.operatorApproval?.keyId === operatorKey.keyId && existing.trustStoreSha256 === bundle.trustStoreSha256) {
       console.log(`MODEL_TRUST  unchanged runtime=${runtimeKey.keyFingerprintSha256} operator=${operatorKey.keyFingerprintSha256}`);
       return 0;
     }
@@ -1511,7 +1511,24 @@ function pinModelTrust(options) {
     fail('model trust must be pinned before any model decision');
   }
   const updated = structuredClone(context.engagement);
-  updated.modelTrust = {
+  updated.modelTrust = bundle;
+  const errors = validateEngagementManifest(updated);
+  if (errors.length) fail(`pinned model trust makes engagement invalid: ${errors.join('; ')}`);
+  atomicPrivateWrite(context.manifestPath, `${JSON.stringify(updated, null, 2)}\n`);
+  console.log(`MODEL_TRUST  pinned runtimeKeyId=${runtimeKey.keyId} operatorKeyId=${operatorKey.keyId}`);
+  return 0;
+}
+
+function modelTrustBundle(runtimeKeyId, operatorKeyId, context, storePath) {
+  const runtimeTrust = loadHostModelTrust(runtimeKeyId, 'runtime-attestation', context, storePath);
+  const operatorTrust = loadHostModelTrust(operatorKeyId, 'operator-approval', context, storePath);
+  if (runtimeTrust.sha256 !== operatorTrust.sha256) fail('model trust keys must come from the same secure host trust-store snapshot');
+  const runtimeKey = pinnedTrustKey(runtimeTrust.record);
+  const operatorKey = pinnedTrustKey(operatorTrust.record);
+  if (runtimeKey.keyId === operatorKey.keyId || runtimeKey.keyFingerprintSha256 === operatorKey.keyFingerprintSha256) {
+    fail('runtime-attestation and operator-approval trust anchors must be distinct');
+  }
+  return {
     schema: 'argus/model-trust-bundle@1',
     source: 'host-trust-store',
     trustStorePath: runtimeTrust.path,
@@ -1519,11 +1536,6 @@ function pinModelTrust(options) {
     pinnedAt: new Date().toISOString(),
     keys: { runtimeAttestation: runtimeKey, operatorApproval: operatorKey },
   };
-  const errors = validateEngagementManifest(updated);
-  if (errors.length) fail(`pinned model trust makes engagement invalid: ${errors.join('; ')}`);
-  atomicPrivateWrite(context.manifestPath, `${JSON.stringify(updated, null, 2)}\n`);
-  console.log(`MODEL_TRUST  pinned runtimeKeyId=${runtimeKey.keyId} operatorKeyId=${operatorKey.keyId}`);
-  return 0;
 }
 
 function loadHostModelTrust(keyId, expectedPurpose, context, explicitStorePath) {
@@ -4167,6 +4179,9 @@ function inspectNativeLaunchForPreflight({ options, modelRuntime, mode, targetKi
     return {
       ready: true,
       evidence: `authenticated launch ${authorization.launchId}; signer=${authorization.issuedBy}; claude=${authorization.claudeVersion}; model=opus effort=max maxTurns=${authorization.maxTurns}; sandbox=${authorization.sandboxPolicy}; environment=${authorization.environmentPolicy}`,
+      runtimeKeyId: authentication.keyId,
+      operatorKeyId: authorization.operatorKeyId,
+      trustStorePath,
     };
   } catch (error) {
     return { ready: false, evidence: `authenticated native launch unavailable: ${error.message}` };
@@ -4311,6 +4326,9 @@ async function preflight(argv) {
     requireUnattestedLaunchPreconditions({ options, modelRuntime, nativeLaunch, artifactRootPath });
   }
   if (modelRuntime === 'claude' && !nativeLaunch.ready && !unattestedLaunch) fail(nativeLaunch.evidence);
+  // Pin the signed anchors before any write, so no in-session `model trust` or rerun is needed.
+  const launchTrust = nativeLaunch.operatorKeyId && modelTrustBundle(nativeLaunch.runtimeKeyId, nativeLaunch.operatorKeyId,
+    { artifactRoot: artifactRootPath, engagement: { target: { root: targetPath } } }, nativeLaunch.trustStorePath);
   const outputRelative = options.output ?? 'ai_agents_internal/preflight.json';
   const requestedOutputPath = resolve(artifactRootPath, outputRelative);
   const fallbackOutputPath = resolve(artifactRootPath, 'ai_agents_internal/preflight.json');
@@ -4424,6 +4442,7 @@ async function preflight(argv) {
     // engagementManifestSha256. Attested engagements keep the field absent, byte-for-byte
     // identical to every manifest written before unattested mode existed.
     if (unattestedLaunch) engagement.launchAssurance = 'unattested';
+    if (launchTrust) engagement.modelTrust = launchTrust;
     mkdirSync(dirname(requestedEngagementPath), { recursive: true });
     writeFileSync(requestedEngagementPath, `${JSON.stringify(engagement, null, 2)}\n`, { mode: 0o600 });
     chmodSync(requestedEngagementPath, 0o600);
@@ -4447,6 +4466,8 @@ async function preflight(argv) {
     if (!targetIdentitiesEquivalent(engagement.target?.identifier, targetIdentity) || !nullablePhysicalPathsEquivalent(engagement.target?.root, targetPath)) engagementErrors.push('engagement target does not match the inspected target');
     if (engagement.engagementId !== authorization?.engagementId) engagementErrors.push('engagementId does not match authorization manifest');
     if (!Array.isArray(engagement.selectedAgents) || JSON.stringify([...engagement.selectedAgents].sort()) !== JSON.stringify([...selectedSlugs].sort())) engagementErrors.push('engagement selectedAgents do not match the selected mode');
+    if (launchTrust && (engagement.modelTrust?.trustStorePath !== launchTrust.trustStorePath ||
+        JSON.stringify(engagement.modelTrust.keys) !== JSON.stringify(launchTrust.keys))) engagementErrors.push('engagement modelTrust is not the trust this launch signed');
     if (engagementErrors.length === 0) {
       try { engagementState = initializeEngagementState(engagement); }
       catch (error) { engagementErrors.push(`engagement state initialization failed: ${error.message}`); }
