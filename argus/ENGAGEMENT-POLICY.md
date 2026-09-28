@@ -753,7 +753,13 @@ it also merges beside a runner result that is not registered evidence
 (`runner-result-unregistered` blocks), because no lane can register it any more. With a
 template selection installed and the `run-tests.sh` owner dispatchable and not abandoned,
 `report-facts` and the merge refuse a missing runner result and name the recovery instead of
-offering a null runner. It never raises a status. `reporting` cannot advance until the summary is merged. The merge also renders `solution/FINAL-SUMMARY.md` with an
+offering a null runner. Outside Mode B, after dispatchable Aristarchus APPROVEs the current
+corpus and Minos merges verification, Atlas reruns `full-suite` on reporting standby and
+registers that run before Kleio reports. The registered result must contain the latest
+`automation-review.<reviewId>` policy-pass event. Without it, `report-facts` and the merge
+refuse while Atlas holds an active lease and name the rerun recovery; otherwise
+`runner-predates-automation-review` blocks the summary. Mode B and no-review paths stay
+unchanged. It never raises a status. `reporting` cannot advance until the summary is merged. The merge also renders `solution/FINAL-SUMMARY.md` with an
 explicit `Source schema:` line and one `Status reason:` line per reason, so the human-facing
 summary is traceable to the machine contract. The lane-plan `lanes`, evidence-reference
 `references`, and automation-status `tests` arrays contain unique records sorted by

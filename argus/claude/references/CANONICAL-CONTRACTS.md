@@ -399,7 +399,13 @@ Each input counts only once merged and only while its file matches its merge dig
   template selection and a dispatchable `run-tests.sh` owner that is not abandoned, a missing
   runner result justifies no null runner, so `report-facts` and the merge refuse it and name the
   recovery: re-dispatch the owner while its lease is active to run and register the full-suite,
-  or abandon it once released;
+  or abandon it once released. Outside Mode B, when Aristarchus is dispatchable and the
+  current corpus is approved, the registered result must be `full-suite` and contain an
+  `automation-review.<latest reviewId>` event with `category: policy` and `status: pass`.
+  While the runner owner holds an active lease, `report-facts` and the merge refuse an
+  absent or non-matching result and direct Atlas to rerun after APPROVE on reporting standby,
+  register the result, and re-merge evidence and coverage; otherwise the summary is blocked
+  by `runner-predates-automation-review`;
 - `coverage` (required) from the merged `argus/coverage-result@2`: discovery completeness, the
   overall ratios including `automatedExecution`, the scoped-outcome count,
   `criticalUnexecuted`, and `caseDepth` when recorded. Its merge record keeps the digest of each
@@ -425,6 +431,7 @@ Each input counts only once merged and only while its file matches its merge dig
 | `template-selection-missing` | `blocked` | Mode A, C, or D has no runner outcome because no valid `ai_agents_internal/template-selection.json` was installed by `argus-launch --template-selection`. |
 | `runner-result-missing` | `blocked` | Mode A, C, or D has no runner outcome because the `run-tests.sh` owner was abandoned before any `reports/argus-runner-result.json` existed. |
 | `runner-result-unregistered` | `blocked` | Mode A, C, or D has no runner outcome because the `run-tests.sh` owner was abandoned while `reports/argus-runner-result.json` matched no registered `runner-result` reference. |
+| `runner-predates-automation-review` | `blocked` | Outside Mode B, Aristarchus is dispatchable and the current corpus is approved, but no registered `full-suite` result contains the latest review ID's policy-pass event and the runner owner has no active lease to rerun it. |
 
 `solution/FINAL-SUMMARY.md` prints the status with one `Status reason:` line per reason, the
 defect headline and per-status counts, a "Likely, unproven" section (`None.` when empty), the

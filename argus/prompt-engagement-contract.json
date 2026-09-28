@@ -61,6 +61,8 @@
       { "id": "shared-template-semantics", "source": "qa-framework-runner", "markers": ["defect-evidence", "candidate-regression", "owner, reason, evidence, expiry", "solution/quarantine.tsv", "expires_on"] },
       { "id": "one-run-per-harness-root", "source": "qa-framework-runner", "markers": ["One `run-tests.sh` run at a time per harness root", "ARGUS RUNNER BUSY (runner-busy)", "never cite, archive, or register it", "ARGUS_RUN_LOCK_WAIT_SECONDS", "Atlas reruns `full-suite` and registers that run"] },
       { "id": "registered-runner-last", "source": "atlas", "markers": ["the delivered result must be the last run in the root", "rerun `--mode full-suite` and archive and register that run, never the replacing one"] },
+      { "id": "runner-after-review", "source": "atlas", "markers": ["After APPROVED and Minos's verification merge", "rerun `full-suite`, archive and register that run before Kleio reports", "automation-review.<latest reviewId>", "runner-predates-automation-review"] },
+      { "id": "controller-runner-after-review", "source": "orchestration-core", "markers": ["After APPROVED and Minos's verification merge", "re-dispatch Atlas on reporting standby", "before Kleio reports", "runner-predates-automation-review"] },
       { "id": "unregistered-runner-rerun", "source": "kleio", "markers": ["route to Atlas to rerun `full-suite` and register that run, never the unregistered one"] },
       { "id": "suite-quarantine-ledger", "source": "asklepios", "markers": ["solution/quarantine.tsv", "reports/test-inventory.tsv", "expires_on"] },
       { "id": "confirmation-ratio", "source": "qa-core", "markers": ["captured occurrence", "occurrences/attempts ratio", "second success is never fabricated"] },

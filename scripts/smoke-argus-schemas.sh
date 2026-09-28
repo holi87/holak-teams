@@ -470,8 +470,10 @@ if "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEI
   fail "cross-engagement canonical fragment unexpectedly passed"
 fi
 # The final summary reports a runner outcome only as registered runner-result evidence, so Atlas
-# archives the run and registers it before Kleio's closeout merges.
-cp "$FIXTURES/valid/runner-result.json" "$TARGET/reports/evidence/runner-result-full-suite.json"
+# archives the post-APPROVE full-suite run and registers it before Kleio's closeout merges.
+jq '.events += [{caseId: "automation-review.REV-02", category: "policy", status: "pass", expected: false,
+  lifecycle: "n/a", bugId: null, reason: "automation-review-approved"}] | .categories.policy += 1' \
+  "$FIXTURES/valid/runner-result.json" >"$TARGET/reports/evidence/runner-result-full-suite.json"
 jq -nc --arg sha "$(shasum -a 256 "$TARGET/reports/evidence/runner-result-full-suite.json" | cut -d' ' -f1)" --arg at "$(node -e 'process.stdout.write(new Date().toISOString())')" \
   '{"$schema": "argus/evidence-reference@3", schemaVersion: 3, engagementId: "schema-fixture", references: [{id: "EVD-0004", kind: "runner-result",
     mediaType: "application/json", source: "reports/evidence/runner-result-full-suite.json", collectedBy: "atlas", capturedAt: $at, redaction: "synthetic",
@@ -497,7 +499,7 @@ summary_fragment() {
   "$CLI" engagement fragment --manifest "$MANIFEST" --lane kleio --token "$KLEIO" --canonical solution/final-summary.json --id "$1" --input "$2" >/dev/null
 }
 summary_merge() { "$CLI" engagement merge --manifest "$MANIFEST" --owner kleio --token "$KLEIO" --canonical solution/final-summary.json; }
-cp "$FIXTURES/valid/runner-result.json" "$TARGET/reports/argus-runner-result.json"
+cp "$TARGET/reports/evidence/runner-result-full-suite.json" "$TARGET/reports/argus-runner-result.json"
 "$CLI" engagement report-facts --manifest "$MANIFEST" >"$WORK/report-facts.json"
 jq -e '.statusCeiling == "degraded" and .statusReasons == ["case-depth-gaps", "unresolved-proof-residuals"]
   and .counts.bugs == {confirmed: 1, suspected: 1, needsOracle: 1, bounced: 1, quarantined: 1, duplicate: 1, rejected: 1, headline: 2}
@@ -512,14 +514,14 @@ jq -e '.statusCeiling == "degraded" and .statusReasons == ["case-depth-gaps", "u
   "$WORK/report-facts.json" >/dev/null || fail "report-facts did not derive the canonical facts: $(<"$WORK/report-facts.json")"
 (cd "$TARGET" && "$CLI" engagement report-facts --manifest "$MANIFEST" --output reports/report-facts.json) >/dev/null
 # A runner result whose bytes were never registered (hand-written or overwritten by a later run) is refused.
-jq -c . "$FIXTURES/valid/runner-result.json" >"$TARGET/reports/argus-runner-result.json"
+jq -c . "$TARGET/reports/evidence/runner-result-full-suite.json" >"$TARGET/reports/argus-runner-result.json"
 if "$CLI" engagement report-facts --manifest "$MANIFEST" >"$WORK/report-facts-unregistered.out" 2>&1; then fail 'report-facts accepted an unregistered runner result'; fi
 grep -Fq 'reports/argus-runner-result.json (sha256 ' "$WORK/report-facts-unregistered.out" && grep -Fq 'is not registered runner-result evidence' "$WORK/report-facts-unregistered.out" || \
   fail "an unregistered runner result failed for another reason: $(<"$WORK/report-facts-unregistered.out")"
 # The refusal asks for a fresh full-suite run, never for registering whatever a later run left.
 grep -Fq 'the run-tests.sh owner reruns full-suite and archives and registers that run, never this one' "$WORK/report-facts-unregistered.out" ||
   fail "the unregistered runner result refusal does not ask for a fresh full-suite run: $(<"$WORK/report-facts-unregistered.out")"
-cp "$FIXTURES/valid/runner-result.json" "$TARGET/reports/argus-runner-result.json"
+cp "$TARGET/reports/evidence/runner-result-full-suite.json" "$TARGET/reports/argus-runner-result.json"
 cmp -s "$WORK/report-facts.json" "$TARGET/reports/report-facts.json" || fail 'report-facts --output wrote different facts than stdout'
 # Fragment validation needs the complete document, so Kleio's prompt carries the recipe used
 # below; a narrative-only fragment and a completed one with copied status reasons are refused.
@@ -583,7 +585,9 @@ jq -e --slurpfile facts "$WORK/report-facts.json" '.counts == $facts[0].counts a
 mv "$TARGET/reports/argus-runner-result.json" "$WORK/runner-result.moved.json"
 if summary_merge >"$WORK/summary-no-runner.out" 2>&1; then fail 'the final summary merged without its runner result'; fi
 grep -Fq 'final summary runner outcome requires reports/argus-runner-result.json' "$WORK/summary-no-runner.out" || fail "missing runner result failed for another reason: $(<"$WORK/summary-no-runner.out")"
-"$CLI" engagement report-facts --manifest "$MANIFEST" | jq -e '.runner == null' >/dev/null || fail 'report-facts invented a runner outcome without a runner result'
+if "$CLI" engagement report-facts --manifest "$MANIFEST" >"$WORK/report-facts-no-runner.out" 2>&1; then fail 'report-facts accepted no runner after APPROVE while Atlas is active'; fi
+grep -Fq 're-dispatch atlas on reporting standby to rerun full-suite after REV-02 and register it' "$WORK/report-facts-no-runner.out" || \
+  fail "missing post-review runner result did not name the recovery: $(<"$WORK/report-facts-no-runner.out")"
 mv "$WORK/runner-result.moved.json" "$TARGET/reports/argus-runner-result.json"
 jq -c '.runner = null' "$WORK/final-summary.json" >"$WORK/final-summary-unfunded.json"
 summary_fragment summary-unfunded "$WORK/final-summary-unfunded.json"

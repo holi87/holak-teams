@@ -6,7 +6,7 @@ user-invocable: false
 
 # Argus Orchestration Core
 
-Execute the engagement unless the user explicitly requests planning only. Then claim no execution or evidence.
+Execute unless the user requests planning only; then claim no execution or evidence.
 
 ## Sources of authority
 
@@ -147,9 +147,9 @@ and claims it only while her lease is active; a server fault without it is resid
 In Mode A she stays on `automation` standby: before a routed Nike server-fault run,
 re-dispatch her to claim `fault`, and have her release it after the run.
 
-The validated surface inventory is the coverage denominator. Calculate canonical
-coverage from versioned observations before reporting; test/defect counts contribute
-nothing. Every zero, omission, gate, or below-floor category is residual risk.
+The validated inventory is the coverage denominator. Calculate canonical coverage from
+versioned observations before reporting; test/defect counts contribute nothing. Report
+zeros, omissions, gates, and below-floor categories as residual risks.
 
 ## Proof loop and deep hunt
 
@@ -260,11 +260,12 @@ Odysseus's `success` cleanup requires its `complete` arrival.
 
 After each Aristarchus round, run `argus-assets automation-review check --manifest
 <manifest>`. Exit 13 (BLOCKED, STALE, or ABSENT) routes each blocker to its `ownerLane`;
-after the fixes, re-dispatch Aristarchus on his active lease for the next round, a
-phase-scoped re-dispatch, until APPROVED, three rounds, or the closeout reserve. Defer
-terminal cleanup of Aristarchus and the automation-phase lanes until the loop ends. Exit 14
-is invalid input: stop the loop and report it.
-An unresolved review blocks the final summary and is a named residual.
+after fixes, re-dispatch Aristarchus on his active lease until APPROVED, three rounds,
+or the closeout reserve. Keep Aristarchus and automation lanes active through the loop.
+Exit 14 is invalid input: stop and report it. Unresolved reviews block the summary.
+After APPROVED and Minos's verification merge, re-dispatch Atlas on reporting standby:
+rerun `full-suite`, archive and register that run before Kleio reports. Its policy-pass
+event must name the latest review ID; otherwise `runner-predates-automation-review` blocks.
 
 Run the independent automation blocklist after Aristarchus. If the named independent
 reviewer is unavailable, the controller or Minos runs the exact deterministic blocklist,
@@ -277,7 +278,6 @@ and status; contributions/gates; runner command/result/exit and outcome categori
 coverage; defect states; funded browser/a11y scope; risks; and commit state. Commit an
 authorized in-scope deliverable before stop, or mark it blocked.
 
-Never claim an agent ran unless its call completed and its result was collected. Never
-claim an artifact, test pass, clean target, coverage, or capability that was not verified.
-A failed preflight, absent lane, partial scan, or unexecuted plan remains visible and can
-never be rewritten as success.
+Never claim an agent ran without its completed call and collected result. Claim only
+verified artifacts, test passes, target state, coverage, and capabilities. Keep failed
+preflight, absent lanes, partial scans, and unexecuted plans visible.
