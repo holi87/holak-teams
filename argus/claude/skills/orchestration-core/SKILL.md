@@ -10,7 +10,7 @@ Execute the engagement unless the user explicitly requests planning only. Then c
 
 ## Sources of authority
 
-- `argus/orchestration-plan@2` owns modes, gates, DAG, waves, phases, and the
+- `argus/orchestration-plan@1` owns modes, gates, DAG, waves, and the
   controller/specialist boundary. Packaged preflight persists its disposition-filtered
   projection; never rebuild a roster from prose.
 - Capability matrix and preflight own availability, dispositions, and fallbacks; RACI owns
@@ -201,9 +201,9 @@ availability binding and may have none. Frontier continuation follows the policy
 checkpointed worker signal resumes from that checkpoint. Route a controller-observed
 `no-artifact`, `zero-candidates`, or uncheckpointed `turn-limit` without `--request`; each
 dispatch gets at most one such fresh-restart. `BACKOFF_RETRY_SELECTED` is followed by
-`start-attempt --wait true` with an explicit Bash `timeout` of 330000 ms: the wait lasts up
-to the 300-second backoff, past the 120000 ms default. A killed wait changes no state; rerun
-it. Report `AUTO_CONTINUATION_EXHAUSTED` as a named residual.
+`start-attempt --wait true`; run it with the Bash `timeout` set to
+`(continuation.backoffSeconds + 60) * 1000` ms, because the default 120 s timeout kills a
+longer wait. Report `AUTO_CONTINUATION_EXHAUSTED` as a named residual.
 Operator-gated signals still require a signed `argus/model-operator-decision@1`; unattested
 runs report them as blocked.
 

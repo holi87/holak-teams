@@ -106,6 +106,10 @@ import {
   validateTemplateSelection,
 } from '../lib/template-policy.mjs';
 
+// Set only while withFailurePrefix runs one member of a batch command; declared before any
+// top-level code so that fail() can always read it.
+let failurePrefix = '';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
 const INVENTORY_PATH = join(ROOT, 'runtime-reference-inventory.json');
@@ -1039,6 +1043,13 @@ function modelCommand(args) {
 // immutable decision. The caller has already required its options and verified the
 // packaged routing assets.
 function routeModelDecision(options) {
+  const { candidate, engagementContext } = buildModelDecisionCandidate(options);
+  return persistModelDecision(modelPolicy, candidate, engagementContext);
+}
+
+// Validates one exact route and returns its schema-checked immutable decision candidate
+// without persisting anything.
+function buildModelDecisionCandidate(options) {
   const engagementContext = loadModelEngagement(options.manifest, options.agent);
   const attempt = positiveInteger(options.attempt, '--attempt');
   requirePinnedModelTrust(engagementContext);
@@ -1070,15 +1081,17 @@ function routeModelDecision(options) {
   };
   const candidate = resolveModelDecision(modelPolicy, runtimeAdapters, routingInput);
   assertSchemaDocument(validateModelDecisionSchema, candidate, 'model decision');
-  return persistModelDecision(modelPolicy, candidate, engagementContext);
+  return { candidate, engagementContext };
 }
 
 // Batch initial routing persists the normal attempt-1 decision of every listed agent in one
 // controller call before the first allocation. `--agents dispatchable` expands to Odysseus
 // plus every agent the current preflight makes dispatchable (the same projection the
-// model-control seal binds); an explicit list must name only such agents. Every agent is
-// validated before any decision is persisted, each dispatch ID is `<prefix>-<agent>`, and an
-// exact replay returns the already persisted decisions unchanged.
+// model-control seal binds); an explicit list must name only such agents. Every candidate is
+// built, and then checked against the persisted initial set under the initial model-control
+// lock, before any decision is persisted, so a refusal names its agent and persists nothing.
+// Each dispatch ID is `<prefix>-<agent>`, and an exact replay returns the already persisted
+// decisions unchanged.
 function routeModelDecisionBatch(args) {
   const options = parseNamedOptions(args, new Set([
     '--manifest', '--agents', '--runtime', '--signal', '--dispatch-prefix', '--attempt',
@@ -1101,24 +1114,30 @@ function routeModelDecisionBatch(args) {
   }
   const agents = batchRouteAgents(context, options.agents, options.runtime);
   for (const agent of agents) requireStableIdentifier(`${options.dispatchPrefix}-${agent}`, `batch model route dispatch ID for ${agent}`);
-  const decisions = agents.map((agent) => {
-    const decision = routeModelDecision({
-      manifest: options.manifest,
-      agent,
-      runtime: options.runtime,
-      signal: 'normal',
-      dispatchId: `${options.dispatchPrefix}-${agent}`,
-      attempt: '1',
-    });
-    return {
-      agent,
-      dispatchId: decision.dispatchId,
-      decisionId: decision.decisionId,
-      relativePath: decision.relativePath,
-      status: decision.status,
-      reasonCode: decision.reasonCode,
-    };
+  const prepared = agents.map((agent) => withFailurePrefix(`batch model route ${agent}`, () => buildModelDecisionCandidate({
+    manifest: options.manifest,
+    agent,
+    runtime: options.runtime,
+    signal: 'normal',
+    dispatchId: `${options.dispatchPrefix}-${agent}`,
+    attempt: '1',
+  })));
+  const persisted = withInitialModelControlLock(context, () => {
+    for (const { candidate, engagementContext } of prepared) {
+      if (!isInitialSelection(candidate)) continue;
+      withFailurePrefix(`batch model route ${candidate.agent}`, () => requireInitialSelectionAdmissible(engagementContext, candidate));
+    }
+    return prepared.map(({ candidate, engagementContext }) => withFailurePrefix(`batch model route ${candidate.agent}`,
+      () => persistModelDecisionUnlocked(modelPolicy, candidate, engagementContext)));
   });
+  const decisions = persisted.map((decision) => ({
+    agent: decision.agent,
+    dispatchId: decision.dispatchId,
+    decisionId: decision.decisionId,
+    relativePath: decision.relativePath,
+    status: decision.status,
+    reasonCode: decision.reasonCode,
+  }));
   console.log(JSON.stringify({
     schema: 'argus/model-route-batch@1',
     runtime: options.runtime,
@@ -1813,8 +1832,10 @@ function isOutcomeRoute(options) {
 
 // Binds a checkpoint-less continuation to the prior selected decision and the exact active
 // allocation, the same way a pre-spawn model-unavailable retry is bound. The controller's
-// claim is checked against the artifact root: the agent's RACI accountable artifacts that
-// physically exist are recorded, and a no-artifact claim they contradict is refused.
+// claim is checked against the artifact root: the lane's outputs that physically exist are
+// recorded, a no-artifact claim any of them contradicts is refused, and a zero-candidates
+// claim the lane's filed candidates contradict is refused. A turn-limit is uncheckpointed
+// only when the lane holds no checkpoint the escalation path could resume from.
 function bindModelOutcome(context, options, attempt) {
   if (!isOutcomeRoute(options)) return null;
   if (options.request) fail(`${options.signal} is controller-observed and does not accept --request`);
@@ -1829,9 +1850,18 @@ function bindModelOutcome(context, options, attempt) {
     attempt,
   }, options.runtime);
   requireAllocationExecutionAncestor(allocation, previous, options.signal);
-  const observedArtifacts = observedAccountableArtifacts(context, options.agent);
-  if (options.signal === 'no-artifact' && observedArtifacts.length > 0) {
-    fail(`no-artifact is contradicted by ${observedArtifacts.join(', ')}; route turn-limit instead`);
+  if (options.signal === 'turn-limit') {
+    const checkpoint = resumableCheckpoint(context, state.checkpoints[options.agent], allocation, options.dispatchId, attempt);
+    if (checkpoint) {
+      fail(`turn-limit is checkpointed at ${checkpoint.path}; persist the envelope with model request --checkpoint-ref ${checkpoint.path} and route it with --request`);
+    }
+  }
+  const observed = observedLaneArtifacts(context, state, options.agent);
+  if (options.signal === 'no-artifact' && observed.all.length > 0) {
+    fail(`no-artifact is contradicted by ${observed.all.join(', ')}; route turn-limit instead`);
+  }
+  if (options.signal === 'zero-candidates' && observed.candidates.length > 0) {
+    fail(`zero-candidates is contradicted by ${observed.candidates.join(', ')}; route turn-limit instead`);
   }
   return {
     previousDecisionId: previous.decisionId,
@@ -1839,8 +1869,21 @@ function bindModelOutcome(context, options, attempt) {
     allocationId: allocation.allocationId,
     allocationSha256: createHash('sha256').update(JSON.stringify(allocation)).digest('hex'),
     priorCheckpointlessRetries: priorCheckpointlessRetries(context, options.agent, options.runtime, options.dispatchId, attempt),
-    observedArtifacts,
+    observedArtifacts: observed.recorded,
   };
+}
+
+// The lane's current checkpoint when the escalation path can resume the routed attempt from
+// it: bound to the active allocation, the exact dispatch, and the prior attempt, physically
+// safe, and matching its recorded digest (the checks validateModelEscalationState applies).
+// A stale or damaged checkpoint returns null, so the fresh restart stays available.
+function resumableCheckpoint(context, checkpoint, allocation, dispatchId, attempt) {
+  if (!checkpoint || checkpoint.dispatchId !== dispatchId || checkpoint.attempt !== attempt - 1 || checkpoint.allocationId !== allocation.allocationId) return null;
+  const path = resolve(context.artifactRoot, checkpoint.path);
+  if (!isWithin(context.artifactRoot, path) || !safePhysicalPath(context.artifactRoot, path)) return null;
+  const entry = lstatSafe(path);
+  if (!entry?.isFile() || entry.nlink !== 1) return null;
+  return createHash('sha256').update(readFileSync(path)).digest('hex') === checkpoint.sha256 ? checkpoint : null;
 }
 
 // Counts the checkpoint-less restarts that earlier attempts of the exact
@@ -1852,18 +1895,50 @@ function priorCheckpointlessRetries(context, agent, runtime, dispatchId, attempt
     .length;
 }
 
-// The agent's packaged RACI accountable artifacts that exist under the artifact root without
-// crossing a symbolic link, as sorted artifact-root-relative paths.
-function observedAccountableArtifacts(context, agent) {
+// The lane's outputs that exist under the artifact root without crossing a symbolic link, as
+// sorted artifact-root-relative paths: its packaged RACI accountable artifacts, the candidate
+// files it filed under its capability-matrix `bugs/<PREFIX>-*` prefix, the owned artifact
+// files only it may write (such as its technique-coverage ledger), and the fragments it
+// submitted. Roots with several owners and scaffold-seeded directories are left out because
+// their presence proves nothing about this lane. `candidates` is the filed-candidate subset;
+// `recorded` drops names the model-decision path grammar cannot hold, which still count.
+function observedLaneArtifacts(context, state, agent) {
   assertPackagedAsset(requireAsset('raci-matrix'), 'trusted raci-matrix');
+  assertPackagedAsset(requireAsset('capability-matrix'), 'trusted capability-matrix');
   const record = raciContract.agents?.find((item) => item.slug === agent);
   if (!record || !Array.isArray(record.accountableArtifacts)) fail(`raci-matrix has no accountable-artifact record for ${agent}`);
-  return record.accountableArtifacts
-    .filter((artifact) => {
-      const path = resolve(context.artifactRoot, artifact);
-      return isWithin(context.artifactRoot, path) && existsSync(path) && safePhysicalPath(context.artifactRoot, path);
-    })
-    .sort();
+  const physical = (artifact) => {
+    const path = resolve(context.artifactRoot, artifact);
+    return isWithin(context.artifactRoot, path) && existsSync(path) && safePhysicalPath(context.artifactRoot, path) ? path : null;
+  };
+  const realFile = (artifact) => {
+    const path = physical(artifact);
+    const entry = path ? lstatSafe(path) : null;
+    return Boolean(entry?.isFile() && entry.nlink === 1);
+  };
+  const accountable = record.accountableArtifacts.filter((artifact) => physical(artifact) !== null);
+  const owned = (context.engagement.writePolicy.ownedArtifactRoots ?? [])
+    .filter((root) => root.owners.length === 1 && root.owners[0] === agent)
+    .map((root) => root.path)
+    .filter(realFile);
+  const fragments = Object.values(state.fragments ?? {}).flat()
+    .filter((item) => item?.lane === agent && typeof item.path === 'string')
+    .map((item) => item.path)
+    .filter(realFile);
+  const prefixes = (matrix.agents.find((item) => item.slug === agent)?.artifactPaths ?? [])
+    .map((artifact) => /^bugs\/([A-Z]{3})-\*$/.exec(artifact)?.[1])
+    .filter(Boolean);
+  const bugs = physical('bugs');
+  const candidates = prefixes.length > 0 && bugs && lstatSafe(bugs)?.isDirectory()
+    ? readdirSync(bugs)
+      .filter((name) => prefixes.some((prefix) => name.startsWith(`${prefix}-`)))
+      .map((name) => `bugs/${name}`)
+      .filter(realFile)
+      .sort()
+    : [];
+  const all = [...new Set([...accountable, ...owned, ...fragments, ...candidates])].sort();
+  const recordable = (artifact) => /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/-]+$/.test(artifact);
+  return { all, candidates, recorded: all.filter(recordable) };
 }
 
 function validateModelEscalationState(context, request, runtime, raw) {
@@ -2046,25 +2121,36 @@ function controllerMaxTurns() {
 }
 
 function persistModelDecision(policy, candidate, context) {
-  if (candidate.status === 'selected' && candidate.signal === 'normal' && candidate.attempt === 1) {
+  if (isInitialSelection(candidate)) {
     return withInitialModelControlLock(context, () => {
-      const exact = selectedModelDecisions(context, candidate.agent, candidate.runtime, candidate.dispatchId, candidate.attempt);
-      const allInitial = selectedModelDecisions(context, candidate.agent, undefined, undefined, candidate.attempt)
-        .filter((decision) => decision.signal === 'normal');
-      if (allInitial.some((decision) => !sameSelectedExecution(decision, candidate))) {
-        fail('a different selected normal attempt-1 decision already exists for this agent in the engagement');
-      }
-      if (exact.length === 0) {
-        if (loadModelControlSeal(context, { required: false })) fail('normal attempt 1 cannot be added after the initial model-control set was sealed');
-        const state = getEngagementStatus(context.engagement);
-        if (Object.values(state.allocations).some((allocation) => allocation.status === 'active')) {
-          fail('normal attempt 1 must be selected before any allocation becomes active');
-        }
-      }
+      requireInitialSelectionAdmissible(context, candidate);
       return persistModelDecisionUnlocked(policy, candidate, context);
     });
   }
   return persistModelDecisionUnlocked(policy, candidate, context);
+}
+
+function isInitialSelection(candidate) {
+  return candidate.status === 'selected' && candidate.signal === 'normal' && candidate.attempt === 1;
+}
+
+// Refuses a selected normal attempt-1 candidate that differs from another initial decision
+// of its agent, or that would add a decision after the seal or the first active allocation.
+// The caller holds the initial model-control lock.
+function requireInitialSelectionAdmissible(context, candidate) {
+  const exact = selectedModelDecisions(context, candidate.agent, candidate.runtime, candidate.dispatchId, candidate.attempt);
+  const allInitial = selectedModelDecisions(context, candidate.agent, undefined, undefined, candidate.attempt)
+    .filter((decision) => decision.signal === 'normal');
+  if (allInitial.some((decision) => !sameSelectedExecution(decision, candidate))) {
+    fail('a different selected normal attempt-1 decision already exists for this agent in the engagement');
+  }
+  if (exact.length === 0) {
+    if (loadModelControlSeal(context, { required: false })) fail('normal attempt 1 cannot be added after the initial model-control set was sealed');
+    const state = getEngagementStatus(context.engagement);
+    if (Object.values(state.allocations).some((allocation) => allocation.status === 'active')) {
+      fail('normal attempt 1 must be selected before any allocation becomes active');
+    }
+  }
 }
 
 function persistModelDecisionUnlocked(policy, candidate, context) {
@@ -6123,6 +6209,16 @@ function readSecureJson(path, label) {
 }
 
 function fail(message) {
-  console.error(`FAIL  ${message}`);
+  console.error(`FAIL  ${failurePrefix}${message}`);
   process.exit(1);
+}
+
+// Runs one step of a batch command so that any refusal it raises, including a thrown error,
+// names the batch member it belongs to.
+function withFailurePrefix(label, operation) {
+  const previous = failurePrefix;
+  failurePrefix = `${previous}${label}: `;
+  try { return operation(); }
+  catch (error) { fail(error?.message ?? String(error)); }
+  finally { failurePrefix = previous; }
 }

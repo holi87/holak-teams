@@ -1396,7 +1396,7 @@
           "reference": "raci-matrix"
         },
         {
-          "consumer": "runtime:observedAccountableArtifacts",
+          "consumer": "runtime:observedLaneArtifacts",
           "kind": "command",
           "mechanism": "cli-require-asset",
           "reference": "raci-matrix"
@@ -2203,6 +2203,12 @@
           "consumer": "orchestration:controller",
           "kind": "orchestration",
           "mechanism": "required-asset",
+          "reference": "capability-matrix"
+        },
+        {
+          "consumer": "runtime:observedLaneArtifacts",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
           "reference": "capability-matrix"
         }
       ]

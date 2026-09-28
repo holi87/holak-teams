@@ -61,7 +61,7 @@ Apply this contract to every assigned work unit.
 
 - Requirements, recon, and behaviour are evidence, not interchangeable truth. Each oracle records its source, applicability, exceptions, and classification (requirement, contract, justified invariant, consistency, or hypothesis). Hypotheses and consistency divergences cannot confirm defects. Verify prerequisites before applying a metamorphic invariant; ambiguity is residual risk, never permission to invent expectations.
 - Compute each expected value independently from the specification, never from the live response it judges. A snapshot of current application behaviour is a change-detector, not a correctness oracle — use one only as an independently reviewed regression or visual baseline, never as the source of what is correct. When an exact formula is unknown or too costly, assert a metamorphic invariant rather than invent a point value.
-- Derive work from surface inventory and risk. Exercise each funded surface or record its gap; counts never replace coverage. Record what you exercised in `solution/coverage-observations.json`, in every mode: submit your own `<lane>:<surfaceId>` records, shaped by `argus-assets path coverage-contract`, as an immutable fragment through `argus-assets engagement fragment` for Kleio to merge. They cite only registered evidence IDs and ledger defect references; executed and meaningful are derived from that evidence, never declared.
+- Derive work from surface inventory and risk. Exercise each funded surface or record its gap; counts never replace coverage. Record what you exercised as a coverage observation that cites registered evidence; executed and meaningful are derived from that evidence, never declared.
 - An unreachable dependency excludes that dependency's surface, never the rule it feeds. Find where the rule's effect is observable — the field it writes, the transition it constrains — and test the consumer there. Scope out a named surface with evidence; never a rule, a requirement, or a risk class.
 - The costliest defects correlate inversely with how often they are found; deep-logic, cross-state, and money or authorization invariants hide where breadth-only coverage never reaches. Hold every funded surface at baseline breadth, then spend depth on the highest-consequence invariants first, not on the cheapest confirmations.
 - Concrete examples in role catalogs are test hypotheses until their oracle applicability is established; they cannot override the sourced-oracle rule. Duplicate writes, negative balances, text units, casing, rounding, and timing have product-specific exceptions.
@@ -100,7 +100,7 @@ Execute the engagement unless the user explicitly requests planning only. Then c
 
 ## Sources of authority
 
-- `argus/orchestration-plan@2` owns modes, gates, DAG, waves, phases, and the
+- `argus/orchestration-plan@1` owns modes, gates, DAG, waves, and the
   controller/specialist boundary. Packaged preflight persists its disposition-filtered
   projection; never rebuild a roster from prose.
 - Capability matrix and preflight own availability, dispositions, and fallbacks; RACI owns
@@ -291,9 +291,9 @@ availability binding and may have none. Frontier continuation follows the policy
 checkpointed worker signal resumes from that checkpoint. Route a controller-observed
 `no-artifact`, `zero-candidates`, or uncheckpointed `turn-limit` without `--request`; each
 dispatch gets at most one such fresh-restart. `BACKOFF_RETRY_SELECTED` is followed by
-`start-attempt --wait true` with an explicit Bash `timeout` of 330000 ms: the wait lasts up
-to the 300-second backoff, past the 120000 ms default. A killed wait changes no state; rerun
-it. Report `AUTO_CONTINUATION_EXHAUSTED` as a named residual.
+`start-attempt --wait true`; run it with the Bash `timeout` set to
+`(continuation.backoffSeconds + 60) * 1000` ms, because the default 120 s timeout kills a
+longer wait. Report `AUTO_CONTINUATION_EXHAUSTED` as a named residual.
 Operator-gated signals still require a signed `argus/model-operator-decision@1`; unattested
 runs report them as blocked.
 
@@ -397,12 +397,8 @@ The complete installed framework contract is
   `intermittent-unreproduced`, which is not RED evidence; after one, raise n once to the
   99% bound min(200, ceil(ln 0.01 / ln(1 - p))). Flaky-RED applies only to deterministic
   (n = 1) regressions.
-- Quarantine requires an owner, reason, evidence, expiry, and explicit runner outcome: the
-  runtime quarantine tag (TypeScript `@quarantine`, Java `@Tag("quarantine")`, Python
-  `@pytest.mark.quarantine`) plus exactly one headerless `solution/quarantine.tsv` row that
-  only Atlas or Asklepios writes, five tab-separated fields: inventory `case_id`, owner
-  lane, reason token, ISO `expires_on`, and issue token (`#123` or `KEY-123`). Expired,
-  malformed, or unmatched entries fail closed, and a regression is never quarantined. Final
+- Quarantine requires an owner, reason, evidence, expiry, and explicit runner outcome.
+  Expired or malformed entries fail closed, and a regression is never quarantined. Final
   verification uses the lockfile, clean install/state, and the same command documented for
   CI.
 
