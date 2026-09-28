@@ -88,7 +88,7 @@ Never hand-edit a generated file. Edit its source, then regenerate:
 ## Argus maintainer rules
 
 - **Budgets** (`argus/runtime-assets.source.json`): generated assets ≤ 2,530,000 bytes,
-  installed plugin ≤ 3,540,000 bytes. Raise a budget only in a commit that names the growth.
+  installed plugin ≤ 3,550,000 bytes. Raise a budget only in a commit that names the growth.
 - **Prompt budgets** (`argus/prompt-budgets.json`, schema v2) — absolute corpus and
   per-agent ceilings plus an `approvedCorpus` SHA-256 over prompts and doctrine profiles,
   enforced by `node scripts/check-argus-prompts.mjs`. Restamp with

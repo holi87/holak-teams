@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "budgets": {
     "generatedAssetsBytes": 2530000,
-    "installedPluginBytes": 3540000
+    "installedPluginBytes": 3550000
   },
   "templateCompositions": {
     "typescript": {

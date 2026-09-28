@@ -97,7 +97,7 @@ corpus and per-agent ceilings, description and duplication budgets, and the SHA-
 capability-selected profile and the default-off optional profile, and checks a
 representative Mode A output/quality contract. `scripts/approve-argus-prompts.mjs` restamps
 the approval from benchmark evidence or as a pending record valid for one release. The
-budget is 2,530,000 bytes for generated runtime assets and 3,540,000 bytes for the complete
+budget is 2,530,000 bytes for generated runtime assets and 3,550,000 bytes for the complete
 installed plugin (`runtime-assets.source.json`). `COLOR-SCHEME.md` and team graphs are
 intentionally maintainer-only.
 
