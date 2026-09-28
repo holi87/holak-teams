@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 64972,
-    "sha256": "594d1f52b07d28701ff98f352828e1774fe96b18ed8a3c9e6ed2bcc6140a75c6"
+    "bytes": 64989,
+    "sha256": "3e18ef790e64bd90549c6bb95b5fb7c29fa2771f25ae59b4a6f7bf9927798913"
   }
 }
