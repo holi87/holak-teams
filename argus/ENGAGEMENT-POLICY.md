@@ -745,8 +745,10 @@ merged after its latest input change), overwrites them, and caps the status by t
 `statusReasons`: a BLOCK, STALE, or ABSENT review or a confirmed bug without regression blocks;
 an unexecuted critical surface, case-depth gaps, an unresolved proof residual, a
 non-delivery-gate runner, runner exit codes 11 to 15, a non-converged deep-hunt skip, or an
-abandoned lane degrade. In Mode A, C, or D without an installed template selection, a null
-runner (no automated test, no runner result) merges and `template-selection-missing` blocks. It
+abandoned lane or a canonical its abandoned owner never merged (`canonical-unmerged:<path-slug>`)
+degrade. In Mode A, C, or D without a runner result, a null runner merges when no template
+selection is installed and nothing was automated (`template-selection-missing` blocks) or after
+the `run-tests.sh` owner was abandoned (`runner-result-missing` blocks). It
 never raises a status. `reporting` cannot advance until the summary is merged. The merge also renders `solution/FINAL-SUMMARY.md` with an
 explicit `Source schema:` line and one `Status reason:` line per reason, so the human-facing
 summary is traceable to the machine contract. The lane-plan `lanes`, evidence-reference

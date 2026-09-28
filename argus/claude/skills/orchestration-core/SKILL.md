@@ -116,27 +116,27 @@ waits only on dispatched predecessors. The immutable dispatchable projection fil
 participants, so gated roles create no false barrier. Advance after projected arrivals;
 worker `success` requires all declared arrivals, while failure never counts as one.
 Heartbeats bind allocation/dispatch/attempt; retry starts a new generation.
-For a lane that fails permanently, such as `AUTO_CONTINUATION_EXHAUSTED`, emit its telemetry,
+For a permanently failing lane, such as `AUTO_CONTINUATION_EXHAUSTED`, emit its telemetry,
 run its `failure` cleanup, then `argus-assets engagement barrier abandon --manifest <manifest>
 --lane <slug> --controller-token <odysseus-token> --reason
-<continuation-exhausted|worker-failure>`; the barriers stop waiting for it and the final summary
-records `lane-abandoned:<lane>`. Never re-allocate a released lane. A permanent Kalchas, Minos,
-or Kleio failure stops the engagement.
+<continuation-exhausted|worker-failure>`; the barriers stop waiting and the summary records
+`lane-abandoned:<lane>` (for Atlas, also `runner-result-missing`). Never re-allocate a released
+lane. A permanent Kalchas, Minos, or Kleio failure stops the engagement.
 
 Route work through `argus-assets raci route`. Workers write owned outputs or immutable
 fragments; only the RACI owner validates and deterministically merges. Reject malformed,
-legacy, cross-engagement, duplicate, or wrong-owner fragments. Atlas stays on `reporting`
-standby: once Kleio returns her `kleio-architecture` fragment, re-dispatch him to merge
-`solution/ARCHITECTURE.md`, then re-dispatch Kleio to verify it before her go/no-go; record
-her `reporting` arrival only after that RESULT.
+legacy, cross-engagement, duplicate, or wrong-owner fragments. Unless abandoned, Atlas stays
+on `reporting` standby: once Kleio returns her `kleio-architecture` fragment, re-dispatch him
+to merge `solution/ARCHITECTURE.md`, then re-dispatch Kleio to verify it before her go/no-go;
+record her `reporting` arrival only after that RESULT.
 
 Mode B accepts reproduction with evidence and runner=null. Automation duties in role prose apply only when funded and dispatchable; otherwise report automation-unfunded.
 
 Before framework work run `argus-assets template detect` and consume the operator's explicit
 `template select` record, `ai_agents_internal/template-selection.json`, which `argus-launch
 --template-selection` installs; never write or infer it. Without it, report the missing
-selection as operator-required residual risk; the runner=null summary is then blocked by
-`template-selection-missing`.
+selection as operator-required residual risk; `template-selection-missing` then blocks the
+runner=null summary.
 `adapt` forbids scaffolding; `build` allows `template scaffold` only at selected roots. The
 runner defines `baseline`, `defect-evidence`, `candidate-regression`, and `full-suite`;
 preserve product, automation, infrastructure, skip, and policy outcomes with truthful exits.

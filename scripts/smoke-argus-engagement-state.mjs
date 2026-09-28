@@ -28,6 +28,7 @@ import {
   cleanupWorker,
   conditionalGateRequest,
   createDefaultEngagement,
+  deriveFinalSummaryFacts,
   ensurePreflightHeartbeat,
   evaluateWriteGuard,
   getBarrierStatus,
@@ -60,6 +61,7 @@ const MODE_A_PHASES = [
   'preflight', 'discovery', 'hunting', 'proof', 'deep-hunt-1', 'deep-proof-1', 'deep-hunt-2', 'deep-proof-2',
   'deep-hunt-3', 'deep-proof-3', 'automation', 'verification', 'reporting', 'complete',
 ];
+const NULL_RUNNER_REFUSAL = 'runner=null is only valid for Mode B without automation, or in Mode A, C, or D without a reports/argus-runner-result.json while no template selection is installed and nothing was automated, or after the run-tests.sh owner was abandoned';
 const work = mkdtempSync(join(tmpdir(), 'argus-engagement-state-'));
 
 try {
@@ -85,6 +87,7 @@ try {
   testAbandonedLaneLeavesBarriers();
   testBudgetStopAbandonsUnallocatedLanes();
   testCompletionRequiresFinalSummary();
+  testAbandonedRunnerOwnerFinalSummary();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
   testRedispatchedHeartbeatWorkUnits();
@@ -1122,7 +1125,7 @@ function testCompletionRequiresFinalSummary() {
   assert(getEngagementStatus(manifest).revision === before && getEngagementStatus(manifest).currentPhase === 'reporting',
     'a refused advance out of reporting changed the engagement state');
 
-  const refusal = 'runner=null is only valid for Mode B without automation, or in Mode A, C, or D without automation, a reports/argus-runner-result.json, or an installed template selection';
+  const refusal = NULL_RUNNER_REFUSAL;
   const runnerPath = join(fixture.root, 'reports', 'argus-runner-result.json');
   mkdirSync(join(fixture.root, 'reports'), { recursive: true });
   writeFileSync(runnerPath, `${JSON.stringify(runnerResultFixture)}\n`);
@@ -1153,6 +1156,72 @@ function testCompletionRequiresFinalSummary() {
   arriveBarrier(manifest, 'odysseus', controller.token, 'complete');
   cleanupWorker(manifest, 'kleio', kleio.token, 'success');
   assert(cleanupWorker(manifest, 'odysseus', controller.token, 'success').outcome === 'success', 'the controller did not complete after the merged final summary');
+}
+
+// Atlas owns run-tests.sh. Once he is abandoned (a permanent failure or a controller-budget
+// stop), no runner result can follow even with an installed template selection, and a test he
+// recorded was never run by a runner. Kleio's runner=null summary then merges, blocked by
+// runner-result-missing, and names each canonical that no lane can publish any more, such as the
+// architecture her kleio-architecture fragment was for; the engagement still completes. A runner
+// result on disk, or an installed selection with Atlas still present, requires the runner outcome.
+function testAbandonedRunnerOwnerFinalSummary() {
+  const fixture = createFixture('abandoned-runner-owner', ['atlas', 'kleio', 'odysseus']);
+  const { manifest } = fixture;
+  writeTemplateSelection(fixture);
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('abandoned-runner-controller') });
+  const tokens = {};
+  for (const lane of ['atlas', 'kleio']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`abandoned-runner-${lane}`) }).token;
+  }
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'discovery');
+  while (getEngagementStatus(manifest).currentPhase !== 'automation') advanceBarrier(manifest, 'odysseus', controller.token);
+  const automation = { $schema: 'argus/automation-status@2', schemaVersion: 2, engagementId: manifest.engagementId, tests: [{
+    testId: 'TST-0001', owner: 'atlas', status: 'implemented', runner: './run-tests.sh', updatedAt: new Date().toISOString(), coversBugIds: [], evidenceIds: [] }] };
+  writeFragment(manifest, 'atlas', tokens.atlas, 'solution/automation-status.json', 'atlas-automation-status', `${JSON.stringify(automation)}\n`);
+  mergeCanonical(manifest, 'atlas', tokens.atlas, 'solution/automation-status.json');
+  cleanupWorker(manifest, 'atlas', tokens.atlas, 'failure');
+  abandonLane(manifest, 'atlas', controller.token, 'continuation-exhausted');
+  while (getEngagementStatus(manifest).currentPhase !== 'reporting') advanceBarrier(manifest, 'odysseus', controller.token);
+  writeFragment(manifest, 'kleio', tokens.kleio, 'solution/ARCHITECTURE.md', 'kleio-architecture',
+    '## 10. How we used AI\nDelegated recon, verified by the reporter.\n\n## 11. Summary\nOne suite, one report.\n');
+  arriveBarrier(manifest, 'kleio', tokens.kleio, 'reporting');
+
+  const runnerPath = join(fixture.root, 'reports', 'argus-runner-result.json');
+  mkdirSync(join(fixture.root, 'reports'), { recursive: true });
+  writeFileSync(runnerPath, `${JSON.stringify(runnerResultFixture)}\n`);
+  expectThrowMessage(() => mergeFinalSummary(fixture, tokens.kleio, { runner: false, fragmentId: 'summary-hidden-runner' }), NULL_RUNNER_REFUSAL,
+    'a runner=null summary beside an existing runner result after the runner owner was abandoned');
+  unlinkSync(runnerPath);
+  assert(getEngagementStatus(manifest).merges['solution/final-summary.json'] === undefined, 'a refused runner=null summary was merged');
+
+  const expectedReasons = ['canonical-unmerged:run-tests-sh', 'canonical-unmerged:solution-architecture-md', 'lane-abandoned:atlas', 'runner-result-missing'];
+  // The same facts reach Kleio through report-facts, so her copied status is the merged ceiling.
+  const facts = deriveFinalSummaryFacts(manifest, getEngagementStatus(manifest));
+  assert(facts.runner === null && facts.statusCeiling === 'blocked' && JSON.stringify(facts.statusReasons) === JSON.stringify(expectedReasons),
+    `report-facts after an abandoned runner owner: ${JSON.stringify({ runner: facts.runner, statusCeiling: facts.statusCeiling, statusReasons: facts.statusReasons })}`);
+  mergeFinalSummary(fixture, tokens.kleio, { runner: false, fragmentId: 'summary-runner-owner-abandoned' });
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'blocked' && summary.runner === null && summary.counts.automated === 1 &&
+    JSON.stringify(summary.statusReasons) === JSON.stringify(expectedReasons),
+  `a summary after an abandoned runner owner was not blocked by the missing runner result: ${JSON.stringify({ status: summary.status, runner: summary.runner, automated: summary.counts.automated, statusReasons: summary.statusReasons })}`);
+  const rendered = readFileSync(join(fixture.root, 'solution', 'FINAL-SUMMARY.md'), 'utf8');
+  assert(rendered.includes('Status reason: runner-result-missing') && rendered.includes('Status reason: canonical-unmerged:solution-architecture-md') &&
+    rendered.includes('Automation: not run; the lane that owns run-tests.sh was abandoned before any runner result (runner-result-missing).') &&
+    rendered.includes('Automated re-execution: n/a (no runner result)'),
+  'the rendered summary does not report the missing runner result');
+
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'odysseus', controller.token, 'complete');
+  cleanupWorker(manifest, 'kleio', tokens.kleio, 'success');
+  assert(cleanupWorker(manifest, 'odysseus', controller.token, 'success').outcome === 'success', 'the controller did not complete after the abandoned runner owner');
+}
+
+function writeTemplateSelection(fixture) {
+  writeFileSync(join(fixture.root, 'ai_agents_internal', 'template-selection.json'), `${JSON.stringify({
+    $schema: 'argus/template-selection@1', schemaVersion: 1, contractId: 'argus/template-selection@1', targetRoot: fixture.root,
+    runtime: 'typescript', packageManager: 'npm', framework: 'playwright', testRunner: 'playwright', testRoot: 'tests', harnessRoot: 'tests/support',
+    ci: [], action: 'build', choiceSource: 'explicit-user', capabilitiesSha256: '0'.repeat(64), unsupported: [], extensionPoints: [],
+  })}\n`, { mode: 0o600 });
 }
 
 function assertStateSchema(fixture, label) {

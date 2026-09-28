@@ -82,6 +82,9 @@ for (const fragment of [
   // barriers, and a released lane is never re-allocated on its consumed decision.
   '`argus-assets engagement barrier abandon --manifest <manifest> --lane <slug> --controller-token <odysseus-token> --reason <continuation-exhausted|worker-failure>`',
   '`lane-abandoned:<lane>`', 'Never re-allocate a released lane.', 'A permanent Kalchas, Minos, or Kleio failure stops the engagement.',
+  // An abandoned Atlas leaves no runner result and no architecture merger: the summary still
+  // merges, blocked, and the controller does not re-dispatch him on reporting standby.
+  '(for Atlas, also `runner-result-missing`)', 'Unless abandoned, Atlas stays on `reporting` standby',
   'then abandon each one a pending barrier still lists with `--reason controller-budget`',
 ]) {
   assert(controllerContract.includes(fragment), `orchestration-core lost required controller semantic: ${fragment}`);

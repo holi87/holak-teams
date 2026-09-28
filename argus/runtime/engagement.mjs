@@ -716,6 +716,8 @@ const FINAL_SUMMARY_DEGRADING_EXIT_CODES = new Set([11, 12, 13, 14, 15]);
 const FINAL_SUMMARY_RUNNER_RESULT = 'reports/argus-runner-result.json';
 const FINAL_SUMMARY_COVERAGE_RESULT = 'solution/coverage-result.json';
 const TEMPLATE_SELECTION_MISSING = 'template-selection-missing';
+const RUNNER_RESULT_MISSING = 'runner-result-missing';
+const FINAL_SUMMARY_RUNNER_SCRIPT = 'run-tests.sh';
 
 // Without a fragment (`engagement report-facts`) the runner outcome is read whenever the runner
 // result exists. With a fragment, a non-null runner requires that file, and a null runner stays
@@ -828,10 +830,18 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   for (const reason of skippedPhaseStatusReasons(state)) ceilings.set(reason, 'degraded');
   for (const reason of gateUnmetStatusReasons(state)) ceilings.set(reason, 'degraded');
   for (const reason of abandonedLaneStatusReasons(state)) ceilings.set(reason, 'degraded');
+  for (const reason of unmergedCanonicalStatusReasons(manifest, state)) ceilings.set(reason, 'degraded');
   // Modes A, C, and D fund automation, but without the operator's installed template selection
-  // no framework, runner, or runner result can exist. That missing operator input justifies a
-  // null runner outcome and blocks the summary; it never excuses a runner result that exists.
-  if (!runner && manifest.mode !== 'B' && !reviewTemplateSelection(manifest)) ceilings.set(TEMPLATE_SELECTION_MISSING, 'blocked');
+  // no framework, runner, or runner result can exist, and once the lane that owns the runner
+  // script is abandoned no runner result can follow. Either justifies a null runner outcome and
+  // blocks the summary; neither ever excuses a runner result that exists.
+  if (!runner && manifest.mode !== 'B') {
+    if (!reviewTemplateSelection(manifest)) ceilings.set(TEMPLATE_SELECTION_MISSING, 'blocked');
+    const runnerOwner = manifest.writePolicy.canonicalArtifacts.find((item) => item.path === FINAL_SUMMARY_RUNNER_SCRIPT)?.owner;
+    if (runnerOwner && Object.hasOwn(state.abandonedLanes, runnerOwner) && !lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))) {
+      ceilings.set(RUNNER_RESULT_MISSING, 'blocked');
+    }
+  }
   const statusReasons = [...ceilings.keys()].sort();
   const statusCeiling = [...ceilings.values()].reduce(worseFinalSummaryStatus, 'completed');
   return { counts, unproven, residuals, automationReview, runner, coverage, sourceSchemas, statusCeiling, statusReasons };
@@ -841,7 +851,7 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
 function applyFinalSummaryFacts(manifest, state, document) {
   const facts = deriveFinalSummaryFacts(manifest, state, document);
   if (document.runner === null && !nullRunnerAllowed(manifest, facts)) {
-    throw new Error(`runner=null is only valid for Mode B without automation, or in Mode A, C, or D without automation, a ${FINAL_SUMMARY_RUNNER_RESULT}, or an installed template selection`);
+    throw new Error(`runner=null is only valid for Mode B without automation, or in Mode A, C, or D without a ${FINAL_SUMMARY_RUNNER_RESULT} while no template selection is installed and nothing was automated, or after the ${FINAL_SUMMARY_RUNNER_SCRIPT} owner was abandoned`);
   }
   for (const field of FINAL_SUMMARY_DERIVED_FIELDS) document[field] = facts[field];
   document.status = worseFinalSummaryStatus(document.status, facts.statusCeiling);
@@ -849,13 +859,15 @@ function applyFinalSummaryFacts(manifest, state, document) {
   if (errors.length) throw new Error(`derived final summary is invalid: ${errors.join('; ')}`);
 }
 
-// A null runner outcome is valid for Mode B without automation, and in Modes A, C, and D only
-// while nothing was automated, no runner result exists, and the missing template selection is
-// recorded as the blocking status reason.
+// A null runner outcome is valid for Mode B without automation. In Modes A, C, and D it needs
+// that no runner result exists and a blocking status reason: the missing template selection
+// while nothing was automated, or the abandoned runner-script owner, whose recorded tests no
+// runner ever executed.
 function nullRunnerAllowed(manifest, facts) {
-  if (facts.counts.automated !== 0) return false;
-  if (manifest.mode === 'B') return true;
-  return facts.statusReasons.includes(TEMPLATE_SELECTION_MISSING) && !lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT));
+  if (manifest.mode === 'B') return facts.counts.automated === 0;
+  if (lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))) return false;
+  if (facts.statusReasons.includes(RUNNER_RESULT_MISSING)) return true;
+  return facts.counts.automated === 0 && facts.statusReasons.includes(TEMPLATE_SELECTION_MISSING);
 }
 
 function worseFinalSummaryStatus(left, right) {
@@ -2385,6 +2397,15 @@ function gateUnmetStatusReasons(state) {
 // state.abandonedLanes; each is work the final summary cannot report as completed.
 function abandonedLaneStatusReasons(state) {
   return Object.keys(state.abandonedLanes).sort().map((lane) => `lane-abandoned:${lane}`);
+}
+
+// Canonicals whose owner was abandoned before merging them. Only the owner merges a canonical,
+// so no lane can publish one any more, and fragments other lanes submitted for it stay
+// unmerged. The reason names the path lowercased, each other character run replaced by '-'.
+function unmergedCanonicalStatusReasons(manifest, state) {
+  return [...new Set(manifest.writePolicy.canonicalArtifacts
+    .filter((canonical) => Object.hasOwn(state.abandonedLanes, canonical.owner) && !state.merges[canonical.path])
+    .map((canonical) => `canonical-unmerged:${canonical.path.toLowerCase().replace(/[^a-z0-9]+/gu, '-')}`))].sort();
 }
 
 function publicAllocation(allocation) {
