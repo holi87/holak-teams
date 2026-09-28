@@ -26,11 +26,11 @@ work, dispatches specialists, and reports back. Specialists never talk to each o
 - **Hephaestus** — ask Marcus in a Claude Code session, for example
   `marcus, build a REST API for task management with tests and CI`.
 - **Argus** — run the packaged `argus/claude/bin/argus-launch` from a terminal, not a session:
-  - `argus-launch doctor [--browser]` checks the host first; `probe-browser` tests Chromium.
-  - `argus-launch claude --target … --artifact-root … --mode <A|B|C|D> --engagement-id …`
-    writes a short-lived request for the isolated runtime-attestation signer, then starts
-    `/argus:run` with `--max-turns 400`, the frontier controller model, and the OS sandbox
-    `os-native-target-readonly@3`.
+  - `argus-launch doctor [--browser]` checks the host and Claude login; `probe-browser` tests Chromium.
+  - `argus-launch claude --target … --artifact-root … --mode <A|B|C|D> --engagement-id …` plus
+    `--trust-store`, `--runtime-key-id`, `--operator-key-id`, `--request-output`, and
+    `--launch-authorization` has the isolated signer sign one request, then starts `/argus:run`
+    (`--max-turns 400`, frontier model, `dontAsk` + `--allowedTools`, `os-native-target-readonly@3`).
   - Optional, unsigned host flags: `--provision-browser`, `--feature <capability-id>`,
     `--authorization <path>` or `--environment <local|test|staging|production>`, and
     `--usage-json <path>`. None widens what the authorization evaluator allows.
