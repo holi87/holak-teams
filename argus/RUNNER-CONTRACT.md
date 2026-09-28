@@ -398,7 +398,8 @@ smokes skip the gate: only a `full-suite` result carries `deliveryGate: true`, a
 `ARGUS_FAULT_INJECTION=authorized` are requests, not permissions. The library locates the
 engagement manifest the way `argus-assets` does, because `argus-launch` never exports
 `ARGUS_ENGAGEMENT_MANIFEST`: a non-empty `ARGUS_ENGAGEMENT_MANIFEST`, the `engagement.json`
-next to the launch receipt (`ARGUS_NATIVE_LAUNCH_RECEIPT`), and the first
+next to the launch receipt (`ARGUS_NATIVE_LAUNCH_RECEIPT`) or under the unattested launch's
+artifact root (`ARGUS_LAUNCH_ARTIFACT_ROOT`), and the first
 `ai_agents_internal/engagement.json` at or above the physical harness root. A named
 manifest that does not exist, or two sources that name different files, refuse the
 opt-in. When the reset opt-in is set, before the environment gate (action

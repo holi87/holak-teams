@@ -39,9 +39,10 @@ checkpoint writes during a large cleanup.
 
 The installed plugin ships `hooks/hooks.json`. Its `PreToolUse` handler evaluates
 `Write`, `Edit`, `MultiEdit`, and `Bash` calls through `argus-assets guard` before the
-tool executes. The guard activates only when an engagement manifest exists. It resolves
-absolute, relative, traversal, and symlinked paths against their physical parent before
-policy evaluation.
+tool executes. The guard activates only when an engagement manifest exists, found as the
+commands find it (below), so a workspace outside the artifact root is bound too; conflicting
+sources deny with `GUARD-MANIFEST-INVALID`. It resolves absolute, relative, traversal, and
+symlinked paths against their physical parent before policy evaluation.
 
 This lexical hook is a policy control, not an OS sandbox: it cannot prove the side effects
 of arbitrary target-owned executables. Use a read-only mount or equivalent host sandbox
@@ -63,7 +64,8 @@ word that joins quoted and unquoted text, leaves a quote open, uses expansion, g
 escape, or tilde syntax outside single quotes, or holds `$`, a backslash, a backtick, or `!`
 inside double quotes. Single-quote each whole word that needs quoting. Independently of the
 guard, every engagement and model command binds `--manifest` to the active engagement (a
-non-empty `ARGUS_ENGAGEMENT_MANIFEST`, the `engagement.json` beside the launch receipt, or the
+non-empty `ARGUS_ENGAGEMENT_MANIFEST`, the `engagement.json` beside the launch receipt or under
+the unattested launch's `ARGUS_LAUNCH_ARTIFACT_ROOT`, or the
 first `ai_agents_internal/engagement.json` at or above the working directory) and refuses any
 other file, so a manifest copy a lane writes under `reports/` never lends its owners or
 exclusive operations to the shared state.

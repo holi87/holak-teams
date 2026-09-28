@@ -223,16 +223,18 @@ argus_engagement_authorized() {
 }
 
 # Prints the engagement manifest that governs this harness, found the way argus-assets finds
-# it, and prints nothing outside an engagement. A non-empty ARGUS_ENGAGEMENT_MANIFEST and the
-# argus-launch receipt (ARGUS_NATIVE_LAUNCH_RECEIPT, whose directory holds engagement.json)
-# name it explicitly; otherwise it is the first ai_agents_internal/engagement.json at or
-# above the physical harness root. A named manifest that does not exist, or two sources that
-# name different files, fail: the run is inside an engagement it cannot read.
+# it, and prints nothing outside an engagement. A non-empty ARGUS_ENGAGEMENT_MANIFEST, the
+# attested argus-launch receipt (ARGUS_NATIVE_LAUNCH_RECEIPT, whose directory holds
+# engagement.json), and the unattested launch's ARGUS_LAUNCH_ARTIFACT_ROOT name it
+# explicitly; otherwise it is the first ai_agents_internal/engagement.json at or above the
+# physical harness root. A named manifest that does not exist, or two sources that name
+# different files, fail: the run is inside an engagement it cannot read.
 argus_engagement_manifest() {
   local cursor candidate physical found="" found_physical=""
   local named=()
   if [ -n "${ARGUS_ENGAGEMENT_MANIFEST:-}" ]; then named+=("$ARGUS_ENGAGEMENT_MANIFEST"); fi
   if [ -n "${ARGUS_NATIVE_LAUNCH_RECEIPT:-}" ]; then named+=("$(dirname "$ARGUS_NATIVE_LAUNCH_RECEIPT")/engagement.json"); fi
+  if [ -n "${ARGUS_LAUNCH_ARTIFACT_ROOT:-}" ]; then named+=("$ARGUS_LAUNCH_ARTIFACT_ROOT/ai_agents_internal/engagement.json"); fi
   cursor="$(cd "$ARGUS_ROOT" && pwd -P)" || return 1
   while :; do
     if [ -e "$cursor/ai_agents_internal/engagement.json" ]; then named+=("$cursor/ai_agents_internal/engagement.json"); break; fi
