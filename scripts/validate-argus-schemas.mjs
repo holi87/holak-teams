@@ -100,10 +100,15 @@ for (const [kind, field, key] of [
   const fragments = [...document[field]].reverse().map((record) => ({ ...document, [field]: [record] }));
   const merged = mergeCanonicalDocuments(kind, fragments);
   assert(merged[field].every((record, index) => index === 0 || merged[field][index - 1][key] < record[key]), `${kind}: merge output is not deterministic by ${key}`);
-  let duplicateRejected = false;
-  try { mergeCanonicalDocuments(kind, [fragments[0], fragments[0]]); }
-  catch { duplicateRejected = true; }
-  assert(duplicateRejected, `${kind}: merge accepted duplicate ${key} values across fragments`);
+  if (kind === 'evidence-reference') {
+    const replay = mergeCanonicalDocuments(kind, [fragments[0], fragments[0]]);
+    assert(JSON.stringify(replay[field]) === JSON.stringify(fragments[0][field]), 'evidence-reference: identical record replay was not de-duplicated');
+  } else {
+    let duplicateRejected = false;
+    try { mergeCanonicalDocuments(kind, [fragments[0], fragments[0]]); }
+    catch { duplicateRejected = true; }
+    assert(duplicateRejected, `${kind}: merge accepted duplicate ${key} values across fragments`);
+  }
 
   // Each collection reads only its current version; the immediately retired one fails closed.
   const policy = compatibility.contracts?.[kind];
@@ -134,7 +139,8 @@ for (const [kind, field, key] of [
   assert(refusal(() => merge([{ ...tests, tests: [row] }, reassigned], [{ lane: row.owner, sequence: 1 }, { lane: 'atlas', sequence: 2 }], 'automation-status')).includes(`belongs to ${row.owner}, not daidalos`), 'an owned collection key changed owner');
   const evidence = readJson(join(fixtures, 'valid', 'evidence-reference.json'));
   const single = { ...evidence, references: [evidence.references[0]] };
-  assert(refusal(() => merge([single, single], [{ lane: 'atalanta', sequence: 1 }, { lane: 'atalanta', sequence: 2 }], 'evidence-reference')).includes('duplicate'), 'an immutable collection record was superseded');
+  const changed = { ...single, references: [{ ...single.references[0], source: 'reports/changed-capture.txt' }] };
+  assert(refusal(() => merge([single, changed], [{ lane: 'atalanta', sequence: 1 }, { lane: 'atalanta', sequence: 2 }], 'evidence-reference')).includes('duplicate'), 'an immutable collection record was superseded');
 }
 const preflightV3Schema = schemas.get('preflight-report.schema.json');
 assert(preflightV3Schema?.properties?.schemaVersion?.const === 3, 'current preflight-report validator does not require schemaVersion 3');

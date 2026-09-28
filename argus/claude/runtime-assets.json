@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 62184,
-      "sha256": "9bcd9b4222e5fef7199b06b1760428caf452b7a93464ef818fcc1fb33bd2aa73"
+      "bytes": 62609,
+      "sha256": "e9e05074c0cae9bc56fade1349700857b57d8bac04d0ada3b47c8543317982f1"
     },
     {
       "id": "canonical-contracts",
@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 43093,
-      "sha256": "fd363ebfbf740aa426a8b7b8ab22372fc426d38620987e4bd6db5642e85ddadb"
+      "bytes": 43498,
+      "sha256": "cf17c02d03f1027772c79eef5c877c2886fd169c172132f34309216aed4a5220"
     },
     {
       "id": "runner-contract",
@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 12951,
-      "sha256": "085388e64843d37e05d7daf7831974bb98dd016675e5b51e38d854b391fe6a2c"
+      "bytes": 13143,
+      "sha256": "3c833d8986f3450174bb64454e612e02c47ead8aea2009cf6465e993de06a62f"
     },
     {
       "id": "qa-browser-skill",
@@ -245,8 +245,8 @@
       "source": "argus/policies",
       "destination": "policies",
       "files": 4,
-      "bytes": 14566,
-      "sha256": "f60943594bafacaa22a6ff7699352c285b18626654273f2c52170ae1122cce93"
+      "bytes": 14643,
+      "sha256": "b5667769b6e72010580a8a4bf5b7f4cf1cf95178dbc66b977ba2825d7c132b26"
     },
     {
       "id": "runtime-library",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 447835,
-      "sha256": "7314a32061f0603e7790921f46340d8e61ca1d7c2f528399b4a74c7b02be2097"
+      "bytes": 449887,
+      "sha256": "8b157cb5d38140e8eb7a46b56fcefa96dbd30a8ecce39b8bb2047c098716bda8"
     },
     {
       "id": "common-template",
@@ -263,8 +263,8 @@
       "source": "argus/framework-template-common",
       "destination": "templates/common",
       "files": 25,
-      "bytes": 110711,
-      "sha256": "46ea451c77eae1c556809960aff0e38ea592de4583094a780d0985314502ad23"
+      "bytes": 110935,
+      "sha256": "88769f0ed575686c9c176957221d267b71d3110d612e927735d9055682e4ce74"
     },
     {
       "id": "typescript-template",

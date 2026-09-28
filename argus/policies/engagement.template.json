@@ -132,7 +132,8 @@
     }
   },
   "idAllocators": {
-    "bug": { "owner": "minos", "prefix": "BUG", "width": 4 }
+    "bug": { "owner": "minos", "prefix": "BUG", "width": 4 },
+    "evidence": { "owner": "any-active-lane", "prefix": "EVD", "width": 4 }
   },
   "cleanup": {
     "removeOnRelease": ["browser-profile", "browser-artifacts", "auth", "tmp", "locks"]

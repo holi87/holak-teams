@@ -440,6 +440,23 @@ export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, 
   let digest = sha256(persistedContent);
   return mutateState(manifest, (state) => {
     requireLeaseState(manifest, state, lane, token);
+    const list = state.fragments[canonical.path] ?? [];
+    if (canonical.schema === 'evidence-reference') {
+      const incoming = new Map(JSON.parse(persistedContent).references.map((ref) => [ref.id, JSON.stringify(ref)]));
+      // Check under the state lock before creating an immutable file: another lane may have
+      // registered this ID after schema validation, and a rejected file must never persist.
+      for (const record of list) {
+        const existing = readManagedFile(engagementPath(manifest, record.path), `evidence fragment ${record.path}`);
+        if (sha256(existing) !== record.sha256) throw new Error(`fragment digest drift: ${record.path}`);
+        const checked = validateCanonicalFragment('evidence-reference', existing);
+        if (checked.errors.length) throw new Error(`invalid evidence fragment ${record.path}: ${checked.errors.join('; ')}`);
+        for (const ref of checked.document.references) {
+          if (incoming.has(ref.id) && incoming.get(ref.id) !== JSON.stringify(ref)) {
+            throw new Error(`evidence reference ${ref.id} conflicts with fragment ${record.path}; allocate a new ID with argus-assets engagement id --kind evidence --identity ${lane}:<source>`);
+          }
+        }
+      }
+    }
     const key = sha256(canonical.path).slice(0, 16);
     const dir = engagementPath(manifest, join(manifest.writePolicy.fragmentRoot, key));
     const path = join(dir, `${fragmentId}--${lane}.${canonical.format.startsWith('json') ? 'json' : canonical.format === 'markdown' ? 'md' : 'txt'}`);
@@ -459,7 +476,6 @@ export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, 
       writeFileSync(path, persistedContent, { flag: 'wx', mode: 0o600 });
       chmodSync(path, 0o600);
     }
-    const list = state.fragments[canonical.path] ?? [];
     // An identical replay keeps the record, and with it the sequence, it was first given.
     const replay = list.find((item) => item.id === fragmentId && item.lane === lane);
     if (replay) return { result: replay, changed: false };
@@ -1125,7 +1141,11 @@ function readLaneOutcomeTelemetry(manifest, telemetryPath, validate, decisions) 
 export function allocateId(manifest, lane, token, kind, identity) {
   const allocator = manifest.idAllocators[kind];
   if (!allocator) throw new Error(`unknown ID allocator: ${kind}`);
-  if (allocator.owner !== lane) throw new Error(`${kind} IDs are owned by ${allocator.owner}, not ${lane}`);
+  const anyActiveLane = kind === 'evidence' && allocator.owner === 'any-active-lane';
+  if (!anyActiveLane && allocator.owner !== lane) throw new Error(`${kind} IDs are owned by ${allocator.owner}, not ${lane}`);
+  if (anyActiveLane && (typeof identity !== 'string' || !identity.startsWith(`${lane}:`) || !identity.slice(lane.length + 1).trim())) {
+    throw new Error(`evidence identity must start with ${lane}: and include a non-empty source`);
+  }
   const identityHash = stableIdentity(identity);
   return mutateState(manifest, (state) => {
     requireLeaseState(manifest, state, lane, token);

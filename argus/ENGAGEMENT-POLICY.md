@@ -548,7 +548,9 @@ Every skipped phase is recorded in `skippedPhases` with its reason, `skippedAt`,
 arrivals, rejects arrivals, and is never recorded as completed.
 
 Canonical IDs come from `engagement id --identity <stable-key>`; allocation is serialized,
-owner-restricted, and identity-deduplicated. Replaying the same identity across a resume
+identity-deduplicated, and owner-restricted for `--kind bug` (Minos). The `evidence` allocator
+(`EVD`, width 4, owner `any-active-lane`) accepts any active selected lane with
+`--identity <lane>:<source>`; the prefix must name the calling lane and the source must be nonempty. Replaying the same identity across a resume
 returns the original ID, while a distinct identity receives the next ID. `engagement
 checkpoint` accepts a monotonic sequence per worker. Replaying the same sequence and
 content is idempotent; different content at an existing sequence is rejected.
@@ -695,7 +697,9 @@ Canonical solution JSON documents are single-owner
 `json-document` artifacts; the runner result is validated at its runner-owned report path.
 Lane-plan, evidence-reference, automation-status, and coverage-observations (keyed by
 `<lane>:<surfaceId>`) accept multiple valid collection fragments; their owner merges records
-in stable-key order. Lane-plan and evidence-reference reject duplicate keys across fragments.
+in stable-key order. Lane-plan rejects duplicate keys across fragments. Evidence-reference
+de-duplicates byte-identical record replays; conflicting records are refused at write before any
+immutable fragment persists, with the existing fragment path and an ID allocation recovery command.
 An automation-status test belongs to its `owner` and a coverage observation to its `lane`:
 only that lane or the merging owner writes it, and its later fragment of the same key (by write
 sequence) supersedes the earlier record. Coverage observations cite
