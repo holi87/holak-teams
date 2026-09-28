@@ -254,8 +254,10 @@ advance the phase without that merge. Route non-confirmed entries by `proofLoop.
 `quarantine.reasons`; `needs-oracle` goes to Metis; `suspected`, Critical, Blocker, and
 disputed-oracle entries go to the first eligible candidate from
 `argus-assets raci route --surface <surface> --activity reproduce` that is not the finder,
-an origin lane, or an original evidence collector. Re-run the consolidator after each
-round; stop after `maxRepairRounds` and leave named residuals.
+an origin lane, or an original evidence collector. `<surface>` is where the finding
+manifests; with no eligible candidate, Minos records `independent.status=unavailable` with
+that reason instead. Re-run the consolidator after each round; stop after
+`maxRepairRounds` and leave named residuals.
 
 In Modes A and B, run each `deep-hunt-N` with the full `deepHunt.brief`, followed by
 `deep-proof-N`. Continue while the previous proof phase recorded new confirmed defects;

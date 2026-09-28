@@ -32,6 +32,9 @@ jq -e '.selector == "surface" and .surface == "api-rest" and .activity == "repro
   || fail "api-rest reproduction route has the wrong shape: $reproduce"
 jq -e '.candidates == [] and .accountable == "minos"' <<<"$($CLI raci route --surface resilience --activity reproduce)" >/dev/null \
   || fail 'resilience must route no independent reproducer'
+# Lynceus backs Orion on journeys in Mode B, where Daidalos is not selected.
+jq -e '.candidates == ["orion","lynceus","daidalos"]' <<<"$($CLI raci route --surface journey-ui --activity reproduce)" >/dev/null \
+  || fail 'journey-ui reproduction has no Mode B reproducer after Orion'
 [ "$(jq -r '.gate' <<<"$($CLI raci route --surface data-direct --activity reproduce)")" = db-access ] || fail 'direct-data reproduction lost its DB gate'
 [ "$(jq -r '.accountable' <<<"$($CLI raci route --activity repair)")" = odysseus ] || fail 'proof repair did not route to Odysseus'
 [ "$(jq -r '.accountable' <<<"$($CLI raci route --activity source-oracle)")" = metis ] || fail 'source oracle did not route to Metis'

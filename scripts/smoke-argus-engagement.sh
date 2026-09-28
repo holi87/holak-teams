@@ -599,6 +599,12 @@ guard_as lynceus Bash "ARGUS_BINARY_EVIDENCE_REVIEWED=true node scripts/hunt-dri
 guard_as lynceus Bash "node scripts/hunt-driver.mjs --agent 'atal'anta --goto / --shot home" 'GUARD-SHELL-AMBIGUOUS: the packaged hunt driver --agent must name the calling lane lynceus'
 guard_as untyped Bash "node scripts/hunt-driver.mjs --agent orion --goto /" 'GUARD-SHELL-AMBIGUOUS: the packaged hunt driver requires an identified calling lane'
 guard_as lynceus Bash "wc -l scripts/hunt-driver.mjs" allow
+# Role prompts run the packaged driver in place (BROWSER-ISOLATION.md): print its directory,
+# then invoke that literal path under the managed engagement bindings.
+guard_as penelope Bash "argus-assets path typescript-template" allow
+MANAGED_DRIVER="ARGUS_ENGAGEMENT_MANIFEST=$MANIFEST ARGUS_BROWSER_PROFILE=$WORK/penelope-profile ARGUS_BROWSER_ARTIFACTS=$WORK/penelope-artifacts node $ROOT/argus/claude/templates/typescript/scripts/hunt-driver.mjs"
+guard_as penelope Bash "$MANAGED_DRIVER --agent penelope --role student --goto / --snapshot" allow
+guard_as penelope Bash "$MANAGED_DRIVER --agent orion --goto /" 'GUARD-SHELL-AMBIGUOUS: the packaged hunt driver --agent must name the calling lane penelope'
 guard_shell "argus-assets authorization check --manifest ai_agents_internal/authorization.json --lane orion --action binary-evidence --target $TARGET --source-trust user --binary-reviewed true --at 2026-07-10T12:00:00.000Z" GUARD-SHELL-AMBIGUOUS
 if (cd "$TARGET" && "$CLI" authorization check --manifest ai_agents_internal/authorization.json --lane orion --action read --target "$TARGET" --source-trust manifest --at 2026-07-10T12:00:00.000Z) >"$WORK/authorization-at.out" 2>&1; then
   fail 'authorization check accepted --at inside an active engagement'
