@@ -75,6 +75,8 @@ for (const fragment of [
   'product, automation,', 'infrastructure, skip, and policy outcomes', 'Never claim an agent ran',
   '`deferred` record with `downgradedFrom=blocked`', 'report it from `residualRisks`',
   'proofLoop', 'deepHunt', 'engagement barrier skip', 'at most one thread per lane', 'maxRepairRounds', '--activity reproduce',
+  // An empty or exhausted reproduce route ends at once as an honest unavailable, not an idle repair round.
+  'with no eligible candidate, Minos records `independent.status=unavailable`',
   'argus-assets engagement lane-outcomes --manifest <manifest> --controller-token <odysseus-token>',
   // A permanently failed lane is abandoned after its failure cleanup instead of deadlocking its
   // barriers, and a released lane is never re-allocated on its consumed decision.
@@ -242,6 +244,14 @@ for (const [mode, expectedCount] of Object.entries(expectedModeCounts)) {
       assert([...phase.participants, ...phase.standby].includes(faultWindowOwner),
         `mode ${mode}/${phase.id}: fault window owner ${faultWindowOwner} must stay reachable while nike runs`);
     }
+  }
+  // Orion, the first journey-ui reproducer, also files UI findings that manifest on a journey,
+  // and an origin lane cannot reproduce its own finding, so wherever Ariadne hunts journeys a
+  // second journey-ui reproducer must be dispatchable in the same mode.
+  const journeyUi = raci.surfaceRoutes.find((route) => route.surface === 'journey-ui');
+  if (dispatchedSlugs.has(journeyUi.discover)) {
+    const reproducers = journeyUi.reproduce.filter((slug) => dispatchedSlugs.has(slug));
+    assert(reproducers.length >= 2, `mode ${mode}: journey-ui has only ${reproducers.length} dispatchable independent reproducer(s): ${reproducers.join(', ')}`);
   }
   // Kleio submits her kleio-architecture sections while she reports, and only the architecture
   // canonical owner may merge them, so where that owner runs he holds a lease through every

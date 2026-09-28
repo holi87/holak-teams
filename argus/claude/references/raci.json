@@ -20,7 +20,7 @@
     { "surface": "accessibility", "discover": "antigone", "reproduce": ["lynceus", "orion", "daidalos"], "baseline": "penelope", "automate": "daidalos", "validate": "minos", "report": "kleio" },
     { "surface": "api-rest", "discover": "atalanta", "reproduce": ["ariadne", "perseus", "talos"], "baseline": "theseus", "automate": "talos", "validate": "minos", "report": "kleio" },
     { "surface": "event-protocol", "discover": "proteus", "reproduce": ["atalanta", "talos"], "baseline": "pistis", "automate": "talos", "validate": "minos", "report": "kleio" },
-    { "surface": "journey-ui", "discover": "ariadne", "reproduce": ["orion", "daidalos"], "baseline": "penelope", "automate": "daidalos", "validate": "minos", "report": "kleio" },
+    { "surface": "journey-ui", "discover": "ariadne", "reproduce": ["orion", "lynceus", "daidalos"], "baseline": "penelope", "automate": "daidalos", "validate": "minos", "report": "kleio" },
     { "surface": "journey-api", "discover": "ariadne", "reproduce": ["atalanta", "talos"], "baseline": "theseus", "automate": "talos", "validate": "minos", "report": "kleio" },
     { "surface": "performance", "discover": "hermes", "reproduce": ["atalanta"], "baseline": "metis", "automate": "nike", "validate": "minos", "report": "kleio" },
     { "surface": "resilience", "discover": "tyche", "reproduce": [], "baseline": "metis", "automate": "nike", "validate": "minos", "report": "kleio" },

@@ -31,7 +31,7 @@ Reproduce lists independent reproducers in preference order. Odysseus assigns th
 | accessibility | antigone | lynceus, orion, daidalos | penelope | daidalos | minos | kleio | — |
 | api-rest | atalanta | ariadne, perseus, talos | theseus | talos | minos | kleio | — |
 | event-protocol | proteus | atalanta, talos | pistis | talos | minos | kleio | — |
-| journey-ui | ariadne | orion, daidalos | penelope | daidalos | minos | kleio | — |
+| journey-ui | ariadne | orion, lynceus, daidalos | penelope | daidalos | minos | kleio | — |
 | journey-api | ariadne | atalanta, talos | theseus | talos | minos | kleio | — |
 | performance | hermes | atalanta | metis | nike | minos | kleio | — |
 | resilience | tyche | — | metis | nike | minos | kleio | — |
