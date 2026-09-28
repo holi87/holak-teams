@@ -3605,7 +3605,10 @@ function guardCommand(args) {
   try { payload = JSON.parse(raw); }
   catch { return denyHook('GUARD-MANIFEST-INVALID', 'PreToolUse payload is not valid JSON'); }
   const cwd = resolve(payload.cwd ?? process.cwd());
-  const manifestPath = locateEngagementManifest(cwd, process.env.ARGUS_ENGAGEMENT_MANIFEST);
+  // cwd may be a path target outside the artifact root; the launch sources still name it.
+  let manifestPath;
+  try { manifestPath = activeEngagementManifest(cwd); }
+  catch (error) { return denyHook('GUARD-MANIFEST-INVALID', `the active engagement cannot be resolved: ${error.message}`); }
   if (!manifestPath) return 0;
   let engagement;
   try { engagement = JSON.parse(readFileSync(manifestPath, 'utf8')); }
@@ -3679,17 +3682,17 @@ function checkAuthorization(args) {
   for (const required of ['manifest', 'lane', 'action', 'target', 'sourceTrust']) {
     if (!options[required]) fail(`authorization check requires --${camelToKebab(required)}`);
   }
+  let activeEngagement;
+  try { activeEngagement = activeEngagementManifest(); }
+  catch (error) { fail(`authorization check engagement is ambiguous: ${error.message}`); }
   // Binary-evidence reviews bind to the audit timestamp, so an engagement never back-dates it.
-  if (options.at && locateEngagementManifest(process.cwd(), process.env.ARGUS_ENGAGEMENT_MANIFEST)) {
+  if (options.at && activeEngagement) {
     fail('authorization check --at is a test-only clock override and is refused while an engagement is active');
   }
   const manifestPath = resolve(options.manifest);
   if (!statSafe(manifestPath)?.isFile() || lstatSync(manifestPath).isSymbolicLink()) fail('authorization manifest must be a real file');
   // The audit lands beside the manifest, so inside an engagement only the engagement's own
   // manifest keeps it in the control directory, never in target source or a canonical tree.
-  let activeEngagement;
-  try { activeEngagement = activeEngagementManifest(); }
-  catch (error) { fail(`authorization check engagement is ambiguous: ${error.message}`); }
   const engagementAuthorization = activeEngagement ? join(dirname(activeEngagement), 'authorization.json') : null;
   if (engagementAuthorization && realpathSync(manifestPath) !== engagementAuthorization) {
     fail(`authorization check inside an active engagement must name ${engagementAuthorization}`);
@@ -6196,26 +6199,31 @@ function atomicPrivateAppend(path, content, validateCurrent = undefined) {
   }
 }
 
-// The physical manifest of the engagement this process runs inside, or null outside one: a
-// non-empty ARGUS_ENGAGEMENT_MANIFEST, the engagement.json beside the argus-launch receipt
-// (the controller's working directory may be the target), and the first
-// ai_agents_internal/engagement.json at or above the working directory. A named manifest that
-// does not exist, or two sources that name different files, throw. A command that names a
-// manifest inside an active engagement must name exactly this one: any lane can write a copy
-// elsewhere in the artifact root, and that copy would bring its own owners and exclusive
-// operations to the shared state.
-function activeEngagementManifest() {
+// The physical manifest of the engagement a working directory runs inside, or null outside
+// one: a non-empty ARGUS_ENGAGEMENT_MANIFEST, the engagement.json of the argus-launch artifact
+// root (beside the attested receipt ARGUS_NATIVE_LAUNCH_RECEIPT, or under the unattested
+// launch's ARGUS_LAUNCH_ARTIFACT_ROOT), and the first ai_agents_internal/engagement.json at or
+// above the working directory. A launch source counts once preflight has created the manifest;
+// the walk alone never finds it from a path target's workspace. A named manifest that does not
+// exist, or two sources that name different files, throw. A command that names a manifest
+// inside an active engagement must name exactly this one: any lane can write a copy elsewhere
+// in the artifact root, and that copy would bring its own owners and exclusive operations to
+// the shared state.
+function activeEngagementManifest(cwd = process.cwd()) {
   const sources = [];
   if (process.env.ARGUS_ENGAGEMENT_MANIFEST) {
-    const named = locateEngagementManifest(process.cwd(), process.env.ARGUS_ENGAGEMENT_MANIFEST);
+    const named = locateEngagementManifest(cwd, process.env.ARGUS_ENGAGEMENT_MANIFEST);
     if (!named) throw new Error('ARGUS_ENGAGEMENT_MANIFEST does not name an existing engagement manifest');
     sources.push(named);
   }
-  if (process.env.ARGUS_NATIVE_LAUNCH_RECEIPT) {
-    const beside = join(dirname(resolve(process.env.ARGUS_NATIVE_LAUNCH_RECEIPT)), 'engagement.json');
-    if (existsSync(beside)) sources.push(beside);
+  const launchManifests = [
+    process.env.ARGUS_NATIVE_LAUNCH_RECEIPT && join(dirname(resolve(process.env.ARGUS_NATIVE_LAUNCH_RECEIPT)), 'engagement.json'),
+    process.env.ARGUS_LAUNCH_ARTIFACT_ROOT && join(resolve(process.env.ARGUS_LAUNCH_ARTIFACT_ROOT), 'ai_agents_internal', 'engagement.json'),
+  ];
+  for (const launchManifest of launchManifests) {
+    if (launchManifest && existsSync(launchManifest)) sources.push(launchManifest);
   }
-  const discovered = locateEngagementManifest(process.cwd());
+  const discovered = locateEngagementManifest(cwd);
   if (discovered) sources.push(discovered);
   const physical = [...new Set(sources.map((path) => realpathSync(path)))];
   if (physical.length > 1) throw new Error(`the named and working-tree engagement manifests differ: ${physical.join(', ')}`);
@@ -6223,13 +6231,9 @@ function activeEngagementManifest() {
 }
 
 function assertActiveEngagementWrites(paths, label) {
-  const discovered = locateEngagementManifest(process.cwd());
-  const explicit = process.env.ARGUS_ENGAGEMENT_MANIFEST
-    ? locateEngagementManifest(process.cwd(), process.env.ARGUS_ENGAGEMENT_MANIFEST)
-    : null;
-  if (process.env.ARGUS_ENGAGEMENT_MANIFEST && !explicit) fail(`${label} denied because ARGUS_ENGAGEMENT_MANIFEST does not name an existing manifest`);
-  if (discovered && explicit && discovered !== explicit) fail(`${label} denied because the explicit engagement differs from the active working-tree engagement`);
-  const manifestPath = explicit ?? discovered;
+  let manifestPath;
+  try { manifestPath = activeEngagementManifest(); }
+  catch (error) { fail(`${label} denied because the active engagement cannot be resolved: ${error.message}`); }
   if (!manifestPath) return;
   const engagement = readSecureJson(manifestPath, 'active engagement manifest');
   const errors = validateEngagementManifest(engagement);

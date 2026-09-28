@@ -17,7 +17,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 # The runner reads these; a hermetic smoke never inherits them from its caller.
 unset ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET ARGUS_FAULT_INJECTION ARGUS_FAULT_INJECTION_GRANT \
-  ARGUS_NATIVE_LAUNCH_RECEIPT ARGUS_CONTRACT_SMOKE ARGUS_OUTCOME_FILE ARGUS_READINESS_URLS ARGUS_TEST_ROOT ARGUS_TODAY \
+  ARGUS_NATIVE_LAUNCH_RECEIPT ARGUS_LAUNCH_ARTIFACT_ROOT ARGUS_CONTRACT_SMOKE ARGUS_OUTCOME_FILE ARGUS_READINESS_URLS ARGUS_TEST_ROOT ARGUS_TODAY \
   ARGUS_RESET_TIMEOUT_SECONDS ARGUS_VERIFY_TIMEOUT_SECONDS ARGUS_AUTHORIZATION_MANIFEST \
   ARGUS_AUTHORIZATION_TARGET ARGUS_AUTHORIZATION_SOURCE_TRUST ARGUS_AUTHORIZATION_ACCOUNT \
   ARGUS_AUTHORIZATION_NAMESPACE ARGUS_AUTHORIZATION_MUTATION ARGUS_AUTHORIZATION_RATE \
@@ -880,6 +880,21 @@ run_case "$label" 0 full-suite "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$lab
   "ARGUS_NATIVE_LAUNCH_RECEIPT=$(dirname "$MANIFEST")/native-launch-receipt.json" ARGUS_ENGAGEMENT_LANE=odysseus ARGUS_ENVIRONMENT_RESET=execute
 has_event "$label" environment infrastructure pass false n/a - environment-reset-executed
 [ "$(cli_log "$label" | sed -n 1p)" = "engagement status --manifest $MANIFEST" ] || fail "$label did not read the launched engagement: $(cli_log "$label")"
+
+# An unattested launch names its artifact root instead of a receipt.
+label=engagement-reset-launch-root-allowed
+prepare "$label" reset-ok
+run_case "$label" 0 full-suite "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-reset.json" \
+  "ARGUS_LAUNCH_ARTIFACT_ROOT=$(dirname "$(dirname "$MANIFEST")")" ARGUS_ENGAGEMENT_LANE=odysseus ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment infrastructure pass false n/a - environment-reset-executed
+[ "$(cli_log "$label" | sed -n 1p)" = "engagement status --manifest $MANIFEST" ] || fail "$label did not read the launched engagement: $(cli_log "$label")"
+
+label=engagement-reset-launch-root-without-manifest
+prepare "$label" reset-ok
+run_case "$label" 13 full-suite "PATH=$FAKE_BIN:$PATH" "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-reset.json" \
+  "ARGUS_LAUNCH_ARTIFACT_ROOT=$WORK/launch" ARGUS_ENGAGEMENT_LANE=odysseus ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment policy denied false n/a - environment-reset-unauthorized
+[ -z "$(cli_log "$label")" ] || fail "$label consulted the CLI without the launched engagement's manifest"
 
 label=engagement-reset-receipt-without-manifest
 prepare "$label" reset-ok

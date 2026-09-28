@@ -19,7 +19,7 @@ known_argus_environment=(
   ARGUS_AUTHORIZATION_MUTATION ARGUS_AUTHORIZATION_SOURCE_TRUST ARGUS_BINARY_EVIDENCE_REVIEWED
   ARGUS_BROWSER_ARTIFACTS ARGUS_BROWSER_PROFILE ARGUS_CAPTURE_TRACE ARGUS_CAPTURE_VIDEO
   ARGUS_CONTRACT_SMOKE ARGUS_ENGAGEMENT_CONTROLLER_TOKEN ARGUS_ENGAGEMENT_LEASE_TOKEN
-  ARGUS_ENGAGEMENT_MANIFEST ARGUS_IMMUTABILITY_BYPASS_TOKEN ARGUS_MODEL_SIGNING_KEY
+  ARGUS_ENGAGEMENT_MANIFEST ARGUS_IMMUTABILITY_BYPASS_TOKEN ARGUS_LAUNCH_ARTIFACT_ROOT ARGUS_MODEL_SIGNING_KEY
   ARGUS_MODEL_TRUST_STORE ARGUS_NATIVE_LAUNCH_AUTHORIZATION ARGUS_NATIVE_LAUNCH_CAPABILITY
   ARGUS_NATIVE_LAUNCH_PROOF ARGUS_NATIVE_LAUNCH_RECEIPT ARGUS_OUTCOME_FILE
   ARGUS_PREVIOUS_REVISION ARGUS_TEST_ROOT ARGUS_TODAY
@@ -943,7 +943,8 @@ grep -Eq "^ARGUS_LAUNCH .*maxTurns=$REVIEWED_CONTROLLER_TURNS .*attestation=UNAT
 [ ! -e "$WORK/usage-reports/dry-run.json" ] || fail 'unattested dry run wrote the usage report'
 
 # A real keyless launch writes the report, prints only the result text, and gives the child
-# ARGUS_LAUNCH_UNATTESTED=1 as its only Argus variable.
+# exactly two Argus variables: ARGUS_LAUNCH_UNATTESTED=1 and its own artifact root, which is
+# how the write guard finds the engagement from a path target's workspace (no receipt here).
 set +e
 run_usage_case launch launcher-usage-launch --usage-json "$WORK/usage-reports/launch.json"
 usage_status=$?
@@ -956,8 +957,9 @@ jq -e '.type == "result" and .subtype == "success" and (.usage | type) == "objec
   and .modelUsage["claude-opus-fixture"].inputTokens == 10 and .result == "ARGUS_FIXTURE_UNATTESTED_PROMPT_OK"' \
   "$WORK/usage-reports/launch.json" >/dev/null || { cat "$WORK/usage-reports/launch.json" >&2; fail 'unattested usage report is not the Claude JSON result document'; }
 usage_env_file="$WORK/usage-artifacts-launch/ai_agents_internal/fixture-child-environment.txt"
-[ "$(grep -c '^ARGUS_' "$usage_env_file")" -eq 1 ] && grep -Fxq 'ARGUS_LAUNCH_UNATTESTED=1' "$usage_env_file" || \
-  { grep '^ARGUS_' "$usage_env_file" >&2; fail 'unattested child received an Argus variable other than ARGUS_LAUNCH_UNATTESTED=1'; }
+[ "$(grep -c '^ARGUS_' "$usage_env_file")" -eq 2 ] && grep -Fxq 'ARGUS_LAUNCH_UNATTESTED=1' "$usage_env_file" \
+  && grep -Fxq "ARGUS_LAUNCH_ARTIFACT_ROOT=$WORK/usage-artifacts-launch" "$usage_env_file" || \
+  { grep '^ARGUS_' "$usage_env_file" >&2; fail 'unattested child did not receive exactly ARGUS_LAUNCH_UNATTESTED=1 and its ARGUS_LAUNCH_ARTIFACT_ROOT'; }
 usage_arguments="$WORK/usage-artifacts-launch/ai_agents_internal/fixture-claude-arguments.txt"
 [ "$(grep -Fx -A 1 -- '--output-format' "$usage_arguments" | tail -n 1)" = json ] && \
   [ "$(grep -Fx -A 1 -- '--max-turns' "$usage_arguments" | tail -n 1)" = "$REVIEWED_CONTROLLER_TURNS" ] || \

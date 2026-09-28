@@ -1013,6 +1013,65 @@ if (cd "$TARGET" && "$CLI" coverage calculate --inventory "$COVERAGE_FIXTURES/su
   fail 'coverage calculate wrote a canonical artifact outside its owner merge'
 fi
 test ! -e "$TARGET/solution/coverage-result.json" || fail 'denied coverage calculation created a canonical artifact'
+# A path target's default workspace is the target, outside the physically disjoint artifact
+# root, so the walk up from the working directory never reaches the engagement. The launch
+# names it instead: the directory of the attested receipt, or the unattested
+# ARGUS_LAUNCH_ARTIFACT_ROOT. With either, the guard and the CLI write self-check hold from
+# cwd=target exactly as from inside the artifact root, and before preflight has created the
+# manifest the session stays open.
+DISJOINT_RECEIPT="$INSTALL_ROOT/ai_agents_internal/native-launch-receipt.json"
+# Usage: launched <receipt|root> <command...>
+launched() {
+  local source="$1"
+  shift
+  case "$source" in
+    receipt) ( export ARGUS_NATIVE_LAUNCH_RECEIPT="$DISJOINT_RECEIPT"; "$@" ) ;;
+    root) ( export ARGUS_LAUNCH_ARTIFACT_ROOT="$INSTALL_ROOT"; "$@" ) ;;
+    *) fail "unknown launch source $source" ;;
+  esac
+}
+guard_as argus:atalanta Write "$INSTALL_ROOT/ai_agents_internal/authorization.json" allow "$INSTALL_TARGET"
+printf '{"password":"disjoint-sentinel"}\n' >"$WORK/disjoint-input.json"
+for source in receipt root; do
+  for control in authorization.json engagement.json engagement-state.json; do
+    launched "$source" guard_as argus:atalanta Write "$INSTALL_ROOT/ai_agents_internal/$control" GUARD-TARGET-IMMUTABLE "$INSTALL_TARGET"
+  done
+  launched "$source" guard_as argus:minos Write "$INSTALL_ROOT/solution/bug-ledger.json" GUARD-CANONICAL-SINGLE-WRITER "$INSTALL_TARGET"
+  launched "$source" guard_as argus:atalanta Bash "printf x > $INSTALL_ROOT/solution/bug-ledger.json" GUARD-CANONICAL-SINGLE-WRITER "$INSTALL_TARGET"
+  launched "$source" guard_as argus:talos Write "$INSTALL_ROOT/scripts/runner-lib.sh" GUARD-OWNED-ARTIFACT "$INSTALL_TARGET"
+  launched "$source" guard_as argus:atlas Write "$INSTALL_ROOT/quality/support/config.ts" allow "$INSTALL_TARGET"
+  launched "$source" guard_as argus:atlas Write "$INSTALL_TARGET/src/app.ts" GUARD-TARGET-IMMUTABLE "$INSTALL_TARGET"
+  # The main smoke engagement is a different manifest than the launch names: deny, never pick one.
+  launched "$source" guard_as main Bash 'argus-assets list' 'GUARD-MANIFEST-INVALID: the active engagement cannot be resolved' "$TARGET"
+  if (cd "$INSTALL_TARGET" && launched "$source" "$CLI" redact --input "$WORK/disjoint-input.json" \
+    --output "$INSTALL_ROOT/solution/bug-ledger.json") >"$WORK/disjoint.out" 2>&1; then
+    fail "redact wrote a canonical artifact from a disjoint workspace ($source)"
+  fi
+  grep -Fq 'redaction output denied by active engagement rule GUARD-CANONICAL-SINGLE-WRITER' "$WORK/disjoint.out" \
+    || fail "disjoint redact ($source) failed for the wrong reason: $(<"$WORK/disjoint.out")"
+  if (cd "$INSTALL_TARGET" && launched "$source" "$CLI" authorization check --manifest "$INSTALL_ROOT/ai_agents_internal/authorization.json" \
+    --lane atalanta --action read --target "$INSTALL_TARGET" --source-trust manifest --at 2026-07-10T12:00:00.000Z) >"$WORK/disjoint.out" 2>&1; then
+    fail "authorization check --at ran inside a disjoint-workspace engagement ($source)"
+  fi
+  grep -Fq 'refused while an engagement is active' "$WORK/disjoint.out" || fail "disjoint --at ($source) failed for the wrong reason: $(<"$WORK/disjoint.out")"
+done
+if (cd "$INSTALL_TARGET" && launched receipt "$CLI" coverage calculate --inventory "$COVERAGE_FIXTURES/surface-inventory.json" \
+  --observations "$COVERAGE_FIXTURES/coverage-observations.json" "${COVERAGE_EVIDENCE[@]}" \
+  --output "$INSTALL_ROOT/solution/coverage-result.json") >"$WORK/disjoint.out" 2>&1; then
+  fail 'coverage calculate wrote the canonical coverage result from a disjoint workspace'
+fi
+test ! -e "$INSTALL_ROOT/solution/bug-ledger.json" && test ! -e "$INSTALL_ROOT/solution/coverage-result.json" \
+  || fail 'a denied disjoint-workspace command created a canonical artifact'
+# Before preflight creates the manifest, the launch source names nothing yet: the controller's
+# preflight must pass. A manifest that ARGUS_ENGAGEMENT_MANIFEST names but that does not exist
+# denies, as it does for every engagement command.
+mkdir -m 700 "$INSTALL_CASE/fresh-artifacts"
+(export ARGUS_LAUNCH_ARTIFACT_ROOT="$INSTALL_CASE/fresh-artifacts" && guard_as main Bash \
+  "argus-assets preflight --target $INSTALL_TARGET --mode A --artifact-root $INSTALL_CASE/fresh-artifacts --engagement-id fresh" allow "$INSTALL_TARGET")
+(export ARGUS_NATIVE_LAUNCH_RECEIPT="$INSTALL_CASE/fresh-artifacts/ai_agents_internal/native-launch-receipt.json" && guard_as main Bash \
+  "argus-assets preflight --target $INSTALL_TARGET --mode A --artifact-root $INSTALL_CASE/fresh-artifacts --engagement-id fresh" allow "$INSTALL_TARGET")
+(export ARGUS_ENGAGEMENT_MANIFEST="$INSTALL_CASE/fresh-artifacts/ai_agents_internal/engagement.json" && guard_as main Bash 'argus-assets list' \
+  'GUARD-MANIFEST-INVALID: the active engagement cannot be resolved: ARGUS_ENGAGEMENT_MANIFEST does not name an existing engagement manifest' "$INSTALL_TARGET")
 # Every packaged command family and operation that a prompt references must be classified;
 # only the final default deny and the per-family "unknown <family> operation" denials mean unclassified.
 node --input-type=module - "$ROOT" "$MANIFEST" "$TARGET" <<'NODE'
