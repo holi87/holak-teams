@@ -501,11 +501,14 @@ advance. This phase dispatch uses the already selected decision and allocation; 
 mint a late normal dispatch or replacement lease.
 
 Standby lanes never arrive at a barrier. They are the lanes a phase may re-dispatch on
-their active lease: filing lanes whose candidates need proof repair and Metis as the
-oracle desk. A phase-scoped re-dispatch reuses the lane's allocation and token, so a
+their active lease: filing lanes whose candidates need proof repair, Metis as the
+oracle desk, Kalchas for a second recon during hunting and every deep-hunt pass, and, in
+Mode A, Tyche during automation so she can claim the `fault` window for a Nike server-fault
+run. A phase-scoped re-dispatch reuses the lane's allocation and token, so a
 standby lane keeps its lease until the standby phase has passed (see Cleanup). The plan
 validator keeps every `proofLoop` cluster lane reachable for repair during the first proof
-phase: in each mode it is on that phase's standby or holds a later phase.
+phase: in each mode it is on that phase's standby or holds a later phase. It also requires
+Kalchas on the standby of `hunting` and of every deep-hunt pass.
 
 A proof phase whose projected participants include Minos cannot advance until Minos has
 merged `solution/bug-ledger.json` during that phase. Each bug-ledger merge records

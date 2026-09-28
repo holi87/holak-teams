@@ -23,6 +23,7 @@ import {
   appendHeartbeat,
   arriveBarrier,
   bindDispatchableAgents,
+  claimExclusive,
   cleanupWorker,
   conditionalGateRequest,
   createDefaultEngagement,
@@ -75,6 +76,7 @@ try {
   testProofResidualsReachFinalSummary();
   testStandbyBlocksSuccessCleanup();
   testClusterLaneStandbyDuringProof();
+  testRedispatchLanesKeepTheirLease();
   testConditionalLaneProjection();
   testConditionalGateResolution();
   testGateUnmetFinalSummary();
@@ -648,6 +650,57 @@ function testClusterLaneStandbyDuringProof() {
   advanceBarrier(manifest, 'odysseus', controller.token);
   assert(cleanupWorker(manifest, 'theseus', theseus.token, 'success').released === true, 'theseus did not release after the proof phase passed');
   for (const [lane, token] of [['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
+// Kalchas answers a hunter's unknown with a second recon, and in Mode A Tyche claims the fault
+// window for a routed Nike server-fault run; both are phase-scoped re-dispatches on the active
+// lease, so neither lane may release before the last phase that can still need it.
+function testRedispatchLanesKeepTheirLease() {
+  const fixture = createFixture('redispatch-leases', ['kalchas', 'minos', 'nike', 'odysseus', 'tyche']);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('redispatch-controller') });
+  const tokens = {};
+  for (const lane of ['kalchas', 'minos', 'nike', 'tyche']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`redispatch-${lane}`) }).token;
+  }
+  const refusal = (lane, pending) => `${lane} success cleanup is not yet available: pending ${pending}; the lease stays active and Odysseus performs terminal cleanup`;
+  arriveBarrier(manifest, 'kalchas', tokens.kalchas, 'discovery');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'kalchas', tokens.kalchas, 'success'),
+    refusal('kalchas', 'hunting, deep-hunt-1, deep-hunt-2, deep-hunt-3'),
+    'kalchas success after discovery while a second recon may be needed',
+  );
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'tyche', tokens.tyche, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'proof');
+  mergeEmptyLedger(fixture, tokens.minos, 'redispatch-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'kalchas', tokens.kalchas, 'success'),
+    refusal('kalchas', 'deep-hunt-1, deep-hunt-2, deep-hunt-3'),
+    'kalchas success before the deep-hunt passes',
+  );
+  arriveBarrier(manifest, 'tyche', tokens.tyche, 'deep-hunt-1');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'deep-proof-1');
+  mergeEmptyLedger(fixture, tokens.minos);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  skipPhases(manifest, 'odysseus', controller.token, 'converged');
+  assert(getEngagementStatus(manifest).currentPhase === 'automation', 'phase did not reach automation after the converged skip');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'tyche', tokens.tyche, 'success'),
+    refusal('tyche', 'automation'),
+    'tyche success while Nike may still need the fault window',
+  );
+  assert(cleanupWorker(manifest, 'kalchas', tokens.kalchas, 'success').released === true, 'kalchas did not release after the last deep-hunt pass was skipped');
+  claimExclusive(manifest, 'tyche', tokens.tyche, 'fault');
+  arriveBarrier(manifest, 'nike', tokens.nike, 'automation');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(cleanupWorker(manifest, 'tyche', tokens.tyche, 'success').released === true, 'tyche did not release after the automation phase passed');
+  assert(getEngagementStatus(manifest).exclusiveLocks.fault === undefined, 'tyche cleanup left the fault window held');
+  for (const lane of ['minos', 'nike']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
 }
 
 // The conditional map is sealed with the dispatchable projection: normalized, restricted to

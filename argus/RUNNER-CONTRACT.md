@@ -404,7 +404,9 @@ manifest that does not exist, or two sources that name different files, refuse t
 opt-in. When the reset opt-in is set, before the environment gate (action
 `destructive`, exclusive window `reset`), and when the fault opt-in is set, before any
 native hook (action `chaos`, exclusive window `fault`), the library reads
-`argus-assets engagement status` and requires the window to be held, then requires an
+`argus-assets engagement status` and requires the window to be held by the lane the
+engagement manifest names as its owner (`resourcePolicy.exclusiveOperations`; a lock held by
+any other lane, or a manifest that names no owner, refuses), then requires an
 `allow` from `argus-assets authorization check` with `--lane "$ARGUS_ENGAGEMENT_LANE"`,
 `--target` from `ARGUS_AUTHORIZATION_TARGET` (default `API_URL`, then `UI_URL`),
 `--manifest` from `ARGUS_AUTHORIZATION_MANIFEST` (default `authorization.json` next to the

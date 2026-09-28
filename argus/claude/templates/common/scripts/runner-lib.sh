@@ -144,10 +144,11 @@ argus_readiness() {
 # Inside an Argus engagement (an engagement manifest is located, see
 # argus_engagement_manifest) an environment reset or a server-side fault injection needs
 # both the exclusive engagement window and an explicit authorization decision; the opt-in
-# variable alone is never enough. Every missing input refuses. Outside an engagement the
-# opt-in of the operator who owns the target stands.
+# variable alone is never enough. The window counts only while the lane the manifest names
+# as its owner (resourcePolicy.exclusiveOperations) holds it. Every missing input refuses.
+# Outside an engagement the opt-in of the operator who owns the target stands.
 argus_engagement_authorized() {
-  local resource="$1" action="$2" label="$3" cli lane target authorization holder state
+  local resource="$1" action="$2" label="$3" cli lane target authorization holder owner state
   local args=()
   if ! cli="$(command -v argus-assets)"; then
     echo "ARGUS AUTHORIZATION: argus-assets is not on PATH; $label refused" >&2
@@ -164,6 +165,17 @@ argus_engagement_authorized() {
     return 1
   fi
   authorization="${ARGUS_AUTHORIZATION_MANIFEST:-$(dirname "$ARGUS_ENGAGEMENT_MANIFEST")/authorization.json}"
+  owner="$(node -e '
+    try {
+      const policy = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).resourcePolicy || {};
+      const owner = (policy.exclusiveOperations || {})[process.argv[2]];
+      if (typeof owner === "string" && /^[a-z][a-z0-9-]*$/.test(owner)) console.log(owner);
+      else process.exitCode = 1;
+    } catch (error) { process.exitCode = 1; }' "$ARGUS_ENGAGEMENT_MANIFEST" "$resource")" || owner=""
+  if [ -z "$owner" ]; then
+    echo "ARGUS AUTHORIZATION: the engagement manifest names no owner of the exclusive $resource window; $label refused" >&2
+    return 1
+  fi
   state="$(mktemp)"
   if ! "$cli" engagement status --manifest "$ARGUS_ENGAGEMENT_MANIFEST" >"$state"; then
     rm -f "$state"
@@ -183,6 +195,10 @@ argus_engagement_authorized() {
   rm -f "$state"
   if [ -z "$holder" ]; then
     echo "ARGUS AUTHORIZATION: the exclusive $resource window is not held; $label refused" >&2
+    return 1
+  fi
+  if [ "$holder" != "$owner" ]; then
+    echo "ARGUS AUTHORIZATION: the exclusive $resource window is held by $holder, not its owner $owner; $label refused" >&2
     return 1
   fi
   args=(authorization check --manifest "$authorization" --lane "$lane" --action "$action" --target "$target"

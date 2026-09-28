@@ -70,11 +70,20 @@ for stale in browser-profile/stale-cookie auth/stale-token browser-artifacts/dow
   [ ! -e "$ODYSSEUS_ROOT/$stale" ] || fail "crash recovery retained $stale"
 done
 
-# Kalchas completes its declared discovery barrier before success cleanup;
-# success, failure, and interruption all remove browser-sensitive state.
+# Kalchas stays on standby for a second recon after his discovery barrier, so a success
+# cleanup is refused and keeps his browser state; failure and interruption remove it.
 "$CLI" engagement barrier arrive --manifest "$DEFAULT" --lane kalchas \
   --token "$(jq -r .token <<<"$KALCHAS")" --phase discovery >/dev/null
-for spec in "kalchas:success:$KALCHAS" "odysseus:interrupted:$RECOVERED"; do
+KALCHAS_ROOT="$WORK/default/ai_agents_internal/workers/kalchas"
+touch "$KALCHAS_ROOT/browser-profile/session"
+if "$CLI" engagement cleanup --manifest "$DEFAULT" --lane kalchas --token "$(jq -r .token <<<"$KALCHAS")" \
+  --outcome success >"$WORK/kalchas-success.out" 2>&1; then
+  fail "kalchas success cleanup ran while his hunting standby was pending"
+fi
+grep -Fq 'kalchas success cleanup is not yet available: pending hunting' "$WORK/kalchas-success.out" ||
+  fail "kalchas success cleanup failed for the wrong reason: $(cat "$WORK/kalchas-success.out")"
+[ -e "$KALCHAS_ROOT/browser-profile/session" ] && [ -e "$KALCHAS_ROOT/.lease" ] || fail "a refused success cleanup removed kalchas state"
+for spec in "kalchas:failure:$KALCHAS" "odysseus:interrupted:$RECOVERED"; do
   lane="${spec%%:*}"; rest="${spec#*:}"; outcome="${rest%%:*}"; allocation="${rest#*:}"
   token="$(jq -r .token <<<"$allocation")"
   root="$WORK/default/ai_agents_internal/workers/$lane"
