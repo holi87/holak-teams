@@ -211,7 +211,7 @@ For a permanently failing lane, such as `AUTO_CONTINUATION_EXHAUSTED`, emit its 
 run its `failure` cleanup, then `argus-assets engagement barrier abandon --manifest <manifest>
 --lane <slug> --controller-token <odysseus-token> --reason
 <continuation-exhausted|worker-failure>`; the barriers stop waiting and the summary records
-`lane-abandoned:<lane>` (for Atlas, also `runner-result-missing`). Never re-allocate a released
+`lane-abandoned:<lane>` (for Atlas, also `runner-result-*`). Never re-allocate a released
 lane. A permanent Kalchas, Minos, or Kleio failure stops the engagement.
 
 Route work through `argus-assets raci route`. Workers write owned outputs or immutable

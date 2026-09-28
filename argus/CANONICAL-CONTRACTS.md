@@ -215,7 +215,7 @@ Hunters submit immutable evidence-reference fragments as they collect proof. Min
 
 Never auto-fill historical proof. The 4.9.1 patch kept contract identifiers at their versions because it enforced documented validity requirements; Argus 5 replaces the ledger identity with `argus/bug-ledger@2`, so a 4.x ledger is finished on 4.9.x rather than resumed.
 
-Mode B without funded automation can use `runner: null` in its final summary with zero automated tests. Modes A, C, and D can merge a null runner only without a `reports/argus-runner-result.json`: with zero automated tests and no installed operator template selection, when the summary is blocked by `template-selection-missing`, or after the `run-tests.sh` owner (Atlas) was abandoned, when the summary is blocked by `runner-result-missing` whatever it had automated. The rendered report explicitly says no framework runner was executed.
+Mode B without funded automation can use `runner: null` in its final summary with zero automated tests. Modes A, C, and D can merge a null runner only without a `reports/argus-runner-result.json`: with zero automated tests and no installed operator template selection, when the summary is blocked by `template-selection-missing`, or after the `run-tests.sh` owner (Atlas) was abandoned, when the summary is blocked by `runner-result-missing` whatever it had automated. After that abandonment a result Atlas left unregistered (a later run or an interrupted write) can no longer be archived and registered: a null runner then merges beside it, blocked by `runner-result-unregistered`, while a registered result stays the runner outcome. The rendered report explicitly says no framework runner was executed, or that its result was never registered.
 
 ## Bug ledger v2 in 5.0
 
@@ -393,7 +393,9 @@ Each input counts only once merged and only while its file matches its merge dig
   bytes (none fails the merge, so an unregistered or since-overwritten result never counts);
   `runner: null` is valid in Mode B only with no automated test; outside Mode B it needs that no
   runner result exists and either no automated test and no installed template selection
-  (`template-selection-missing`) or an abandoned `run-tests.sh` owner (`runner-result-missing`);
+  (`template-selection-missing`) or an abandoned `run-tests.sh` owner (`runner-result-missing`),
+  or an abandoned `run-tests.sh` owner and a result that matches no registered reference
+  (`runner-result-unregistered`), whose bytes are never parsed or cited;
 - `coverage` (required) from the merged `argus/coverage-result@2`: discovery completeness, the
   overall ratios including `automatedExecution`, the scoped-outcome count,
   `criticalUnexecuted`, and `caseDepth` when recorded. Its merge record keeps the digest of each
@@ -418,12 +420,13 @@ Each input counts only once merged and only while its file matches its merge dig
 | `canonical-unmerged:<path-slug>` | `degraded` | The owner of a declared canonical was abandoned before merging it, so no lane can publish it and fragments submitted for it stay unmerged; `<path-slug>` is the path lowercased with each run of other characters replaced by `-` (`solution/ARCHITECTURE.md` is `solution-architecture-md`). |
 | `template-selection-missing` | `blocked` | Mode A, C, or D has no runner outcome because no valid `ai_agents_internal/template-selection.json` was installed by `argus-launch --template-selection`. |
 | `runner-result-missing` | `blocked` | Mode A, C, or D has no runner outcome because the `run-tests.sh` owner was abandoned before any `reports/argus-runner-result.json` existed. |
+| `runner-result-unregistered` | `blocked` | Mode A, C, or D has no runner outcome because the `run-tests.sh` owner was abandoned while `reports/argus-runner-result.json` matched no registered `runner-result` reference. |
 
 `solution/FINAL-SUMMARY.md` prints the status with one `Status reason:` line per reason, the
 defect headline and per-status counts, a "Likely, unproven" section (`None.` when empty), the
 review verdict (`APPROVE`, `BLOCK`, `STALE`, `ABSENT`, or `NOT-APPLICABLE`) with its round,
 the runner outcome, and the coverage section with automated re-execution (`n/a` when automation
-is unfunded, no template selection was installed, or no runner result exists) and one line per
+is unfunded, no template selection was installed, or no registered runner result exists) and one line per
 unexecuted critical surface.
 The phase in which the final-summary owner reports cannot advance until this summary is merged,
 so an engagement never reaches `complete` without its completion record.

@@ -748,7 +748,9 @@ non-delivery-gate runner, runner exit codes 11 to 15, a non-converged deep-hunt 
 abandoned lane or a canonical its abandoned owner never merged (`canonical-unmerged:<path-slug>`)
 degrade. In Mode A, C, or D without a runner result, a null runner merges when no template
 selection is installed and nothing was automated (`template-selection-missing` blocks) or after
-the `run-tests.sh` owner was abandoned (`runner-result-missing` blocks). It
+the `run-tests.sh` owner was abandoned (`runner-result-missing` blocks); after that abandonment
+it also merges beside a runner result that is not registered evidence
+(`runner-result-unregistered` blocks), because no lane can register it any more. It
 never raises a status. `reporting` cannot advance until the summary is merged. The merge also renders `solution/FINAL-SUMMARY.md` with an
 explicit `Source schema:` line and one `Status reason:` line per reason, so the human-facing
 summary is traceable to the machine contract. The lane-plan `lanes`, evidence-reference
@@ -807,7 +809,8 @@ phase's participants and standby lanes like a `gate-unmet` lane, can never be al
 and the final-summary merge adds `lane-abandoned:<lane>` (`degraded`), plus
 `canonical-unmerged:<path-slug>` (`degraded`) for each canonical it owns but never merged and,
 for the `run-tests.sh` owner without a runner result, `runner-result-missing` (`blocked`) with
-`runner: null`. Odysseus, Kalchas,
+`runner: null`, or `runner-result-unregistered` (`blocked`) with `runner: null` when its last
+result was never registered. Odysseus, Kalchas,
 Minos, and the final-summary owner (Kleio) cannot be abandoned, because the gate-resolution
 evidence, the proof-phase ledger merge, and the completion record depend on them; their
 permanent failure stops the engagement.

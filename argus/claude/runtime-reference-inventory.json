@@ -397,7 +397,8 @@
       "value": "reports/argus-runner-result.json",
       "consumers": [
         "aristarchus",
-        "atlas"
+        "atlas",
+        "kleio"
       ]
     },
     {

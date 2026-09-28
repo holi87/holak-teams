@@ -216,12 +216,15 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
   const review = document.automationReview;
   const coverage = document.coverage;
   // A null runner is unfunded automation, except in a mode that funded automation that could
-  // not run: its operator installed no template selection, or the runner-script owner was abandoned.
+  // not run or not be verified: its operator installed no template selection, or the
+  // runner-script owner was abandoned before any runner result or before registering it.
   const notRun = document.statusReasons.includes('template-selection-missing')
     ? { line: 'Automation: not run; no operator template selection was installed (template-selection-missing).', coverage: 'n/a (no template selection)' }
     : document.statusReasons.includes('runner-result-missing')
       ? { line: 'Automation: not run; the lane that owns run-tests.sh was abandoned before any runner result (runner-result-missing).', coverage: 'n/a (no runner result)' }
-      : { line: 'Automation: unfunded; no framework runner was executed.', coverage: 'n/a (automation unfunded)' };
+      : document.statusReasons.includes('runner-result-unregistered')
+        ? { line: 'Automation: not verified; the lane that owns run-tests.sh was abandoned before it registered reports/argus-runner-result.json (runner-result-unregistered).', coverage: 'n/a (unregistered runner result)' }
+        : { line: 'Automation: unfunded; no framework runner was executed.', coverage: 'n/a (automation unfunded)' };
   const lines = [
     '# Argus Final Summary',
     '',

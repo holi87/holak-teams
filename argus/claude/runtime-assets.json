@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 61689,
-      "sha256": "55dc428cc684752c888432a7a5e32cf3ddce2130262101ed15a57d93411168ea"
+      "bytes": 61970,
+      "sha256": "86e813db1a4234517f0291cbd346fe215d081f8edc8d68c2f357bc02932f5295"
     },
     {
       "id": "canonical-contracts",
@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 42055,
-      "sha256": "9368fd9241b010ec7b31b9b6b4eca79f2c0b4da2d265461c927c28ab6648c874"
+      "bytes": 42757,
+      "sha256": "782d109e713259f094a7f82acb428133e92bf06af310c390360e2113589ce5f7"
     },
     {
       "id": "runner-contract",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 18776,
-      "sha256": "dfe74c9691b18afc658e7ab1b80db5d69a098b098062740b172fa4a055d2dea2"
+      "bytes": 18770,
+      "sha256": "55a020e3960000d68fa106eb4b9a8554e43bc945896f99c46832c018e058b969"
     },
     {
       "id": "qa-core-skill",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 445074,
-      "sha256": "07e9f7ddb7302441d3c33269187fd6dabe4b7f5bbf1194b6cf0e9fbd2f7ece2c"
+      "bytes": 446531,
+      "sha256": "2afae2847f40e109959e785578aff0f3b72ad14c4d3fe0c6a42da91813ff1c81"
     },
     {
       "id": "common-template",
@@ -356,6 +356,6 @@
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
     "bytes": 64989,
-    "sha256": "3e18ef790e64bd90549c6bb95b5fb7c29fa2771f25ae59b4a6f7bf9927798913"
+    "sha256": "1d2d4a17f9d77fc9beb0747683d9e16229552f3f2792ffa5c23281c13f677dbd"
   }
 }
