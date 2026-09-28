@@ -2,8 +2,8 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 2520000,
-    "installedPluginBytes": 3520000
+    "generatedAssetsBytes": 2530000,
+    "installedPluginBytes": 3540000
   },
   "templateCompositions": {
     "typescript": {
@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 51537,
-      "sha256": "09fc5065a4ca025bf431812d06aa184de205fa4d52c0821f27de6cabadebe982"
+      "bytes": 53949,
+      "sha256": "f3458dad977abcb86e752c0226cc4faab0404ce34dba582e9820ac8229b1457a"
     },
     {
       "id": "browser-isolation",
@@ -47,8 +47,8 @@
       "source": "argus/AUTHORIZATION-POLICY.md",
       "destination": "references/AUTHORIZATION-POLICY.md",
       "files": 1,
-      "bytes": 12798,
-      "sha256": "1b1a831a2e6d6d44573d7ee83ea0301dbd07a141e376ef80be62d8b5aa5f5866"
+      "bytes": 13063,
+      "sha256": "93fc8bae42ea852b37142577399a15524e8d7abef4dc1b85e29034916ba4fe99"
     },
     {
       "id": "engagement-policy",
@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 56380,
-      "sha256": "ce6e9f09794086bedb3cc91d406485359b52f05a7392048d502b40980d6f7349"
+      "bytes": 57842,
+      "sha256": "eb33ca73ace683c5ed071d6bf25bfa443bd79b47b611a974747a86c8c1bf8680"
     },
     {
       "id": "canonical-contracts",
@@ -74,8 +74,8 @@
       "source": "argus/RUNNER-CONTRACT.md",
       "destination": "references/RUNNER-CONTRACT.md",
       "files": 1,
-      "bytes": 30242,
-      "sha256": "8dfa2ab34f496dde79c77246ea5cf019453e5c15ca746dd24e84f86748a0c9ab"
+      "bytes": 30525,
+      "sha256": "293d6dbdd568fe7e2559b34640683bf873661ab3b6e9219bb608632dc5e956bb"
     },
     {
       "id": "template-contract",
@@ -83,8 +83,8 @@
       "source": "argus/TEMPLATE-CONTRACT.md",
       "destination": "references/TEMPLATE-CONTRACT.md",
       "files": 1,
-      "bytes": 13760,
-      "sha256": "9179399326c47e513e749fdcca40cca9133ce42078fc49bd92aaa60c9102b1da"
+      "bytes": 14553,
+      "sha256": "c33af0f3830d263204e438e894e71d748f2597c803acf73e05fa227f58494914"
     },
     {
       "id": "coverage-contract",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 15991,
-      "sha256": "4938066cebe6e5561fe3ba9c19ddd4eb1fc5735641f65fec6e8d2cce413a84c2"
+      "bytes": 16568,
+      "sha256": "832136ddfb405e70f43d211a8c474475ac04a8828c4717d4771b65587e92f359"
     },
     {
       "id": "qa-core-skill",
@@ -146,8 +146,8 @@
       "source": "argus/shared-skills/qa-framework-runner",
       "destination": "skills/qa-framework-runner",
       "files": 1,
-      "bytes": 4883,
-      "sha256": "7fed5aa258044075c806a56999f7f850cd811ebd2d8515f3c9926a5c63a4b45e"
+      "bytes": 5316,
+      "sha256": "3a52583c406332202a14a222636da090d8f6d7af7a32e425734525f7561cd2b0"
     },
     {
       "id": "qa-coverage-reporting-skill",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 426687,
-      "sha256": "114c3b0fef1625f34cb663d891f6c3ac4b7003a231db77dd9b22dbc4da7b0e6d"
+      "bytes": 431096,
+      "sha256": "e7c1df4aa2f410c9cd8ab83ea2db586f9188e13eccfd61c81c2840523704602b"
     },
     {
       "id": "common-template",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 62841,
-    "sha256": "4a4691c90e9e7ca6251ad63ed30bf88405fe9ee4a7e41950561c793fe6b0405c"
+    "bytes": 62996,
+    "sha256": "d921438c28165b05605887550e6505b770cd92f11db014ff0fcf357d5cca9077"
   }
 }

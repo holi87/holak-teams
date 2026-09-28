@@ -422,4 +422,7 @@ so a native run started with the opt-in but without the library never injects. T
 only as one standalone invocation of the engagement's `run-tests.sh` that sets
 `ARGUS_ENGAGEMENT_LANE` to the calling lane and names no other engagement's manifests, and it
 refuses every command that names `ARGUS_FAULT_INJECTION_GRANT`. Outside an engagement the
-opt-in of the operator who owns the target stands.
+opt-in of the operator who owns the target stands. Only a window's manifest owner
+(`resourcePolicy.exclusiveOperations`: `reset` Odysseus, `fault` Tyche) claims it, with
+`argus-assets engagement claim --resource <reset|fault>`, and releases it after the run; the
+lane that runs the suite sets `ARGUS_ENGAGEMENT_LANE` to its own slug.
