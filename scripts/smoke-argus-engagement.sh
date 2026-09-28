@@ -715,19 +715,25 @@ guard_shell 'argus-assets automation-review check' 'GUARD-SHELL-AMBIGUOUS: autom
 guard_shell "argus-assets automation-review digest --manifest $MANIFEST --json" 'GUARD-SHELL-AMBIGUOUS: automation-review digest accepts only its declared options'
 guard_shell "argus-assets automation-review check --manifest $MANIFEST --output reports/review.json" 'GUARD-SHELL-AMBIGUOUS: automation-review check accepts only its declared options'
 guard_shell "argus-assets automation-review approve --manifest $MANIFEST" 'GUARD-SHELL-AMBIGUOUS: unknown automation-review operation'
-# Kleio runs her report-facts and automation-review citations as written, so each one, with its
-# manifest placeholder bound to this engagement, must pass the guard for her lane.
+# Kleio runs her report-facts, automation-review, and coverage-result publication citations as
+# written, so each one, with its placeholders bound to this engagement and her allocation, must
+# pass the guard for her lane.
 node -e '
   const text = require("node:fs").readFileSync(process.argv[1], "utf8");
-  const citations = [...text.matchAll(/`(argus-assets (?:engagement report-facts|automation-review (?:digest|check))\b[^`]*)`/gu)]
+  const citations = [...text.matchAll(/`(argus-assets (?:engagement report-facts|automation-review (?:digest|check)|coverage calculate|engagement (?:fragment|merge) [^`]*--canonical solution\/coverage-result\.json)\b[^`]*)`/gu)]
     .map(([, citation]) => citation.replace(/\s+/gu, " ").trim());
-  for (const kind of ["engagement report-facts", "automation-review check"]) {
+  for (const kind of ["engagement report-facts", "automation-review check", "coverage calculate", "engagement fragment", "engagement merge"]) {
     if (!citations.some((citation) => citation.startsWith(`argus-assets ${kind}`))) throw new Error(`kleio.md no longer cites argus-assets ${kind}`);
   }
   process.stdout.write(citations.map((citation) => `${citation}\n`).join(""));
-' "$ROOT/argus/roles/kleio.md" >"$WORK/kleio-citations.txt" || fail 'could not extract Kleio report-facts and automation-review citations'
+' "$ROOT/argus/roles/kleio.md" >"$WORK/kleio-citations.txt" || fail 'could not extract Kleio report-facts, automation-review, and coverage-result citations'
+KLEIO_OUTPUT="$(jq -r .outputDirectory "$ALLOCATIONS/kleio.json")"
 while IFS= read -r citation; do
   bound="${citation//<engagement.json>/$MANIFEST}"
+  bound="${bound//<artifact-root>/$TARGET}"
+  bound="${bound//<allocated outputDirectory>/$KLEIO_OUTPUT}"
+  bound="${bound//<lane-token>/$(token_for kleio)}"
+  bound="${bound//<coverage-id>/kleio-coverage-result}"
   case "$bound" in *'<'*'>'*) fail "Kleio cites an unbound placeholder: $citation" ;; esac
   guard_as argus:kleio Bash "$bound" allow
 done <"$WORK/kleio-citations.txt"
