@@ -116,6 +116,17 @@ for legacy in 'solution/discovery/system-map.md' 'solution/CODE-REVIEW.md'; do
     fail "legacy non-RACI artifact path remains: $legacy"
   fi
 done
+# The TypeScript bug-coverage.mjs gate and its package script are retired, and no
+# baseline-volume gate exists: bug coverage is the inventory gate's bug-uncovered event.
+for retired in 'bug-coverage.mjs' 'gate:bugs' 'baseline-volume'; do
+  if legacy_path_present "$retired" "${role_corpus[@]}" "$ROOT/argus/claude/runtime-reference-inventory.json"; then
+    fail "retired runner gate remains in a role prompt: $retired"
+  fi
+done
+for gate in baseline-coverage.mjs inventory-gate.sh; do
+  grep -Fq "\`scripts/$gate\`" "$ROOT/argus/roles/atlas.md" || fail "Atlas does not name the scripts/$gate gate"
+done
+grep -Fq 'bug-uncovered' "$ROOT/argus/roles/atlas.md" || fail 'Atlas does not tie confirmed-bug coverage to the inventory gate event'
 
 arch_nonowners=(metis talos daidalos aegis mnemosyne nike kleio)
 trace_nonowners=(metis talos daidalos aegis mnemosyne nike hermes tyche)
