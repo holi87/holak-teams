@@ -22,6 +22,21 @@ ASSETS="$RUNTIME_ROOT/bin/argus-assets"
 # native-launch-receipt schemas, and the cap argus-assets signs into launch requests;
 # scripts/smoke-argus-launcher.sh fails on any drift between these sites.
 readonly CONTROLLER_MAX_TURNS=400
+# Headless permission posture. Claude runs with --permission-mode dontAsk and grants exactly
+# these tools without a prompt: the union of the tools the packaged agents declare, which
+# scripts/smoke-argus-launcher.sh recomputes from agents/*.md and fails on any drift. Every
+# other tool is denied. Permissions are never bypassed (no bypass mode, no skip flag): the
+# packaged PreToolUse write guard still denies each granted call it rejects, and the OS sandbox
+# confines every write to the artifact root. The signed launcherSha256 binds this posture.
+readonly CLAUDE_ALLOWED_TOOLS='Agent,Bash,Edit,Glob,Grep,Read,TaskCreate,TaskGet,TaskList,TaskUpdate,WebFetch,WebSearch,Write,mcp__plugin_context7_context7__query-docs,mcp__plugin_context7_context7__resolve-library-id,mcp__plugin_playwright_playwright__browser_navigate,mcp__plugin_playwright_playwright__browser_snapshot'
+# Host variables the sandboxed controller inherits, each only when set. Its fresh
+# CLAUDE_CONFIG_DIR holds no stored, keychain, or claude.ai subscription login, so Claude can
+# authenticate only through a credential variable here: ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN
+# (from `claude setup-token`), or ANTHROPIC_AUTH_TOKEN for an ANTHROPIC_BASE_URL gateway. No
+# credential file is ever copied into the artifact root, which every worker can read.
+readonly CHILD_PASSTHROUGH_ENVIRONMENT=(USER LOGNAME SHELL LANG LC_ALL LC_CTYPE TERM NO_COLOR FORCE_COLOR
+  ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL
+  HTTPS_PROXY HTTP_PROXY NO_PROXY SSL_CERT_FILE SSL_CERT_DIR)
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 2; }
 
@@ -29,8 +44,10 @@ capability_file=''
 sandbox_probe_dir=''
 browser_probe_work=''
 usage_tmp=''
+login_probe_dir=''
 cleanup_launch_files() {
   if [ -n "$capability_file" ] && [ -e "$capability_file" ]; then rm -f "$capability_file"; fi
+  if [ -n "$login_probe_dir" ] && [ -d "$login_probe_dir" ]; then rm -rf "$login_probe_dir"; fi
   if [ -n "$sandbox_probe_dir" ] && [ -d "$sandbox_probe_dir" ]; then rmdir "$sandbox_probe_dir" 2>/dev/null || true; fi
   if [ -n "$browser_probe_work" ] && [ -d "$browser_probe_work" ]; then rm -rf "$browser_probe_work"; fi
   if [ -n "$usage_tmp" ] && [ -e "$usage_tmp" ]; then rm -f "$usage_tmp"; fi
@@ -150,6 +167,19 @@ usageReport=json.
 
 Sandbox policy os-native-target-readonly@3 adds to @2 only org.chromium-scoped mach names and
 the RootDomainUserClient IOKit user client; file writes stay confined to the artifact root.
+
+Claude runs headless with --permission-mode dontAsk and an explicit --allowedTools list: the
+tools the packaged agents declare, so the controller and its workers can write and run
+commands without a prompt, and every other tool is denied. Permissions are never bypassed: the
+packaged PreToolUse write guard still denies each granted call it rejects, and the sandbox
+confines every write to the artifact root.
+
+Claude authenticates only through the environment: its CLAUDE_CONFIG_DIR is a fresh directory
+inside the artifact root, which no keychain or claude.ai subscription login reaches. Export
+ANTHROPIC_API_KEY, or run `claude setup-token` and export CLAUDE_CODE_OAUTH_TOKEN (a gateway
+may use ANTHROPIC_AUTH_TOKEN with ANTHROPIC_BASE_URL); the launcher passes each through only
+when set and never copies a credential file. doctor and every launch, dry runs included, run
+`claude auth status` in that isolated shape first and stop when it reports no login.
 
 Codex execution remains unavailable until its CLI exposes a native hard turn cap.
 EOF
@@ -530,6 +560,32 @@ run_with_deadline() {
   return "$status"
 }
 
+# Refuses unless Claude reports a login in the controller's own environment shape: env -i with
+# the pass-through allowlist and a fresh private CLAUDE_CONFIG_DIR. An operator's keychain or
+# claude.ai subscription login lives in their own config and never reaches the launch, which
+# would otherwise stop at once with "Not logged in". `claude auth status` is local: it calls no
+# API, and it writes only into the throwaway config, which is removed before this returns.
+require_isolated_claude_login() {
+  local executable="$1" name report=''
+  local probe_environment=()
+  login_probe_dir="$(mktemp -d)" || fail 'cannot create the Claude login probe directory'
+  mkdir -p "$login_probe_dir/config" "$login_probe_dir/tmp" || fail 'cannot prepare the Claude login probe directory'
+  probe_environment=("HOME=${HOME:-}" "PATH=${PATH:-/usr/bin:/bin}" "TMPDIR=$login_probe_dir/tmp" "CLAUDE_CONFIG_DIR=$login_probe_dir/config")
+  for name in "${CHILD_PASSTHROUGH_ENVIRONMENT[@]}"; do
+    if [ -n "${!name:-}" ]; then probe_environment+=("$name=${!name}"); fi
+  done
+  # The CLI exits non-zero when not logged in but still prints its report.
+  report="$(run_with_deadline 30 env -i "${probe_environment[@]}" "$executable" auth status --json 2>/dev/null)" || true
+  rm -rf "$login_probe_dir"
+  login_probe_dir=''
+  # shellcheck disable=SC2016 # The message names a literal command.
+  printf '%s' "$report" | jq -e 'type == "object" and (.loggedIn | type) == "boolean"' >/dev/null 2>&1 || \
+    fail 'this Claude Code CLI gave no `claude auth status --json` login report for the isolated launch config; update Claude Code within the reviewed 2.x family'
+  # shellcheck disable=SC2016 # The remedy names a literal command.
+  printf '%s' "$report" | jq -e '.loggedIn == true' >/dev/null 2>&1 || \
+    fail 'Claude reports no login for the isolated launch CLAUDE_CONFIG_DIR (claude auth status), which no keychain or claude.ai subscription login reaches; export ANTHROPIC_API_KEY, or run `claude setup-token` and export CLAUDE_CODE_OAUTH_TOKEN, then retry'
+}
+
 # Prints the package version when $1 is a Playwright package root with an ESM entry point.
 playwright_module_version() {
   local directory="$1"
@@ -677,6 +733,7 @@ case "${1:-}" in
     claude_executable="$(cd "$(dirname "$claude_executable")" && pwd -P)/$(basename "$claude_executable")"
     claude_executable="$(physical_file "$claude_executable" 'Claude Code CLI')"
     claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
+    require_isolated_claude_login "$claude_executable"
     [ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
     sandbox_probe
     if $doctor_browser; then
@@ -689,7 +746,7 @@ case "${1:-}" in
         *) fail 'headless Chromium does not run inside the launch sandbox (see the probe-browser output above)' ;;
       esac
     fi
-    printf 'PASS  Claude matches the reviewed native max-turns/error_max_turns contract and the OS sandbox passed behavior probes; signed launch authorization is still required for enforcement\n'
+    printf 'PASS  Claude matches the reviewed native max-turns/error_max_turns contract, reports a login for the isolated launch config, and the OS sandbox passed behavior probes; signed launch authorization is still required for enforcement\n'
     exit 0
     ;;
   claude) shift ;;
@@ -829,6 +886,20 @@ fi
 # Refuse an unbound or conflicting manifest before the artifact root exists.
 if [ "$authorization_source" != preflight ]; then operator_authorization_step verify "$artifact_candidate"; fi
 if [ -n "$template_selection" ]; then template_selection_step verify "$artifact_candidate"; fi
+
+command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
+claude_executable="$(command -v claude)"
+while [ -L "$claude_executable" ]; do
+  link="$(readlink "$claude_executable")"
+  case "$link" in /*) claude_executable="$link" ;; *) claude_executable="$(dirname "$claude_executable")/$link" ;; esac
+done
+claude_executable="$(cd "$(dirname "$claude_executable")" && pwd -P)/$(basename "$claude_executable")"
+claude_executable="$(physical_file "$claude_executable" 'Claude Code CLI')"
+claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
+[ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
+# Before the artifact root, browser provisioning, a request, or a manifest exists (dry runs too).
+require_isolated_claude_login "$claude_executable"
+
 artifact_existed=false
 [ -e "$artifact_root" ] && artifact_existed=true
 mkdir -p "$artifact_root"
@@ -867,17 +938,6 @@ if ! $unattested; then
 fi
 if [ -n "$usage_json" ]; then validate_usage_report_path "$artifact_root"; fi
 
-command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
-claude_executable="$(command -v claude)"
-while [ -L "$claude_executable" ]; do
-  link="$(readlink "$claude_executable")"
-  case "$link" in /*) claude_executable="$link" ;; *) claude_executable="$(dirname "$claude_executable")/$link" ;; esac
-done
-claude_executable="$(cd "$(dirname "$claude_executable")" && pwd -P)/$(basename "$claude_executable")"
-claude_executable="$(physical_file "$claude_executable" 'Claude Code CLI')"
-claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
-[ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
-
 mkdir -p "$artifact_root/ai_agents_internal/tmp" "$artifact_root/ai_agents_internal/claude-config"
 chmod 700 "$artifact_root/ai_agents_internal" "$artifact_root/ai_agents_internal/tmp" "$artifact_root/ai_agents_internal/claude-config"
 # Preflight loads the installed manifest from its default path; a dry run installs nothing.
@@ -895,7 +955,7 @@ if $unattested; then
   if [ "$authorization_source" != preflight ]; then
     prompt="$prompt authorizationSource=$authorization_source targetEnvironment=$authorization_manifest_environment authorizationSha256=$authorization_sha256"
   fi
-  command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+  command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS" --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
   if $dry_run; then
     printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@3 environment=argus-launch-unattested@1 attestation=UNATTESTED browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s%s\n' \
       "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$browser_provisioning" \
@@ -911,7 +971,7 @@ if $unattested; then
     # With no receipt, this names the engagement to the write guard from any workspace.
     "ARGUS_LAUNCH_ARTIFACT_ROOT=$artifact_root"
   )
-  for name in USER LOGNAME SHELL LANG LC_ALL LC_CTYPE TERM NO_COLOR FORCE_COLOR ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL HTTPS_PROXY HTTP_PROXY NO_PROXY SSL_CERT_FILE SSL_CERT_DIR; do
+  for name in "${CHILD_PASSTHROUGH_ENVIRONMENT[@]}"; do
     if [ -n "${!name:-}" ]; then child_env+=("$name=${!name}"); fi
   done
   sandbox_status=0
@@ -964,7 +1024,7 @@ launch_payload="$(jq -cn \
   --argjson operatorAuthorization "$operator_authorization_json" \
   '{target:$target,"artifact-root":$artifactRoot,mode:$mode,"engagement-id":$engagementId,"launch-authorization":$launchAuthorization,"launch-receipt":$launchReceipt,"trust-store":$trustStore,features:$features,operatorAuthorization:$operatorAuthorization}')"
 prompt="/argus:run authenticatedLaunch=$launch_payload"
-command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS" --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
 
 if $dry_run; then
   rm -f "$capability_file"
@@ -991,7 +1051,7 @@ child_env=(
   "ARGUS_NATIVE_LAUNCH_RECEIPT=$receipt"
   "ARGUS_NATIVE_LAUNCH_CAPABILITY=$capability"
 )
-for name in USER LOGNAME SHELL LANG LC_ALL LC_CTYPE TERM NO_COLOR FORCE_COLOR ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL HTTPS_PROXY HTTP_PROXY NO_PROXY SSL_CERT_FILE SSL_CERT_DIR; do
+for name in "${CHILD_PASSTHROUGH_ENVIRONMENT[@]}"; do
   if [ -n "${!name:-}" ]; then child_env+=("$name=${!name}"); fi
 done
 

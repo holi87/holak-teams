@@ -46,12 +46,32 @@ PLUGIN_ROOT="$(ls -d "$HOME"/.claude/plugins/cache/holak-teams/argus/* | sort -V
 "$PLUGIN_ROOT/bin/argus-launch" doctor --browser
 ```
 
-`doctor` checks the reviewed Claude 2.x turn-cap contract and runs the OS sandbox behavior
-probes. `--browser` then runs `argus-launch probe-browser`, which needs no Claude CLI: it
-resolves a host Playwright package (`--module <absolute-dir>`, else `npm root -g`, then the
+`doctor` checks the reviewed Claude 2.x turn-cap contract, confirms that Claude reports a
+login inside the launch's isolated config (see "Claude credentials"), and runs the OS
+sandbox behavior probes. `--browser` then runs `argus-launch probe-browser`, which needs no
+Claude CLI: it resolves a host Playwright package (`--module <absolute-dir>`, else `npm root -g`, then the
 Homebrew and system global `node_modules`), starts its headless Chromium inside the launch
 sandbox, and takes one screenshot. `probe-browser` exits 0 (PASS), 2 (FAIL), or 3 (SKIP: no
 Playwright module). Under `doctor --browser`, a SKIP only warns and a FAIL fails doctor.
+
+#### Claude credentials
+
+The launch runs Claude with a fresh `CLAUDE_CONFIG_DIR` inside the artifact root, so a
+keychain or claude.ai subscription login does not carry over. Export one credential variable
+before `doctor` and every launch:
+
+```bash
+export ANTHROPIC_API_KEY='<api-key>'
+# or, for a subscription: create a long-lived token once, then export it
+claude setup-token
+export CLAUDE_CODE_OAUTH_TOKEN='<token>'
+```
+
+A gateway can use `ANTHROPIC_AUTH_TOKEN` with `ANTHROPIC_BASE_URL`. The launcher passes each
+variable through only when it is set and never copies a credential file. `doctor` and every
+launch, dry runs included, first run `claude auth status` in the launch's isolated
+environment and stop when it reports no login. Processes inside the sandbox run as your user
+and can read the session environment, including this variable.
 
 #### Launch
 
@@ -68,16 +88,22 @@ TRUST_STORE="$(cd /secure/trust && pwd -P)/model-trust.json"
   --engagement-id qa-001 \
   --trust-store "$TRUST_STORE" \
   --runtime-key-id runtime-2026 \
+  --operator-key-id operator-2026 \
   --request-output "$OPERATOR_ROOT/qa-001.request.json" \
   --launch-authorization "$OPERATOR_ROOT/qa-001.authorization.json"
 ```
+
+`--runtime-key-id` and `--operator-key-id` name the trust store's `runtime-attestation` and
+`operator-approval` keys (see "Model trust and revocation"). The request signs both, and the
+launch preflight pins both anchors when it creates the engagement.
 
 The launcher writes the immutable request and waits up to five minutes (`--wait-seconds
 <30..300>`). In the isolated runtime-attestation signer, review every request field, sign
 the exact payload, and write the authorization atomically. The signer may hold the private
 key; the launcher, controller, workers, and their sandbox must not. A signer built for
 Argus 4 must be updated first: 5.0 authorizations and receipts require `maxTurns: 400` and
-`sandboxPolicy: os-native-target-readonly@3`.
+`sandboxPolicy: os-native-target-readonly@3`, and a 5.0 request carries the signed
+`operatorKeyId` field, which a strict signer must accept.
 
 ```bash
 "$PLUGIN_ROOT/bin/argus-assets" model payload \
@@ -99,8 +125,11 @@ The launcher binds Odysseus to Claude `opus`, maximum effort, and the native 400
 the controller reserves the last 30 turns for canonical merges and the final report.
 It supports local paths and normalized HTTP(S) URLs, requires target and artifact roots to
 be physically disjoint, disables session persistence, starts from an environment allowlist,
-and uses `sandbox-exec` on macOS or Bubblewrap on Linux. Only the alias-free artifact root
-is writable; Claude config and temporary files stay inside it. If the reviewed Claude 2.x
+and uses `sandbox-exec` on macOS or Bubblewrap on Linux. Claude runs headless with
+`--permission-mode dontAsk` and an explicit `--allowedTools` list of the tools the packaged
+agents declare, so workers can write and run commands without a prompt. Permissions are never
+bypassed: the packaged write guard and the sandbox still enforce every call. Only the
+alias-free artifact root is writable; Claude config and temporary files stay inside it. If the reviewed Claude 2.x
 turn-cap contract or OS sandbox is unavailable, launch stops.
 
 The sandbox policy is `os-native-target-readonly@3`. It adds to @2 only the
@@ -176,10 +205,11 @@ artifact root.
 
 #### Unattested launch
 
-Hosts that cannot provision Ed25519 keys can opt in to an unattested launch. Replace the four
-signer flags (`--trust-store`, `--runtime-key-id`, `--request-output`,
-`--launch-authorization`) with `--unattested`. It skips only the cryptographic launch
-attestation; the OS sandbox still runs, and every report names the engagement UNATTESTED.
+Hosts that cannot provision Ed25519 keys can opt in to an unattested launch. Replace the five
+signer flags (`--trust-store`, `--runtime-key-id`, `--operator-key-id`, `--request-output`,
+`--launch-authorization`) with `--unattested`; combining it with any of them is refused. It
+skips only the cryptographic launch attestation; the OS sandbox still runs, and every report
+names the engagement UNATTESTED.
 The launcher refuses `--unattested` while `ARGUS_MODEL_TRUST_STORE` is set or
 `~/.config/argus/model-trust.json` exists. See `argus/ENGAGEMENT-POLICY.md` for the
 residual risk.
@@ -233,15 +263,12 @@ chmod 600 "$TRUST_STORE.tmp"
 mv "$TRUST_STORE.tmp" "$TRUST_STORE"
 ```
 
-Pin the two identities before decisions, rerun preflight because the manifest digest changed, and keep the same host-store path available:
-
-```bash
-export ARGUS_MODEL_TRUST_STORE="$TRUST_STORE"
-argus-assets model trust \
-  --manifest "$ARTIFACT_ROOT/ai_agents_internal/engagement.json" \
-  --runtime-key-id argus-runtime-2026-01 \
-  --operator-key-id argus-operator-2026-01
-```
+Pass the store and both key IDs to the attested launch (`--trust-store "$TRUST_STORE"
+--runtime-key-id argus-runtime-2026-01 --operator-key-id argus-operator-2026-01`). The signed
+request binds both identities, and the single launch preflight pins them and the secure
+host-store path when it creates the engagement. No `argus-assets model trust` step or preflight
+rerun follows: inside an engagement the write guard denies `model trust`. Keep the same
+host-store path available for the whole engagement.
 
 Every model request, route, allocation, retry, and telemetry operation securely reopens that live store. Changing a pinned key to `revoked`, removing it, or replacing its identity blocks the next sensitive operation immediately. No engagement restart is required merely to detect revocation; cleanup should follow the fail-closed result.
 

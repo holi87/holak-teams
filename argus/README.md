@@ -17,16 +17,17 @@ wrapper:
 argus-launch doctor --browser
 argus-launch claude --target /absolute/target --artifact-root /absolute/artifacts --mode A \
   --engagement-id qa-001 --trust-store /secure/model-trust.json --runtime-key-id runtime-2026 \
-  --request-output /secure/qa-001.request.json --launch-authorization /secure/qa-001.authorization.json \
-  --provision-browser --environment test
+  --operator-key-id operator-2026 --request-output /secure/qa-001.request.json \
+  --launch-authorization /secure/qa-001.authorization.json --provision-browser --environment test
 ```
 
 The launcher emits one immutable request and waits for the isolated runtime-attestation
 signer described in `INSTALL.md`. The signer reviews and signs the exact request; no private
 key or generic signing service enters the launcher or agent boundary. URL-only targets are
 supported, with the artifact root as the default workspace. Hosts without Ed25519 keys can
-replace the four signer flags with the explicit `--unattested` opt-in; every report then
-names the engagement UNATTESTED (see `INSTALL.md`).
+replace the five signer flags with the explicit `--unattested` opt-in; every report then
+names the engagement UNATTESTED (see `INSTALL.md`). The launch config holds no stored login:
+export `ANTHROPIC_API_KEY` or a `claude setup-token` `CLAUDE_CODE_OAUTH_TOKEN` first.
 
 Optional host flags, none of them signed or able to widen authorization:
 `--provision-browser` prepares a Playwright runtime outside the artifact root before the
@@ -111,8 +112,8 @@ unavailable model, always on the same frontier baseline and never for Odysseus. 
 frontier continuation requires an external operator-authored decision under
 `ai_agents_internal/operator-decisions/`. Before routing, the host trust store supplies two
 distinct public anchors: `runtime-attestation` for runtime control and `operator-approval`
-for an isolated human approval boundary. `model trust` pins both stable IDs and the secure
-host-store path, then preflight reruns for the changed manifest digest. The
+for an isolated human approval boundary. The attested launch signs both stable IDs, and its
+single preflight pins them and the secure host-store path when it creates the engagement. The
 controller, workers, and their OS user receive neither private key nor a generic signing
 interface. Every sensitive model operation rereads the live store and blocks immediately
 on revocation or key replacement. Normal attempt-1 decisions for Odysseus and every
