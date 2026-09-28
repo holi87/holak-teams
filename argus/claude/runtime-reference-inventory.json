@@ -149,7 +149,8 @@
       "value": "ai_agents_internal/",
       "consumers": [
         "atlas",
-        "kleio"
+        "kleio",
+        "skill:qa-core"
       ]
     },
     {
@@ -214,6 +215,7 @@
         "perseus",
         "pistis",
         "proteus",
+        "skill:qa-core",
         "talos",
         "theseus",
         "tyche"
@@ -377,7 +379,8 @@
       "value": "reports/",
       "consumers": [
         "atlas",
-        "kleio"
+        "kleio",
+        "skill:qa-core"
       ]
     },
     {
@@ -478,6 +481,7 @@
         "minos",
         "mnemosyne",
         "nike",
+        "skill:qa-core",
         "talos"
       ]
     },
@@ -531,7 +535,8 @@
         "aristarchus",
         "atlas",
         "kleio",
-        "minos"
+        "minos",
+        "skill:qa-core"
       ]
     },
     {

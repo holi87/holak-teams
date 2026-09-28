@@ -5820,8 +5820,22 @@ function parseNamedOptions(args, allowed) {
   return options;
 }
 
+// Without --manifest, a command uses the manifest activeEngagementManifest would name, before
+// symbolic links are resolved: ARGUS_ENGAGEMENT_MANIFEST, the engagement.json of the argus-launch
+// artifact root, or the first ai_agents_internal/engagement.json at or above the working
+// directory. A path target's workspace (the target root) thus still reaches its engagement, and
+// a symbolic-link manifest is still refused below.
+function defaultEngagementManifest(cwd = process.cwd()) {
+  if (process.env.ARGUS_ENGAGEMENT_MANIFEST) return process.env.ARGUS_ENGAGEMENT_MANIFEST;
+  const launchManifests = [
+    process.env.ARGUS_NATIVE_LAUNCH_RECEIPT && join(dirname(resolve(process.env.ARGUS_NATIVE_LAUNCH_RECEIPT)), 'engagement.json'),
+    process.env.ARGUS_LAUNCH_ARTIFACT_ROOT && join(resolve(process.env.ARGUS_LAUNCH_ARTIFACT_ROOT), 'ai_agents_internal', 'engagement.json'),
+  ];
+  return launchManifests.find((path) => path && existsSync(path)) ?? locateEngagementManifest(cwd) ?? 'ai_agents_internal/engagement.json';
+}
+
 function loadEngagement(options) {
-  const candidate = resolve(options.manifest ?? process.env.ARGUS_ENGAGEMENT_MANIFEST ?? 'ai_agents_internal/engagement.json');
+  const candidate = resolve(options.manifest ?? defaultEngagementManifest());
   if (!statSafe(candidate)?.isFile() || lstatSync(candidate).isSymbolicLink()) throw new Error(`engagement manifest must be a real file: ${candidate}`);
   const path = realpathSync(candidate);
   const active = activeEngagementManifest();

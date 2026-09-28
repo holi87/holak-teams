@@ -937,6 +937,22 @@ done
 guard_as argus:atlas Bash "cp $STAGED/$(cd "$STAGED" && find quality/support -type f | sort | head -n 1) quality/support/placed.ts" allow "$SELECTED_ROOT"
 guard_as argus:talos Bash "cp $STAGED/$(cd "$STAGED" && find quality/specs -type f | sort | head -n 1) quality/specs/placed.spec.ts" allow "$SELECTED_ROOT"
 rm -rf "$STAGED"
+# A path target's workspace is the target root. A packaged command without --manifest still
+# reaches the launch's engagement there, and from any directory below the artifact root; with
+# no launch source and no engagement above it, it finds none, and a linked manifest is refused.
+(cd "$SELECTED/target" && ARGUS_LAUNCH_ARTIFACT_ROOT="$SELECTED_ROOT" "$CLI" engagement status) | jq -e '.engagementId == "selected-roots"' >/dev/null \
+  || fail 'engagement status without --manifest missed the launch engagement from the target workspace'
+(cd "$SELECTED_ROOT/ai_agents_internal/workers" && "$CLI" engagement status) | jq -e '.engagementId == "selected-roots"' >/dev/null \
+  || fail 'engagement status without --manifest missed the engagement above its working directory'
+if (cd "$SELECTED/target" && "$CLI" engagement status) >"$WORK/no-engagement.out" 2>&1; then
+  fail 'engagement status found an engagement from a workspace with no launch source'
+fi
+grep -Fq 'engagement manifest must be a real file' "$WORK/no-engagement.out" || fail "a workspace without an engagement failed for another reason: $(<"$WORK/no-engagement.out")"
+ln -s "$SELECTED_MANIFEST" "$WORK/linked-engagement.json"
+if (cd "$SELECTED/target" && ARGUS_ENGAGEMENT_MANIFEST="$WORK/linked-engagement.json" "$CLI" engagement status) >"$WORK/linked-engagement.out" 2>&1; then
+  fail 'engagement status accepted a symbolic-link manifest'
+fi
+grep -Fq 'engagement manifest must be a real file' "$WORK/linked-engagement.out" || fail "a linked manifest failed for another reason: $(<"$WORK/linked-engagement.out")"
 selected_record() {
   jq "$@" "$WORK/selected-roots.json" >"$SELECTION"
 }
@@ -1100,6 +1116,10 @@ for source in receipt root; do
   launched "$source" guard_as argus:talos Write "$INSTALL_ROOT/scripts/runner-lib.sh" GUARD-OWNED-ARTIFACT "$INSTALL_TARGET"
   launched "$source" guard_as argus:atlas Write "$INSTALL_ROOT/quality/support/config.ts" allow "$INSTALL_TARGET"
   launched "$source" guard_as argus:atlas Write "$INSTALL_TARGET/src/app.ts" GUARD-TARGET-IMMUTABLE "$INSTALL_TARGET"
+  # A packaged command without --manifest reaches the launch's engagement from the target workspace.
+  (cd "$INSTALL_TARGET" && launched "$source" "$CLI" engagement status) \
+    | jq -e --arg id "$(jq -r .engagementId "$INSTALL_ROOT/ai_agents_internal/engagement.json")" '.engagementId == $id' >/dev/null \
+    || fail "engagement status without --manifest missed the launch engagement from the target workspace ($source)"
   # The main smoke engagement is a different manifest than the launch names: deny, never pick one.
   launched "$source" guard_as main Bash 'argus-assets list' 'GUARD-MANIFEST-INVALID: the active engagement cannot be resolved' "$TARGET"
   if (cd "$INSTALL_TARGET" && launched "$source" "$CLI" redact --input "$WORK/disjoint-input.json" \

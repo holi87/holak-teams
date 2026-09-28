@@ -92,8 +92,8 @@
       "source": "argus/COVERAGE-CONTRACT.md",
       "destination": "references/COVERAGE-CONTRACT.md",
       "files": 1,
-      "bytes": 11653,
-      "sha256": "c7aa0b78488b49f0103bc1cb8b6fae26be2c459611319c600f774ff6e97ad481"
+      "bytes": 11801,
+      "sha256": "4175ba0ff35363f27cc6889732a428cfee7641febcd6e53a8e4f10a155edf44b"
     },
     {
       "id": "raci-contract",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 17242,
-      "sha256": "27ce203bb9852358283cbf574b04f209703c59d031341b5e2ff85fa51caa8a95"
+      "bytes": 17282,
+      "sha256": "ac11d1b5bb0468396316051b82ddd0bdff519b20d1fbd4ee5f9b7c98b2fe29d2"
     },
     {
       "id": "qa-core-skill",
@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 12179,
-      "sha256": "8f437c56b6f1c42779f0f5315f8046078df55efd0483b77c3f4e66dc7f1bc61e"
+      "bytes": 12585,
+      "sha256": "54f9b1535fc95849cf272e94d9493342f7d174f86e772554e4ebc46b6d7ce2de"
     },
     {
       "id": "qa-browser-skill",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 63586,
-    "sha256": "272e087e2aad345f1a7ea86b07f906de50394a54d9908adbd3d5a27f836717ef"
+    "bytes": 63711,
+    "sha256": "283558338d4508d635b350e92840bb9f2691b641729d6607d961f6ea18794959"
   }
 }

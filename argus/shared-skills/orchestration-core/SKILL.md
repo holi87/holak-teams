@@ -96,7 +96,7 @@ reviewed, and authorized.
 After sealing, allocate Odysseus with `argus-assets engagement allocate --manifest
 <manifest> --lane odysseus --decision <decision>` and retain its token; allocate each worker with its exact decision plus that token:
 `--lane <slug> --decision <decision> --controller-token <token>`. Pass only its own token, resources,
-paths, and decision; never signing material. Workers checkpoint, honor locks/barriers, and
+paths (the absolute artifact root among them), and decision; never signing material. Workers checkpoint, honor locks/barriers, and
 clean on `success`, `failure`, or `interrupted`, preserving durable fragments/checkpoints.
 
 Batch the controller verbs; each also takes `--manifest <manifest>`. Persist the initial
