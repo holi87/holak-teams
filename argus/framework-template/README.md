@@ -33,7 +33,8 @@ baseline, a collect-only inventory (`reports/test-inventory.tsv`, `reports/test-
 `reports/expected-bugs.txt`, `reports/counterfactual-plan.tsv`), the quarantine and inventory gates, the evidence
 passes, the surface-coverage gate (`scripts/baseline-coverage.mjs`, baseline and full-suite;
 it writes `solution/coverage-result.json`, or `reports/coverage-result.json` inside an Argus
-engagement, where Kleio merges the canonical result), and `reports/argus-runner-result.json` (`argus/runner-result@1`). Exit codes are 0
+engagement, where Kleio merges the canonical result and the gate defers until her merged
+coverage observations exist), and `reports/argus-runner-result.json` (`argus/runner-result@1`). Exit codes are 0
 or 10-15 per `RUNNER-CONTRACT.md`, never Playwright's own.
 
 - **Lanes.** Each product lane (`api`, `ui`, `perf`, `security`, `db`, `resilience`) is a

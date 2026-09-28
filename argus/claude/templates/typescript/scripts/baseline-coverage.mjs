@@ -12,16 +12,25 @@ const ledger = join(ROOT, 'solution', 'bug-ledger.json');
 const automationStatus = join(ROOT, 'solution', 'automation-status.json');
 // Inside an Argus engagement the canonical solution/coverage-result.json has one writer,
 // Kleio's merge, and the packaged CLI refuses it. The hook then writes its calculation to
-// reports/ for Kleio's fragment. Delivered CI, with no engagement, writes the canonical path.
-const output = join(ROOT, activeEngagement() ? 'reports' : 'solution', 'coverage-result.json');
+// reports/ as a preview. Delivered CI, with no engagement, writes the canonical path.
+const engaged = activeEngagement();
+const output = join(ROOT, engaged ? 'reports' : 'solution', 'coverage-result.json');
 const summaryPath = join(ROOT, 'reports', 'summary.json');
 const executable = process.env.ARGUS_ASSETS ?? 'argus-assets';
 
-for (const required of [inventory, observations]) {
-  if (!existsSync(required)) {
-    console.error(`surface-coverage: missing ${required.replace(`${ROOT}/`, '')}; coverage requires a target-derived denominator`);
-    process.exit(1);
-  }
+// Kleio merges solution/coverage-observations.json only in reporting, after the automation
+// phase's runs, so inside an engagement an unmerged canonical input defers the gate: exit 0,
+// with no result and no event (the outcome adapter alone emits events). Kleio calculates the
+// canonical result from the merged inputs. Outside an engagement a missing input fails.
+const missing = [inventory, observations].filter((required) => !existsSync(required))
+  .map((required) => required.replace(`${ROOT}/`, ''));
+if (missing.length > 0 && engaged) {
+  console.log(`COVERAGE  deferred reason=canonical-input-unmerged missing=${missing.join(',')}; inside an Argus engagement Kleio calculates the canonical coverage result in reporting`);
+  process.exit(0);
+}
+if (missing.length > 0) {
+  console.error(`surface-coverage: missing ${missing.join(', ')}; coverage requires a target-derived denominator`);
+  process.exit(1);
 }
 
 // Execution is derived from registered evidence and defect outcomes from the ledger; evidence
