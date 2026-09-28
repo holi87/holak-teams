@@ -1797,24 +1797,26 @@ function reclaimAbandonedStateLock(lockPath) {
   if (lockEntry.isSymbolicLink() || !lockEntry.isDirectory()) throw new Error('engagement state lock path is unsafe');
   if (!stateLockIsAbandoned(lockPath)) return false;
   const ownerEntry = lstatEntry(join(lockPath, 'owner.json'));
-  const claimPath = join(lockPath, '.reclaim');
-  try {
-    mkdirSync(claimPath);
-    createManagedFile(join(claimPath, 'owner.json'), `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`, 'state lock reclaim owner');
-  } catch (error) {
+  // The claim sits beside the lock and names the directory judged abandoned. A caller that
+  // loses the race never writes into a lock another caller has re-acquired, and a claim
+  // left by a killed reclaimer blocks only that one directory.
+  const claimPath = `${lockPath}.reclaim-${lockEntry.dev}-${lockEntry.ino}`;
+  try { mkdirSync(claimPath); }
+  catch (error) {
     if (error.code === 'EEXIST') return false;
     throw error;
   }
-  let quarantine = null;
   try {
+    createManagedFile(join(claimPath, 'owner.json'), `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`, 'state lock reclaim owner');
     if (!sameDirectoryIdentity(lockEntry, lstatEntry(lockPath)) ||
-        !sameFilesystemEntry(ownerEntry, lstatEntry(join(lockPath, 'owner.json')))) return false;
-    quarantine = `${lockPath}.stale-${process.pid}-${randomBytes(6).toString('hex')}`;
+        !sameFilesystemEntry(ownerEntry, lstatEntry(join(lockPath, 'owner.json'))) ||
+        !stateLockIsAbandoned(lockPath)) return false;
+    const quarantine = `${lockPath}.stale-${process.pid}-${randomBytes(6).toString('hex')}`;
     renameSync(lockPath, quarantine);
     rmSync(quarantine, { recursive: true, force: true });
     return true;
   } finally {
-    if (!quarantine && sameDirectoryIdentity(lockEntry, lstatEntry(lockPath))) rmSync(claimPath, { recursive: true, force: true });
+    rmSync(claimPath, { recursive: true, force: true });
   }
 }
 

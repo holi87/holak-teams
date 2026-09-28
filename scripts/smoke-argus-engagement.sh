@@ -81,14 +81,36 @@ MANIFEST="$TARGET/ai_agents_internal/engagement.json"
 argus_smoke_prepare_model_control "$CLI" "$MANIFEST" "$TARGET" "$TARGET" A \
   "$ROOT/scripts/fixtures/argus-preflight/full.json" "$HOST/main"
 
-# Parallel allocation is atomic and every resource coordinate is unique.
+# A reclaimed lock leaves no lock directory, reclaim claim, or quarantine behind.
+assert_lock_released() {
+  local lock="$1" label="$2" leftover
+  for leftover in "$lock" "$lock".*; do
+    [ ! -e "$leftover" ] || fail "$label: ${leftover##*/} remains"
+  done
+}
+DEAD_LOCK_OWNER='{"pid":2147483647,"acquiredAt":"2026-07-12T00:00:00.000Z"}'
+
+# Parallel allocation is atomic and every resource coordinate is unique. The controller
+# first meets an abandoned model-control lock that still holds the claim of a caller that
+# lost a reclaim race; reclaim claims live beside a lock, so that claim cannot wedge it.
+# The parallel workers then reclaim a lock whose owner died.
 lanes=(odysseus kalchas metis tiresias minos tyche hermes atlas kleio)
-argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST/main" odysseus >"$ALLOCATIONS/odysseus.json"
+CONTROL_LOCK="$TARGET/ai_agents_internal/model-decisions/.initial-control.lock"
+mkdir -p "$CONTROL_LOCK/.reclaim"
+printf '%s\n' "$DEAD_LOCK_OWNER" >"$CONTROL_LOCK/.reclaim/owner.json"
+touch -t 202001010000 "$CONTROL_LOCK"
+argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST/main" odysseus >"$ALLOCATIONS/odysseus.json" ||
+  fail 'a reclaim claim left inside an abandoned model-control lock wedged the lock'
 CONTROLLER_TOKEN="$(token_for odysseus)"
+mkdir "$CONTROL_LOCK"
+printf '%s\n' "$DEAD_LOCK_OWNER" >"$CONTROL_LOCK/owner.json"
+pids=()
 for lane in "${lanes[@]:1}"; do
   argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST/main" "$lane" "$CONTROLLER_TOKEN" >"$ALLOCATIONS/$lane.json" &
+  pids+=("$!")
 done
-wait
+for pid in "${pids[@]}"; do wait "$pid" || fail 'a parallel allocation failed'; done
+assert_lock_released "$CONTROL_LOCK" 'parallel allocations did not safely reclaim the abandoned model-control lock'
 for field in port accountAlias dataNamespace browserProfile outputDirectory; do
   count="$(jq -r ".$field" "$ALLOCATIONS"/*.json | sort -u | wc -l | tr -d ' ')"
   [ "$count" -eq "${#lanes[@]}" ] || fail "parallel allocations collide on $field"
@@ -180,13 +202,22 @@ printf '{' >"$STATE.lock/owner.json"
 touch -t 202001010000 "$STATE.lock"
 "$CLI" engagement claim --manifest "$MANIFEST" --lane odysseus --token "$(token_for odysseus)" --resource reset >/dev/null
 "$CLI" engagement release --manifest "$MANIFEST" --lane odysseus --token "$(token_for odysseus)" --resource reset >/dev/null
+# A caller that lost a reclaim race cannot wedge the lock with a claim left inside it.
+mkdir -p "$STATE.lock/.reclaim"
+printf '%s\n' "$DEAD_LOCK_OWNER" >"$STATE.lock/.reclaim/owner.json"
+touch -t 202001010000 "$STATE.lock"
+"$CLI" engagement claim --manifest "$MANIFEST" --lane odysseus --token "$(token_for odysseus)" --resource reset >/dev/null ||
+  fail 'a reclaim claim left inside an abandoned state lock wedged the lock'
+"$CLI" engagement release --manifest "$MANIFEST" --lane odysseus --token "$(token_for odysseus)" --resource reset >/dev/null
 mkdir "$STATE.lock"
-printf '%s\n' '{"pid":2147483647,"acquiredAt":"2026-07-12T00:00:00.000Z"}' >"$STATE.lock/owner.json"
+printf '%s\n' "$DEAD_LOCK_OWNER" >"$STATE.lock/owner.json"
+pids=()
 for index in $(seq 1 24); do
   "$CLI" engagement id --manifest "$MANIFEST" --lane minos --token "$(token_for minos)" --kind bug --identity "finding-$index" >"$WORK/ids/$index" &
+  pids+=("$!")
 done
-wait
-test ! -e "$STATE.lock" || fail 'parallel callers did not safely reclaim the abandoned state lock'
+for pid in "${pids[@]}"; do wait "$pid" || fail 'a parallel engagement id caller failed'; done
+assert_lock_released "$STATE.lock" 'parallel callers did not safely reclaim the abandoned state lock'
 [ "$(sort -u "$WORK"/ids/* | wc -l | tr -d ' ')" -eq 24 ] || fail "parallel bug IDs are not unique"
 stable_id="$("$CLI" engagement id --manifest "$MANIFEST" --lane minos --token "$(token_for minos)" --kind bug --identity finding-1)"
 [ "$stable_id" = "$(cat "$WORK/ids/1")" ] || fail "stable identity did not deduplicate across resume"
