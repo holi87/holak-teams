@@ -98,7 +98,7 @@ public final class Identity {
     public static final List<InvalidEmail> INVALID_EMAILS = List.of(
             new InvalidEmail("email.missing-at", "argus.qa.example.com"),
             new InvalidEmail("email.missing-domain", "argus.qa@"),
-            new InvalidEmail("email.missing-tld", "argus.qa@example"),
+            new InvalidEmail("email.missing-local-part", "@example.com"),
             new InvalidEmail("email.double-at", "argus.qa@@example.com"),
             new InvalidEmail("email.embedded-whitespace", "argus qa@example.com"));
 

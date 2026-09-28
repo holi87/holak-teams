@@ -8,7 +8,7 @@ import { expect } from '@playwright/test';
 export type EmailPartitionLabel =
   | 'email.missing-at'
   | 'email.missing-domain'
-  | 'email.missing-tld'
+  | 'email.missing-local-part'
   | 'email.double-at'
   | 'email.embedded-whitespace';
 
@@ -49,7 +49,7 @@ export const invalidEmails: ReadonlyArray<Readonly<{ label: EmailPartitionLabel;
   [
     { label: 'email.missing-at', value: 'argus.qa.example.com' },
     { label: 'email.missing-domain', value: 'argus.qa@' },
-    { label: 'email.missing-tld', value: 'argus.qa@example' },
+    { label: 'email.missing-local-part', value: '@example.com' },
     { label: 'email.double-at', value: 'argus.qa@@example.com' },
     { label: 'email.embedded-whitespace', value: 'argus qa@example.com' },
   ].map((entry) => Object.freeze(entry as { label: EmailPartitionLabel; value: string })),
