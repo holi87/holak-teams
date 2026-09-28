@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {
+  abandonLane,
   allocateWorker,
   advanceBarrier,
   appendHeartbeat,
@@ -80,6 +81,7 @@ try {
   testConditionalLaneProjection();
   testConditionalGateResolution();
   testGateUnmetFinalSummary();
+  testAbandonedLaneLeavesBarriers();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
   testRedispatchedHeartbeatWorkUnits();
@@ -885,6 +887,85 @@ function testGateUnmetFinalSummary() {
   assert(summary.status === 'degraded' && JSON.stringify(summary.statusReasons) === '["gate-unmet:orion"]',
     `a gate-unmet lane was not a named final-summary gap: ${JSON.stringify({ status: summary.status, statusReasons: summary.statusReasons })}`);
   for (const [lane, token] of [['kalchas', kalchas.token], ['kleio', kleio.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
+// A hunter that fails permanently deadlocks every barrier it still participates in, because a
+// failure never counts as an arrival and a released lane cannot arrive. The controller abandons
+// the released lane instead: the barriers stop waiting for it, it can never be allocated again
+// (its consumed decision already carries its telemetry), and the final summary names it.
+function testAbandonedLaneLeavesBarriers() {
+  const lanes = ['charon', 'hermes', 'kleio', 'minos', 'odysseus'];
+  const fixture = createFixture('abandoned-lane', lanes);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('abandoned-controller') });
+  const tokens = {};
+  for (const lane of ['charon', 'hermes', 'kleio', 'minos']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`abandoned-${lane}`) }).token;
+  }
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', tokens.hermes, 'hunting');
+  expectThrowMessage(() => abandonLane(manifest, 'charon', controller.token, 'continuation-exhausted'),
+    'charon can be abandoned only after its cleanup with outcome failure or interrupted', 'abandon of an active lane');
+  cleanupWorker(manifest, 'charon', tokens.charon, 'failure');
+  const before = getEngagementStatus(manifest).revision;
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token), 'phase hunting is waiting for: charon', 'advance past a failed participant');
+  expectThrowMessage(() => arriveBarrier(manifest, 'charon', undefined, 'hunting', { controllerToken: controller.token }),
+    'no active allocation exists for charon', 'controller arrival for a released lane');
+  expectThrowMessage(() => allocateWorker(manifest, 'charon', { controllerToken: controller.token, executionBinding: executionBinding('abandoned-charon') }),
+    'charon dispatch dispatch:abandoned-charon was consumed by its released allocation; retry on an active lease with engagement start-attempt, or abandon a permanently failed lane with engagement barrier abandon',
+    're-allocation of a released lane on its consumed decision');
+  expectThrowMessage(() => allocateWorker(manifest, 'charon', { controllerToken: controller.token, executionBinding: executionBinding('abandoned-charon-other', { dispatchId: 'dispatch:abandoned-charon' }) }),
+    'charon dispatch dispatch:abandoned-charon was consumed by its released allocation; retry on an active lease with engagement start-attempt, or abandon a permanently failed lane with engagement barrier abandon',
+    're-allocation of a released lane on its consumed dispatch lineage');
+  for (const lane of ['odysseus', 'minos', 'kleio']) {
+    expectThrowMessage(() => abandonLane(manifest, lane, controller.token, 'worker-failure'), `${lane} cannot be abandoned; its permanent failure stops the engagement`, `abandon of ${lane}`);
+  }
+  expectThrowMessage(() => abandonLane(manifest, 'charon', controller.token, 'crashed'),
+    'abandon reason must be one of continuation-exhausted, worker-failure, controller-budget', 'abandon with an unknown reason');
+  expectThrowMessage(() => abandonLane(manifest, 'charon', tokens.hermes, 'continuation-exhausted'),
+    'charon controller authority requires the active Odysseus controller token', 'abandon on a worker token');
+  const refused = getEngagementStatus(manifest);
+  assert(refused.revision === before && JSON.stringify(refused.abandonedLanes) === '{}' && refused.allocations.charon.status === 'released',
+    'a refused abandon or re-allocation changed the engagement state');
+
+  const abandoned = abandonLane(manifest, 'charon', controller.token, 'continuation-exhausted');
+  assert(abandoned.lane === 'charon' && abandoned.reason === 'continuation-exhausted' && abandoned.phase === 'hunting' &&
+    abandoned.barrier.complete === true && JSON.stringify(abandoned.barrier.participants) === '["hermes"]',
+  `abandon did not release the hunting barrier: ${JSON.stringify(abandoned)}`);
+  assertStateSchema(fixture, 'state with an abandoned lane');
+  expectThrowMessage(() => abandonLane(manifest, 'charon', controller.token, 'worker-failure'), 'charon was already abandoned (continuation-exhausted)', 'second abandon');
+  expectThrowMessage(() => allocateWorker(manifest, 'charon', { controllerToken: controller.token, executionBinding: executionBinding('abandoned-charon-replacement', { attempt: 2 }) }),
+    'charon was abandoned (continuation-exhausted) and cannot be allocated again', 'allocation of an abandoned lane');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  for (const phase of ['proof', 'deep-hunt-1', 'deep-proof-1']) {
+    const status = getBarrierStatus(manifest, phase);
+    assert(!status.participants.includes('charon'), `${phase} barrier still waits for the abandoned lane`);
+  }
+
+  // State integrity: an abandoned lane must stay released and be an abandonable worker.
+  const current = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
+  for (const [label, mutate] of [
+    ['a missing abandonedLanes field', (state) => { delete state.abandonedLanes; }],
+    ['an abandoned active lane', (state) => { state.abandonedLanes.hermes = { ...state.abandonedLanes.charon }; }],
+    ['an abandoned proof validator', (state) => { state.abandonedLanes.minos = { ...state.abandonedLanes.charon }; }],
+    ['an abandonment with extra keys', (state) => { state.abandonedLanes.charon.basis = null; }],
+    ['an abandonment with an unknown phase', (state) => { state.abandonedLanes.charon.phase = 'triage'; }],
+  ]) {
+    const tampered = structuredClone(current);
+    mutate(tampered);
+    writeFileSync(fixture.statePath, `${JSON.stringify(tampered, null, 2)}\n`);
+    expectThrow(() => getEngagementStatus(manifest), `state with ${label}`);
+  }
+  writeFileSync(fixture.statePath, `${JSON.stringify(current, null, 2)}\n`);
+  assert(getEngagementStatus(manifest).revision === current.revision, 'restored abandoned-lane state was not accepted');
+
+  mergeEmptyLedger(fixture, tokens.minos, 'abandoned-lane-ledger');
+  mergeFinalSummary(fixture, tokens.kleio);
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'degraded' && JSON.stringify(summary.statusReasons) === '["lane-abandoned:charon"]',
+    `an abandoned lane was not a named final-summary gap: ${JSON.stringify({ status: summary.status, statusReasons: summary.statusReasons })}`);
+  for (const lane of ['hermes', 'kleio', 'minos']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
 }
 
 function assertStateSchema(fixture, label) {

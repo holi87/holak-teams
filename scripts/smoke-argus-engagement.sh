@@ -533,6 +533,9 @@ rm -rf "$TARGET/reports/alt" "$TARGET/reports/forged-ledger.md"
 guard_shell "argus-assets engagement heartbeat --manifest $MANIFEST --lane odysseus --token $(token_for odysseus) --phase hunting --completed 1 --total 4 --status running" allow
 guard_shell "argus-assets engagement barrier skip --manifest $MANIFEST --lane odysseus --token $(token_for odysseus) --reason converged" allow
 guard_shell "argus-assets engagement barrier skip --manifest $WORK/alternate-engagement.json --lane odysseus --token $(token_for odysseus) --reason converged" GUARD-SHELL-AMBIGUOUS
+# Abandoning a released lane is a bounded controller mutation of the active engagement only.
+guard_shell "argus-assets engagement barrier abandon --manifest $MANIFEST --lane hermes --controller-token $(token_for odysseus) --reason worker-failure" allow
+guard_shell "argus-assets engagement barrier abandon --manifest $WORK/alternate-engagement.json --lane hermes --controller-token $(token_for odysseus) --reason worker-failure" GUARD-SHELL-AMBIGUOUS
 guard_shell "argus-assets engagement resolve-gates --manifest $MANIFEST --controller-token $(token_for odysseus)" allow
 guard_shell "argus-assets engagement resolve-gates --manifest $MANIFEST --controller-token $(token_for odysseus) --evidence solution/discovery/capability-evidence.json" allow
 guard_shell "argus-assets engagement resolve-gates --manifest $WORK/alternate-engagement.json --controller-token $(token_for odysseus)" GUARD-SHELL-AMBIGUOUS

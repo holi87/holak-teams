@@ -579,8 +579,8 @@ The runtime re-checks the same rule inside its state lock for every caller. Emit
 decision's telemetry before `start-attempt`, because the rebind supersedes that decision.
 
 The manifest is `schemaVersion: 2` with the derived phase plan. State is `schemaVersion: 3`
-only, carries `skippedPhases`, `ledgerSnapshots`, `conditionalAgents`, and `gateResolution`,
-and contains no migration surface. Any
+only, carries `skippedPhases`, `ledgerSnapshots`, `conditionalAgents`, `gateResolution`, and
+`abandonedLanes`, and contains no migration surface. Any
 older, unrecognized, or malformed shape is rejected rather than guessed. Argus 5 upgrade:
 a manifest (`schemaVersion: 1`) or state (`schemaVersion: 2`) written by Argus 4 is
 rejected, so an active older engagement must finish with its original runtime.
@@ -732,8 +732,8 @@ source schemas from the merge-verified canonical inputs and `reports/argus-runne
 merged after its latest input change), overwrites them, and caps the status by the derived
 `statusReasons`: a BLOCK, STALE, or ABSENT review or a confirmed bug without regression blocks;
 an unexecuted critical surface, case-depth gaps, an unresolved proof residual, a
-non-delivery-gate runner, runner exit codes 11 to 15, or a non-converged deep-hunt skip
-degrade. It never raises a status. The merge also renders `solution/FINAL-SUMMARY.md` with an
+non-delivery-gate runner, runner exit codes 11 to 15, a non-converged deep-hunt skip, or an
+abandoned lane degrade. It never raises a status. The merge also renders `solution/FINAL-SUMMARY.md` with an
 explicit `Source schema:` line and one `Status reason:` line per reason, so the human-facing
 summary is traceable to the machine contract. The lane-plan `lanes`, evidence-reference
 `references`, and automation-status `tests` arrays contain unique records sorted by
@@ -773,6 +773,21 @@ Odysseus verifies no active peer allocation or foreign exclusive lock remains. I
 `success` cleanup additionally requires the terminal `complete` barrier to be fully
 satisfied, not merely `currentPhase=complete`; earlier shutdown must be recorded truthfully
 as `failure` or `interrupted`.
+
+A released lane is never allocated again on its consumed dispatch: the allocation fails with
+`<lane> dispatch <id> was consumed by its released allocation`, and a batch allocation
+refuses any released lane, because every decision of that dispatch already carries its one
+telemetry event. A worker that fails permanently (for example `AUTO_CONTINUATION_EXHAUSTED`)
+or is stopped by the controller budget would otherwise hold every barrier it still
+participates in, since failure is never an arrival and a released lane cannot arrive. After
+its `failure` or `interrupted` cleanup, Odysseus runs `engagement barrier abandon --lane
+<slug> --controller-token <token> --reason <continuation-exhausted|worker-failure|controller-budget>`.
+State records `abandonedLanes[<lane>]` (`reason`, `phase`, `abandonedAt`); the lane leaves every
+phase's participants and standby lanes like a `gate-unmet` lane, can never be allocated again,
+and the final-summary merge adds `lane-abandoned:<lane>` (`degraded`). Odysseus, Kalchas,
+Minos, and the final-summary owner (Kleio) cannot be abandoned, because the gate-resolution
+evidence, the proof-phase ledger merge, and the completion record depend on them; their
+permanent failure stops the engagement.
 
 ## Guard rules
 

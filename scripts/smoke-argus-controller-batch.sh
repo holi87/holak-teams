@@ -441,6 +441,36 @@ jq -e '([.results[].lane] == ["kalchas"]) and .results[0].idempotent == true and
   .failed == [{lane: "tiresias", outcome: "interrupted", error: "no allocation exists for tiresias"}]' \
   "$WORK/cleanup-partial.json" >/dev/null || fail "a batch cleanup did not continue past a failed lane: $(cat "$WORK/cleanup-partial.json")"
 
+# A released lane consumed its sealed dispatch, whose decisions already carry their telemetry,
+# so neither allocation form may start it again on that decision. A permanently failed lane is
+# instead abandoned on controller authority; it then stays released for good.
+refuse 'batch re-allocation of a released lane' 'metis was released; its sealed dispatch is consumed and a released lane is never allocated again' \
+  batch_allocate metis "$ODYSSEUS"
+refuse 'single-lane re-allocation on a consumed sealed decision' "atlas dispatch $PREFIX-atlas was consumed by its released allocation" \
+  "$CLI" engagement allocate --manifest "$MANIFEST" --lane atlas --decision "$(decision_for atlas)" --controller-token "$ODYSSEUS"
+abandon() {
+  "$CLI" engagement barrier abandon --manifest "$MANIFEST" "$@"
+}
+refuse 'barrier abandon with a lane token' 'engagement barrier abandon does not accept --token; pass --controller-token' \
+  abandon --lane metis --token "$METIS" --reason worker-failure
+refuse 'barrier abandon without a controller token' 'engagement barrier abandon requires --controller-token' \
+  abandon --lane metis --reason worker-failure
+refuse 'barrier abandon with a worker token as controller token' 'metis controller authority requires the active Odysseus controller token' \
+  abandon --lane metis --controller-token "$KALCHAS_NEXT" --reason worker-failure
+refuse 'barrier abandon of Kalchas' 'kalchas cannot be abandoned; its permanent failure stops the engagement' \
+  abandon --lane kalchas --controller-token "$ODYSSEUS" --reason worker-failure
+refuse 'barrier abandon with an unknown reason' 'abandon reason must be one of continuation-exhausted, worker-failure, controller-budget' \
+  abandon --lane metis --controller-token "$ODYSSEUS" --reason timeout
+abandon --lane metis --controller-token "$ODYSSEUS" --reason worker-failure >"$WORK/abandon.json" || fail "barrier abandon of released metis was refused: $(cat "$WORK/abandon.json")"
+jq -e '.lane == "metis" and .reason == "worker-failure" and (.phase | type == "string") and (.barrier.participants | index("metis") == null)' \
+  "$WORK/abandon.json" >/dev/null || fail "barrier abandon did not record metis: $(cat "$WORK/abandon.json")"
+"$CLI" engagement status --manifest "$MANIFEST" | jq -e '.abandonedLanes | keys == ["metis"]' >/dev/null || fail 'engagement state does not record the abandoned lane'
+refuse 'a second abandon of the same lane' 'metis was already abandoned (worker-failure)' \
+  abandon --lane metis --controller-token "$ODYSSEUS" --reason worker-failure
+refuse 'single-lane allocation of an abandoned lane' 'metis was abandoned (worker-failure) and cannot be allocated again' \
+  "$CLI" engagement allocate --manifest "$MANIFEST" --lane metis --decision "$(decision_for metis)" --controller-token "$ODYSSEUS"
+[ "$(lane_status metis)" = released ] && [ "$(lane_status atlas)" = released ] || fail 'a refused re-allocation changed a released lane'
+
 "$CLI" engagement cleanup --manifest "$MANIFEST" --lane odysseus --token "$ODYSSEUS" --outcome interrupted >/dev/null
 refuse 'batch cleanup after the controller was released' 'batch engagement cleanup requires the active Odysseus controller token' \
   batch_cleanup "$(cleanup_json kalchas)" "$ODYSSEUS"
