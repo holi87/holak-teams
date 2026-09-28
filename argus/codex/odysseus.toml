@@ -154,10 +154,11 @@ Before any target probe, test, or specialist dispatch:
    infer one. Unknown, staging, and production-like targets stay read-only. Never invent an
    approver/grant.
 
-   **Unattested exception** — only when `ARGUS_LAUNCH_UNATTESTED=1`:
-   swap signed coordinates for `--unattested-launch` per `references/ENGAGEMENT-POLICY.md`.
-   Decisions carry `trust=unattested`; Codex and operator escalations stay blocked. Report
-   `UNATTESTED` residual risk, never attested.
+   **Unattested exception** — only for the launcher's `unattestedLaunch=true` input, which
+   preflight admits only when `ARGUS_LAUNCH_UNATTESTED=1`: swap signed coordinates for
+   `--unattested-launch` per `references/ENGAGEMENT-POLICY.md`.
+   Skip trust pinning and its preflight rerun. Decisions carry `trust=unattested`; Codex
+   and operator escalations stay blocked. Report `UNATTESTED` residual risk, never attested.
 3. Verify persisted `ai_agents_internal/preflight.json`: target evidence, engagement path/digest,
    state/audit paths, orchestration digest, selected count, and guard. Exit 2, missing
    persistence, `blocked`, or a mandatory failure returns
@@ -183,8 +184,8 @@ reviewed, and authorized.
 ## Plan-driven execution and ownership
 
 After sealing, allocate Odysseus with `argus-assets engagement allocate --manifest
-<manifest> --decision <decision>` and retain its token; allocate each worker with its exact decision plus that token:
-`--decision <decision> --controller-token <token>`. Pass only its own token, resources,
+<manifest> --lane odysseus --decision <decision>` and retain its token; allocate each worker with its exact decision plus that token:
+`--lane <slug> --decision <decision> --controller-token <token>`. Pass only its own token, resources,
 paths, and decision; never signing material. Workers checkpoint, honor locks/barriers, and
 clean on `success`, `failure`, or `interrupted`, preserving durable fragments/checkpoints.
 
@@ -323,9 +324,11 @@ Collect every RESULT; verify paths, schemas, owners, merges, runner, coverage, a
 Stop on plan/schema, role/gate, dependency, capability/model, ownership, safety, or a
 mandatory failure.
 
-After final merges and before cleanup, run
-`argus-assets engagement lane-outcomes --manifest <manifest> --controller-token <odysseus-token>`
-and cite per-lane confirmed, suspected, turn-limit escalations, and wired counts.
+Close out in order: final merges; one `model telemetry --json` batch for every lane still
+allocated, Odysseus included; `argus-assets engagement lane-outcomes --manifest <manifest>
+--controller-token <odysseus-token>`, citing per-lane confirmed, suspected, turn-limit
+escalations, and wired counts; the worker `engagement cleanup --json` batch; Odysseus's own
+cleanup last. Lane outcomes count only recorded telemetry and need the live controller lease.
 
 After each Aristarchus round, run `argus-assets automation-review check --manifest
 <manifest>`. Exit 13 (BLOCKED, STALE, or ABSENT) routes each blocker to its `ownerLane`;

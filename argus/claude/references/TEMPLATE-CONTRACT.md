@@ -33,6 +33,8 @@ manager, and CI entry point win, and `template scaffold` refuses to create a com
 harness. A greenfield target produces `action: build` only after runtime, package manager,
 test root, and harness root are explicit and compatible. Scaffold consumes that selection,
 copies into a new empty destination, and records the selection inside the generated framework.
+Either root may keep, nest in, or swap the template's own `tests`/`src` (Java `src/test/java`)
+roots; one that collides with another template path is refused.
 Every shipped runner fails with policy exit 13 when that explicit selection record is
 missing or names an incompatible runtime/package manager; low-level template copies are
 not runnable engagement frameworks.

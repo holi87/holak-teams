@@ -515,6 +515,44 @@ for runtime in typescript java python; do
   test -d "$WORK/$runtime/reports/evidence" || fail "$runtime runner omitted the shared evidence root"
 done
 
+# A layout may keep a template root (tests, src, src/test/java), nest in one (src/e2e, tests/ui),
+# or swap two: every root is staged before any lands, so no move collides with or sweeps up
+# another. The runner, docs, and TypeScript imports follow each root.
+layout_case() {
+  local runtime="$1" manager="$2" test_root="$3" harness_root="$4" test_file="$5" harness_file="$6"
+  local out="$WORK/layout-$runtime-${test_root//\//-}-${harness_root//\//-}"
+  mkdir -p "$out.target"
+  "$CLI" template select --target "$out.target" --runtime "$runtime" --package-manager "$manager" \
+    --test-root "$test_root" --harness-root "$harness_root" --output "$out.json" >/dev/null
+  "$CLI" template scaffold --selection "$out.json" --destination "$out" >"$out.log" 2>&1 || \
+    { cat "$out.log" >&2; fail "$runtime scaffold refused the $test_root + $harness_root layout"; }
+  test -f "$out/$test_root/$test_file" && test -f "$out/$harness_root/$harness_file" || \
+    fail "$runtime $test_root + $harness_root layout misplaced its roots"
+  grep -Fq "TEST_ROOT=\"\${ARGUS_TEST_ROOT:-$test_root}\"" "$out/run-tests.sh" || fail "$runtime $test_root + $harness_root runner ignores its test root"
+  [ -z "$(find "$out" -maxdepth 1 -name '.argus-layout-*' -print -quit)" ] || fail "$runtime $test_root + $harness_root layout left its staging directory"
+  if [ "$runtime" = typescript ]; then
+    ln -s "$WORK/typescript/node_modules" "$out/node_modules"
+    run_logged "typecheck-${out##*/}" bash -c "cd '$out' && node_modules/.bin/tsc --noEmit"
+  fi
+}
+for layout in 'tests support' 'e2e src' 'tests src' 'src tests' 'src/e2e support' 'tests/ui support'; do
+  read -r test_root harness_root <<<"$layout"
+  layout_case typescript npm "$test_root" "$harness_root" setup/auth.setup.ts config/env.ts
+  layout_case python pip "$test_root" "$harness_root" api/test_example_api.py qa/config.py
+done
+for runtime in typescript python; do
+  nested="$WORK/layout-$runtime-src-e2e-support"
+  test ! -e "$nested/support/e2e" && grep -Fq 'src/e2e/' "$nested/README.md" && ! grep -Fq 'support/e2e' "$nested/README.md" || \
+    fail "$runtime harness move swept up the nested src/e2e test root"
+done
+for layout in 'src/test/java support' 'e2e src/test' 'src e2e'; do
+  read -r test_root harness_root <<<"$layout"
+  layout_case java maven "$test_root" "$harness_root" qa/api/ExampleApiTest.java qa/support/Config.java
+  out="$WORK/layout-java-${test_root//\//-}-${harness_root//\//-}"
+  test -f "$out/$harness_root/resources/junit-platform.properties" && test ! -e "$out/$test_root/qa/support" || \
+    fail "Java $test_root + $harness_root layout misplaced its support or resources"
+done
+
 # Shared evaluators and quarantine semantics are byte-identical and fail closed.
 cmp "$WORK/typescript/scripts/runner-contract.sh" "$WORK/java/scripts/runner-contract.sh" >/dev/null || fail "Java runner evaluator drifted"
 cmp "$WORK/typescript/scripts/runner-contract.sh" "$WORK/python/scripts/runner-contract.sh" >/dev/null || fail "Python runner evaluator drifted"

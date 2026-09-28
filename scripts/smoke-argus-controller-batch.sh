@@ -397,6 +397,12 @@ grep -Eq '^MODEL_REQUEST  persisted path=[^ ]+/ai_agents_internal/model-requests
 # in the same batch because the controller token is its lane token.
 batch_telemetry "$(telemetry_json "$O1" "$(jq -r .decisionId "$WORK/k2.json")")" "$ODYSSEUS" >/dev/null || fail 'the terminal telemetry batch was refused'
 [ "$(telemetry_count)" = 5 ] || fail 'the terminal telemetry batch did not append exactly two more lines'
+# The closeout order: lane outcomes run after the terminal telemetry batch and before any cleanup,
+# so every still-allocated lane, Odysseus included, is counted.
+"$CLI" engagement lane-outcomes --manifest "$MANIFEST" --controller-token "$ODYSSEUS" >/dev/null || fail 'closeout lane-outcomes was refused'
+jq -e '(.lanes | map({(.agent): .telemetry.events}) | add) as $events | .sources.telemetryEvents == 5
+  and $events.odysseus == 1 and $events.kalchas == 2 and $events.metis == 1 and $events.atlas == 1' \
+  "$TARGET/ai_agents_internal/lane-outcomes.json" >/dev/null || fail "closeout lane-outcomes undercounted telemetry: $(cat "$TARGET/ai_agents_internal/lane-outcomes.json")"
 
 # Batch cleanup releases every worker on controller authority; Odysseus stays a single-lane
 # cleanup on its own token, and a replay is idempotent.
@@ -438,6 +444,8 @@ jq -e '([.results[].lane] == ["kalchas"]) and .results[0].idempotent == true and
 "$CLI" engagement cleanup --manifest "$MANIFEST" --lane odysseus --token "$ODYSSEUS" --outcome interrupted >/dev/null
 refuse 'batch cleanup after the controller was released' 'batch engagement cleanup requires the active Odysseus controller token' \
   batch_cleanup "$(cleanup_json kalchas)" "$ODYSSEUS"
+refuse 'lane-outcomes after the controller was released' 'engagement lane-outcomes requires the active Odysseus controller token' \
+  "$CLI" engagement lane-outcomes --manifest "$MANIFEST" --controller-token "$ODYSSEUS"
 "$CLI" engagement status --manifest "$MANIFEST" >"$WORK/status.json"
 jq -e '[.allocations.odysseus, .allocations.kalchas, .allocations.metis, .allocations.atlas] | all(.status == "released" and .outcome == "interrupted")' \
   "$WORK/status.json" >/dev/null || fail 'cleanup did not release every batch-allocated lane'

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, posix, relative, resolve, sep } from 'node:path';
 
 const RUNTIMES = ['typescript', 'java', 'python'];
@@ -204,8 +204,7 @@ export function selectRunnerKitEntries(entries, runnerKit) {
 function materializeTypeScript(root, testRoot, harnessRoot, selection) {
   const oldTests = join(root, 'tests');
   const oldHarness = join(root, 'src');
-  moveDirectory(oldTests, testRoot);
-  moveDirectory(oldHarness, harnessRoot);
+  relocate(root, [[oldTests, testRoot], [oldHarness, harnessRoot]]);
   for (const file of walk(root).filter((path) => ['.ts', '.tsx', '.mts', '.cts'].includes(extname(path)))) {
     const oldFile = remapNewToOld(file, testRoot, oldTests, harnessRoot, oldHarness);
     const updated = read(file).replace(/((?:from\s+|import\s*)['"])(\.[^'"]+)(['"])/g, (whole, prefix, specifier, suffix) => {
@@ -236,10 +235,7 @@ function materializeTypeScript(root, testRoot, harnessRoot, selection) {
 function materializeJava(root, testRoot, harnessRoot, selection) {
   const javaRoot = join(root, 'src', 'test', 'java');
   const support = join(javaRoot, 'qa', 'support');
-  moveDirectory(support, join(harnessRoot, 'qa', 'support'));
-  moveDirectory(javaRoot, testRoot);
-  const resources = join(root, 'src', 'test', 'resources');
-  if (existsSync(resources)) moveDirectory(resources, join(harnessRoot, 'resources'));
+  relocate(root, [[support, join(harnessRoot, 'qa', 'support')], [javaRoot, testRoot], [join(root, 'src', 'test', 'resources'), join(harnessRoot, 'resources')]]);
   const pomPath = join(root, 'pom.xml');
   let pom = read(pomPath);
   const helper = `\n      <plugin>\n        <groupId>org.codehaus.mojo</groupId>\n        <artifactId>build-helper-maven-plugin</artifactId>\n        <version>3.5.0</version>\n        <executions><execution><id>argus-test-roots</id><phase>generate-test-sources</phase><goals><goal>add-test-source</goal></goals><configuration><sources><source>\${project.basedir}/${selection.testRoot}</source><source>\${project.basedir}/${selection.harnessRoot}</source></sources></configuration></execution></executions>\n      </plugin>`;
@@ -251,8 +247,7 @@ function materializeJava(root, testRoot, harnessRoot, selection) {
 }
 
 function materializePython(root, testRoot, harnessRoot, selection) {
-  moveDirectory(join(root, 'tests'), testRoot);
-  moveDirectory(join(root, 'src'), harnessRoot);
+  relocate(root, [[join(root, 'tests'), testRoot], [join(root, 'src'), harnessRoot]]);
   replaceIn(join(root, 'pyproject.toml'), 'testpaths = ["tests"]', `testpaths = [${JSON.stringify(selection.testRoot)}]`);
   replaceIn(join(root, 'pyproject.toml'), 'pythonpath = ["src"]', `pythonpath = [${JSON.stringify(selection.harnessRoot)}]`);
   replaceIn(join(root, 'conftest.py'), '_ROOT / "src"', `_ROOT / ${JSON.stringify(selection.harnessRoot)}`);
@@ -260,30 +255,30 @@ function materializePython(root, testRoot, harnessRoot, selection) {
   replaceIn(join(root, 'run-tests.sh'), 'TEST_ROOT="${ARGUS_TEST_ROOT:-tests}"', `TEST_ROOT="\${ARGUS_TEST_ROOT:-${selection.testRoot}}"`);
 }
 
+// One pass per file, so a selected root that spells another placeholder (src/e2e) is never rewritten twice.
 function rewriteDocs(root, selection) {
-  for (const file of walk(root).filter((path) => extname(path) === '.md')) {
-    let content = read(file);
-    if (selection.runtime === 'java') {
-      content = content
-        .replaceAll('src/test/java/qa/support/', `${selection.harnessRoot}/qa/support/`)
-        .replaceAll('src/test/java/qa/support', `${selection.harnessRoot}/qa/support`)
-        .replaceAll('src/test/java/', `${selection.testRoot}/`)
-        .replaceAll('src/test/resources/', `${selection.harnessRoot}/resources/`)
-        .replaceAll('src/test/java', selection.testRoot)
-        .replaceAll('src/test/resources', `${selection.harnessRoot}/resources`);
-    } else {
-      content = content.replaceAll('tests/', `${selection.testRoot}/`).replaceAll('src/', `${selection.harnessRoot}/`);
-      content = content.replaceAll('`tests`', `\`${selection.testRoot}\``).replaceAll('`src`', `\`${selection.harnessRoot}\``);
-    }
-    writeFileSync(file, content);
-  }
+  const { testRoot: tests, harnessRoot: harness } = selection;
+  const [pattern, replace] = selection.runtime === 'java'
+    ? [/src\/test\/(java\/qa\/support|java|resources)/g, (_, path) => (path === 'java' ? tests : `${harness}/${path === 'resources' ? path : 'qa/support'}`)]
+    : [/`(tests|src)`|(tests|src)\//g, (_, quoted, bare) => (quoted ? `\`${quoted === 'tests' ? tests : harness}\`` : `${bare === 'tests' ? tests : harness}/`)];
+  for (const file of walk(root).filter((path) => extname(path) === '.md')) writeFileSync(file, read(file).replace(pattern, replace));
 }
 
-function moveDirectory(source, destination) {
-  if (!existsSync(source)) return;
-  mkdirSync(dirname(destination), { recursive: true });
-  if (existsSync(destination)) throw new Error(`layout destination already exists: ${destination}`);
-  renameSync(source, destination);
+// Every template root leaves for private staging (nested roots first, emptied parents pruned)
+// before any lands, so a layout may keep, nest in, or swap default roots.
+function relocate(root, moves) {
+  const staging = mkdtempSync(join(root, '.argus-layout-'));
+  const staged = moves.filter(([source]) => existsSync(source)).map(([source, destination], index) => {
+    renameSync(source, join(staging, `${index}`));
+    for (let parent = dirname(source); parent !== root && !readdirSync(parent).length; parent = dirname(parent)) rmdirSync(parent);
+    return [join(staging, `${index}`), destination];
+  });
+  for (const [source, destination] of staged) {
+    mkdirSync(dirname(destination), { recursive: true });
+    if (existsSync(destination)) throw new Error(`layout destination already exists: ${destination}`);
+    renameSync(source, destination);
+  }
+  rmdirSync(staging);
 }
 function replaceIn(path, from, to) { const content = read(path); if (!content.includes(from)) throw new Error(`layout adapter anchor missing: ${path}: ${from}`); writeFileSync(path, content.replaceAll(from, to)); }
 function remapNewToOld(path, newTests, oldTests, newHarness, oldHarness) { if (inside(newTests, path)) return resolve(oldTests, relative(newTests, path)); if (inside(newHarness, path)) return resolve(oldHarness, relative(newHarness, path)); return path; }

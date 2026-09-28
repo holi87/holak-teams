@@ -490,6 +490,21 @@ grep -Fq 'reports/argus-runner-result.json (sha256 ' "$WORK/report-facts-unregis
   fail "an unregistered runner result failed for another reason: $(<"$WORK/report-facts-unregistered.out")"
 cp "$FIXTURES/valid/runner-result.json" "$TARGET/reports/argus-runner-result.json"
 cmp -s "$WORK/report-facts.json" "$TARGET/reports/report-facts.json" || fail 'report-facts --output wrote different facts than stdout'
+# Fragment validation needs the complete document, so Kleio's prompt carries the recipe used
+# below; a narrative-only fragment and a completed one with copied status reasons are refused.
+KLEIO_PROMPT="$ROOT/argus/roles/kleio.md"
+# shellcheck disable=SC2016 # The marker quotes literal Markdown code spans.
+grep -Fq 'copy every field except `statusCeiling`, set `status` to its `statusCeiling`' "$KLEIO_PROMPT" || \
+  fail 'Kleio is not told to build her final-summary fragment from every report-facts field and its status ceiling'
+if grep -Fq 'supplies only the narrative' "$KLEIO_PROMPT"; then fail 'Kleio is still told her final-summary fragment is narrative-only'; fi
+jq '{"$schema", schemaVersion, engagementId, owner, status, summary, generatedAt}' "$FIXTURES/valid/final-summary.json" >"$WORK/final-summary-narrative.json"
+jq --slurpfile facts "$WORK/report-facts.json" '. + ($facts[0] | del(.statusCeiling)) | .status = "completed"' \
+  "$FIXTURES/valid/final-summary.json" >"$WORK/final-summary-completed.json"
+for partial in narrative completed; do
+  if "$CLI" schema validate --kind final-summary --input "$WORK/final-summary-$partial.json" >/dev/null 2>&1; then
+    fail "a $partial final-summary fragment passed validation"
+  fi
+done
 jq --slurpfile facts "$WORK/report-facts.json" '.engagementId = "schema-fixture" | . + ($facts[0] | del(.statusCeiling)) | .status = $facts[0].statusCeiling' \
   "$FIXTURES/valid/final-summary.json" >"$WORK/final-summary.json"
 summary_fragment summary "$WORK/final-summary.json"
