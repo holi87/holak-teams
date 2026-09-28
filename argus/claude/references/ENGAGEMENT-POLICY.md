@@ -804,7 +804,10 @@ that ran); no allocation or cleanup precedes it, and a `gate-unmet` lane holds n
 is never abandoned.
 State records `abandonedLanes[<lane>]` (`reason`, `phase`, `abandonedAt`); the lane leaves every
 phase's participants and standby lanes like a `gate-unmet` lane, can never be allocated again,
-and the final-summary merge adds `lane-abandoned:<lane>` (`degraded`). Odysseus, Kalchas,
+and the final-summary merge adds `lane-abandoned:<lane>` (`degraded`), plus
+`canonical-unmerged:<path-slug>` (`degraded`) for each canonical it owns but never merged and,
+for the `run-tests.sh` owner without a runner result, `runner-result-missing` (`blocked`) with
+`runner: null`. Odysseus, Kalchas,
 Minos, and the final-summary owner (Kleio) cannot be abandoned, because the gate-resolution
 evidence, the proof-phase ledger merge, and the completion record depend on them; their
 permanent failure stops the engagement.
