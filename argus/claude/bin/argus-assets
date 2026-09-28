@@ -369,9 +369,10 @@ Automation review (Aristarchus's canonical solution/automation-review.json):
   lines for the runner; --json prints the status object instead of the status line.
 
 Browser provisioning (host/operator-only; argus-launch --provision-browser runs it before the sandbox):
-  provision reuses a host Playwright outside the artifact root that already launches headless
-  Chromium; otherwise it installs the pinned release (default: the TypeScript template lockfile)
-  into ~/.cache/argus/browser-runtime/<x.y.z> and Chromium into Playwright's host default cache.
+  provision reuses a host Playwright of the pinned release (the TypeScript template lockfile)
+  outside the artifact root that already launches headless Chromium; otherwise it installs that
+  release (or --version) into ~/.cache/argus/browser-runtime/<x.y.z> and Chromium into
+  Playwright's host default cache.
   --package installs a local Playwright archive; --skip-browser-install keeps the cached browser.
   Refused whenever launch attestation or engagement lease variables are set.
 
@@ -544,29 +545,44 @@ function techniqueScopePattern() {
   return new RegExp(`^(?:${roles.join('|')}):[a-z0-9]+(?:-[a-z0-9]+)*$`);
 }
 
+// Detection walks a local directory tree, so a refusal is reported as a FAIL line, never a stack
+// trace. A URL target has no tree: for an engagement against a running stack the operator
+// detects and selects against the (pre-created) artifact root, which the launcher accepts as
+// the selection's targetRoot.
+function detectTemplateTarget(target, command) {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(target)) fail(`${command}: a URL target selects against the artifact root (--target <artifact-root>)`);
+  try { return detectTemplateCapabilities(target); }
+  catch (error) { fail(`${command}: ${error.message}`); }
+}
+
 function templateCommand(args) {
   const [operation, ...rest] = args;
   if (operation === 'detect') {
     const options = parseNamedOptions(rest, new Set(['--target', '--output']));
     requireOptions(options, ['target'], 'template detect');
-    const detected = detectTemplateCapabilities(options.target);
+    const detected = detectTemplateTarget(options.target, 'template detect');
     writeTemplateOutput(detected, options.output ?? '-');
     return 0;
   }
   if (operation === 'select') {
     const options = parseNamedOptions(rest, new Set(['--target', '--runtime', '--package-manager', '--test-root', '--harness-root', '--ci', '--output']));
     requireOptions(options, ['target', 'runtime', 'testRoot', 'harnessRoot', 'output'], 'template select');
-    const capabilities = detectTemplateCapabilities(options.target);
+    const capabilities = detectTemplateTarget(options.target, 'template select');
     const packageManager = options.packageManager ?? resolveDetectedPackageManager(capabilities, options.runtime, templateContract);
-    const selection = selectTemplate({
-      capabilities,
-      contract: templateContract,
-      runtime: options.runtime,
-      packageManager,
-      testRoot: options.testRoot,
-      harnessRoot: options.harnessRoot,
-      ci: options.ci ? options.ci.split(',').map((value) => value.trim()).filter(Boolean) : undefined,
-    });
+    let selection;
+    try {
+      selection = selectTemplate({
+        capabilities,
+        contract: templateContract,
+        runtime: options.runtime,
+        packageManager,
+        testRoot: options.testRoot,
+        harnessRoot: options.harnessRoot,
+        ci: options.ci ? options.ci.split(',').map((value) => value.trim()).filter(Boolean) : undefined,
+      });
+    } catch (error) {
+      fail(`template select: ${error.message}`);
+    }
     writeTemplateOutput(selection, options.output);
     return 0;
   }
@@ -577,7 +593,7 @@ function templateCommand(args) {
     const selectionErrors = validateTemplateSelection(selection, templateContract);
     if (selectionErrors.length) fail(`template scaffold selection invalid: ${selectionErrors.join('; ')}`);
     if (selection.action !== 'build') fail('template scaffold refuses action=adapt; extend the detected suite and its existing runner in place');
-    const current = detectTemplateCapabilities(selection.targetRoot);
+    const current = detectTemplateTarget(selection.targetRoot, 'template scaffold');
     const digest = createHash('sha256').update(stableTemplateJson(current)).digest('hex');
     if (digest !== selection.capabilitiesSha256) fail('target capabilities changed after selection; detect and select again');
     if (selection.unsupported?.length) fail(`template scaffold has unsupported capabilities: ${selection.unsupported.join(', ')}`);
@@ -633,7 +649,7 @@ function operatorTemplateSelection(args, operation) {
   if (!namedRoots.some((root) => physicalPathsEquivalent(root, selection.targetRoot))) {
     fail('operator template selection targetRoot must name the launch target or the artifact root');
   }
-  const capabilities = detectTemplateCapabilities(selection.targetRoot);
+  const capabilities = detectTemplateTarget(selection.targetRoot, command);
   if (createHash('sha256').update(stableTemplateJson(capabilities)).digest('hex') !== selection.capabilitiesSha256) {
     fail('operator template selection is stale: the target capabilities changed after template select; select again');
   }
@@ -5145,7 +5161,9 @@ function assertBrowserRuntimeProfile(profile) {
 // hostOnly is for host-side callers that run outside the launch sandbox (browser provision):
 // they consider only locations an engagement cannot write, and never probe a candidate whose
 // physical path lies inside the artifact root, because probing imports and runs its code.
-function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, probeAllowed, probedAt = new Date().toISOString(), hostOnly = false }) {
+// requiredVersion (browser provision's reuse step) leaves every candidate of another Playwright
+// release unprobed, so only that exact release can win.
+function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, probeAllowed, probedAt = new Date().toISOString(), hostOnly = false, requiredVersion = null }) {
   if (!probeAllowed) return browserRuntimeResult('not-probed', 'target probe skipped: browser runtime resolution needs an allowed, audited target probe');
   if (profile.browserRuntime === false) return browserRuntimeResult('not-probed', 'profile disabled browser runtime resolution');
   if (profile.browserRuntime === undefined && Array.isArray(profile.features)) {
@@ -5174,6 +5192,10 @@ function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, pro
     }
     if (hostOnly && isWithin(artifactRootPath, candidate.modulePath)) {
       candidates.push({ ...record, result: 'invalid', evidence: 'resolves inside the artifact root, which the launch sandbox lets an engagement write; never probed on the host' });
+      continue;
+    }
+    if (requiredVersion !== null && candidate.moduleVersion !== requiredVersion) {
+      candidates.push({ ...record, result: 'not-attempted', evidence: limitBrowserRuntimeEvidence(`not attempted: Playwright ${candidate.moduleVersion} is not the required release ${requiredVersion}`) });
       continue;
     }
     if (!winner && attempts < maxProbes && scratchRoot === null && scratchError === null) {
@@ -5227,7 +5249,7 @@ function resolveBrowserRuntime({ targetPath, artifactRootPath, profile = {}, pro
   const evidence = firstFailure
     ?? (scratchError ? `the probe scratch directory is unavailable: ${scratchError}` : null)
     ?? (candidates.length > 0
-      ? `no valid Playwright package among ${candidates.length} inspected candidate location(s)`
+      ? `no valid Playwright ${requiredVersion === null ? 'package' : requiredVersion} among ${candidates.length} inspected candidate location(s)`
       : 'no Playwright package found in any candidate location');
   return { ...browserRuntimeResult('unavailable', evidence), probedAt, candidates };
 }
@@ -5536,9 +5558,9 @@ function recordBrowserRuntime({ artifactRootPath, persist, engagementId, probedA
 
 // `browser provision` is host preparation that runs before the launch sandbox exists (from
 // argus-launch --provision-browser or an operator shell); it is not part of the signed launch
-// request because preflight re-probes the runtime inside the sandbox. It reuses a runtime from a
-// host-only location (never the artifact root, a target, or the working directory) that
-// already launches headless Chromium, or installs the pinned
+// request because preflight re-probes the runtime inside the sandbox. It reuses a runtime of the
+// pinned release from a host-only location (never the artifact root, a target, or the working
+// directory) that already launches headless Chromium, or installs the pinned
 // Playwright release into ~/.cache/argus/browser-runtime/<x.y.z>, the first preflight candidate
 // location. That directory lies outside the artifact root, so sandboxed lanes can read the
 // module but never modify it. Chromium goes to Playwright's host default cache. The launch and
@@ -5596,11 +5618,14 @@ function provisionBrowserRuntime(options) {
   }
   assertBrowserProvisionAliasFree(artifactRoot);
 
+  const requestedVersion = options.version ?? (options.package === undefined ? pinnedPlaywrightVersion() : null);
   if (options.version === undefined && options.package === undefined) {
     // This runs unsandboxed as the operator, so only host candidates are probed: never the
     // artifact root, a target, or the working directory, whose code an engagement or the
-    // target itself controls.
-    const existing = resolveBrowserRuntime({ targetPath: null, artifactRootPath: artifactRoot, profile: {}, probeAllowed: true, hostOnly: true });
+    // target itself controls. Only the pinned release is reused: the TypeScript scaffold runs
+    // its own locked Playwright inside the engagement, where the native browser download is
+    // skipped, so a host runtime of another release would leave its Chromium revision missing.
+    const existing = resolveBrowserRuntime({ targetPath: null, artifactRootPath: artifactRoot, profile: {}, probeAllowed: true, hostOnly: true, requiredVersion: requestedVersion });
     if (existing.status === 'available') {
       if (isWithin(artifactRoot, existing.modulePath)) fail(`browser provisioning failed: host runtime ${existing.modulePath} resolves inside the artifact root`);
       assertBrowserProvisionAliasFree(artifactRoot);
@@ -5613,7 +5638,6 @@ function provisionBrowserRuntime(options) {
     }
   }
 
-  const requestedVersion = options.version ?? (options.package === undefined ? pinnedPlaywrightVersion() : null);
   const staging = mkdtempSync(join(runtimeRoot, '.staging-'));
   let outcome;
   let failure = null;

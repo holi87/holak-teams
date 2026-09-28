@@ -179,8 +179,11 @@ validates them and reports the choice without installing anything.
   `argus-assets template detect --target "$TARGET"`, then `argus-assets template select
   --target "$TARGET" --runtime <typescript|java|python> --package-manager <npm|maven|pip>
   --test-root <path> --harness-root <path> --output "$OPERATOR_ROOT/template-selection.json"`
-  and pass that file. It must be a physical regular file outside the target and artifact
-  roots; the launcher copies it to `ai_agents_internal/template-selection.json` (mode 0600).
+  and pass that file. A URL target has no tree to detect, and both commands refuse one: create
+  the artifact root first (`mkdir -m 700 /path/to/artifacts`) and run both with
+  `--target "$ARTIFACT_ROOT"` instead. The selection file must be a physical regular file
+  outside the target and artifact roots; the launcher copies it to
+  `ai_agents_internal/template-selection.json` (mode 0600).
   Without it no runner can run: the final summary reports `runner: null` and is `blocked` by
   `template-selection-missing` (see `TEMPLATE-CONTRACT.md`).
 - `--usage-json <absolute-path>` writes Claude's final JSON result (usage, cost, turn count,

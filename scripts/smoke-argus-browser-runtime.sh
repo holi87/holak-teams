@@ -49,31 +49,40 @@ assert_alias_free() {
   [ -z "$alias" ] || fail "hard-link alias left under $root: $alias"
 }
 
-# (a) Pack the recording stand-in and provision it from the archive into a 0700 artifact root.
+# Reuse is reserved for the pinned release: the TypeScript scaffold runs its own locked
+# Playwright inside the engagement, where the native browser download is skipped.
+PIN="$(jq -er '.packages["node_modules/playwright"].version' "$ROOT/argus/claude/templates/typescript/package-lock.json")"
+[[ "$PIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "the packaged TypeScript template does not pin a plain Playwright release: $PIN"
+UNPINNED="$(( ${PIN%%.*} + 1 )).0.0"
+
+# (a) Pack the recording stand-in as the pinned release and provision it from the archive into
+# a 0700 artifact root.
 mkdir -p "$WORK/pack"
+cp -R "$FIXTURE" "$WORK/pinned-recording"
+jq --arg version "$PIN" '.version = $version' "$FIXTURE/package.json" >"$WORK/pinned-recording/package.json"
 npm_config_cache="$WORK/npm-cache" npm_config_update_notifier=false \
-  npm pack "$FIXTURE" --pack-destination "$WORK/pack" --ignore-scripts --silent >/dev/null
-TGZ="$WORK/pack/playwright-0.1.0.tgz"
+  npm pack "$WORK/pinned-recording" --pack-destination "$WORK/pack" --ignore-scripts --silent >/dev/null
+TGZ="$WORK/pack/playwright-$PIN.tgz"
 [ -f "$TGZ" ] || fail 'npm pack did not produce the recording Playwright archive'
 ARTIFACT="$WORK/artifact"
 mkdir -p "$ARTIFACT"
 chmod 700 "$ARTIFACT"
 RUNTIME_ROOT="$HOST_HOME/.cache/argus/browser-runtime"
-MODULE="$RUNTIME_ROOT/0.1.0/node_modules/playwright"
+MODULE="$RUNTIME_ROOT/$PIN/node_modules/playwright"
 
 host_assets "$CLI" browser provision --artifact-root "$ARTIFACT" --package "$TGZ" --skip-browser-install --json \
   >"$WORK/provision.json" 2>"$WORK/provision.err" || { cat "$WORK/provision.err" >&2; fail 'browser provision from a package archive failed'; }
 [ -f "$MODULE/index.mjs" ] && [ -f "$MODULE/package.json" ] || fail 'provisioned Playwright module is missing from the host runtime directory'
-jq -e --arg module "$MODULE" --arg install "$RUNTIME_ROOT/0.1.0" '
+jq -e --arg module "$MODULE" --arg install "$RUNTIME_ROOT/$PIN" --arg pin "$PIN" '
   .action == "installed" and .installDirectory == $install and .browserInstall == "skipped" and
   .runtime.status == "available" and .runtime.source == "host-provisioned" and .runtime.modulePath == $module and
-  .runtime.moduleVersion == "0.1.0" and (.runtime.packageJsonSha256 | test("^[a-f0-9]{64}$")) and
+  .runtime.moduleVersion == $pin and (.runtime.packageJsonSha256 | test("^[a-f0-9]{64}$")) and
   (.runtime.moduleTreeSha256 | test("^[a-f0-9]{64}$")) and .runtime.moduleTreeRoots == [$module] and
   .runtime.candidates == [{source:"host-provisioned",modulePath:$module,result:"launched",evidence:.runtime.candidates[0].evidence}]
 ' "$WORK/provision.json" >/dev/null || { cat "$WORK/provision.json" >&2; fail 'provision --json did not report the committed, launched host runtime'; }
-grep -Fq "BROWSER_PROVISION  installed host-provisioned $MODULE 0.1.0 chromium=skipped" "$WORK/provision.err" || \
+grep -Fq "BROWSER_PROVISION  installed host-provisioned $MODULE $PIN chromium=skipped" "$WORK/provision.err" || \
   fail 'provision --json did not report its summary line on stderr'
-[ "$(ls -A "$RUNTIME_ROOT")" = '0.1.0' ] || fail "provisioning left staging or retired entries: $(ls -A "$RUNTIME_ROOT" | tr '\n' ' ')"
+[ "$(ls -A "$RUNTIME_ROOT")" = "$PIN" ] || fail "provisioning left staging or retired entries: $(ls -A "$RUNTIME_ROOT" | tr '\n' ' ')"
 assert_alias_free "$ARTIFACT"
 assert_alias_free "$RUNTIME_ROOT"
 [ "$(cd "$ARTIFACT" && find . -mindepth 1 | sort | tr '\n' ' ')" = './ai_agents_internal ./ai_agents_internal/tmp ' ] || \
@@ -86,29 +95,39 @@ runtime_mode="$(node -e 'process.stdout.write((require("fs").statSync(process.ar
 host_assets env PLAYWRIGHT_BROWSERS_PATH="$ARTIFACT/browsers" \
   "$CLI" browser provision --artifact-root "$ARTIFACT" --package "$TGZ" >"$WORK/provision-chromium.out" 2>&1 || \
   { cat "$WORK/provision-chromium.out" >&2; fail 'browser provision with the Chromium install step failed'; }
-grep -Fq "BROWSER_PROVISION  installed host-provisioned $MODULE 0.1.0 chromium=installed" "$WORK/provision-chromium.out" || \
+grep -Fq "BROWSER_PROVISION  installed host-provisioned $MODULE $PIN chromium=installed" "$WORK/provision-chromium.out" || \
   { cat "$WORK/provision-chromium.out" >&2; fail 'provisioning did not report the Chromium install'; }
 grep -Fxq 'cli install chromium PLAYWRIGHT_BROWSERS_PATH=unset' "$HOST_HOME/fake-playwright-cli.log" || \
   fail 'Chromium install did not run through the package CLI with PLAYWRIGHT_BROWSERS_PATH unset'
 [ ! -e "$ARTIFACT/browsers" ] || fail 'Chromium was installed under the artifact root'
-[ "$(ls -A "$RUNTIME_ROOT")" = '0.1.0' ] || fail 'reinstalling the same version left a retired copy behind'
+[ "$(ls -A "$RUNTIME_ROOT")" = "$PIN" ] || fail 'reinstalling the same version left a retired copy behind'
 
-# Without --version or --package a host runtime that already launches is reused, not reinstalled.
+# Without --version or --package a host runtime of the pinned release that already launches is
+# reused, not reinstalled.
 host_assets "$CLI" browser provision --artifact-root "$ARTIFACT" >"$WORK/provision-reuse.out" 2>&1 || \
   { cat "$WORK/provision-reuse.out" >&2; fail 'browser provision reuse failed'; }
-grep -Fxq "BROWSER_PROVISION  reused host-provisioned $MODULE 0.1.0" "$WORK/provision-reuse.out" || \
+grep -Fxq "BROWSER_PROVISION  reused host-provisioned $MODULE $PIN" "$WORK/provision-reuse.out" || \
   { cat "$WORK/provision-reuse.out" >&2; fail 'a launching host runtime was not reused'; }
 [ "$(grep -c '^cli ' "$HOST_HOME/fake-playwright-cli.log")" -eq 1 ] || fail 'reuse reran the Chromium installer'
 
 # Provisioning runs unsandboxed as the operator, so its reuse step probes only host locations:
 # marker-writing Playwright packages planted in the artifact root, in the working directory,
 # or behind a host-provisioned version entry that resolves into the artifact root never run.
+# Its reuse step also never probes a host runtime of another release than the pinned one.
 plant_marker_module() {
-  local directory="$1/node_modules/playwright" marker="$WORK/planted-$2.marker"
+  local directory="$1/node_modules/playwright" marker="${3:-$WORK/planted-$2.marker}"
   mkdir -p "$directory"
   printf '{"name":"playwright","version":"9.9.9"}\n' >"$directory/package.json"
   printf 'import { writeFileSync } from "node:fs";\nwriteFileSync(%s, "planted module ran on the host\\n");\nexport const chromium = {};\n' \
     "$(jq -n --arg path "$marker" '$path')" >"$directory/index.mjs"
+}
+# A launching stand-in whose package.json names <release>, installed as host runtime <entry>.
+plant_host_runtime() {
+  local home="$1" entry="$2" release="$3" directory
+  directory="$home/.cache/argus/browser-runtime/$entry/node_modules/playwright"
+  mkdir -p "$(dirname "$directory")"
+  cp -R "$ROOT/scripts/fixtures/argus-preflight/fake-playwright" "$directory"
+  jq --arg version "$release" '.version = $version' "$ROOT/scripts/fixtures/argus-preflight/fake-playwright/package.json" >"$directory/package.json"
 }
 plant_provision() {
   local name="$1" home="$WORK/plant-$1-home" artifact="$WORK/plant-$1-artifact" cwd="$WORK/plant-$1-cwd" status=0 markers
@@ -121,36 +140,47 @@ plant_provision() {
   plant_marker_module "$artifact/alias-runtime" "$name-artifact-alias"
   ln -s "$artifact/alias-runtime" "$home/.cache/argus/browser-runtime/9.9.9"
   if [ "$name" = reuse ]; then
-    mkdir -p "$home/.cache/argus/browser-runtime/1.0.0/node_modules"
-    cp -R "$ROOT/scripts/fixtures/argus-preflight/fake-playwright" "$home/.cache/argus/browser-runtime/1.0.0/node_modules/playwright"
+    # A newer host runtime of another release comes first in candidate order but is never probed.
+    plant_marker_module "$home/.cache/argus/browser-runtime/$UNPINNED" unpinned "$WORK/unpinned-$name.marker"
+    plant_host_runtime "$home" "$PIN" "$PIN"
+  else
+    # A launching host runtime of another release is never reused in place of the pinned one.
+    plant_host_runtime "$home" 1.0.0 1.0.0
   fi
   (cd "$cwd" && host_assets env HOME="$home" npm_config_registry=http://127.0.0.1:9/ \
     "$CLI" browser provision --artifact-root "$artifact" --json) >"$WORK/provision-plant-$name.json" 2>"$WORK/provision-plant-$name.err" || status=$?
   markers="$(find "$WORK" -maxdepth 1 -name 'planted-*.marker' -print | sort | tr '\n' ' ')"
   [ -z "$markers" ] || { cat "$WORK/provision-plant-$name.err" >&2; fail "browser provision ran engagement-writable or working-directory code on the host: $markers"; }
+  [ ! -e "$WORK/unpinned-$name.marker" ] || { cat "$WORK/provision-plant-$name.err" >&2; fail "browser provision probed a host runtime of another release than the pinned $PIN"; }
   return "$status"
 }
 # (1) The newest host-provisioned entry resolves into the artifact root: it is recorded invalid
-# without being probed, the next host runtime is reused, and the artifact-root and
-# working-directory locations are not candidates at all.
-plant_provision reuse || { cat "$WORK/provision-plant-reuse.err" >&2; fail 'browser provision did not reuse the next host-provisioned runtime'; }
-jq -e --arg home "$WORK/plant-reuse-home" --arg alias "$WORK/plant-reuse-artifact/alias-runtime/node_modules/playwright" '
-  .action == "reused" and .runtime.source == "host-provisioned" and
-  .runtime.modulePath == ($home + "/.cache/argus/browser-runtime/1.0.0/node_modules/playwright") and
+# without being probed; the next one is of another release and is left unprobed; the pinned
+# host runtime is reused; the artifact-root and working-directory locations are not candidates.
+plant_provision reuse || { cat "$WORK/provision-plant-reuse.err" >&2; fail 'browser provision did not reuse the pinned host-provisioned runtime'; }
+jq -e --arg home "$WORK/plant-reuse-home" --arg alias "$WORK/plant-reuse-artifact/alias-runtime/node_modules/playwright" \
+  --arg pin "$PIN" --arg unpinned "$UNPINNED" '
+  ($home + "/.cache/argus/browser-runtime/" + $unpinned + "/node_modules/playwright") as $other |
+  .action == "reused" and .runtime.source == "host-provisioned" and .runtime.moduleVersion == $pin and
+  .runtime.modulePath == ($home + "/.cache/argus/browser-runtime/" + $pin + "/node_modules/playwright") and
   ([.runtime.candidates[].source] | index("artifact-root") == null and index("target") == null and index("workspace") == null) and
-  .runtime.candidates[0] == {source:"host-provisioned",modulePath:$alias,result:"invalid",evidence:.runtime.candidates[0].evidence} and
-  (.runtime.candidates[0].evidence | contains("inside the worker-writable artifact root"))
-' "$WORK/provision-plant-reuse.json" >/dev/null || { cat "$WORK/provision-plant-reuse.json" >&2; fail 'provision reuse considered a non-host candidate or probed one inside the artifact root'; }
-# (2) Without a launching host runtime ahead of them the planted packages still never run.
-# Whatever the host's global installs do, the outcome is a host reuse or a failed install.
+  ([.runtime.candidates[] | select(.modulePath == $alias)] | length == 1 and .[0].result == "invalid" and
+    (.[0].evidence | contains("inside the worker-writable artifact root"))) and
+  ([.runtime.candidates[] | select(.modulePath == $other)] | length == 1 and .[0].result == "not-attempted" and
+    (.[0].evidence | contains("Playwright 9.9.9 is not the required release " + $pin)))
+' "$WORK/provision-plant-reuse.json" >/dev/null || { cat "$WORK/provision-plant-reuse.json" >&2; fail 'provision reuse considered a non-host candidate, probed one inside the artifact root, or probed another release'; }
+# (2) Without a launching host runtime of the pinned release the planted packages still never
+# run, and the launching 1.0.0 host runtime is not reused. Whatever the host's global installs
+# do, the outcome is a reuse of the pinned release or a failed install of it.
 plant_status=0
 plant_provision fallback || plant_status=$?
 if [ "$plant_status" -eq 0 ]; then
-  jq -e '.action == "reused" and ([.runtime.candidates[].source] | index("artifact-root") == null and index("workspace") == null)' \
-    "$WORK/provision-plant-fallback.json" >/dev/null || { cat "$WORK/provision-plant-fallback.json" >&2; fail 'fallback provisioning reused a non-host candidate'; }
+  jq -e --arg pin "$PIN" '.action == "reused" and .runtime.moduleVersion == $pin and
+    ([.runtime.candidates[].source] | index("artifact-root") == null and index("workspace") == null)' \
+    "$WORK/provision-plant-fallback.json" >/dev/null || { cat "$WORK/provision-plant-fallback.json" >&2; fail 'fallback provisioning reused a non-host candidate or another release than the pin'; }
 else
-  grep -Fq 'browser provisioning failed' "$WORK/provision-plant-fallback.err" || \
-    { cat "$WORK/provision-plant-fallback.err" >&2; fail "fallback provisioning exited $plant_status without its failure report"; }
+  grep -Fq 'browser provisioning failed: npm install exited' "$WORK/provision-plant-fallback.err" || \
+    { cat "$WORK/provision-plant-fallback.err" >&2; fail "fallback provisioning exited $plant_status without attempting the pinned install"; }
 fi
 
 # Invalid requests fail closed before anything is installed.
@@ -172,7 +202,7 @@ rmdir "$RUNTIME_ROOT/nested-artifact"
 printf 'not an archive\n' >"$WORK/pack/broken.tgz"
 expect_provision_failure broken-archive 1 'browser provisioning failed: npm install exited' \
   host_assets "$CLI" browser provision --artifact-root "$ARTIFACT" --package "$WORK/pack/broken.tgz" --skip-browser-install
-[ "$(ls -A "$RUNTIME_ROOT")" = '0.1.0' ] || fail 'a failed install left staging entries or replaced the working runtime'
+[ "$(ls -A "$RUNTIME_ROOT")" = "$PIN" ] || fail 'a failed install left staging entries or replaced the working runtime'
 
 # (b) Provisioning is host/operator-only: launch and lease variables refuse it with exit 2.
 REFUSED_HOME="$WORK/refused-home"
@@ -189,8 +219,11 @@ mkdir -p "$ENGAGED"
 "$CLI" engagement init --target "$ENGAGED" --artifact-root "$ENGAGED" --mode A --engagement-id browser-runtime-smoke >/dev/null
 CONTROL="$ENGAGED/ai_agents_internal"
 MANIFEST="$CONTROL/engagement.json"
+# The optional second argument names the calling subagent, as Claude Code writes it into the
+# PreToolUse payload: the guard lets only that lane run the hunt driver for its own --agent.
 guard_output() {
-  jq -nc --arg cwd "$ENGAGED" --arg command "$1" '{tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' | "$CLI" guard
+  jq -nc --arg cwd "$ENGAGED" --arg command "$1" --arg agent "${2:-}" '{tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}
+    + (if $agent == "" then {} else {hook_event_name:"PreToolUse",agent_id:("smoke-" + $agent),agent_type:("argus:" + $agent)} end)' | "$CLI" guard
 }
 denial="$(guard_output "argus-assets browser provision --artifact-root $ENGAGED")"
 grep -Fq '"permissionDecision":"deny"' <<<"$denial" && grep -Fq 'browser provisioning is host/operator-only' <<<"$denial" || \
@@ -198,7 +231,9 @@ grep -Fq '"permissionDecision":"deny"' <<<"$denial" && grep -Fq 'browser provisi
 denial="$(guard_output "$CLI browser provision --artifact-root $ENGAGED --package $TGZ --json")"
 grep -Fq 'GUARD-SHELL-AMBIGUOUS' <<<"$denial" || fail "guard did not deny the absolute-path provisioning command: $denial"
 [ -z "$(guard_output 'argus-assets path typescript-template')" ] || fail 'guard denied the read-only template path lookup'
-[ -z "$(guard_output "node $DRIVER --agent kalchas --goto / --snapshot")" ] || fail 'guard denied the in-place managed driver invocation'
+[ -z "$(guard_output "node $DRIVER --agent kalchas --goto / --snapshot" kalchas)" ] || fail 'guard denied the in-place managed driver invocation'
+grep -Fq 'the packaged hunt driver requires an identified calling lane' <<<"$(guard_output "node $DRIVER --agent kalchas --goto / --snapshot")" || \
+  fail 'guard allowed the managed driver for an unidentified caller'
 
 # (d) The managed driver resolves its config, authorization, and Playwright module from the
 # engagement control directory and imports exactly the recorded, digest-verified module.
@@ -353,4 +388,4 @@ grep -Fq 'ARGUS_BROWSER_PROFILE is required inside a managed engagement' "$WORK/
 run_driver "$WORK/driver-restored.out" ARGUS_BROWSER_PROFILE="$PROFILE" || { cat "$WORK/driver-restored.out" >&2; fail 'managed driver rejected the restored runtime'; }
 grep -Fxq "import $MODULE" "$LOG" || fail 'managed driver did not import the restored runtime'
 
-printf 'PASS  Browser runtime: host-only provisioning into the host cache (package, Chromium install, reuse, fail-closed inputs), launch/lease refusal, guard denial and in-place driver allowance, and a managed driver that imports only the digest-verified recorded module\n'
+printf 'PASS  Browser runtime: host-only provisioning into the host cache (package, Chromium install, pinned-release-only reuse, fail-closed inputs), launch/lease refusal, guard denial and in-place driver allowance, and a managed driver that imports only the digest-verified recorded module\n'

@@ -12,7 +12,9 @@ CI systems, confidence-bearing signals, and unsupported capabilities. It never i
 
 Selection requires an explicit operator choice. For an engagement the operator makes it on the
 host, against the launch target path or the artifact root, and hands the record to the
-launcher:
+launcher. A URL target has no tree to detect: `detect` and `select` refuse it with
+`FAIL  template <verb>: a URL target selects against the artifact root (--target <artifact-root>)`,
+so the operator creates the artifact root first (mode 0700) and runs both against it:
 
 ```bash
 argus-assets template select --target <repo-or-artifact-root> --runtime <typescript|java|python> \

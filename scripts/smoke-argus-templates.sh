@@ -451,6 +451,26 @@ if "$CLI" template select --target "$FIXTURES/existing-typescript" --runtime typ
 "$CLI" template select --target "$FIXTURES/existing-java" --runtime java --package-manager gradle --test-root src/test/java --harness-root src --output "$WORK/java-adapt.json" >/dev/null
 jq -e '.action == "adapt" and .testRoot == "src/test/java" and .harnessRoot == "src" and (.unsupported | index("package-manager-adapter-required:gradle"))' "$WORK/java-adapt.json" >/dev/null || fail "nested existing Java layout was not preserved"
 if "$CLI" template select --target "$WORK" --package-manager npm --test-root specs --harness-root support --output "$WORK/no-runtime.json" >/dev/null 2>&1; then fail "selection succeeded without explicit runtime choice"; fi
+# A URL target has no tree to detect: detect and select refuse it with a FAIL line that names
+# the artifact root, and a missing directory or a rejected choice is a FAIL line too, never a
+# stack trace.
+expect_template_refusal() {
+  local name="$1" message="$2" status=0
+  shift 2
+  "$@" >"$WORK/$name.out" 2>&1 || status=$?
+  [ "$status" -eq 1 ] || { cat "$WORK/$name.out" >&2; fail "$name exited $status instead of 1"; }
+  grep -Fxq "$message" "$WORK/$name.out" || { cat "$WORK/$name.out" >&2; fail "$name did not report: $message"; }
+  ! grep -Eq '^[[:space:]]+at |^Error: ' "$WORK/$name.out" || { cat "$WORK/$name.out" >&2; fail "$name printed a stack trace"; }
+}
+expect_template_refusal url-detect 'FAIL  template detect: a URL target selects against the artifact root (--target <artifact-root>)' \
+  "$CLI" template detect --target http://127.0.0.1:43999
+expect_template_refusal url-select 'FAIL  template select: a URL target selects against the artifact root (--target <artifact-root>)' \
+  "$CLI" template select --target https://staging.example.test/app --runtime typescript --package-manager npm --test-root specs --harness-root support --output "$WORK/url-selection.json"
+[ ! -e "$WORK/url-selection.json" ] || fail "a URL target produced a template selection"
+expect_template_refusal missing-detect "FAIL  template detect: target repo directory does not exist: $WORK/missing-target" \
+  "$CLI" template detect --target "$WORK/missing-target"
+expect_template_refusal unknown-runtime 'FAIL  template select: explicit --runtime must be typescript, java, or python' \
+  "$CLI" template select --target "$FIXTURES/existing-typescript" --runtime rust --package-manager cargo --test-root specs --harness-root support --output "$WORK/rust-selection.json"
 "$CLI" copy-template typescript "$WORK/unselected" >/dev/null
 set +e
 (cd "$WORK/unselected" && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline >/dev/null 2>&1)
