@@ -61,7 +61,7 @@ const MODE_A_PHASES = [
   'preflight', 'discovery', 'hunting', 'proof', 'deep-hunt-1', 'deep-proof-1', 'deep-hunt-2', 'deep-proof-2',
   'deep-hunt-3', 'deep-proof-3', 'automation', 'verification', 'reporting', 'complete',
 ];
-const NULL_RUNNER_REFUSAL = 'runner=null is only valid for Mode B without automation, or in Mode A, C, or D without a reports/argus-runner-result.json while no template selection is installed and nothing was automated, or after the run-tests.sh owner was abandoned';
+const NULL_RUNNER_REFUSAL = 'runner=null is only valid for Mode B without automation, or in Mode A, C, or D without a reports/argus-runner-result.json while no template selection is installed and nothing was automated, or after the run-tests.sh owner was abandoned while no reports/argus-runner-result.json is registered runner-result evidence';
 const work = mkdtempSync(join(tmpdir(), 'argus-engagement-state-'));
 
 try {
@@ -88,6 +88,7 @@ try {
   testBudgetStopAbandonsUnallocatedLanes();
   testCompletionRequiresFinalSummary();
   testAbandonedRunnerOwnerFinalSummary();
+  testAbandonedRunnerOwnerUnregisteredResult();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
   testRedispatchedHeartbeatWorkUnits();
@@ -1162,8 +1163,9 @@ function testCompletionRequiresFinalSummary() {
 // stop), no runner result can follow even with an installed template selection, and a test he
 // recorded was never run by a runner. Kleio's runner=null summary then merges, blocked by
 // runner-result-missing, and names each canonical that no lane can publish any more, such as the
-// architecture her kleio-architecture fragment was for; the engagement still completes. A runner
-// result on disk, or an installed selection with Atlas still present, requires the runner outcome.
+// architecture her kleio-architecture fragment was for; the engagement still completes. A
+// registered runner result on disk, or an installed selection with Atlas still present, requires
+// the runner outcome (see testAbandonedRunnerOwnerUnregisteredResult).
 function testAbandonedRunnerOwnerFinalSummary() {
   const fixture = createFixture('abandoned-runner-owner', ['atlas', 'kleio', 'odysseus']);
   const { manifest } = fixture;
@@ -1185,14 +1187,7 @@ function testAbandonedRunnerOwnerFinalSummary() {
   writeFragment(manifest, 'kleio', tokens.kleio, 'solution/ARCHITECTURE.md', 'kleio-architecture',
     '## 10. How we used AI\nDelegated recon, verified by the reporter.\n\n## 11. Summary\nOne suite, one report.\n');
   arriveBarrier(manifest, 'kleio', tokens.kleio, 'reporting');
-
-  const runnerPath = join(fixture.root, 'reports', 'argus-runner-result.json');
-  mkdirSync(join(fixture.root, 'reports'), { recursive: true });
-  writeFileSync(runnerPath, `${JSON.stringify(runnerResultFixture)}\n`);
-  expectThrowMessage(() => mergeFinalSummary(fixture, tokens.kleio, { runner: false, fragmentId: 'summary-hidden-runner' }), NULL_RUNNER_REFUSAL,
-    'a runner=null summary beside an existing runner result after the runner owner was abandoned');
-  unlinkSync(runnerPath);
-  assert(getEngagementStatus(manifest).merges['solution/final-summary.json'] === undefined, 'a refused runner=null summary was merged');
+  seedFinalSummaryInputs(fixture, { runner: false });
 
   const expectedReasons = ['canonical-unmerged:run-tests-sh', 'canonical-unmerged:solution-architecture-md', 'lane-abandoned:atlas', 'runner-result-missing'];
   // The same facts reach Kleio through report-facts, so her copied status is the merged ceiling.
@@ -1214,6 +1209,74 @@ function testAbandonedRunnerOwnerFinalSummary() {
   arriveBarrier(manifest, 'odysseus', controller.token, 'complete');
   cleanupWorker(manifest, 'kleio', tokens.kleio, 'success');
   assert(cleanupWorker(manifest, 'odysseus', controller.token, 'success').outcome === 'success', 'the controller did not complete after the abandoned runner owner');
+}
+
+// Atlas proves the runner in W0 and every later run rewrites reports/argus-runner-result.json, so
+// an abandoned Atlas usually leaves a result behind. Its registered bytes stay the runner outcome
+// and cannot be hidden by a runner=null summary. A result he never registered (a later run, or
+// an interrupted write) can no longer be archived and registered by anyone: the summary merges
+// with runner=null, blocked by runner-result-unregistered, and the engagement still completes.
+function testAbandonedRunnerOwnerUnregisteredResult() {
+  const fixture = createFixture('abandoned-runner-unregistered', ['atlas', 'kleio', 'odysseus']);
+  const { manifest } = fixture;
+  writeTemplateSelection(fixture);
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('unregistered-runner-controller') });
+  const tokens = {};
+  for (const lane of ['atlas', 'kleio']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`unregistered-runner-${lane}`) }).token;
+  }
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'discovery');
+  while (getEngagementStatus(manifest).currentPhase !== 'automation') advanceBarrier(manifest, 'odysseus', controller.token);
+  // Atlas archives and registers his first run, then a later run overwrites the live result.
+  const registeredContent = `${JSON.stringify(runnerResultFixture)}\n`;
+  const runnerPath = join(fixture.root, 'reports', 'argus-runner-result.json');
+  mkdirSync(join(fixture.root, 'reports', 'evidence'), { recursive: true });
+  writeFileSync(join(fixture.root, 'reports', 'evidence', 'runner-result-1.json'), registeredContent);
+  writeFileSync(runnerPath, registeredContent);
+  const registry = { $schema: 'argus/evidence-reference@3', schemaVersion: 3, engagementId: manifest.engagementId, references: [{
+    id: 'EVD-0001', kind: 'runner-result', mediaType: 'application/json', source: 'reports/evidence/runner-result-1.json', collectedBy: 'atlas',
+    capturedAt: new Date().toISOString(), redaction: 'synthetic', sha256: createHash('sha256').update(registeredContent).digest('hex'), relatedBugIds: [], relatedSurfaceIds: [] }] };
+  writeFragment(manifest, 'atlas', tokens.atlas, 'solution/evidence-reference.json', 'atlas-runner-evidence', `${JSON.stringify(registry)}\n`);
+  mergeCanonical(manifest, 'kleio', tokens.kleio, 'solution/evidence-reference.json');
+  cleanupWorker(manifest, 'atlas', tokens.atlas, 'failure');
+  abandonLane(manifest, 'atlas', controller.token, 'continuation-exhausted');
+  while (getEngagementStatus(manifest).currentPhase !== 'reporting') advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'kleio', tokens.kleio, 'reporting');
+  seedFinalSummaryInputs(fixture, { runner: false });
+
+  const registered = deriveFinalSummaryFacts(manifest, getEngagementStatus(manifest));
+  assert(registered.runner?.evidenceId === 'EVD-0001' && !registered.statusReasons.includes('runner-result-unregistered') && !registered.statusReasons.includes('runner-result-missing'),
+    `the registered result of an abandoned runner owner is not the runner outcome: ${JSON.stringify({ runner: registered.runner, statusReasons: registered.statusReasons })}`);
+  expectThrowMessage(() => mergeFinalSummary(fixture, tokens.kleio, { runner: false, fragmentId: 'summary-hidden-registered-runner' }), NULL_RUNNER_REFUSAL,
+    'a runner=null summary over the registered result of an abandoned runner owner');
+  assert(getEngagementStatus(manifest).merges['solution/final-summary.json'] === undefined, 'a refused runner=null summary was merged');
+
+  const expectedReasons = ['canonical-unmerged:run-tests-sh', 'canonical-unmerged:solution-architecture-md', 'canonical-unmerged:solution-automation-status-json',
+    'lane-abandoned:atlas', 'runner-result-unregistered'];
+  const later = structuredClone(runnerResultFixture);
+  Object.assign(later, { mode: 'candidate-regression', status: 'fail', exitCode: 13, deliveryGate: false });
+  const overwrites = [['a later run', `${JSON.stringify(later)}\n`], ['an interrupted write', '{"$schema":"argus/runner-result@1","mode":']];
+  for (const [label, content] of overwrites) {
+    writeFileSync(runnerPath, content);
+    const facts = deriveFinalSummaryFacts(manifest, getEngagementStatus(manifest));
+    assert(facts.runner === null && facts.statusCeiling === 'blocked' && JSON.stringify(facts.statusReasons) === JSON.stringify(expectedReasons),
+      `report-facts over ${label} of an abandoned runner owner: ${JSON.stringify({ runner: facts.runner, statusCeiling: facts.statusCeiling, statusReasons: facts.statusReasons })}`);
+  }
+  writeFileSync(runnerPath, overwrites[0][1]);
+  mergeFinalSummary(fixture, tokens.kleio, { runner: false, fragmentId: 'summary-runner-unregistered' });
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'blocked' && summary.runner === null && JSON.stringify(summary.statusReasons) === JSON.stringify(expectedReasons),
+    `a summary over an unregistered result of an abandoned runner owner was not blocked by it: ${JSON.stringify({ status: summary.status, runner: summary.runner, statusReasons: summary.statusReasons })}`);
+  const rendered = readFileSync(join(fixture.root, 'solution', 'FINAL-SUMMARY.md'), 'utf8');
+  assert(rendered.includes('Status reason: runner-result-unregistered') &&
+    rendered.includes('Automation: not verified; the lane that owns run-tests.sh was abandoned before it registered reports/argus-runner-result.json (runner-result-unregistered).') &&
+    rendered.includes('Automated re-execution: n/a (unregistered runner result)'),
+  'the rendered summary does not report the unregistered runner result');
+
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'odysseus', controller.token, 'complete');
+  cleanupWorker(manifest, 'kleio', tokens.kleio, 'success');
+  assert(cleanupWorker(manifest, 'odysseus', controller.token, 'success').outcome === 'success', 'the controller did not complete after an unregistered runner result');
 }
 
 function writeTemplateSelection(fixture) {
@@ -1277,6 +1340,20 @@ function mergeEmptyLedger(fixture, token, fragmentId) {
 // the only status reasons left are the recorded phase skips. With runner=false it seeds no
 // runner result or evidence and submits runner=null; fragmentId names a superseding fragment.
 function mergeFinalSummary(fixture, token, { runner = true, fragmentId = 'final-summary' } = {}) {
+  seedFinalSummaryInputs(fixture, { runner });
+  const summary = structuredClone(finalSummaryFixture);
+  summary.engagementId = fixture.manifest.engagementId;
+  Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [], residuals: [] });
+  summary.counts = { bugs: { confirmed: 0, suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, headline: 0 }, regression: { wired: 0, uncovered: [] }, automated: 0, evidence: 0 };
+  summary.automationReview = { status: 'not-applicable', reviewId: null, round: null, blockers: 0, warnings: 0 };
+  if (!runner) summary.runner = null;
+  writeFragment(fixture.manifest, 'kleio', token, 'solution/final-summary.json', fragmentId, `${JSON.stringify(summary)}\n`);
+  mergeCanonical(fixture.manifest, 'kleio', token, 'solution/final-summary.json');
+}
+
+// Seeds the merged coverage result, and with runner=true the registered runner result, that the
+// final-summary facts are derived from.
+function seedFinalSummaryInputs(fixture, { runner = true } = {}) {
   const coverage = structuredClone(coverageResultFixture);
   coverage.engagementId = fixture.manifest.engagementId;
   coverage.surfaces.find((surface) => surface.surfaceId === 'SRF-UI-HOME').executed = true;
@@ -1306,15 +1383,6 @@ function mergeFinalSummary(fixture, token, { runner = true, fragmentId = 'final-
   if (runner) state.merges['solution/evidence-reference.json'] = { owner: 'kleio', fragments: 1, sha256: digest(registryContent), mergedAt };
   state.merges['solution/coverage-result.json'] = { owner: 'kleio', fragments: 1, sha256: digest(coverageContent), mergedAt, inputs };
   writeFileSync(fixture.statePath, `${JSON.stringify(state, null, 2)}\n`);
-
-  const summary = structuredClone(finalSummaryFixture);
-  summary.engagementId = fixture.manifest.engagementId;
-  Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [], residuals: [] });
-  summary.counts = { bugs: { confirmed: 0, suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, headline: 0 }, regression: { wired: 0, uncovered: [] }, automated: 0, evidence: 0 };
-  summary.automationReview = { status: 'not-applicable', reviewId: null, round: null, blockers: 0, warnings: 0 };
-  if (!runner) summary.runner = null;
-  writeFragment(fixture.manifest, 'kleio', token, 'solution/final-summary.json', fragmentId, `${JSON.stringify(summary)}\n`);
-  mergeCanonical(fixture.manifest, 'kleio', token, 'solution/final-summary.json');
 }
 
 function readSolutionJson(fixture, name) {

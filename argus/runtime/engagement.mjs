@@ -717,11 +717,13 @@ const FINAL_SUMMARY_RUNNER_RESULT = 'reports/argus-runner-result.json';
 const FINAL_SUMMARY_COVERAGE_RESULT = 'solution/coverage-result.json';
 const TEMPLATE_SELECTION_MISSING = 'template-selection-missing';
 const RUNNER_RESULT_MISSING = 'runner-result-missing';
+const RUNNER_RESULT_UNREGISTERED = 'runner-result-unregistered';
 const FINAL_SUMMARY_RUNNER_SCRIPT = 'run-tests.sh';
 
 // Without a fragment (`engagement report-facts`) the runner outcome is read whenever the runner
 // result exists. With a fragment, a non-null runner requires that file, and a null runner stays
-// null so the merge can enforce the Mode B unfunded-automation rule against derived counts.
+// null so the merge can enforce the Mode B unfunded-automation rule against derived counts;
+// once the run-tests.sh owner was abandoned, an existing result is read for a null runner too.
 export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   const dispatchable = state.dispatchableAgents ?? manifest.selectedAgents;
   const ledger = readMergedCanonical(manifest, state, 'solution/bug-ledger.json', 'bug-ledger');
@@ -782,15 +784,22 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
       };
     });
 
-  const runnerRead = (fragment ? fragment.runner !== null : Boolean(lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))))
+  const runnerPresent = Boolean(lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT)));
+  const runnerOwner = manifest.writePolicy.canonicalArtifacts.find((item) => item.path === FINAL_SUMMARY_RUNNER_SCRIPT)?.owner;
+  const runnerOwnerAbandoned = manifest.mode !== 'B' && Boolean(runnerOwner) && Object.hasOwn(state.abandonedLanes, runnerOwner);
+  const runnerRead = (fragment && fragment.runner !== null) || (runnerPresent && (!fragment || runnerOwnerAbandoned))
     ? readRunnerResult(manifest) : null;
-  const runnerResult = runnerRead?.document ?? null;
   // The live runner result counts only as the registered runner-result evidence with its exact
-  // bytes, so a hand-written or since-overwritten file cannot stand in for a recorded run.
+  // bytes, so a hand-written or since-overwritten file cannot stand in for a recorded run. The
+  // bytes are matched before they are parsed. Only the abandoned run-tests.sh owner could still
+  // archive and register a result, so a result it left unregistered (a later run, or an
+  // interrupted write) is named by runner-result-unregistered instead of cited.
   const runnerEvidence = runnerRead && (evidence?.references ?? []).find((ref) => ref.kind === 'runner-result' && ref.sha256 === runnerRead.sha256);
-  if (runnerRead && !runnerEvidence) {
+  const runnerUnregistered = Boolean(runnerRead && !runnerEvidence && runnerOwnerAbandoned);
+  if (runnerRead && !runnerEvidence && !runnerOwnerAbandoned) {
     throw new Error(`${FINAL_SUMMARY_RUNNER_RESULT} (sha256 ${runnerRead.sha256}) is not registered runner-result evidence in the merged solution/evidence-reference.json; archive and register it, then merge the registry again`);
   }
+  const runnerResult = runnerEvidence ? parseRunnerResult(runnerRead.content) : null;
   const runner = runnerResult && {
     mode: runnerResult.mode,
     status: runnerResult.status,
@@ -833,14 +842,12 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   for (const reason of unmergedCanonicalStatusReasons(manifest, state)) ceilings.set(reason, 'degraded');
   // Modes A, C, and D fund automation, but without the operator's installed template selection
   // no framework, runner, or runner result can exist, and once the lane that owns the runner
-  // script is abandoned no runner result can follow. Either justifies a null runner outcome and
-  // blocks the summary; neither ever excuses a runner result that exists.
+  // script is abandoned no runner result can follow or be registered. Each justifies a null
+  // runner outcome and blocks the summary; none ever excuses a registered runner result.
   if (!runner && manifest.mode !== 'B') {
     if (!reviewTemplateSelection(manifest)) ceilings.set(TEMPLATE_SELECTION_MISSING, 'blocked');
-    const runnerOwner = manifest.writePolicy.canonicalArtifacts.find((item) => item.path === FINAL_SUMMARY_RUNNER_SCRIPT)?.owner;
-    if (runnerOwner && Object.hasOwn(state.abandonedLanes, runnerOwner) && !lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))) {
-      ceilings.set(RUNNER_RESULT_MISSING, 'blocked');
-    }
+    if (runnerUnregistered) ceilings.set(RUNNER_RESULT_UNREGISTERED, 'blocked');
+    else if (runnerOwnerAbandoned && !runnerPresent) ceilings.set(RUNNER_RESULT_MISSING, 'blocked');
   }
   const statusReasons = [...ceilings.keys()].sort();
   const statusCeiling = [...ceilings.values()].reduce(worseFinalSummaryStatus, 'completed');
@@ -851,7 +858,7 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
 function applyFinalSummaryFacts(manifest, state, document) {
   const facts = deriveFinalSummaryFacts(manifest, state, document);
   if (document.runner === null && !nullRunnerAllowed(manifest, facts)) {
-    throw new Error(`runner=null is only valid for Mode B without automation, or in Mode A, C, or D without a ${FINAL_SUMMARY_RUNNER_RESULT} while no template selection is installed and nothing was automated, or after the ${FINAL_SUMMARY_RUNNER_SCRIPT} owner was abandoned`);
+    throw new Error(`runner=null is only valid for Mode B without automation, or in Mode A, C, or D without a ${FINAL_SUMMARY_RUNNER_RESULT} while no template selection is installed and nothing was automated, or after the ${FINAL_SUMMARY_RUNNER_SCRIPT} owner was abandoned while no ${FINAL_SUMMARY_RUNNER_RESULT} is registered runner-result evidence`);
   }
   for (const field of FINAL_SUMMARY_DERIVED_FIELDS) document[field] = facts[field];
   document.status = worseFinalSummaryStatus(document.status, facts.statusCeiling);
@@ -859,12 +866,14 @@ function applyFinalSummaryFacts(manifest, state, document) {
   if (errors.length) throw new Error(`derived final summary is invalid: ${errors.join('; ')}`);
 }
 
-// A null runner outcome is valid for Mode B without automation. In Modes A, C, and D it needs
-// that no runner result exists and a blocking status reason: the missing template selection
-// while nothing was automated, or the abandoned runner-script owner, whose recorded tests no
-// runner ever executed.
+// A null runner outcome is valid for Mode B without automation. In Modes A, C, and D it needs a
+// blocking status reason: the abandoned runner-script owner left a result nobody can register
+// any more, or no runner result exists and either the template selection is missing while
+// nothing was automated or the runner-script owner, whose recorded tests no runner ever
+// executed, was abandoned.
 function nullRunnerAllowed(manifest, facts) {
   if (manifest.mode === 'B') return facts.counts.automated === 0;
+  if (facts.statusReasons.includes(RUNNER_RESULT_UNREGISTERED)) return true;
   if (lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))) return false;
   if (facts.statusReasons.includes(RUNNER_RESULT_MISSING)) return true;
   return facts.counts.automated === 0 && facts.statusReasons.includes(TEMPLATE_SELECTION_MISSING);
@@ -893,9 +902,13 @@ function readRunnerResult(manifest) {
   const path = engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT);
   if (!lstatEntry(path)) throw new Error(`final summary runner outcome requires ${FINAL_SUMMARY_RUNNER_RESULT}`);
   const content = readManagedFile(path, FINAL_SUMMARY_RUNNER_RESULT);
+  return { content, sha256: sha256(content) };
+}
+
+function parseRunnerResult(content) {
   const { errors, document } = validateCanonicalFragment('runner-result', content);
   if (errors.length) throw new Error(`${FINAL_SUMMARY_RUNNER_RESULT} is invalid: ${errors.join('; ')}`);
-  return { document, sha256: sha256(content) };
+  return document;
 }
 
 // The digest of each canonical coverage input file as it is now, or null when it does not exist.
