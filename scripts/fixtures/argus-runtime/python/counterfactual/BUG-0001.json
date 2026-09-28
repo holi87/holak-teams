@@ -1,0 +1,19 @@
+{
+  "$schema": "argus/counterfactual-fixture@1",
+  "schemaVersion": 1,
+  "bugId": "BUG-0001",
+  "oracle": { "kind": "contract", "sourceRef": "ORC-API-001" },
+  "contract": { "operationId": "getWidget", "status": 200 },
+  "exchanges": [
+    {
+      "id": "get-widget",
+      "request": { "method": "GET", "path": "/widgets/1" },
+      "response": { "status": 200, "body": { "id": 1, "name": "widget" } }
+    }
+  ],
+  "subject": "get-widget",
+  "tampers": [
+    { "id": "observed-defect", "response": { "status": 500, "body": { "error": "internal" } } },
+    { "id": "missing-field", "response": { "status": 200, "body": { "id": 1 } } }
+  ]
+}

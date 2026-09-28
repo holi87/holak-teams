@@ -3,15 +3,15 @@ schema: argus/codex-provenance@1
 slug: charon
 display_name: Charon
 runtime_config: argus/codex/charon.toml
-runtime_config_sha256: 85eb1230f0ef3274bc9b0d8ea26e1db41fdbad5ea8533b7ba7386000c35b8e82
-developer_instructions_sha256: a8b3a5ae278b8e82c3606cb1a320eb4cf7d5c4faa58f88bf1c9a783505cfee3b
+runtime_config_sha256: 1ecb2423e46b223a868fe39e371008223b0c28f3d7bd105d589a9f5ad2f92243
+developer_instructions_sha256: 84d804fb37a33c048e70f9397129709491c0207426bd5b2c1067a5b6a7918c7d
 canonical_source: argus/roles/charon.md
-canonical_source_sha256: 027601686ca2d7e09226c83560277d2ce263eb5d75ebf1e968670d743f2d5385
-model: terra
-model_reasoning_effort: medium
+canonical_source_sha256: f7bf5b15ee21c11d30b3a5bf1a4d13d2e115f8c5d209c3b16bd698fcc1b55a59
+model: sol
+model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 doctrine_profiles: ["qa-core"]
-technique_catalogs: []
+technique_catalogs: ["charon"]
 generated_by: scripts/sync-argus-role-variants.mjs
 runtime_consumed: false
 ---

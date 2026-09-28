@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 
 # Shared test-only setup for the production model-control sequence. Callers keep
-# the host root outside the engagement artifact root and own its cleanup.
+# the host root outside the engagement artifact root and own its cleanup. The optional
+# ninth argument selects the initial routing: `single` (default) routes every dispatchable
+# lane with one single-lane call; `none` stops after preflight so the caller can exercise
+# batch routing itself. Dispatchable lanes include `conditional` records, because their
+# attempt-1 decisions are sealed before the first allocation.
 
 argus_smoke_prepare_model_control() {
   local cli="$1"
@@ -12,10 +16,15 @@ argus_smoke_prepare_model_control() {
   local profile="$6"
   local host_root="$7"
   local runtime="${8:-claude}"
+  local route_mode="${9:-single}"
   local control_id control_root runtime_private runtime_public operator_private operator_public trust_store runtime_key_id operator_key_id lane result relative_path preflight_output preflight_cli repo_root preflight_real_cli preflight_launcher preflight_claude
 
   if [ "$runtime" != claude ]; then
     printf 'FAIL  shared model-control helper supports Claude only; Codex JIT is covered by smoke-argus-model-policy.sh\n' >&2
+    return 1
+  fi
+  if [ "$route_mode" != single ] && [ "$route_mode" != none ]; then
+    printf 'FAIL  shared model-control helper route mode must be single or none, not %s\n' "$route_mode" >&2
     return 1
   fi
 
@@ -74,6 +83,10 @@ argus_smoke_prepare_model_control() {
     return 1
   fi
 
+  if [ "$route_mode" = none ]; then
+    return 0
+  fi
+
   while IFS= read -r lane; do
     result="$("$cli" model route --manifest "$manifest" --agent "$lane" --runtime "$runtime" \
       --signal normal --dispatch-id "smoke-$control_id-$lane" --attempt 1)"
@@ -83,7 +96,7 @@ argus_smoke_prepare_model_control() {
     }
     relative_path="$(jq -r .relativePath <<<"$result")"
     printf '%s\n' "$artifact_root/$relative_path" >"$control_root/decisions/$lane.path"
-  done < <(jq -r '.agents[] | select(.selected and (.status == "ready" or .status == "degraded") and (.slug == "odysseus" or .dispatchAllowed == true)) | .slug' "$preflight_output")
+  done < <(jq -r '.agents[] | select(.selected and (.status == "ready" or .status == "degraded" or .status == "conditional") and (.slug == "odysseus" or .dispatchAllowed == true)) | .slug' "$preflight_output")
 }
 
 argus_smoke_model_decision() {

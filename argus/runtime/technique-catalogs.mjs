@@ -1,15 +1,18 @@
 // Build-time semantic validation for technique catalogs. This module never reads catalog
 // files: generators pass parsed documents in and embed the selected entries in prompts.
 // Installed agents therefore do not need a runtime catalog read.
+//
+// The role registry is data, not code. Callers pass the capability matrix
+// `techniqueCatalogs` object verbatim as `contracts`; each declaration names its
+// catalogType and, for hunter catalogs, its idPrefix and entryCount. Registering a new
+// catalog therefore needs only a matrix declaration and the catalog JSON file.
 
 export const TECHNIQUE_CATALOG_SCHEMA = 'argus/technique-catalog@1';
 
-const ROLE_CONTRACTS = Object.freeze({
-  atalanta: Object.freeze({ type: 'hunter', prefix: 'ATA', count: 22 }),
-  ariadne: Object.freeze({ type: 'hunter', prefix: 'ARI', count: 16 }),
-  proteus: Object.freeze({ type: 'hunter', prefix: 'PRO', count: 15 }),
-  metis: Object.freeze({ type: 'strategy' }),
-});
+const CATALOG_ROLE = /^[a-z][a-z0-9-]*$/;
+const ID_PREFIX = /^[A-Z]{3}$/;
+// Hunter entry ids are `<PREFIX>-T<two digits>`, so one catalog holds at most 99 entries.
+const MAX_HUNTER_ENTRIES = 99;
 
 const ISO_25010 = Object.freeze([
   'functional-suitability',
@@ -68,7 +71,7 @@ const ARCHETYPES = Object.freeze([
   'cardinality-scope',
 ]);
 const ROUTES = Object.freeze([
-  'api', 'ui', 'security', 'performance', 'resilience', 'data',
+  'api', 'ui', 'security', 'performance', 'resilience', 'data', 'data-direct',
   'accessibility', 'journey', 'contract', 'reporting',
 ]);
 
@@ -109,6 +112,68 @@ const SEMANTIC_MARKERS = Object.freeze({
   'ARI-T05': ['scope noun', 'binds on the documented scope'],
   'ARI-T12': ['independently from the requirements', 'both directions as separate candidates'],
   'ARI-T15': ['observable edge that is reachable', "never the rule it feeds"],
+  // The side-effect-channel rows pin the effect each channel owes a state event: the zero
+  // and duplicate notification, the attributed audit record, the exact export row set with
+  // its security half routed to Perseus, and a job that runs once or fails visibly.
+  'ARI-T17': ['exactly one notification per documented recipient', 'zero is a missed notification'],
+  'ARI-T18': ['real actor', 'before and after values'],
+  'ARI-T19': ['exactly the permitted rows', 'formula or CSV injection'],
+  'ARI-T20': ['within the documented window', 'exactly once per trigger'],
+  'ARI-T21': ['legitimate input that makes it fail', 'silently dropped job'],
+  // Perseus markers pin the five security classes this catalog newly owns. They exist so a
+  // later edit cannot quietly soften a class into a generic suggestion: removing the phrase
+  // fails the catalog validator. PER-T23 repeats ARI-T19's routing phrase, so the export's
+  // security half that Ariadne and Kalchas route here always has a row to land on.
+  'PER-T18': ['sniffed content', 'content-sniffing bypass'],
+  'PER-T19': ['anti-forgery token', 'persisted query or mutation'],
+  'PER-T20': ['validated against an allowlist', '//host redirect'],
+  'PER-T21': ['per-object authorization', 'idor on a download endpoint'],
+  'PER-T23': ['formula or CSV injection', 'formula-trigger character', 'no spreadsheet evaluates it'],
+  // Antigone's markers pin the success criteria WCAG 2.2 added at levels A and AA, plus
+  // Reflow and Text Spacing, which no prompt covered before. Each marker holds the cited
+  // criterion and its normative condition, so a row cannot drift into a vaguer check.
+  'ANG-T16': ['2.4.11 Focus Not Obscured (Minimum)', 'not entirely hidden'],
+  'ANG-T17': ['2.5.7 Dragging Movements', 'single pointer without dragging'],
+  'ANG-T18': ['2.5.8 Target Size (Minimum)', '24 by 24 CSS pixels'],
+  'ANG-T19': ['3.2.6 Consistent Help', 'same order relative to other page content'],
+  'ANG-T20': ['3.3.7 Redundant Entry', 'auto-populated or available for the user to select'],
+  'ANG-T21': ['3.3.8 Accessible Authentication (Minimum)', 'cognitive function test'],
+  'ANG-T22': ['1.4.10 Reflow', 'without scrolling in two dimensions'],
+  'ANG-T23': ['1.4.12 Text Spacing', '0.12 times the font size'],
+  // Charon's markers pin the read-only session guard and the data-layer oracles a softened
+  // row would lose first: stored bytes over the API echo, exact money storage, all-or-nothing
+  // units with recomputed aggregates, and plan evidence that never executes the statement.
+  'CHA-T01': ['default_transaction_read_only', 'the row on disk is the oracle target'],
+  'CHA-T03': ['every live read path', 'partial unique index'],
+  'CHA-T04': ['stored bytes, not the API echo', 'exact decimal or integer minor units'],
+  'CHA-T06': ['at most one succeeds', 'silently lost update'],
+  'CHA-T07': ['total == sum(line_items)', 'all rows of the unit persist or none do'],
+  'CHA-T09': ['EXPLAIN without ANALYZE', 'sequential scan on an indexable predicate'],
+  'CHA-T12': ['identical row counts and checksums', 'never SQL of your own'],
+  // Orion markers pin the functional-UI escape classes and the lane-split clauses that keep
+  // them honest: contract-bound effect counts, field-bound messages, the one server-bypass
+  // replay, and the routes to Lynceus and Perseus. Removing a phrase fails the validator.
+  'ORI-T01': ['cited client-validation requirement', 'consistency oracle: file it as Suspected', 'never confirms'],
+  'ORI-T02': ['never perform the primary or destructive action', 'shared handler'],
+  'ORI-T03': ['every mutating CTA', 'cited action contract'],
+  'ORI-T04': ['exactly its labelled action', 'no sibling'],
+  'ORI-T05': ['field that actually failed', 'no partial mutation'],
+  'ORI-T06': ['exact-boundary state', 'persisted state stays unchanged'],
+  'ORI-T07': ['rolls back visibly', 'phantom success'],
+  'ORI-T08': ['cancels or sequences', 'superseded response'],
+  'ORI-T09': ['documented length unit', 'mid-glyph truncation'],
+  'ORI-T10': ['exact same value', 'register-trims-but-login-does-not'],
+  'ORI-T11': ['silent no-op', 'routed to Perseus'],
+  // Lynceus markers pin the presentation oracles past runs let escape: the cited-target
+  // caveat, code-point counting over three charset classes, the page seam, money at the
+  // smallest unit across views, the inclusive/exclusive boundary rule, and latest-result
+  // rendering. Removing the phrase fails the catalog validator.
+  'LYN-T02': ['below the cited target', 'guessed universal pixel threshold'],
+  'LYN-T03': ['three classes', 'code points, not bytes'],
+  'LYN-T05': ['dropped or duplicated at a page boundary', 'stale count'],
+  'LYN-T06': ['smallest currency unit', 'pre-change total'],
+  'LYN-T08': ['exact-boundary state', 'inclusive or exclusive rule'],
+  'LYN-T09': ['latest input', 'never overwrites a newer one'],
 });
 
 const TOP_LEVEL = Object.freeze([
@@ -120,7 +185,80 @@ const HUNTER_ENTRY_KEYS = Object.freeze([
   'id', 'title', 'scope', 'techniques', 'appliesWhen', 'construct', 'oracles', 'routes',
 ]);
 
-export function validateTechniqueCatalog(document) {
+export function techniqueCatalogId(role) {
+  return `argus/technique-catalog/${role}@1`;
+}
+
+// Validates the registry itself. A malformed registry is reported before any catalog is
+// judged against it, so a missing or malformed registry can never make a catalog pass.
+export function validateTechniqueCatalogContracts(contracts) {
+  if (!isObject(contracts)) return ['contracts must be the capability matrix techniqueCatalogs object'];
+  const errors = [];
+  const roles = Object.keys(contracts);
+  if (roles.length === 0) errors.push('contracts must register at least one technique catalog');
+  const prefixes = new Map();
+  for (const role of roles) {
+    const path = `contracts/${role}`;
+    const contract = contracts[role];
+    if (!CATALOG_ROLE.test(role)) errors.push(`${path} is not a valid catalog role`);
+    if (!isObject(contract)) {
+      errors.push(`${path} must be an object`);
+      continue;
+    }
+    expectEqual(errors, `${path}/catalogId`, contract.catalogId, techniqueCatalogId(role));
+    if (contract.catalogType === 'hunter') {
+      if (typeof contract.idPrefix !== 'string' || !ID_PREFIX.test(contract.idPrefix)) {
+        errors.push(`${path}/idPrefix must be three uppercase letters`);
+      } else if (prefixes.has(contract.idPrefix)) {
+        errors.push(`${path}/idPrefix duplicates the ${prefixes.get(contract.idPrefix)} prefix ${contract.idPrefix}`);
+      } else prefixes.set(contract.idPrefix, role);
+      if (!Number.isInteger(contract.entryCount) || contract.entryCount < 1 || contract.entryCount > MAX_HUNTER_ENTRIES) {
+        errors.push(`${path}/entryCount must be an integer from 1 to ${MAX_HUNTER_ENTRIES}`);
+      }
+    } else if (contract.catalogType === 'strategy') {
+      for (const key of ['idPrefix', 'entryCount']) {
+        if (Object.hasOwn(contract, key)) errors.push(`${path}/${key} is not allowed for strategy`);
+      }
+    } else errors.push(`${path}/catalogType must be hunter or strategy`);
+  }
+  return errors;
+}
+
+export function validateTechniqueCatalog(document, contracts) {
+  const contractErrors = validateTechniqueCatalogContracts(contracts);
+  if (contractErrors.length) return contractErrors;
+  return validateRegisteredCatalog(document, contracts);
+}
+
+export function assertTechniqueCatalog(document, contracts) {
+  const errors = validateTechniqueCatalog(document, contracts);
+  if (errors.length) throw new Error(`invalid technique catalog: ${errors.join('; ')}`);
+  return document;
+}
+
+export function validateTechniqueCatalogSet(documents, contracts) {
+  const contractErrors = validateTechniqueCatalogContracts(contracts);
+  if (contractErrors.length) return contractErrors;
+  const errors = [];
+  if (!Array.isArray(documents)) return ['/ must be an array of technique catalogs'];
+  const expectedRoles = Object.keys(contracts);
+  if (documents.length !== expectedRoles.length) {
+    errors.push(`/ must contain exactly ${expectedRoles.length} catalogs; found ${documents.length}`);
+  }
+  const roles = new Set();
+  documents.forEach((document, index) => {
+    const role = isObject(document) ? document.role : undefined;
+    if (roles.has(role)) errors.push(`/${index}/role duplicates ${String(role)}`);
+    roles.add(role);
+    for (const error of validateRegisteredCatalog(document, contracts)) errors.push(`/${index}${error}`);
+  });
+  for (const role of expectedRoles) {
+    if (!roles.has(role)) errors.push(`/ is missing ${role} catalog`);
+  }
+  return errors;
+}
+
+function validateRegisteredCatalog(document, contracts) {
   const errors = [];
   if (!isObject(document)) return ['/ must be an object'];
 
@@ -130,40 +268,18 @@ export function validateTechniqueCatalog(document) {
   expectEqual(errors, '/valuePolicy', document.valuePolicy, 'discover-never-assume');
   expectEqual(errors, '/executionRule', document.executionRule, 'each-applicable-entry-covered-or-gap');
 
-  const contract = ROLE_CONTRACTS[document.role];
+  const contract = typeof document.role === 'string' && Object.hasOwn(contracts, document.role)
+    ? contracts[document.role]
+    : undefined;
   if (!contract) {
-    errors.push(`/role must be one of ${Object.keys(ROLE_CONTRACTS).join(', ')}`);
+    errors.push(`/role must be a registered capability-matrix catalog role (${Object.keys(contracts).join(', ')}); found ${JSON.stringify(document.role)}`);
     return errors;
   }
-  expectEqual(errors, '/catalogId', document.catalogId, `argus/technique-catalog/${document.role}@1`);
-  expectEqual(errors, '/catalogType', document.catalogType, contract.type);
+  expectEqual(errors, '/catalogId', document.catalogId, techniqueCatalogId(document.role));
+  expectEqual(errors, '/catalogType', document.catalogType, contract.catalogType);
 
-  if (contract.type === 'hunter') validateHunter(errors, document, contract);
+  if (contract.catalogType === 'hunter') validateHunter(errors, document, contract);
   else validateStrategy(errors, document);
-  return errors;
-}
-
-export function assertTechniqueCatalog(document) {
-  const errors = validateTechniqueCatalog(document);
-  if (errors.length) throw new Error(`invalid technique catalog: ${errors.join('; ')}`);
-  return document;
-}
-
-export function validateTechniqueCatalogSet(documents) {
-  const errors = [];
-  if (!Array.isArray(documents)) return ['/ must be an array of technique catalogs'];
-  const expected = Object.keys(ROLE_CONTRACTS).length;
-  if (documents.length !== expected) errors.push(`/ must contain exactly ${expected} catalogs; found ${documents.length}`);
-  const roles = new Set();
-  documents.forEach((document, index) => {
-    const role = isObject(document) ? document.role : undefined;
-    if (roles.has(role)) errors.push(`/${index}/role duplicates ${String(role)}`);
-    roles.add(role);
-    for (const error of validateTechniqueCatalog(document)) errors.push(`/${index}${error}`);
-  });
-  for (const role of Object.keys(ROLE_CONTRACTS)) {
-    if (!roles.has(role)) errors.push(`/ is missing ${role} catalog`);
-  }
   return errors;
 }
 
@@ -174,8 +290,8 @@ function validateHunter(errors, document, contract) {
     errors.push('/entries must be an array');
     return;
   }
-  if (document.entries.length !== contract.count) {
-    errors.push(`/entries must contain exactly ${contract.count} entries; found ${document.entries.length}`);
+  if (document.entries.length !== contract.entryCount) {
+    errors.push(`/entries must contain exactly ${contract.entryCount} entries; found ${document.entries.length}`);
   }
   const ids = new Set();
   const titles = new Set();
@@ -186,7 +302,7 @@ function validateHunter(errors, document, contract) {
       return;
     }
     rejectUnknown(errors, path, entry, HUNTER_ENTRY_KEYS);
-    const expectedId = `${contract.prefix}-T${String(index + 1).padStart(2, '0')}`;
+    const expectedId = `${contract.idPrefix}-T${String(index + 1).padStart(2, '0')}`;
     expectEqual(errors, `${path}/id`, entry.id, expectedId);
     if (ids.has(entry.id)) errors.push(`${path}/id duplicates ${String(entry.id)}`);
     ids.add(entry.id);

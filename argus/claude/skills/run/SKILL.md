@@ -14,40 +14,54 @@ Only a session started by `${CLAUDE_PLUGIN_ROOT}/bin/argus-launch` may execute t
 Direct invocation stops before probing or dispatch.
 
 `$ARGUMENTS` contains one `authenticatedLaunch` JSON object and QA scope; reject duplicate
-or prose coordinates. Stay the sole controller; never
+or prose coordinates, except the unattested form below. Stay the sole controller; never
 spawn `argus:odysseus`. Execute `${CLAUDE_PLUGIN_ROOT}/skills/orchestration-core/SKILL.md`
 as the only controller policy. Do not read the Odysseus agent as a second policy source.
 
-Reject empty input with `ARGUS_PREFLIGHT_ERROR: TARGET_REQUIRED`. Require the launcher's
-exact `target`, `artifact-root`, `mode`, `engagement-id`, `launch-authorization`,
-`launch-receipt`, and `trust-store` arguments; missing launch coordinates return
+Reject empty input with `ARGUS_PREFLIGHT_ERROR: TARGET_REQUIRED`. For `authenticatedLaunch`,
+require the launcher's exact `target`, `artifact-root`, `mode`, `engagement-id`, `launch-authorization`,
+`launch-receipt`, and `trust-store` arguments; missing coordinates return
 `ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED`. Confirm `Agent` and two required
 specialists, then run `argus-assets preflight --target <target> --mode <A|B|C|D>
 --artifact-root <artifact-root> --engagement-id <engagement-id> --launch-authorization
-<launch-authorization> --launch-receipt <launch-receipt> --trust-store <trust-store>`.
-Never derive or replace any signed coordinate. A mandatory failure stops with evidence.
-Pin the public-only host trust store's distinct `runtime-attestation` and
-`operator-approval` IDs, then rerun preflight; never sign, access private keys, or accept
+<launch-authorization> --launch-receipt <launch-receipt> --trust-store <trust-store>`,
+appending `--feature <id>` per optional unsigned `features` entry. Never derive or
+replace signed coordinates. A mandatory failure stops with evidence.
+An `argus-launch --unattested` session instead receives exactly
+`target=<target> artifact-root=<artifact-root> mode=<mode> unattestedLaunch=true engagementId=<engagement-id>`
+plus optional `features=<csv>` and operator `authorizationSource`/`targetEnvironment`/
+`authorizationSha256` tokens. Run `argus-assets preflight --target <target> --mode <mode>
+--artifact-root <artifact-root> --engagement-id <engagement-id> --unattested-launch`, with
+`--feature <id>` per `features` entry. Its refusal (no `ARGUS_LAUNCH_UNATTESTED=1`, or host
+key material) returns `ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED`. Report the
+engagement `UNATTESTED`.
+Attested preflight pins the signed `runtime-attestation` and `operator-approval` anchors when
+it creates the engagement; never run `model trust`, sign, access private keys, or accept
 first-use trust. Persist exactly one normal attempt-1 decision for Odysseus and every
-selected `ready`/`degraded` agent with `dispatchAllowed=true`.
-Allocate Odysseus first with its decision, then workers with their decisions and its
-controller token. Give workers only their own lane token and public coordinates. Reject
-late normal routes; retries keep the dispatch/allocation and run `engagement start-attempt`
-after emitting prior-attempt telemetry. Capture its returned lane token, replace the
-consumed token, and only then start the new thread; the stale token is revoked.
+selected `ready`/`degraded`/`conditional` agent with `dispatchAllowed=true`.
+Allocate Odysseus first, then workers with their decisions and the controller token. Give
+workers only their lane token and public coordinates. Reject late normal routes; retries
+keep the dispatch/allocation and run `engagement start-attempt` after emitting
+prior-attempt telemetry. Replace the consumed token with its returned one before starting
+the new thread; the stale token is revoked.
 
-Dispatch only persisted `ready`/`degraded` roles as exact `argus:<slug>` types. Follow the
+Dispatch persisted `ready`/`degraded` roles, and `conditional` roles only after
+`engagement resolve-gates` releases them, as exact `argus:<slug>` types. Follow the
 RACI projection and W0–W4 barriers. The sealed dispatchable projection is the immutable
 barrier-participant set; worker `success` cleanup requires every declared arrival, and
 heartbeats are allocation/dispatch/attempt-generation-bound. Collect every RESULT, validate
-canonical outputs, run gates, and clean all allocations on success, failure, or interruption. Report verified
-preflight/authorization, contributions, paths, runner categories, surface-derived coverage,
-denials, residual risk, model bindings, barriers, and cleanup. Never equate defect yield
+canonical outputs, and run gates. After the final merges and Kleio's reporting arrival,
+advance to `complete` and arrive Odysseus there, batch telemetry for every allocated
+lane, Odysseus included, then run `argus-assets engagement lane-outcomes` with the controller
+token and cite its per-lane counts; clean workers next, Odysseus last.
+Clean all allocations on success, failure, or interruption. Report verified
+preflight/authorization, contributions, runner categories, surface-derived coverage,
+denials, residual risk, model bindings, and cleanup. Never equate defect yield
 with coverage or claim uncollected work.
 
 For launcher-authorized input containing `scope=ARGUS_ORCHESTRATION_SMOKE`, use the signed
-target and artifact root as Mode A coordinates. Pin both trust anchors, rerun preflight,
-and persist one normal attempt-1 decision per dispatchable agent. Allocate Odysseus first,
+target and artifact root as Mode A coordinates. Run preflight once and persist one normal
+attempt-1 decision per dispatchable agent. Allocate Odysseus first,
 then only Kleio and Theseus using their
 decisions and the controller token. Dispatch both concurrently with only their lane tokens
 and public coordinates; require exact no-tool replies `ARGUS_SMOKE_KLEIO_OK` and

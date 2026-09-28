@@ -1,6 +1,6 @@
 {
   "$schema": "../schemas/engagement-manifest.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "engagementId": "argus-template",
   "mode": "A",
   "target": {
@@ -35,13 +35,8 @@
     }
   },
   "phasePlan": [
-    { "id": "preflight", "participants": ["odysseus"] },
-    { "id": "discovery", "participants": ["kalchas"] },
-    { "id": "hunting", "participants": [] },
-    { "id": "automation", "participants": [] },
-    { "id": "verification", "participants": [] },
-    { "id": "reporting", "participants": ["kleio"] },
-    { "id": "complete", "participants": ["odysseus"] }
+    { "id": "preflight", "wave": "controller", "kind": "control", "skippable": false, "participants": ["odysseus"], "standby": [] },
+    { "id": "complete", "wave": "controller", "kind": "control", "skippable": false, "participants": ["odysseus"], "standby": [] }
   ],
   "writePolicy": {
     "auditPath": "ai_agents_internal/immutability-audit.jsonl",
@@ -68,11 +63,37 @@
       "scripts/driver.config.example.json",
       "scripts/driver-config.schema.json"
     ],
+    "ownedArtifactRoots": [
+      { "path": "solution/test-lanes.tsv", "owners": ["atlas"] },
+      { "path": "solution/environment.tsv", "owners": ["atlas"] },
+      { "path": "solution/quarantine.tsv", "owners": ["atlas", "asklepios"] },
+      { "path": "solution/counterfactual", "owners": ["atlas", "talos", "daidalos", "nike", "aegis", "mnemosyne"] },
+      { "path": "scripts/runner-lib.sh", "owners": ["atlas"] },
+      { "path": "scripts/runner-contract.sh", "owners": ["atlas"] },
+      { "path": "scripts/outcome-event.sh", "owners": ["atlas"] },
+      { "path": "scripts/quarantine-contract.sh", "owners": ["atlas"] },
+      { "path": "scripts/lane-plan.sh", "owners": ["atlas"] },
+      { "path": "scripts/environment-gate.sh", "owners": ["atlas"] },
+      { "path": "scripts/inventory-gate.sh", "owners": ["atlas"] },
+      { "path": "scripts/evidence-gate.sh", "owners": ["atlas"] },
+      { "path": "scripts/argus-playwright-reporter.mjs", "owners": ["atlas"] },
+      { "path": "scripts/baseline-coverage.mjs", "owners": ["atlas"] },
+      { "path": "solution/perseus-ledger.json", "owners": ["perseus"] },
+      { "path": "solution/orion-ledger.json", "owners": ["orion"] },
+      { "path": "solution/lynceus-ledger.json", "owners": ["lynceus"] },
+      { "path": "solution/antigone-ledger.json", "owners": ["antigone"] },
+      { "path": "solution/charon-ledger.json", "owners": ["charon"] },
+      { "path": "solution/journey-ledger.json", "owners": ["ariadne"] }
+    ],
+    "selectedTemplateRoots": {
+      "harnessRootOwners": ["atlas", "talos", "daidalos", "nike", "aegis", "mnemosyne", "asklepios"],
+      "rootConfigOwners": ["atlas"]
+    },
     "canonicalArtifacts": [
       { "path": "README.md", "owner": "kleio", "format": "markdown" },
-      { "path": "run-tests.sh", "owner": "atlas", "format": "text" },
+      { "path": "run-tests.sh", "owner": "atlas", "format": "text", "merge": "latest-revision", "executable": true },
       { "path": "solution/ARCHITECTURE.md", "owner": "atlas", "format": "markdown" },
-      { "path": "solution/BUG-LEDGER.md", "owner": "minos", "format": "markdown" },
+      { "path": "solution/BUG-LEDGER.md", "owner": "minos", "format": "markdown", "merge": "latest-revision" },
       { "path": "solution/bug-ledger.json", "owner": "minos", "format": "json-document", "schema": "bug-ledger" },
       { "path": "solution/lane-plan.json", "owner": "odysseus", "format": "json-document", "schema": "lane-plan" },
       { "path": "solution/evidence-reference.json", "owner": "kleio", "format": "json-document", "schema": "evidence-reference" },
@@ -81,6 +102,7 @@
       { "path": "solution/coverage-observations.json", "owner": "kleio", "format": "json-document", "schema": "coverage-observations" },
       { "path": "solution/coverage-result.json", "owner": "kleio", "format": "json-document", "schema": "coverage-result" },
       { "path": "solution/final-summary.json", "owner": "kleio", "format": "json-document", "schema": "final-summary" },
+      { "path": "solution/automation-review.json", "owner": "aristarchus", "format": "json-document", "schema": "automation-review" },
       { "path": "solution/FINDINGS.md", "owner": "kleio", "format": "markdown" },
       { "path": "solution/ACCESSIBILITY-REPORT.md", "owner": "kleio", "format": "markdown" },
       { "path": "solution/IMPLEMENTATION-REPORT.md", "owner": "kleio", "format": "markdown" },
@@ -91,7 +113,7 @@
       { "path": "solution/TEST-HEALTH.md", "owner": "asklepios", "format": "markdown" },
       { "path": "solution/TEST-STRATEGY.md", "owner": "metis", "format": "markdown" },
       { "path": "solution/TRACEABILITY.md", "owner": "kleio", "format": "markdown" },
-      { "path": "solution/WHITEBOX-LEADS.md", "owner": "minos", "format": "markdown" }
+      { "path": "solution/WHITEBOX-LEADS.md", "owner": "minos", "format": "markdown", "merge": "latest-revision" }
     ],
     "bypass": {
       "enabled": false,
@@ -110,7 +132,8 @@
     }
   },
   "idAllocators": {
-    "bug": { "owner": "minos", "prefix": "BUG", "width": 4 }
+    "bug": { "owner": "minos", "prefix": "BUG", "width": 4 },
+    "evidence": { "owner": "any-active-lane", "prefix": "EVD", "width": 4 }
   },
   "cleanup": {
     "removeOnRelease": ["browser-profile", "browser-artifacts", "auth", "tmp", "locks"]

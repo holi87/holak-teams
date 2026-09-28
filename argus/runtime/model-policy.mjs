@@ -13,7 +13,29 @@ export const MODEL_SIGNALS = [
   'turn-limit',
   'model-unavailable',
   'schema-validated-mechanical',
+  'no-artifact',
+  'zero-candidates',
 ];
+
+// Controller-observed outcomes. A worker never declares them; they carry an exact
+// outcome binding instead of a worker escalation request and checkpoint.
+export const OUTCOME_SIGNALS = ['no-artifact', 'zero-candidates'];
+// Signals that always stay operator-gated: automatic frontier continuation may never
+// list them, whatever the autoContinue flag says.
+export const AUTO_CONTINUE_FORBIDDEN = [
+  'safety',
+  'ambiguity',
+  'cross-lane',
+  'conflicting-evidence',
+  'oracle-ambiguity',
+  'schema-validation-failure',
+];
+const AUTO_CONTINUE_LISTS = ['workerSignals', 'outcomeSignals', 'checkpointlessSignals'];
+const AUTO_CONTINUE_SLUG_LISTS = ['zeroCandidatesRoles', 'excludedAgents'];
+const NON_ESCALATION_SIGNALS = ['normal', 'model-unavailable', 'schema-validated-mechanical'];
+const MAX_AUTO_CONTINUATIONS = 5;
+const MAX_CHECKPOINTLESS_RETRIES = 2;
+const MAX_BACKOFF_SECONDS = 300;
 
 const REQUIRED_ENFORCEMENTS = ['effort', 'maxTurns', 'model'];
 const EXPECTED_TIERS = {
@@ -34,26 +56,59 @@ const EXPECTED_MECHANICAL_DOWNGRADE = {
   requiresValidatorPass: true,
   forbiddenWhenQualityJudgment: true,
 };
+// Roles whose escalation profile carries orchestration, judgment, or analysis work
+// never run below the frontier tier, whatever the baseline allowlist says.
+export const FRONTIER_FLOOR_PROFILES = ['orchestration', 'judgment', 'analysis'];
+const MIN_STANDARD_JUSTIFICATION = 20;
+// The controller drives the whole engagement under one native turn cap. The cap must
+// fund every wave, and a closeout reserve of it stays free for canonical merges and
+// Kleio; the reserve may never consume more than a quarter of the cap.
+const CONTROLLER_AGENT = 'odysseus';
+const MIN_CONTROLLER_MAX_TURNS = 300;
+const MIN_CLOSEOUT_RESERVE_TURNS = 10;
 
 export function validateModelPolicy(policy, expectedSlugs = []) {
   const errors = [];
-  if (policy?.schemaVersion !== 1 || policy?.policyId !== 'argus/model-policy@1') errors.push('policy identity must be argus/model-policy@1');
+  if (policy?.schemaVersion !== 2 || policy?.policyId !== 'argus/model-policy@2') errors.push('policy identity must be argus/model-policy@2');
   const roles = Array.isArray(policy?.roles) ? policy.roles : [];
   if (roles.length !== 27) errors.push('policy must define exactly 27 roles');
   const slugs = roles.map((role) => role.slug);
   if (new Set(slugs).size !== slugs.length) errors.push('role slugs must be unique');
   if (expectedSlugs.length && JSON.stringify([...slugs].sort()) !== JSON.stringify([...expectedSlugs].sort())) errors.push('policy role inventory differs from the canonical roster');
-  const counts = Object.groupBy ? Object.groupBy(roles, (role) => role.tier) : roles.reduce((result, role) => ((result[role.tier] ??= []).push(role), result), {});
-  if ((counts.frontier ?? []).length !== 12 || (counts.standard ?? []).length !== 15) errors.push('baseline split must be 12 frontier and 15 standard roles');
+  const baseline = policy?.baseline ?? {};
+  const frontierCount = roles.filter((role) => role.tier === 'frontier').length;
+  const standardCount = roles.filter((role) => role.tier === 'standard').length;
+  if (baseline.frontierRoles !== frontierCount || baseline.standardRoles !== standardCount) {
+    errors.push(`baseline counts must equal the role tiers: ${frontierCount} frontier and ${standardCount} standard`);
+  }
+  if (baseline.mechanicalFullRoles !== 0) errors.push('baseline mechanicalFullRoles must be 0');
+  const expectedDecision = `adopt-${frontierCount}-frontier-${standardCount}-standard`;
+  if (baseline.decision !== expectedDecision) errors.push(`baseline decision must be ${expectedDecision}`);
+  if (!Array.isArray(baseline.standardAllowlist)) errors.push('baseline.standardAllowlist must be an array');
+  const allowlisted = new Set();
+  for (const entry of Array.isArray(baseline.standardAllowlist) ? baseline.standardAllowlist : []) {
+    const slug = entry?.slug;
+    if (allowlisted.has(slug)) errors.push(`baseline.standardAllowlist ${slug}: duplicate entry`);
+    allowlisted.add(slug);
+    if (!roles.some((role) => role.slug === slug && role.tier === 'standard')) errors.push(`baseline.standardAllowlist ${slug}: entry must name an existing standard role`);
+    if (typeof entry?.justification !== 'string' || entry.justification.trim().length < MIN_STANDARD_JUSTIFICATION) {
+      errors.push(`baseline.standardAllowlist ${slug}: justification must be at least ${MIN_STANDARD_JUSTIFICATION} characters`);
+    }
+  }
   if (stableJson(policy?.tiers) !== stableJson(EXPECTED_TIERS)) errors.push('tier models, effort, rank, quality, and mechanical eligibility differ from the adopted mapping');
   if (stableJson(policy?.mechanicalDowngrade) !== stableJson(EXPECTED_MECHANICAL_DOWNGRADE)) errors.push('mechanical downgrade eligibility differs from the bounded-subrole contract');
-  if (policy?.routing?.decisionDirectory !== 'ai_agents_internal/model-decisions' || policy?.routing?.decisionSchema !== 'argus/model-decision@2') {
-    errors.push('routing must persist argus/model-decision@2 under ai_agents_internal/model-decisions');
+  if (policy?.routing?.decisionDirectory !== 'ai_agents_internal/model-decisions' || policy?.routing?.decisionSchema !== 'argus/model-decision@3') {
+    errors.push('routing must persist argus/model-decision@3 under ai_agents_internal/model-decisions');
   }
   if (!sameStrings(policy?.routing?.requiredEnforcements, REQUIRED_ENFORCEMENTS)) errors.push('routing must require model, effort, and maxTurns together');
-  if (policy?.telemetry?.schema !== 'argus/model-telemetry-event@2') errors.push('telemetry schema must be argus/model-telemetry-event@2');
+  if (policy?.telemetry?.schema !== 'argus/model-telemetry-event@3') errors.push('telemetry schema must be argus/model-telemetry-event@3');
   for (const role of roles) {
     if (!policy?.tiers?.[role.tier]) errors.push(`${role.slug}: unknown tier ${role.tier}`);
+    else if (role.tier !== 'frontier' && role.tier !== 'standard') errors.push(`${role.slug}: a full role must use the frontier or standard tier`);
+    if (FRONTIER_FLOOR_PROFILES.includes(role.escalationProfile) && role.tier !== 'frontier') {
+      errors.push(`${role.slug}: ${role.escalationProfile} roles require the frontier tier`);
+    }
+    if (role.tier === 'standard' && !allowlisted.has(role.slug)) errors.push(`${role.slug}: standard tier requires a justified baseline.standardAllowlist entry`);
     if (!Number.isInteger(role.maxTurns) || role.maxTurns < 1) errors.push(`${role.slug}: maxTurns must be a positive integer`);
     if (!policy?.escalationProfiles?.[role.escalationProfile]?.length) errors.push(`${role.slug}: escalation profile is missing or empty`);
     if (!policy?.fallbackPolicies?.[role.fallbackPolicy]) errors.push(`${role.slug}: fallback policy is missing`);
@@ -61,6 +116,136 @@ export function validateModelPolicy(policy, expectedSlugs = []) {
     if (policy?.fallbackPolicies?.[role.fallbackPolicy]?.allowWeakerModel !== false) errors.push(`${role.slug}: weaker fallback must be forbidden`);
     if (role.tier === 'frontier' && role.fallbackPolicy !== 'frontier-fail-closed') errors.push(`${role.slug}: frontier judgment must fail closed`);
     if (role.tier === 'standard' && role.fallbackPolicy !== 'upward-only') errors.push(`${role.slug}: standard fallback must be upward-only`);
+  }
+  errors.push(...controllerBudgetErrors(policy?.controllerBudget, roles));
+  errors.push(...autoContinuePolicyErrors(policy, roles));
+  return errors;
+}
+
+// Automatic frontier continuation relaxes the operator gate only for bounded
+// turn-limit, repeated-failure, and controller-observed outcome routes on the unchanged
+// frontier baseline. Outcome signals are never worker-declared, whatever the flag says.
+function autoContinuePolicyErrors(policy, roles) {
+  const errors = [];
+  const profiles = policy?.escalationProfiles && typeof policy.escalationProfiles === 'object' ? policy.escalationProfiles : {};
+  for (const [profile, signals] of Object.entries(profiles)) {
+    const leaked = (Array.isArray(signals) ? signals : []).filter((signal) => OUTCOME_SIGNALS.includes(signal));
+    if (leaked.length) errors.push(`escalationProfiles.${profile} declares controller-observed outcome signals: ${leaked.join(', ')}`);
+  }
+  const fallbackPolicies = policy?.fallbackPolicies && typeof policy.fallbackPolicies === 'object' ? policy.fallbackPolicies : {};
+  for (const [name, fallback] of Object.entries(fallbackPolicies)) {
+    if (fallback?.autoContinue === undefined) {
+      if (name === 'frontier-fail-closed') errors.push('fallbackPolicies.frontier-fail-closed.autoContinue is required');
+      continue;
+    }
+    if (name !== 'frontier-fail-closed') {
+      errors.push(`fallbackPolicies.${name}.autoContinue is valid only for frontier-fail-closed`);
+      continue;
+    }
+    errors.push(...autoContinueErrors(fallback.autoContinue, `fallbackPolicies.${name}.autoContinue`, policy, roles));
+  }
+  return errors;
+}
+
+function autoContinueErrors(auto, label, policy, roles) {
+  if (!auto || typeof auto !== 'object' || Array.isArray(auto)) return [`${label} must be an object`];
+  const errors = [];
+  if (typeof auto.enabled !== 'boolean') errors.push(`${label}.enabled must be true or false`);
+  const list = (field) => (Array.isArray(auto[field]) ? auto[field] : []);
+  for (const field of [...AUTO_CONTINUE_LISTS, ...AUTO_CONTINUE_SLUG_LISTS]) {
+    const value = auto[field];
+    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string') || new Set(value).size !== value.length) {
+      errors.push(`${label}.${field} must be an array of unique strings`);
+    }
+  }
+  for (const field of AUTO_CONTINUE_LISTS) {
+    const forbidden = list(field).filter((signal) => AUTO_CONTINUE_FORBIDDEN.includes(signal));
+    if (forbidden.length) errors.push(`${label}.${field} lists operator-gated signals: ${forbidden.join(', ')}`);
+    const unknown = list(field).filter((signal) => !MODEL_SIGNALS.includes(signal) || NON_ESCALATION_SIGNALS.includes(signal));
+    if (unknown.length) errors.push(`${label}.${field} lists signals that cannot continue automatically: ${unknown.join(', ')}`);
+  }
+  const workerOutcomes = list('workerSignals').filter((signal) => OUTCOME_SIGNALS.includes(signal));
+  if (workerOutcomes.length) errors.push(`${label}.workerSignals lists controller-observed outcome signals: ${workerOutcomes.join(', ')}`);
+  if (!sameStrings(list('outcomeSignals'), OUTCOME_SIGNALS)) errors.push(`${label}.outcomeSignals must be exactly ${OUTCOME_SIGNALS.join(', ')}`);
+  const checkpointless = list('checkpointlessSignals');
+  if (!OUTCOME_SIGNALS.every((signal) => checkpointless.includes(signal))) {
+    errors.push(`${label}.checkpointlessSignals must include ${OUTCOME_SIGNALS.join(' and ')}`);
+  }
+  const continuable = new Set([...list('workerSignals'), ...list('outcomeSignals')]);
+  const unbound = checkpointless.filter((signal) => !continuable.has(signal));
+  if (unbound.length) errors.push(`${label}.checkpointlessSignals must be a subset of workerSignals and outcomeSignals: ${unbound.join(', ')}`);
+  for (const slug of list('zeroCandidatesRoles')) {
+    if (!roles.some((role) => role.slug === slug && role.tier === 'frontier')) errors.push(`${label}.zeroCandidatesRoles ${slug}: entry must name an existing frontier role`);
+  }
+  for (const slug of list('excludedAgents')) {
+    if (!roles.some((role) => role.slug === slug)) errors.push(`${label}.excludedAgents ${slug}: entry must name a policy role`);
+  }
+  const controller = policy?.controllerBudget?.agent;
+  if (!list('excludedAgents').includes(controller)) errors.push(`${label}.excludedAgents must contain the controller ${controller ?? CONTROLLER_AGENT}`);
+  if (!Number.isInteger(auto.maxAutoContinuations) || auto.maxAutoContinuations < 0 || auto.maxAutoContinuations > MAX_AUTO_CONTINUATIONS) {
+    errors.push(`${label}.maxAutoContinuations must be an integer from 0 to ${MAX_AUTO_CONTINUATIONS}`);
+  }
+  if (!Number.isInteger(auto.maxCheckpointlessRetries) || auto.maxCheckpointlessRetries < 0 || auto.maxCheckpointlessRetries > MAX_CHECKPOINTLESS_RETRIES) {
+    errors.push(`${label}.maxCheckpointlessRetries must be an integer from 0 to ${MAX_CHECKPOINTLESS_RETRIES}`);
+  }
+  const backoff = auto.unavailableBackoffSeconds;
+  if (!Array.isArray(backoff) || backoff.length < 1 || backoff.length > 5 ||
+      backoff.some((seconds) => !Number.isInteger(seconds) || seconds < 1 || seconds > MAX_BACKOFF_SECONDS)) {
+    errors.push(`${label}.unavailableBackoffSeconds must hold 1 to 5 integers from 1 to ${MAX_BACKOFF_SECONDS}`);
+  } else if (backoff.some((seconds, index) => index > 0 && seconds < backoff[index - 1])) {
+    errors.push(`${label}.unavailableBackoffSeconds must be non-decreasing`);
+  }
+  return errors;
+}
+
+// Returns the enabled autoContinue flag that governs a role, or null when the role is
+// not frontier, the flag is off, or the role is excluded (the controller always is).
+function roleAutoContinue(policy, role) {
+  const auto = policy.fallbackPolicies?.[role.fallbackPolicy]?.autoContinue;
+  if (role.tier !== 'frontier' || auto?.enabled !== true || auto.excludedAgents.includes(role.slug)) return null;
+  return auto;
+}
+
+// A continuation always runs the unchanged role baseline in a new thread whose native
+// cap is the role maxTurns again; Claude cannot raise a subagent cap per dispatch.
+function continuationRecord(kind, maxTurns, attempt, backoffSeconds) {
+  return {
+    kind,
+    sequence: attempt - 1,
+    perAttemptMaxTurns: maxTurns,
+    cumulativeTurnBudget: maxTurns * attempt,
+    backoffSeconds,
+  };
+}
+
+function requireRetryCount(value, label) {
+  if (!Number.isInteger(value) || value < 0) throw new Error(`${label} must be a non-negative integer`);
+}
+
+// Returns the controller's native turn cap and closeout reserve. Callers validate the
+// policy first; an unresolvable controller role still fails closed here.
+export function controllerTurnBudget(policy) {
+  const budget = policy?.controllerBudget;
+  const role = Array.isArray(policy?.roles) ? policy.roles.find((item) => item?.slug === budget?.agent) : undefined;
+  if (!role || !Number.isInteger(role.maxTurns) || !Number.isInteger(budget.closeoutReserveTurns)) {
+    throw new Error('model policy controllerBudget does not resolve to a policy role with an integer turn cap and reserve');
+  }
+  return { agent: role.slug, maxTurns: role.maxTurns, closeoutReserveTurns: budget.closeoutReserveTurns };
+}
+
+function controllerBudgetErrors(budget, roles) {
+  if (!budget || typeof budget !== 'object' || Array.isArray(budget)) return ['controllerBudget is required'];
+  const errors = [];
+  if (budget.agent !== CONTROLLER_AGENT) errors.push(`controllerBudget.agent must be ${CONTROLLER_AGENT}`);
+  const role = roles.find((item) => item?.slug === budget.agent);
+  if (!role) return [...errors, 'controllerBudget.agent must name a policy role'];
+  if (!Number.isInteger(role.maxTurns) || role.maxTurns < MIN_CONTROLLER_MAX_TURNS) {
+    errors.push(`${role.slug}: controller maxTurns must be at least ${MIN_CONTROLLER_MAX_TURNS}`);
+  }
+  const reserveCeiling = Number.isInteger(role.maxTurns) ? Math.floor(role.maxTurns / 4) : MIN_CLOSEOUT_RESERVE_TURNS;
+  const reserve = budget.closeoutReserveTurns;
+  if (!Number.isInteger(reserve) || reserve < MIN_CLOSEOUT_RESERVE_TURNS || reserve > reserveCeiling) {
+    errors.push(`controllerBudget.closeoutReserveTurns must be an integer from ${MIN_CLOSEOUT_RESERVE_TURNS} to floor(maxTurns/4)=${reserveCeiling}`);
   }
   return errors;
 }
@@ -185,6 +370,7 @@ export function resolveModelDecision(policy, adapters, {
   attempt,
   escalationBinding = null,
   availabilityBinding = null,
+  outcomeBinding = null,
   operatorDecision = null,
   trust = 'attested',
   createdAt = new Date().toISOString(),
@@ -207,6 +393,7 @@ export function resolveModelDecision(policy, adapters, {
   if (typeof signal !== 'string' || signal.length === 0) throw new Error('signal is required');
   if (!(escalationBinding === null || (typeof escalationBinding === 'object' && !Array.isArray(escalationBinding)))) throw new Error('escalationBinding must be an object or null');
   if (!(availabilityBinding === null || (typeof availabilityBinding === 'object' && !Array.isArray(availabilityBinding)))) throw new Error('availabilityBinding must be an object or null');
+  if (!(outcomeBinding === null || (typeof outcomeBinding === 'object' && !Array.isArray(outcomeBinding)))) throw new Error('outcomeBinding must be an object or null');
   if (!(operatorDecision === null || (typeof operatorDecision === 'object' && !Array.isArray(operatorDecision)))) throw new Error('operatorDecision must be an object or null');
   const role = policy.roles.find((item) => item.slug === slug);
   if (!role) throw new Error(`unknown model-policy role: ${slug}`);
@@ -227,10 +414,30 @@ export function resolveModelDecision(policy, adapters, {
   if (unavailableSignal !== (availabilityBinding !== null)) {
     throw new Error('model-unavailable requires an exact prior-decision/allocation binding, and no other signal may carry one');
   }
+  if (availabilityBinding !== null) requireRetryCount(availabilityBinding.priorUnavailableRetries, 'availabilityBinding.priorUnavailableRetries');
+  const declaredAuto = policy.fallbackPolicies[role.fallbackPolicy]?.autoContinue ?? null;
+  const auto = roleAutoContinue(policy, role);
+  if (outcomeBinding !== null && escalationBinding !== null) throw new Error('outcomeBinding and escalationBinding are mutually exclusive');
+  if (OUTCOME_SIGNALS.includes(signal) && outcomeBinding === null) {
+    throw new Error(`${signal} is controller-observed and requires an exact prior-decision/allocation outcome binding`);
+  }
+  if (outcomeBinding !== null) {
+    const checkpointless = declaredAuto?.checkpointlessSignals ?? OUTCOME_SIGNALS;
+    if (!checkpointless.includes(signal)) throw new Error(`outcomeBinding is valid only for a checkpoint-less signal: ${checkpointless.join(', ')}`);
+    if (operatorDecision !== null) throw new Error('an outcome-bound continuation cannot carry an operator decision');
+    requireRetryCount(outcomeBinding.priorCheckpointlessRetries, 'outcomeBinding.priorCheckpointlessRetries');
+    if (!Array.isArray(outcomeBinding.observedArtifacts) || outcomeBinding.observedArtifacts.some((path) => typeof path !== 'string')) {
+      throw new Error('outcomeBinding.observedArtifacts must be an array of artifact paths');
+    }
+  }
+  if ((escalationBinding !== null || availabilityBinding !== null || outcomeBinding !== null) && attempt < 2) {
+    throw new Error('a retry lineage binding requires an attempt after a selected route');
+  }
   if (operatorDecision !== null && !(role.tier === 'frontier' && (triggers.includes(signal) || unavailableSignal))) {
     throw new Error('operatorDecision is valid only for a declared or unavailable frontier escalation');
   }
 
+  let continuation = null;
   if (signal === 'normal') {
     // The reviewed baseline is the only non-escalation route.
   } else if (signal === 'schema-validated-mechanical') {
@@ -246,10 +453,18 @@ export function resolveModelDecision(policy, adapters, {
         status = 'blocked';
         reasonCode = 'OPERATOR_ABORTED';
         reason = 'frontier model unavailability was explicitly aborted by the operator';
+      } else if (operatorDecision === null && auto && availabilityBinding.priorUnavailableRetries < auto.unavailableBackoffSeconds.length) {
+        const prior = availabilityBinding.priorUnavailableRetries;
+        const backoffSeconds = auto.unavailableBackoffSeconds[prior];
+        reasonCode = 'BACKOFF_RETRY_SELECTED';
+        reason = `frontier model unavailable; automatic retry ${prior + 1} of ${auto.unavailableBackoffSeconds.length} on the unchanged frontier baseline after a ${backoffSeconds}-second backoff`;
+        continuation = continuationRecord('backoff-retry', role.maxTurns, attempt, backoffSeconds);
       } else if (operatorDecision === null) {
         status = 'blocked';
         reasonCode = 'FRONTIER_UNAVAILABLE';
-        reason = 'frontier model unavailable; weaker fallback is forbidden and retry or abort requires an external operator decision';
+        reason = auto
+          ? `frontier model unavailable after ${auto.unavailableBackoffSeconds.length} automatic backoff retries; weaker fallback is forbidden and retry or abort requires an external operator decision`
+          : 'frontier model unavailable; weaker fallback is forbidden and retry or abort requires an external operator decision';
         operatorEscalation = true;
       } else {
         throw new Error('model-unavailable accepts only retry-frontier or abort operator actions');
@@ -260,6 +475,29 @@ export function resolveModelDecision(policy, adapters, {
       reasonCode = 'ESCALATION_SELECTED';
       reason = 'standard model unavailable; upward-only frontier route requested';
       fallbackUsed = true;
+    }
+  } else if (outcomeBinding !== null) {
+    const prior = outcomeBinding.priorCheckpointlessRetries;
+    if (!auto) {
+      status = 'blocked';
+      reasonCode = 'SIGNAL_NOT_ALLOWED';
+      reason = `checkpoint-less ${signal} continuation requires the enabled frontier autoContinue flag, which does not govern ${slug}`;
+    } else if (signal === 'zero-candidates' && !auto.zeroCandidatesRoles.includes(slug)) {
+      status = 'blocked';
+      reasonCode = 'SIGNAL_NOT_ALLOWED';
+      reason = `zero-candidates applies only to candidate-producing roles in autoContinue.zeroCandidatesRoles; ${slug} is not listed`;
+    } else if (signal === 'no-artifact' && outcomeBinding.observedArtifacts.length > 0) {
+      status = 'blocked';
+      reasonCode = 'SIGNAL_NOT_ALLOWED';
+      reason = 'no-artifact is contradicted by observed accountable artifacts';
+    } else if (prior >= auto.maxCheckpointlessRetries || attempt - 1 > auto.maxAutoContinuations) {
+      status = 'blocked';
+      reasonCode = 'AUTO_CONTINUATION_EXHAUSTED';
+      reason = `${signal} exhausted automatic continuation (${prior} of ${auto.maxCheckpointlessRetries} checkpoint-less restarts, continuation ${attempt - 1} of at most ${auto.maxAutoContinuations})`;
+    } else {
+      reasonCode = 'AUTO_CONTINUE_SELECTED';
+      reason = `${signal} restarts the unchanged frontier baseline in a fresh thread under the autoContinue flag`;
+      continuation = continuationRecord('fresh-restart', role.maxTurns, attempt, 0);
     }
   } else if (!MODEL_SIGNALS.includes(signal) || !triggers.includes(signal)) {
     status = 'blocked';
@@ -278,6 +516,11 @@ export function resolveModelDecision(policy, adapters, {
       status = 'blocked';
       reasonCode = 'OPERATOR_ABORTED';
       reason = `${signal} was explicitly aborted by the operator`;
+    } else if (operatorDecision === null && auto && auto.workerSignals.includes(signal) && escalationBinding !== null &&
+        attempt - 1 <= auto.maxAutoContinuations) {
+      reasonCode = 'AUTO_CONTINUE_SELECTED';
+      reason = `${signal} resumes the unchanged frontier baseline from its checkpoint in a fresh thread under the autoContinue flag`;
+      continuation = continuationRecord('checkpoint-resume', role.maxTurns, attempt, 0);
     } else {
       if (operatorDecision !== null) throw new Error('declared frontier escalation accepts only continue-frontier or abort operator actions');
       status = 'blocked';
@@ -307,6 +550,7 @@ export function resolveModelDecision(policy, adapters, {
     reasonCode = 'CAPABILITY_DRIFT';
     reason = `${runtimeAdapter.adapterId} cannot enforce ${missingCapabilities.join(', ')} for the ${adapterMode} route`;
   }
+  if (reasonCode !== 'AUTO_CONTINUE_SELECTED' && reasonCode !== 'BACKOFF_RETRY_SELECTED') continuation = null;
 
   const snapshotSha256 = adapterSnapshotSha256(adapters);
   const policySha256 = modelPolicySha256(policy);
@@ -340,6 +584,8 @@ export function resolveModelDecision(policy, adapters, {
     operatorEscalation,
     escalationBinding,
     availabilityBinding,
+    outcomeBinding,
+    continuation,
     operatorDecision,
     weakerFallbackAllowed: false,
     reason,
@@ -380,6 +626,8 @@ export function resolveModelDecision(policy, adapters, {
     operatorEscalation,
     escalationBinding,
     availabilityBinding,
+    outcomeBinding,
+    continuation,
     operatorDecision,
     weakerFallbackAllowed: false,
     reason,
@@ -472,6 +720,7 @@ export function validateModelDecisionBinding(policy, adapters, decision, {
       attempt: decision?.attempt,
       escalationBinding: decision?.escalationBinding,
       availabilityBinding: decision?.availabilityBinding,
+      outcomeBinding: decision?.outcomeBinding,
       operatorDecision: decision?.operatorDecision,
       trust: decision?.trust === undefined ? 'attested' : decision.trust,
       createdAt: decision?.createdAt,

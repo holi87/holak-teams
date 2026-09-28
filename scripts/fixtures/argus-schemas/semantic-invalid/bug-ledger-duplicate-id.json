@@ -1,6 +1,6 @@
 {
-  "$schema": "argus/bug-ledger@1",
-  "schemaVersion": 1,
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
   "engagementId": "fixture-1",
   "bugs": [
     {

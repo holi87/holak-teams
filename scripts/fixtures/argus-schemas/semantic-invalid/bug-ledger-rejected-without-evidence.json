@@ -1,0 +1,29 @@
+{
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
+  "engagementId": "fixture-1",
+  "bugs": [
+    {
+      "id": "BUG-0005",
+      "origin": [
+        "ATA-005"
+      ],
+      "title": "Queued order returns 202 instead of 201",
+      "severity": "Minor",
+      "priority": "P4",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-003",
+      "status": "rejected",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": [
+        "EVD-0002"
+      ],
+      "rejection": {
+        "reason": "not-reproducible",
+        "rationale": "Three fresh attempts did not show the defect.",
+        "evidenceIds": []
+      }
+    }
+  ]
+}

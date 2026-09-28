@@ -3,12 +3,12 @@ schema: argus/codex-provenance@1
 slug: talos
 display_name: Talos
 runtime_config: argus/codex/talos.toml
-runtime_config_sha256: 157d3ffb0ea924cc846e3fe2e71332a3aa355424895d583d1caa307a144f09eb
-developer_instructions_sha256: 4ae175572ceb03a414f5be663177fa5d8c47d47db9c4ebf71bc20d1a23fc9393
+runtime_config_sha256: 09270c80470ba9f47c9abe24c55c6c0e10b77e71b88d5a5f1cdf507b6f54998b
+developer_instructions_sha256: 8e1385111b7d365c9a7690c2e23bfa638830813a8ab96517761618fed618b0d9
 canonical_source: argus/roles/talos.md
-canonical_source_sha256: 41f150532f5be139d30c32e7639b3e460f34be33580a03cd15667ee63e1a5654
-model: terra
-model_reasoning_effort: medium
+canonical_source_sha256: e6842ee3bfed32228b015fc63fee898900f57ab9d10f4de646ed1bc2be8c9979
+model: sol
+model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 doctrine_profiles: ["qa-core","qa-framework-runner"]
 technique_catalogs: []

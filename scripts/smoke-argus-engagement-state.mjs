@@ -15,22 +15,55 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
 import {
+  abandonLane,
   allocateWorker,
   advanceBarrier,
   appendHeartbeat,
   arriveBarrier,
+  bindDispatchableAgents,
+  claimExclusive,
   cleanupWorker,
+  conditionalGateRequest,
   createDefaultEngagement,
+  deriveFinalSummaryFacts,
   ensurePreflightHeartbeat,
   evaluateWriteGuard,
+  getBarrierStatus,
   getEngagementStatus,
   initializeEngagementState,
+  mergeCanonical,
+  resolveConditionalGates,
+  reviewCorpusDigest,
+  skipPhases,
+  validateEngagementManifest,
   writeCheckpoint,
+  writeFragment,
 } from '../argus/runtime/engagement.mjs';
+import { derivePhasePlan } from '../argus/runtime/orchestration-plan.mjs';
 
 const ROOT = new URL('..', import.meta.url);
-const template = JSON.parse(readFileSync(new URL('argus/policies/engagement.template.json', ROOT), 'utf8'));
+const readRepoJson = (path) => JSON.parse(readFileSync(new URL(path, ROOT), 'utf8'));
+const template = readRepoJson('argus/policies/engagement.template.json');
+const orchestrationPlan = readRepoJson('argus/orchestration-plan.json');
+const capabilityMatrix = readRepoJson('argus/capabilities/capability-matrix.json');
+const raci = readRepoJson('argus/raci.json');
+const finalSummaryFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/final-summary.json');
+const coverageResultFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/coverage-result.json');
+const runnerResultFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/runner-result.json');
+const automationReviewFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/automation-review.json');
+const bugLedgerFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/bug-ledger.json');
+const evidenceFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/evidence-reference.json');
+const stateSchemaAjv = new Ajv2020({ allErrors: true, strict: false, validateFormats: true });
+addFormats(stateSchemaAjv);
+const validateStateSchema = stateSchemaAjv.compile(readRepoJson('argus/schemas/engagement-state.schema.json'));
+const MODE_A_PHASES = [
+  'preflight', 'discovery', 'hunting', 'proof', 'deep-hunt-1', 'deep-proof-1', 'deep-hunt-2', 'deep-proof-2',
+  'deep-hunt-3', 'deep-proof-3', 'automation', 'verification', 'reporting', 'complete',
+];
+const NULL_RUNNER_REFUSAL = 'runner=null is only valid for Mode B without automation, or in Mode A, C, or D without a reports/argus-runner-result.json while no template selection is installed and nothing was automated, or after the run-tests.sh owner was abandoned while no reports/argus-runner-result.json is registered runner-result evidence';
 const work = mkdtempSync(join(tmpdir(), 'argus-engagement-state-'));
 
 try {
@@ -40,9 +73,30 @@ try {
   testAuthenticatedControllerRecovery();
   testControllerSuccessRequiresFinalBarrier();
   testWorkerSuccessRequiresBarrier();
+  testDerivedPhasePlan();
+  testProofPhaseRequiresLedgerMerge();
+  testLedgerSnapshotNewConfirmed();
+  testWorkPhaseMergeKeepsNewConfirmed();
+  testConvergedSkip();
+  testProofResidualsReachFinalSummary();
+  testStandbyBlocksSuccessCleanup();
+  testClusterLaneStandbyDuringProof();
+  testRedispatchLanesKeepTheirLease();
+  testArchitectureOwnerMergesDuringReporting();
+  testConditionalLaneProjection();
+  testConditionalGateResolution();
+  testGateUnmetFinalSummary();
+  testAbandonedLaneLeavesBarriers();
+  testBudgetStopAbandonsUnallocatedLanes();
+  testCompletionRequiresFinalSummary();
+  testAbandonedRunnerOwnerFinalSummary();
+  testAbandonedRunnerOwnerUnregisteredResult();
+  testRunnerOwnerWithoutRunnerResult();
+  testRunnerAfterAutomationReview();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
-  console.log('PASS  Argus engagement state: decision-bound leases, authenticated heartbeat, and link defenses');
+  testRedispatchedHeartbeatWorkUnits();
+  console.log('PASS  Argus engagement state: derived phases, standby, proof ledger gate, recorded skips, conditional lanes, one-shot gate resolution, decision-bound leases, authenticated heartbeat, and link defenses');
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
@@ -219,17 +273,1286 @@ function testControllerSuccessRequiresFinalBarrier() {
 
 function testWorkerSuccessRequiresBarrier() {
   const fixture = createFixture('worker-success-barrier', ['hermes', 'odysseus']);
-  const controller = allocateWorker(fixture.manifest, 'odysseus', { executionBinding: executionBinding('worker-barrier-controller') });
-  const worker = allocateWorker(fixture.manifest, 'hermes', {
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('worker-barrier-controller') });
+  const worker = allocateWorker(manifest, 'hermes', {
     controllerToken: controller.token,
     executionBinding: executionBinding('worker-barrier-hermes'),
   });
-  expectThrow(() => cleanupWorker(fixture.manifest, 'hermes', worker.token, 'success'), 'worker success before its declared barrier arrival');
-  advanceBarrier(fixture.manifest, 'odysseus', controller.token);
-  arriveBarrier(fixture.manifest, 'hermes', worker.token, 'hunting');
-  const cleaned = cleanupWorker(fixture.manifest, 'hermes', worker.token, 'success');
-  assert(cleaned.released === true && cleaned.outcome === 'success', 'worker did not release after its declared barrier arrival');
-  cleanupWorker(fixture.manifest, 'odysseus', controller.token, 'interrupted');
+  expectThrow(() => cleanupWorker(manifest, 'hermes', worker.token, 'success'), 'worker success before its declared barrier arrival');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', worker.token, 'hunting');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'hermes', worker.token, 'success'),
+    'hermes success cleanup is not yet available: pending proof, deep-hunt-1, deep-proof-1, deep-hunt-2, deep-proof-2, deep-hunt-3, deep-proof-3; the lease stays active and Odysseus performs terminal cleanup',
+    'hermes success while its deep-hunt passes and proof standby are pending',
+  );
+  assert(getEngagementStatus(manifest).allocations.hermes.status === 'active', 'refused success cleanup released the lease');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', worker.token, 'deep-hunt-1');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'hermes', worker.token, 'success'),
+    'hermes success cleanup is not yet available: pending deep-proof-1, deep-hunt-2, deep-proof-2, deep-hunt-3, deep-proof-3; the lease stays active and Odysseus performs terminal cleanup',
+    'hermes success after deep-hunt-1 while later passes are pending',
+  );
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'deep-hunt-2', 'phase did not reach deep-hunt-2');
+  arriveBarrier(manifest, 'hermes', worker.token, 'deep-hunt-2');
+  expectThrowMessage(() => skipPhases(manifest, 'odysseus', controller.token, 'controller-budget'), 'phase deep-hunt-2 already has arrivals', 'skip of a started pass');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(() => skipPhases(manifest, 'odysseus', controller.token, 'controller-budget'), 'only a deep-hunt pass can start a skip', 'skip starting at a proof pass');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  // Without a selected validator no proof snapshot exists, so convergence cannot be claimed.
+  expectThrowMessage(
+    () => skipPhases(manifest, 'odysseus', controller.token, 'converged'),
+    'converged skip requires deep-proof-2 to record zero new confirmed defects',
+    'converged skip without a ledger snapshot',
+  );
+  const skip = skipPhases(manifest, 'odysseus', controller.token, 'controller-budget');
+  assert(JSON.stringify(skip.skipped) === JSON.stringify(['deep-hunt-3', 'deep-proof-3']) && skip.currentPhase === 'automation' && skip.reason === 'controller-budget',
+    `controller-budget skip returned an unexpected result: ${JSON.stringify(skip)}`);
+  const skippedState = getEngagementStatus(manifest);
+  assert(skippedState.skippedPhases['deep-hunt-3']?.reason === 'controller-budget' && skippedState.skippedPhases['deep-hunt-3'].basis === null,
+    'controller-budget skip was not recorded with a null basis');
+  assert(!skippedState.completedPhases.includes('deep-hunt-3'), 'a skipped phase was recorded as completed');
+  const cleaned = cleanupWorker(manifest, 'hermes', worker.token, 'success');
+  assert(cleaned.released === true && cleaned.outcome === 'success', 'worker did not release after its passes arrived or were skipped');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+function testDerivedPhasePlan() {
+  const fixture = createFixture('derived-phase-plan');
+  const { manifest, root, statePath } = fixture;
+  assert(manifest.schemaVersion === 2, 'derived manifest did not use schemaVersion 2');
+  assert(JSON.stringify(manifest.phasePlan.map((phase) => phase.id)) === JSON.stringify(MODE_A_PHASES), `Mode A phase ids drifted: ${manifest.phasePlan.map((phase) => phase.id).join(', ')}`);
+  const hunting = manifest.phasePlan.find((phase) => phase.id === 'hunting');
+  const proof = manifest.phasePlan.find((phase) => phase.id === 'proof');
+  assert(JSON.stringify(hunting.participants) === '["hermes"]' && JSON.stringify(proof.participants) === '[]' && JSON.stringify(proof.standby) === '["hermes"]',
+    'derived phase membership was not narrowed to the selected lanes');
+  const state = getEngagementStatus(manifest);
+  assert(state.currentPhase === 'discovery' && JSON.stringify(state.completedPhases) === '["preflight"]', 'initial phase cursor is not the first derived work phase');
+  assert(JSON.stringify(Object.keys(state.barriers)) === JSON.stringify(MODE_A_PHASES), 'barriers are not keyed by the derived phases');
+  assert(JSON.stringify(state.skippedPhases) === '{}' && JSON.stringify(state.ledgerSnapshots) === '{}', 'initial state lacks empty skippedPhases and ledgerSnapshots');
+  assert(state.conditionalAgents === null && state.gateResolution === null, 'initial state lacks null conditionalAgents and gateResolution');
+
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('derived-plan-controller') });
+  const hermesBinding = executionBinding('derived-plan-hermes');
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: controller.token, executionBinding: hermesBinding });
+  expectThrowMessage(() => appendHeartbeat(manifest, 'hermes', hermes.token, 'deep-hunt-9', 0, 1, 'started'), 'heartbeat phase is invalid: deep-hunt-9', 'heartbeat outside the derived plan');
+  expectThrowMessage(() => writeCheckpoint(manifest, 'hermes', hermes.token, 'deep-hunt-9', 1, hermesBinding.dispatchId, 1, {}), 'unknown phase: deep-hunt-9', 'checkpoint outside the derived plan');
+  appendHeartbeat(manifest, 'hermes', hermes.token, 'deep-hunt-3', 0, 1, 'started', '2026-07-12T09:00:00.000Z');
+  expectThrow(() => appendHeartbeat(manifest, 'hermes', hermes.token, 'deep-proof-1', 0, 1, 'running', '2026-07-12T09:00:01.000Z'), 'heartbeat regression to an earlier derived phase');
+  const heartbeat = join(root, 'ai_agents_internal/heartbeat/hermes.log');
+  writeFileSync(heartbeat, readFileSync(heartbeat, 'utf8').replace('\tdeep-hunt-3\t', '\tdeep-hunt-9\t'));
+  expectThrowMessage(
+    () => appendHeartbeat(manifest, 'hermes', hermes.token, 'reporting', 0, 1, 'started', '2026-07-12T09:00:02.000Z'),
+    'heartbeat log for hermes has an invalid record at line 1',
+    'persisted heartbeat record outside the derived plan',
+  );
+  cleanupWorker(manifest, 'hermes', hermes.token, 'interrupted');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+
+  expectThrowMessage(
+    () => createDefaultEngagement({ template, target: root, targetRoot: root, artifactRoot: root, mode: 'A', engagementId: 'no-plan', selectedAgents: ['odysseus'] }),
+    'createDefaultEngagement requires a derived phasePlan',
+    'engagement creation without a derived phase plan',
+  );
+  const legacy = {
+    ...structuredClone(manifest),
+    schemaVersion: 1,
+    phasePlan: ['preflight', 'discovery', 'hunting', 'automation', 'verification', 'reporting', 'complete']
+      .map((id) => ({ id, participants: id === 'preflight' || id === 'complete' ? ['odysseus'] : [] })),
+  };
+  const legacyErrors = validateEngagementManifest(legacy);
+  assert(legacyErrors.includes('schemaVersion must be 2') && legacyErrors.some((error) => error.startsWith('phase preflight must contain exactly')),
+    `pre-5.0 manifest was not rejected: ${legacyErrors.join('; ')}`);
+  for (const [label, mutate, expected] of [
+    ['proof participant other than minos', (plan) => { plan[3].participants = ['hermes']; plan[3].standby = []; }, 'proof phase proof participants must be a subset of minos'],
+    ['skippable first pass', (plan) => { plan[4].skippable = true; }, 'phase deep-hunt-1 skippable must be boolean and true only for a proof or deep-hunt pass of 2 or more'],
+    ['pass on a work phase', (plan) => { plan[2].pass = 1; }, 'phase hunting pass must be an integer 0-3 exactly when kind is proof or deep-hunt'],
+    ['missing pass on a deep-hunt phase', (plan) => { delete plan[6].pass; }, 'phase deep-hunt-2 pass must be an integer 0-3 exactly when kind is proof or deep-hunt'],
+    ['wave regression', (plan) => { plan[10].wave = 'W1'; }, 'phase automation regresses wave W1'],
+    ['unknown phase field', (plan) => { plan[2].owner = 'hermes'; }, 'phase hunting must contain exactly id, wave, kind, pass (proof and deep-hunt only), skippable, participants, and standby'],
+    ['participant and standby overlap', (plan) => { plan[2].standby = ['hermes']; }, 'phase hunting lists hermes as both participant and standby'],
+    ['unselected participant', (plan) => { plan[2].participants = ['hermes', 'kleio']; }, 'phase hunting participants and standby must be unique selected agent slugs'],
+    ['duplicate phase id', (plan) => { plan[5].id = 'deep-hunt-1'; }, 'phasePlan ids must be unique slugs'],
+    ['missing terminal phase', (plan) => { plan.pop(); }, 'phasePlan must start with preflight and end with complete'],
+    ['controller phase in the middle', (plan) => { plan[2].wave = 'controller'; }, 'phase hunting: only preflight and complete may be controller control phases'],
+    ['worker in a control phase', (plan) => { plan[0].participants = ['hermes']; }, 'phase preflight must be a controller control phase with at most odysseus participating and no standby'],
+  ]) {
+    const mutated = structuredClone(manifest);
+    mutate(mutated.phasePlan);
+    const errors = validateEngagementManifest(mutated);
+    assert(errors.includes(expected), `${label} was not rejected with "${expected}": ${errors.join('; ')}`);
+  }
+
+  const current = JSON.parse(readFileSync(statePath, 'utf8'));
+  writeFileSync(statePath, `${JSON.stringify({ ...current, schemaVersion: 2 }, null, 2)}\n`);
+  expectThrowMessage(() => getEngagementStatus(manifest), 'unsupported engagement state schemaVersion: 2', 'pre-5.0 engagement state');
+  const { skippedPhases, ledgerSnapshots, ...withoutNewFields } = current;
+  writeFileSync(statePath, `${JSON.stringify(withoutNewFields, null, 2)}\n`);
+  expectThrow(() => getEngagementStatus(manifest), 'v3 state without skippedPhases and ledgerSnapshots');
+  // There is no migration path: a state without the conditional-lane fields is not v3.
+  const { conditionalAgents, gateResolution, ...withoutConditionalFields } = current;
+  writeFileSync(statePath, `${JSON.stringify(withoutConditionalFields, null, 2)}\n`);
+  expectThrowMessage(
+    () => getEngagementStatus(manifest),
+    'engagement state integrity failed: conditionalAgents must be null until the dispatchable projection is bound; gateResolution must be null until the dispatchable projection is bound',
+    'v3 state without conditionalAgents and gateResolution',
+  );
+  writeFileSync(statePath, `${JSON.stringify({ ...current, conditionalAgents: { hermes: ['db-access'] } }, null, 2)}\n`);
+  expectThrow(() => getEngagementStatus(manifest), 'conditional lanes before the dispatchable projection is bound');
+  writeFileSync(statePath, `${JSON.stringify({ ...current, skippedPhases: { proof: { reason: 'converged', skippedAt: '2026-07-12T09:00:00.000Z', basis: null } } }, null, 2)}\n`);
+  expectThrow(() => getEngagementStatus(manifest), 'skip record on a non-skippable phase');
+  writeFileSync(statePath, `${JSON.stringify({ ...current, ledgerSnapshots: { triage: {} } }, null, 2)}\n`);
+  expectThrow(() => getEngagementStatus(manifest), 'ledger snapshot for an unknown phase');
+  writeFileSync(statePath, `${JSON.stringify(current, null, 2)}\n`);
+  assert(getEngagementStatus(manifest).revision === current.revision, 'restored v3 state was not accepted');
+}
+
+function testProofPhaseRequiresLedgerMerge() {
+  const fixture = createFixture('proof-ledger-gate', ['hermes', 'minos', 'odysseus']);
+  const { manifest, root } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('proof-gate-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('proof-gate-minos') });
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: controller.token, executionBinding: executionBinding('proof-gate-hermes') });
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token), 'phase proof is waiting for: minos', 'proof advance before the validator arrives');
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  expectThrowMessage(
+    () => advanceBarrier(manifest, 'odysseus', controller.token),
+    'proof phase proof requires a Minos bug-ledger merge before it can advance',
+    'proof advance without a ledger merge',
+  );
+  assert(getEngagementStatus(manifest).currentPhase === 'proof', 'refused proof advance moved the phase cursor');
+  mergeEmptyLedger(fixture, minos.token, 'proof-ledger');
+  const snapshot = getEngagementStatus(manifest).ledgerSnapshots.proof;
+  assert(JSON.stringify(snapshot?.fragmentIds) === '["proof-ledger"]' && snapshot.confirmed.length === 0 && snapshot.newConfirmed.length === 0 &&
+    snapshot.suspected.length === 0 && snapshot.needsOracle.length === 0 && snapshot.bounced.length === 0 && snapshot.quarantined.length === 0 &&
+    Number.isFinite(Date.parse(snapshot.mergedAt)), `proof ledger snapshot is not exact: ${JSON.stringify(snapshot)}`);
+  const advanced = advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(advanced.completed === 'proof' && advanced.currentPhase === 'deep-hunt-1', 'proof phase did not advance after the Minos ledger merge');
+  assert(existsSync(join(root, 'solution/bug-ledger.json')), 'ledger merge did not write the canonical bug ledger');
+  for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
+function testLedgerSnapshotNewConfirmed() {
+  const fixture = createFixture('ledger-new-confirmed', ['hermes', 'minos', 'odysseus']);
+  const { manifest, root } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('new-confirmed-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('new-confirmed-minos') });
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: controller.token, executionBinding: executionBinding('new-confirmed-hermes') });
+  const evidenceBytes = 'synthetic reproduction request\n';
+  mkdirSync(join(root, 'reports'), { recursive: true });
+  writeFileSync(join(root, 'reports/request-1.txt'), evidenceBytes);
+  const evidence = structuredClone(evidenceFixture);
+  evidence.engagementId = manifest.engagementId;
+  evidence.references = [{ ...evidence.references[0], sha256: createHash('sha256').update(evidenceBytes).digest('hex') }];
+  writeFragment(manifest, 'hermes', hermes.token, 'solution/evidence-reference.json', 'hermes-evidence', `${JSON.stringify(evidence)}\n`);
+  const ledger = { ...structuredClone(bugLedgerFixture), engagementId: manifest.engagementId };
+  writeFragment(manifest, 'minos', minos.token, 'solution/bug-ledger.json', 'confirmed-ledger', `${JSON.stringify(ledger)}\n`);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  mergeCanonical(manifest, 'minos', minos.token, 'solution/bug-ledger.json');
+  const proof = getEngagementStatus(manifest).ledgerSnapshots.proof;
+  assert(JSON.stringify(proof.confirmed) === '["BUG-0001"]' && JSON.stringify(proof.newConfirmed) === '["BUG-0001"]',
+    `first proof snapshot did not count BUG-0001 as newly confirmed: ${JSON.stringify(proof)}`);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'deep-hunt-1');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'deep-proof-1');
+  mergeCanonical(manifest, 'minos', minos.token, 'solution/bug-ledger.json');
+  const deepProof = getEngagementStatus(manifest).ledgerSnapshots['deep-proof-1'];
+  assert(JSON.stringify(deepProof.confirmed) === '["BUG-0001"]' && deepProof.newConfirmed.length === 0,
+    `deep-proof-1 snapshot counted an earlier confirmed defect as new: ${JSON.stringify(deepProof)}`);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  const skip = skipPhases(manifest, 'odysseus', controller.token, 'converged');
+  assert(skip.currentPhase === 'automation', 'converged skip was refused although deep-proof-1 confirmed nothing new');
+  for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
+// A ledger merge outside a proof phase (rolling triage during a deep hunt) records its own
+// snapshot, but convergence compares only against earlier proof phases: a defect first
+// confirmed during deep-hunt-1 is still new at deep-proof-1 and blocks the converged skip.
+function testWorkPhaseMergeKeepsNewConfirmed() {
+  const fixture = createFixture('ledger-work-phase-merge', ['hermes', 'minos', 'odysseus']);
+  const { manifest, root } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('work-merge-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('work-merge-minos') });
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: controller.token, executionBinding: executionBinding('work-merge-hermes') });
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  mergeEmptyLedger(fixture, minos.token, 'work-merge-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'deep-hunt-1', 'phase did not reach deep-hunt-1');
+  const evidenceBytes = 'synthetic reproduction request\n';
+  mkdirSync(join(root, 'reports'), { recursive: true });
+  writeFileSync(join(root, 'reports/request-1.txt'), evidenceBytes);
+  const evidence = structuredClone(evidenceFixture);
+  evidence.engagementId = manifest.engagementId;
+  evidence.references = [{ ...evidence.references[0], sha256: createHash('sha256').update(evidenceBytes).digest('hex') }];
+  writeFragment(manifest, 'hermes', hermes.token, 'solution/evidence-reference.json', 'hermes-evidence', `${JSON.stringify(evidence)}\n`);
+  const ledger = { ...structuredClone(bugLedgerFixture), engagementId: manifest.engagementId };
+  writeFragment(manifest, 'minos', minos.token, 'solution/bug-ledger.json', 'work-merge-confirmed', `${JSON.stringify(ledger)}\n`);
+  mergeCanonical(manifest, 'minos', minos.token, 'solution/bug-ledger.json');
+  const hunt = getEngagementStatus(manifest).ledgerSnapshots['deep-hunt-1'];
+  assert(JSON.stringify(hunt?.newConfirmed) === '["BUG-0001"]', `deep-hunt-1 merge did not record BUG-0001 as newly confirmed: ${JSON.stringify(hunt)}`);
+  arriveBarrier(manifest, 'hermes', hermes.token, 'deep-hunt-1');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'deep-proof-1');
+  mergeCanonical(manifest, 'minos', minos.token, 'solution/bug-ledger.json');
+  const deepProof = getEngagementStatus(manifest).ledgerSnapshots['deep-proof-1'];
+  assert(JSON.stringify(deepProof.confirmed) === '["BUG-0001"]' && JSON.stringify(deepProof.newConfirmed) === '["BUG-0001"]',
+    `a deep-hunt merge masked a defect first confirmed in pass 1: ${JSON.stringify(deepProof)}`);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => skipPhases(manifest, 'odysseus', controller.token, 'converged'),
+    'converged skip requires deep-proof-1 to record zero new confirmed defects',
+    'converged skip after a pass whose defect was merged during the deep hunt',
+  );
+  assert(getEngagementStatus(manifest).currentPhase === 'deep-hunt-2', 'refused converged skip moved the phase cursor');
+  for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
+function testConvergedSkip() {
+  const converged = runToSecondDeepHunt('converged-skip');
+  const { manifest } = converged.fixture;
+  const { controller, hermes, kleio } = converged.tokens;
+  expectThrowMessage(() => skipPhases(manifest, 'hermes', hermes, 'converged'), 'only odysseus may skip phases', 'non-controller skip');
+  expectThrowMessage(() => skipPhases(manifest, 'odysseus', controller, 'bored'), 'skip reason must be converged or controller-budget', 'unknown skip reason');
+  const skip = skipPhases(manifest, 'odysseus', controller, 'converged');
+  assert(JSON.stringify(skip.skipped) === JSON.stringify(['deep-hunt-2', 'deep-proof-2', 'deep-hunt-3', 'deep-proof-3']) && skip.currentPhase === 'automation',
+    `converged skip did not cascade to automation: ${JSON.stringify(skip)}`);
+  const state = getEngagementStatus(manifest);
+  for (const phase of skip.skipped) {
+    const record = state.skippedPhases[phase];
+    assert(record?.reason === 'converged' && record.basis === 'deep-proof-1' && Number.isFinite(Date.parse(record.skippedAt)), `${phase} skip record is not exact`);
+  }
+  expectThrowMessage(() => arriveBarrier(manifest, 'hermes', hermes, 'deep-hunt-2'), 'phase deep-hunt-2 was skipped (converged)', 'arrival at a skipped phase');
+  assert(JSON.stringify(state.barriers['deep-hunt-2']) === '[]', 'skipped phase recorded arrivals');
+  mergeFinalSummary(converged.fixture, kleio);
+  const convergedSummary = readSolutionJson(converged.fixture, 'final-summary.json');
+  assert(convergedSummary.status === 'completed' && convergedSummary.statusReasons.length === 0, `converged skip degraded the final summary: ${JSON.stringify(convergedSummary.statusReasons)}`);
+  assert(cleanupWorker(manifest, 'hermes', hermes, 'success').released, 'hermes success cleanup was refused after a converged skip');
+
+  const budget = runToSecondDeepHunt('controller-budget-skip');
+  const budgetState = JSON.parse(readFileSync(budget.fixture.statePath, 'utf8'));
+  budgetState.ledgerSnapshots['deep-proof-1'].confirmed = ['BUG-0001'];
+  budgetState.ledgerSnapshots['deep-proof-1'].newConfirmed = ['BUG-0001'];
+  writeFileSync(budget.fixture.statePath, `${JSON.stringify(budgetState, null, 2)}\n`);
+  expectThrowMessage(
+    () => skipPhases(budget.fixture.manifest, 'odysseus', budget.tokens.controller, 'converged'),
+    'converged skip requires deep-proof-1 to record zero new confirmed defects',
+    'converged skip after a pass that confirmed a new defect',
+  );
+  const budgetSkip = skipPhases(budget.fixture.manifest, 'odysseus', budget.tokens.controller, 'controller-budget');
+  assert(budgetSkip.currentPhase === 'automation' && budgetSkip.skipped.length === 4, 'controller-budget skip did not cascade to automation');
+  mergeFinalSummary(budget.fixture, budget.tokens.kleio);
+  const budgetSummary = readSolutionJson(budget.fixture, 'final-summary.json');
+  assert(budgetSummary.status === 'degraded' && JSON.stringify(budgetSummary.statusReasons) === '["deep-hunt-skipped:controller-budget"]',
+    `controller-budget skip did not degrade a completed final summary through its status reason: ${JSON.stringify(budgetSummary)}`);
+}
+
+// proofLoop.exhaustion: a finding the proof loop left bounced or quarantined is a named residual
+// of the final report. The merge counts and lists it and caps the summary at degraded.
+function testProofResidualsReachFinalSummary() {
+  const run = runToSecondDeepHunt('proof-residuals');
+  const { manifest, root } = run.fixture;
+  skipPhases(manifest, 'odysseus', run.tokens.controller, 'converged');
+  const bounced = {
+    ...structuredClone(bugLedgerFixture.bugs.find((bug) => bug.status === 'bounced')),
+    id: 'BUG-0001', origin: ['HER-001'], lane: 'hermes', repair: { round: 2, missing: ['reproduction'], assignedTo: 'hermes' },
+  };
+  const quarantined = {
+    id: 'BUG-0002', origin: ['HER-002'], title: 'Refund posts twice after a gateway timeout', severity: 'Blocker', priority: 'P1', lane: 'hermes',
+    oracleId: 'ORC-API-001', status: 'quarantined', wired: false, testId: null, evidenceIds: [], quarantine: { reasons: ['evidence digest drift EVD-0009'] },
+  };
+  const ledger = { $schema: 'argus/bug-ledger@2', schemaVersion: 2, engagementId: manifest.engagementId, bugs: [bounced, quarantined] };
+  writeFragment(manifest, 'minos', run.tokens.minos, 'solution/bug-ledger.json', 'proof-residuals-ledger', `${JSON.stringify(ledger)}\n`);
+  mergeCanonical(manifest, 'minos', run.tokens.minos, 'solution/bug-ledger.json');
+  mergeFinalSummary(run.fixture, run.tokens.kleio);
+  const summary = readSolutionJson(run.fixture, 'final-summary.json');
+  assert(summary.status === 'degraded' && JSON.stringify(summary.statusReasons) === '["unresolved-proof-residuals"]',
+    `unresolved proof residuals did not degrade the final summary: ${JSON.stringify(summary.statusReasons)}`);
+  assert(summary.counts.bugs.bounced === 1 && summary.counts.bugs.quarantined === 1 && summary.counts.bugs.headline === 0,
+    `final summary does not count the proof residuals: ${JSON.stringify(summary.counts.bugs)}`);
+  assert(JSON.stringify(summary.residuals.map((entry) => [entry.id, entry.status, entry.repairRound, entry.missing, entry.reasons])) ===
+    JSON.stringify([['BUG-0001', 'bounced', 2, ['reproduction'], []], ['BUG-0002', 'quarantined', null, [], ['evidence digest drift EVD-0009']]]),
+  `final summary dropped or misreported a proof residual: ${JSON.stringify(summary.residuals)}`);
+  const markdown = readFileSync(join(root, 'solution/FINAL-SUMMARY.md'), 'utf8');
+  assert(markdown.includes('\n- BUG-0001 (Major, bounced): ') && markdown.includes('\n- BUG-0002 (Blocker, quarantined): '),
+    'FINAL-SUMMARY.md does not name every proof residual');
+  for (const lane of ['hermes', 'kleio', 'minos']) cleanupWorker(manifest, lane, run.tokens[lane], 'interrupted');
+  cleanupWorker(manifest, 'odysseus', run.tokens.controller, 'interrupted');
+}
+
+function testStandbyBlocksSuccessCleanup() {
+  const fixture = createFixture('standby-cleanup', ['metis', 'minos', 'odysseus']);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('standby-controller') });
+  const metis = allocateWorker(manifest, 'metis', { controllerToken: controller.token, executionBinding: executionBinding('standby-metis') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('standby-minos') });
+  const refusal = (pending) => `metis success cleanup is not yet available: pending ${pending}; the lease stays active and Odysseus performs terminal cleanup`;
+  arriveBarrier(manifest, 'metis', metis.token, 'discovery');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'proof', 'phase did not reach proof');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'metis', metis.token, 'success'),
+    refusal('proof, deep-proof-1, deep-proof-2, deep-proof-3, verification'),
+    'oracle-desk standby success during proof',
+  );
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  mergeEmptyLedger(fixture, minos.token, 'standby-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'metis', metis.token, 'success'),
+    refusal('deep-proof-1, deep-proof-2, deep-proof-3, verification'),
+    'oracle-desk standby success before the deep proof passes',
+  );
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', minos.token, 'deep-proof-1');
+  mergeEmptyLedger(fixture, minos.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  skipPhases(manifest, 'odysseus', controller.token, 'converged');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'metis', metis.token, 'success'),
+    refusal('verification'),
+    'metis success before its verification arrival',
+  );
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'metis', metis.token, 'verification');
+  const cleaned = cleanupWorker(manifest, 'metis', metis.token, 'success');
+  assert(cleaned.released === true && cleaned.outcome === 'success', 'metis did not release after its proof standby passed or was skipped');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'minos', minos.token, 'success'),
+    'minos success cleanup is not yet available: pending verification; the lease stays active and Odysseus performs terminal cleanup',
+    'minos success before its verification arrival',
+  );
+  cleanupWorker(manifest, 'minos', minos.token, 'failure');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// A path-analyst lane files leads that Minos validates in a proofLoop cluster and may bounce
+// back for repair, so its lease survives the first proof phase and releases only after it.
+function testClusterLaneStandbyDuringProof() {
+  const fixture = createFixture('cluster-lane-standby', ['minos', 'odysseus', 'theseus']);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('cluster-standby-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: controller.token, executionBinding: executionBinding('cluster-standby-minos') });
+  const theseus = allocateWorker(manifest, 'theseus', { controllerToken: controller.token, executionBinding: executionBinding('cluster-standby-theseus') });
+  assert(JSON.stringify(manifest.phasePlan.find((phase) => phase.id === 'proof').standby) === '["theseus"]', 'theseus is not on proof standby');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'theseus', theseus.token, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'theseus', theseus.token, 'success'),
+    'theseus success cleanup is not yet available: pending proof; the lease stays active and Odysseus performs terminal cleanup',
+    'path-analyst success cleanup before its proof repair',
+  );
+  arriveBarrier(manifest, 'minos', minos.token, 'proof');
+  mergeEmptyLedger(fixture, minos.token, 'cluster-standby-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(cleanupWorker(manifest, 'theseus', theseus.token, 'success').released === true, 'theseus did not release after the proof phase passed');
+  for (const [lane, token] of [['minos', minos.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
+// Kalchas answers a hunter's unknown with a second recon, and in Mode A Tyche claims the fault
+// window for a routed Nike server-fault run; both are phase-scoped re-dispatches on the active
+// lease, so neither lane may release before the last phase that can still need it.
+function testRedispatchLanesKeepTheirLease() {
+  const fixture = createFixture('redispatch-leases', ['kalchas', 'minos', 'nike', 'odysseus', 'tyche']);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('redispatch-controller') });
+  const tokens = {};
+  for (const lane of ['kalchas', 'minos', 'nike', 'tyche']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`redispatch-${lane}`) }).token;
+  }
+  const refusal = (lane, pending) => `${lane} success cleanup is not yet available: pending ${pending}; the lease stays active and Odysseus performs terminal cleanup`;
+  arriveBarrier(manifest, 'kalchas', tokens.kalchas, 'discovery');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'kalchas', tokens.kalchas, 'success'),
+    refusal('kalchas', 'hunting, deep-hunt-1, deep-hunt-2, deep-hunt-3'),
+    'kalchas success after discovery while a second recon may be needed',
+  );
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'tyche', tokens.tyche, 'hunting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'proof');
+  mergeEmptyLedger(fixture, tokens.minos, 'redispatch-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'kalchas', tokens.kalchas, 'success'),
+    refusal('kalchas', 'deep-hunt-1, deep-hunt-2, deep-hunt-3'),
+    'kalchas success before the deep-hunt passes',
+  );
+  arriveBarrier(manifest, 'tyche', tokens.tyche, 'deep-hunt-1');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'deep-proof-1');
+  mergeEmptyLedger(fixture, tokens.minos);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  skipPhases(manifest, 'odysseus', controller.token, 'converged');
+  assert(getEngagementStatus(manifest).currentPhase === 'automation', 'phase did not reach automation after the converged skip');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'tyche', tokens.tyche, 'success'),
+    refusal('tyche', 'automation'),
+    'tyche success while Nike may still need the fault window',
+  );
+  assert(cleanupWorker(manifest, 'kalchas', tokens.kalchas, 'success').released === true, 'kalchas did not release after the last deep-hunt pass was skipped');
+  claimExclusive(manifest, 'tyche', tokens.tyche, 'fault');
+  arriveBarrier(manifest, 'nike', tokens.nike, 'automation');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(cleanupWorker(manifest, 'tyche', tokens.tyche, 'success').released === true, 'tyche did not release after the automation phase passed');
+  assert(getEngagementStatus(manifest).exclusiveLocks.fault === undefined, 'tyche cleanup left the fault window held');
+  for (const lane of ['minos', 'nike']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// Kleio submits the How-we-used-AI and Summary sections of the architecture canonical while she
+// reports, and only Atlas may merge them, so Atlas stays on reporting standby: his lease outlives
+// his last automation arrival and he merges her fragment inside the reporting phase.
+function testArchitectureOwnerMergesDuringReporting() {
+  const fixture = createFixture('architecture-reporting-standby', ['atlas', 'kleio', 'minos', 'odysseus']);
+  const { manifest } = fixture;
+  assert(JSON.stringify(manifest.phasePlan.find((phase) => phase.id === 'reporting').standby) === '["atlas"]', 'atlas is not on reporting standby');
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('architecture-controller') });
+  const tokens = {};
+  for (const lane of ['atlas', 'kleio', 'minos']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`architecture-${lane}`) }).token;
+  }
+  const refusal = (pending) => `atlas success cleanup is not yet available: pending ${pending}; the lease stays active and Odysseus performs terminal cleanup`;
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'discovery');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'proof');
+  mergeEmptyLedger(fixture, tokens.minos, 'architecture-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'deep-proof-1');
+  mergeEmptyLedger(fixture, tokens.minos);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  skipPhases(manifest, 'odysseus', controller.token, 'converged');
+  assert(getEngagementStatus(manifest).currentPhase === 'automation', 'phase did not reach automation after the converged skip');
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'automation');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'atlas', tokens.atlas, 'success'),
+    refusal('reporting'),
+    'atlas success after his last automation arrival while Kleio has not reported',
+  );
+  arriveBarrier(manifest, 'minos', tokens.minos, 'verification');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'reporting', 'phase did not reach reporting');
+  writeFragment(manifest, 'kleio', tokens.kleio, 'solution/ARCHITECTURE.md', 'kleio-architecture',
+    '## 10. How we used AI\nDelegated recon, verified by the reporter.\n\n## 11. Summary\nOne suite, one report.\n');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'atlas', tokens.atlas, 'success'),
+    refusal('reporting'),
+    'atlas success before merging the reporter architecture sections',
+  );
+  const merged = mergeCanonical(manifest, 'atlas', tokens.atlas, 'solution/ARCHITECTURE.md');
+  const architecture = readFileSync(join(fixture.root, 'solution/ARCHITECTURE.md'), 'utf8');
+  assert(merged.fragments === 1 && architecture.includes('## 10. How we used AI') && architecture.includes('## 11. Summary'),
+    'atlas did not merge the reporter architecture sections during reporting');
+  arriveBarrier(manifest, 'kleio', tokens.kleio, 'reporting');
+  mergeFinalSummary(fixture, tokens.kleio);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'complete', 'phase did not reach complete');
+  for (const lane of ['atlas', 'kleio', 'minos']) {
+    assert(cleanupWorker(manifest, lane, tokens[lane], 'success').released === true, `${lane} did not release after the reporting phase passed`);
+  }
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// The conditional map is sealed with the dispatchable projection: normalized, restricted to
+// dispatchable workers other than Odysseus and Kalchas, and immutable once bound.
+function testConditionalLaneProjection() {
+  const lanes = ['charon', 'hermes', 'kalchas', 'odysseus', 'orion'];
+  const fixture = createFixture('conditional-projection', lanes);
+  const { manifest } = fixture;
+  for (const [label, conditional, expected] of [
+    ['controller lane', { odysseus: ['db-access'] }, 'conditional lane odysseus must be a dispatchable worker other than odysseus and kalchas'],
+    ['recon lane', { kalchas: ['browser-runtime'] }, 'conditional lane kalchas must be a dispatchable worker other than odysseus and kalchas'],
+    ['non-dispatchable lane', { tiresias: ['source-access'] }, 'conditional lane tiresias must be a dispatchable worker other than odysseus and kalchas'],
+    ['empty gate list', { charon: [] }, 'conditional lane charon must list one or more capability ids'],
+    ['malformed capability id', { charon: ['DB access'] }, 'conditional lane charon must list one or more capability ids'],
+  ]) {
+    expectThrowMessage(() => bindDispatchableAgents(manifest, lanes, conditional), expected, `binding a ${label}`);
+  }
+  assert(getEngagementStatus(manifest).dispatchableAgents === null, 'a refused conditional binding sealed the projection');
+  bindDispatchableAgents(manifest, lanes, { orion: ['browser-runtime'], charon: ['db-access', 'db-access'] });
+  const state = getEngagementStatus(manifest);
+  assert(JSON.stringify(state.conditionalAgents) === '{"charon":["db-access"],"orion":["browser-runtime"]}' && state.gateResolution === null,
+    `conditional lanes were not normalized when bound: ${JSON.stringify(state.conditionalAgents)}`);
+  assertStateSchema(fixture, 'bound conditional projection');
+  bindDispatchableAgents(manifest, [...lanes].reverse(), { charon: ['db-access'], orion: ['browser-runtime'] });
+  assert(getEngagementStatus(manifest).revision === state.revision, 'an identical conditional re-bind mutated state');
+  for (const [label, conditional] of [
+    ['a different gate', { charon: ['db-access'], orion: ['source-access'] }],
+    ['an extra lane', { charon: ['db-access'], hermes: ['multi-service'], orion: ['browser-runtime'] }],
+    ['no conditional map', undefined],
+  ]) {
+    expectThrowMessage(() => bindDispatchableAgents(manifest, lanes, conditional), 'dispatchable agent projection is immutable once bound', `re-binding with ${label}`);
+  }
+
+  const empty = createFixture('conditional-projection-empty', lanes);
+  bindDispatchableAgents(empty.manifest, lanes);
+  const emptyState = getEngagementStatus(empty.manifest);
+  assert(JSON.stringify(emptyState.conditionalAgents) === '{}' && emptyState.gateResolution === null, 'an unconditional projection did not bind an empty conditional map');
+  assertStateSchema(empty, 'bound unconditional projection');
+  const controller = allocateWorker(empty.manifest, 'odysseus', { executionBinding: executionBinding('conditional-empty-controller') });
+  const kalchas = allocateWorker(empty.manifest, 'kalchas', { controllerToken: controller.token, executionBinding: executionBinding('conditional-empty-kalchas') });
+  arriveBarrier(empty.manifest, 'kalchas', kalchas.token, 'discovery');
+  expectThrowMessage(() => conditionalGateRequest(empty.manifest, controller.token), 'no conditional lanes await gate resolution', 'gate request without conditional lanes');
+  assert(advanceBarrier(empty.manifest, 'odysseus', controller.token).currentPhase === 'hunting', 'discovery without conditional lanes waited for gate resolution');
+  for (const [lane, token] of [['kalchas', kalchas.token], ['odysseus', controller.token]]) cleanupWorker(empty.manifest, lane, token, 'interrupted');
+}
+
+function testConditionalGateResolution() {
+  const lanes = ['atlas', 'charon', 'hermes', 'kalchas', 'metis', 'odysseus', 'orion'];
+  const fixture = createFixture('conditional-gates', lanes);
+  const { manifest, statePath } = fixture;
+  bindDispatchableAgents(manifest, lanes, { charon: ['db-access'], orion: ['browser-runtime'] });
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('conditional-controller') });
+  const tokens = { odysseus: controller.token };
+  for (const lane of ['atlas', 'hermes', 'kalchas', 'metis']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`conditional-${lane}`) }).token;
+  }
+  expectThrowMessage(
+    () => allocateWorker(manifest, 'charon', { controllerToken: controller.token, executionBinding: executionBinding('conditional-charon') }),
+    'charon is conditional on db-access; run engagement resolve-gates first',
+    'conditional lane allocation before gate resolution',
+  );
+  const verdicts = {
+    'db-access': { status: 'proven', basis: 'kalchas-evidence', reason: 'fixture verdict' },
+    'browser-runtime': { status: 'unmet', basis: 'runtime-probe', reason: 'fixture verdict' },
+  };
+  const evidenceSha256 = createHash('sha256').update('capability evidence fixture').digest('hex');
+  expectThrowMessage(
+    () => resolveConditionalGates(manifest, tokens.kalchas, { evidenceSha256, capabilities: verdicts }),
+    'invalid or inactive lease for odysseus',
+    'gate resolution with a non-controller token',
+  );
+  expectThrowMessage(
+    () => resolveConditionalGates(manifest, controller.token, { evidenceSha256, capabilities: verdicts }),
+    'resolve-gates requires the Kalchas discovery arrival',
+    'gate resolution before the Kalchas arrival',
+  );
+  for (const lane of ['atlas', 'metis']) arriveBarrier(manifest, lane, tokens[lane], 'discovery');
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token), 'phase discovery is waiting for: kalchas', 'discovery advance before the Kalchas arrival');
+  arriveBarrier(manifest, 'kalchas', tokens.kalchas, 'discovery');
+  expectThrowMessage(
+    () => advanceBarrier(manifest, 'odysseus', controller.token),
+    'discovery cannot advance before engagement resolve-gates records the conditional lane verdicts',
+    'discovery advance before gate resolution',
+  );
+  const request = conditionalGateRequest(manifest, controller.token);
+  assert(JSON.stringify(request.capabilities) === '["browser-runtime","db-access"]' &&
+    JSON.stringify(request.conditionalAgents) === '{"charon":["db-access"],"orion":["browser-runtime"]}',
+  `gate request does not name the conditional gates: ${JSON.stringify(request)}`);
+  for (const [label, resolution, expected] of [
+    ['a caller-supplied lane map', { evidenceSha256, capabilities: verdicts, lanes: { charon: 'released', orion: 'released' } },
+      'gate resolution accepts only evidenceSha256 and capabilities; lane verdicts are computed by the runtime'],
+    ['a missing gate', { evidenceSha256, capabilities: { 'db-access': verdicts['db-access'] } },
+      'gate resolution must cover exactly the conditional gates: browser-runtime, db-access'],
+    ['an extra gate', { evidenceSha256, capabilities: { ...verdicts, 'source-access': verdicts['db-access'] } },
+      'gate resolution must cover exactly the conditional gates: browser-runtime, db-access'],
+    ['an unknown status', { evidenceSha256, capabilities: { ...verdicts, 'db-access': { ...verdicts['db-access'], status: 'likely' } } },
+      'gate verdict for db-access must be exactly status (proven or unmet), basis, and reason'],
+    ['an extra verdict field', { evidenceSha256, capabilities: { ...verdicts, 'db-access': { ...verdicts['db-access'], proof: 'SELECT 1' } } },
+      'gate verdict for db-access must be exactly status (proven or unmet), basis, and reason'],
+    ['a malformed evidence digest', { evidenceSha256: 'not-a-digest', capabilities: verdicts },
+      'gate resolution evidenceSha256 must be null or a SHA-256 hex digest'],
+  ]) {
+    expectThrowMessage(() => resolveConditionalGates(manifest, controller.token, resolution), expected, `gate resolution with ${label}`);
+  }
+  assert(getEngagementStatus(manifest).gateResolution === null, 'a refused gate resolution recorded verdicts');
+
+  const resolved = resolveConditionalGates(manifest, controller.token, { evidenceSha256, capabilities: verdicts });
+  assert(JSON.stringify(resolved.lanes) === '{"charon":"released","orion":"gate-unmet"}' && resolved.evidenceSha256 === evidenceSha256 &&
+    JSON.stringify(resolved.capabilities) === JSON.stringify({ 'browser-runtime': verdicts['browser-runtime'], 'db-access': verdicts['db-access'] }) &&
+    Number.isFinite(Date.parse(resolved.resolvedAt)), `gate resolution returned unexpected verdicts: ${JSON.stringify(resolved)}`);
+  assert(JSON.stringify(getEngagementStatus(manifest).gateResolution) === JSON.stringify(resolved), 'gate resolution was not persisted exactly');
+  assertStateSchema(fixture, 'resolved gate state');
+  expectThrowMessage(
+    () => resolveConditionalGates(manifest, controller.token, { evidenceSha256: null, capabilities: { ...verdicts, 'browser-runtime': { ...verdicts['browser-runtime'], status: 'proven' } } }),
+    'gate resolution is immutable once recorded',
+    'a second gate resolution',
+  );
+  expectThrowMessage(() => conditionalGateRequest(manifest, controller.token), 'gate resolution is immutable once recorded', 'gate request after resolution');
+  expectThrowMessage(
+    () => allocateWorker(manifest, 'orion', { controllerToken: controller.token, executionBinding: executionBinding('conditional-orion') }),
+    'orion was omitted: gate unmet (browser-runtime)',
+    'gate-unmet lane allocation',
+  );
+  tokens.charon = allocateWorker(manifest, 'charon', { controllerToken: controller.token, executionBinding: executionBinding('conditional-charon') }).token;
+  assert(advanceBarrier(manifest, 'odysseus', controller.token).currentPhase === 'hunting', 'discovery did not advance after gate resolution');
+  const hunting = getBarrierStatus(manifest, 'hunting');
+  assert(JSON.stringify(hunting.participants) === '["charon","hermes"]', `hunting barrier did not omit the gate-unmet lane: ${hunting.participants.join(', ')}`);
+  for (const phase of ['deep-hunt-1', 'deep-hunt-3']) {
+    assert(!getBarrierStatus(manifest, phase).participants.includes('orion'), `${phase} barrier still waits for the gate-unmet lane`);
+  }
+  arriveBarrier(manifest, 'hermes', tokens.hermes, 'hunting');
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token), 'phase hunting is waiting for: charon', 'hunting advance without the released lane');
+  expectThrowMessage(() => arriveBarrier(manifest, 'orion', controller.token, 'hunting'), 'invalid or inactive lease for orion', 'arrival for a gate-unmet lane');
+  expectThrowMessage(
+    () => resolveConditionalGates(manifest, controller.token, { evidenceSha256, capabilities: verdicts }),
+    'gate resolution is immutable once recorded',
+    'gate resolution after discovery',
+  );
+
+  // Recorded verdicts are re-validated on every load; lane outcomes follow the capability verdicts.
+  const current = JSON.parse(readFileSync(statePath, 'utf8'));
+  for (const [label, mutate] of [
+    ['a promoted gate-unmet lane', (state) => { state.gateResolution.lanes.orion = 'released'; }],
+    ['a dropped lane verdict', (state) => { delete state.gateResolution.lanes.orion; }],
+    ['a proof value in a verdict', (state) => { state.gateResolution.capabilities['db-access'].observed = 'SELECT 1'; }],
+    ['an empty reason', (state) => { state.gateResolution.capabilities['db-access'].reason = ''; }],
+    ['a conditional recon lane', (state) => { state.conditionalAgents.kalchas = ['browser-runtime']; }],
+    ['unsorted gates', (state) => { state.conditionalAgents.charon = ['db-access', 'browser-runtime']; }],
+    ['a gate outside the conditional map', (state) => { state.gateResolution.capabilities['source-access'] = { status: 'proven', basis: 'x', reason: 'x' }; }],
+  ]) {
+    const tampered = structuredClone(current);
+    mutate(tampered);
+    writeFileSync(statePath, `${JSON.stringify(tampered, null, 2)}\n`);
+    expectThrow(() => getEngagementStatus(manifest), `state with ${label}`);
+  }
+  writeFileSync(statePath, `${JSON.stringify(current, null, 2)}\n`);
+  assert(getEngagementStatus(manifest).revision === current.revision, 'restored resolved state was not accepted');
+  for (const lane of ['atlas', 'charon', 'hermes', 'kalchas', 'metis', 'odysseus']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
+}
+
+// A gate-unmet lane is omitted, not covered: the final-summary merge names it as a status
+// reason and caps a completed summary at degraded, while a released lane adds no reason.
+function testGateUnmetFinalSummary() {
+  const lanes = ['kalchas', 'kleio', 'odysseus', 'orion', 'tiresias'];
+  const fixture = createFixture('gate-unmet-summary', lanes);
+  const { manifest } = fixture;
+  bindDispatchableAgents(manifest, lanes, { orion: ['browser-runtime'], tiresias: ['source-access'] });
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('gate-unmet-controller') });
+  const kalchas = allocateWorker(manifest, 'kalchas', { controllerToken: controller.token, executionBinding: executionBinding('gate-unmet-kalchas') });
+  const kleio = allocateWorker(manifest, 'kleio', { controllerToken: controller.token, executionBinding: executionBinding('gate-unmet-kleio') });
+  arriveBarrier(manifest, 'kalchas', kalchas.token, 'discovery');
+  const resolved = resolveConditionalGates(manifest, controller.token, {
+    evidenceSha256: null,
+    capabilities: {
+      'browser-runtime': { status: 'unmet', basis: 'runtime-probe', reason: 'fixture verdict' },
+      'source-access': { status: 'proven', basis: 'kalchas-evidence+path-check', reason: 'fixture verdict' },
+    },
+  });
+  assert(JSON.stringify(resolved.lanes) === '{"orion":"gate-unmet","tiresias":"released"}', `unexpected gate-unmet fixture lanes: ${JSON.stringify(resolved.lanes)}`);
+  expectThrowMessage(() => abandonLane(manifest, 'orion', controller.token, 'controller-budget'),
+    'orion was omitted as gate-unmet and holds no barrier', 'budget abandon of a gate-unmet lane');
+  mergeFinalSummary(fixture, kleio.token);
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'degraded' && JSON.stringify(summary.statusReasons) === '["gate-unmet:orion"]',
+    `a gate-unmet lane was not a named final-summary gap: ${JSON.stringify({ status: summary.status, statusReasons: summary.statusReasons })}`);
+  for (const [lane, token] of [['kalchas', kalchas.token], ['kleio', kleio.token], ['odysseus', controller.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
+// A hunter that fails permanently deadlocks every barrier it still participates in, because a
+// failure never counts as an arrival and a released lane cannot arrive. The controller abandons
+// the released lane instead: the barriers stop waiting for it, it can never be allocated again
+// (its consumed decision already carries its telemetry), and the final summary names it.
+function testAbandonedLaneLeavesBarriers() {
+  const lanes = ['charon', 'hermes', 'kleio', 'minos', 'odysseus'];
+  const fixture = createFixture('abandoned-lane', lanes);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('abandoned-controller') });
+  const tokens = {};
+  for (const lane of ['charon', 'hermes', 'kleio', 'minos']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`abandoned-${lane}`) }).token;
+  }
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'hermes', tokens.hermes, 'hunting');
+  expectThrowMessage(() => abandonLane(manifest, 'charon', controller.token, 'continuation-exhausted'),
+    'charon can be abandoned only after its cleanup with outcome failure or interrupted', 'abandon of an active lane');
+  cleanupWorker(manifest, 'charon', tokens.charon, 'failure');
+  const before = getEngagementStatus(manifest).revision;
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token), 'phase hunting is waiting for: charon', 'advance past a failed participant');
+  expectThrowMessage(() => arriveBarrier(manifest, 'charon', undefined, 'hunting', { controllerToken: controller.token }),
+    'no active allocation exists for charon', 'controller arrival for a released lane');
+  expectThrowMessage(() => allocateWorker(manifest, 'charon', { controllerToken: controller.token, executionBinding: executionBinding('abandoned-charon') }),
+    'charon dispatch dispatch:abandoned-charon was consumed by its released allocation; retry on an active lease with engagement start-attempt, or abandon a permanently failed lane with engagement barrier abandon',
+    're-allocation of a released lane on its consumed decision');
+  expectThrowMessage(() => allocateWorker(manifest, 'charon', { controllerToken: controller.token, executionBinding: executionBinding('abandoned-charon-other', { dispatchId: 'dispatch:abandoned-charon' }) }),
+    'charon dispatch dispatch:abandoned-charon was consumed by its released allocation; retry on an active lease with engagement start-attempt, or abandon a permanently failed lane with engagement barrier abandon',
+    're-allocation of a released lane on its consumed dispatch lineage');
+  for (const lane of ['odysseus', 'minos', 'kleio']) {
+    expectThrowMessage(() => abandonLane(manifest, lane, controller.token, 'worker-failure'), `${lane} cannot be abandoned; its permanent failure stops the engagement`, `abandon of ${lane}`);
+  }
+  expectThrowMessage(() => abandonLane(manifest, 'charon', controller.token, 'crashed'),
+    'abandon reason must be one of continuation-exhausted, worker-failure, controller-budget', 'abandon with an unknown reason');
+  expectThrowMessage(() => abandonLane(manifest, 'charon', tokens.hermes, 'continuation-exhausted'),
+    'charon controller authority requires the active Odysseus controller token', 'abandon on a worker token');
+  const refused = getEngagementStatus(manifest);
+  assert(refused.revision === before && JSON.stringify(refused.abandonedLanes) === '{}' && refused.allocations.charon.status === 'released',
+    'a refused abandon or re-allocation changed the engagement state');
+
+  const abandoned = abandonLane(manifest, 'charon', controller.token, 'continuation-exhausted');
+  assert(abandoned.lane === 'charon' && abandoned.reason === 'continuation-exhausted' && abandoned.phase === 'hunting' &&
+    abandoned.barrier.complete === true && JSON.stringify(abandoned.barrier.participants) === '["hermes"]',
+  `abandon did not release the hunting barrier: ${JSON.stringify(abandoned)}`);
+  assertStateSchema(fixture, 'state with an abandoned lane');
+  expectThrowMessage(() => abandonLane(manifest, 'charon', controller.token, 'worker-failure'), 'charon was already abandoned (continuation-exhausted)', 'second abandon');
+  expectThrowMessage(() => allocateWorker(manifest, 'charon', { controllerToken: controller.token, executionBinding: executionBinding('abandoned-charon-replacement', { attempt: 2 }) }),
+    'charon was abandoned (continuation-exhausted) and cannot be allocated again', 'allocation of an abandoned lane');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  for (const phase of ['proof', 'deep-hunt-1', 'deep-proof-1']) {
+    const status = getBarrierStatus(manifest, phase);
+    assert(!status.participants.includes('charon'), `${phase} barrier still waits for the abandoned lane`);
+  }
+
+  // State integrity: an abandoned lane must stay released and be an abandonable worker.
+  const current = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
+  for (const [label, mutate] of [
+    ['a missing abandonedLanes field', (state) => { delete state.abandonedLanes; }],
+    ['an abandoned active lane', (state) => { state.abandonedLanes.hermes = { ...state.abandonedLanes.charon }; }],
+    ['an abandoned proof validator', (state) => { state.abandonedLanes.minos = { ...state.abandonedLanes.charon }; }],
+    ['an abandonment with extra keys', (state) => { state.abandonedLanes.charon.basis = null; }],
+    ['an abandonment with an unknown phase', (state) => { state.abandonedLanes.charon.phase = 'triage'; }],
+  ]) {
+    const tampered = structuredClone(current);
+    mutate(tampered);
+    writeFileSync(fixture.statePath, `${JSON.stringify(tampered, null, 2)}\n`);
+    expectThrow(() => getEngagementStatus(manifest), `state with ${label}`);
+  }
+  writeFileSync(fixture.statePath, `${JSON.stringify(current, null, 2)}\n`);
+  assert(getEngagementStatus(manifest).revision === current.revision, 'restored abandoned-lane state was not accepted');
+
+  mergeEmptyLedger(fixture, tokens.minos, 'abandoned-lane-ledger');
+  mergeFinalSummary(fixture, tokens.kleio);
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'degraded' && JSON.stringify(summary.statusReasons) === '["lane-abandoned:charon"]',
+    `an abandoned lane was not a named final-summary gap: ${JSON.stringify({ status: summary.status, statusReasons: summary.statusReasons })}`);
+  for (const lane of ['hermes', 'kleio', 'minos']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// A controller-budget stop skips a wave whose participants were never allocated. Such a lane
+// can never arrive and has no cleanup to run, so the controller abandons it directly: only with
+// controller-budget, because the other reasons describe a worker that ran. The non-skippable
+// barrier then completes, the lane is never allocated later, and the final summary names it.
+function testBudgetStopAbandonsUnallocatedLanes() {
+  const lanes = ['aegis', 'atlas', 'kleio', 'minos', 'nike', 'odysseus'];
+  const fixture = createFixture('budget-unallocated', lanes);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('budget-unallocated-controller') });
+  const tokens = {};
+  for (const lane of ['atlas', 'kleio', 'minos']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`budget-unallocated-${lane}`) }).token;
+  }
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'discovery');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'proof');
+  mergeEmptyLedger(fixture, tokens.minos, 'budget-unallocated-ledger');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'deep-proof-1');
+  mergeEmptyLedger(fixture, tokens.minos);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  skipPhases(manifest, 'odysseus', controller.token, 'controller-budget');
+  assert(getEngagementStatus(manifest).currentPhase === 'automation', 'the budget skip did not reach automation');
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'automation');
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token), 'phase automation is waiting for: aegis, nike', 'advance past never-allocated participants');
+
+  const before = getEngagementStatus(manifest).revision;
+  for (const reason of ['worker-failure', 'continuation-exhausted']) {
+    expectThrowMessage(() => abandonLane(manifest, 'aegis', controller.token, reason),
+      'aegis was never allocated; only a controller-budget stop can abandon it', `${reason} abandon of a never-allocated lane`);
+  }
+  expectThrowMessage(() => abandonLane(manifest, 'aegis', tokens.atlas, 'controller-budget'),
+    'aegis controller authority requires the active Odysseus controller token', 'budget abandon on a worker token');
+  assert(getEngagementStatus(manifest).revision === before, 'a refused abandon of a never-allocated lane changed the engagement state');
+
+  const aegis = abandonLane(manifest, 'aegis', controller.token, 'controller-budget');
+  assert(aegis.reason === 'controller-budget' && aegis.phase === 'automation' && JSON.stringify(aegis.barrier.missing) === '["nike"]',
+    `the budget abandon did not release aegis from the automation barrier: ${JSON.stringify(aegis)}`);
+  const nike = abandonLane(manifest, 'nike', controller.token, 'controller-budget');
+  assert(nike.barrier.complete === true && JSON.stringify(nike.barrier.participants) === '["atlas"]',
+    `the budget abandons did not complete the automation barrier: ${JSON.stringify(nike)}`);
+  const status = getEngagementStatus(manifest);
+  assert(status.allocations.aegis === undefined && status.allocations.nike === undefined, 'a budget abandon allocated the lane it abandoned');
+  assertStateSchema(fixture, 'state with never-allocated abandoned lanes');
+  expectThrowMessage(() => abandonLane(manifest, 'aegis', controller.token, 'controller-budget'), 'aegis was already abandoned (controller-budget)', 'second budget abandon');
+  expectThrowMessage(() => allocateWorker(manifest, 'aegis', { controllerToken: controller.token, executionBinding: executionBinding('budget-unallocated-aegis') }),
+    'aegis was abandoned (controller-budget) and cannot be allocated again', 'allocation of a never-allocated abandoned lane');
+
+  // State integrity: only a controller-budget abandonment may leave the lane unallocated.
+  const current = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
+  for (const [label, mutate] of [
+    ['a never-allocated lane abandoned for a worker failure', (state) => { state.abandonedLanes.aegis.reason = 'worker-failure'; }],
+    ['a never-allocated lane abandoned after continuation exhaustion', (state) => { state.abandonedLanes.nike.reason = 'continuation-exhausted'; }],
+  ]) {
+    const tampered = structuredClone(current);
+    mutate(tampered);
+    writeFileSync(fixture.statePath, `${JSON.stringify(tampered, null, 2)}\n`);
+    expectThrow(() => getEngagementStatus(manifest), `state with ${label}`);
+  }
+  writeFileSync(fixture.statePath, `${JSON.stringify(current, null, 2)}\n`);
+  assert(getEngagementStatus(manifest).revision === current.revision, 'restored budget-abandon state was not accepted');
+
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'verification', 'the automation barrier did not advance after the budget abandons');
+  mergeFinalSummary(fixture, tokens.kleio);
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'degraded' &&
+    JSON.stringify(summary.statusReasons) === '["deep-hunt-skipped:controller-budget","lane-abandoned:aegis","lane-abandoned:nike"]',
+  `the budget-abandoned lanes were not named final-summary gaps: ${JSON.stringify({ status: summary.status, statusReasons: summary.statusReasons })}`);
+  for (const lane of ['atlas', 'kleio', 'minos']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// The merged final summary is the only completion record, so the reporting phase cannot advance
+// and the engagement cannot complete without it. In Mode A, C, or D without an installed template
+// selection no framework, runner, or runner result can exist: Kleio's runner=null summary then
+// merges, blocked by template-selection-missing. A runner result or an installed selection still
+// requires the recorded runner outcome.
+function testCompletionRequiresFinalSummary() {
+  const fixture = createFixture('completion-final-summary', ['kleio', 'odysseus']);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('completion-controller') });
+  const kleio = allocateWorker(manifest, 'kleio', { controllerToken: controller.token, executionBinding: executionBinding('completion-kleio') });
+  while (getEngagementStatus(manifest).currentPhase !== 'reporting') advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'kleio', kleio.token, 'reporting');
+  const before = getEngagementStatus(manifest).revision;
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token),
+    'phase reporting requires the kleio merge of solution/final-summary.json before it can advance', 'advance out of reporting without the final summary');
+  assert(getEngagementStatus(manifest).revision === before && getEngagementStatus(manifest).currentPhase === 'reporting',
+    'a refused advance out of reporting changed the engagement state');
+
+  const refusal = NULL_RUNNER_REFUSAL;
+  const runnerPath = join(fixture.root, 'reports', 'argus-runner-result.json');
+  mkdirSync(join(fixture.root, 'reports'), { recursive: true });
+  writeFileSync(runnerPath, `${JSON.stringify(runnerResultFixture)}\n`);
+  expectThrowMessage(() => mergeFinalSummary(fixture, kleio.token, { runner: false, fragmentId: 'summary-hidden-runner' }), refusal,
+    'a Mode A runner=null summary beside an existing runner result');
+  unlinkSync(runnerPath);
+  const selectionPath = join(fixture.root, 'ai_agents_internal', 'template-selection.json');
+  writeFileSync(selectionPath, `${JSON.stringify({
+    $schema: 'argus/template-selection@1', schemaVersion: 1, contractId: 'argus/template-selection@1', targetRoot: fixture.root,
+    runtime: 'typescript', packageManager: 'npm', framework: 'playwright', testRunner: 'playwright', testRoot: 'tests', harnessRoot: 'tests/support',
+    ci: [], action: 'build', choiceSource: 'explicit-user', capabilitiesSha256: '0'.repeat(64), unsupported: [], extensionPoints: [],
+  })}\n`, { mode: 0o600 });
+  expectThrowMessage(() => mergeFinalSummary(fixture, kleio.token, { runner: false, fragmentId: 'summary-selected' }), refusal,
+    'a Mode A runner=null summary with an installed template selection');
+  unlinkSync(selectionPath);
+  assert(getEngagementStatus(manifest).merges['solution/final-summary.json'] === undefined, 'a refused runner=null summary was merged');
+
+  mergeFinalSummary(fixture, kleio.token, { runner: false, fragmentId: 'summary-unselected' });
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'blocked' && summary.runner === null && JSON.stringify(summary.statusReasons) === '["template-selection-missing"]',
+    `a Mode A summary without a template selection was not blocked by it: ${JSON.stringify({ status: summary.status, runner: summary.runner, statusReasons: summary.statusReasons })}`);
+  const rendered = readFileSync(join(fixture.root, 'solution', 'FINAL-SUMMARY.md'), 'utf8');
+  assert(rendered.includes('Status reason: template-selection-missing') &&
+    rendered.includes('Automation: not run; no operator template selection was installed (template-selection-missing).'),
+  'the rendered summary does not report the missing template selection');
+
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'odysseus', controller.token, 'complete');
+  cleanupWorker(manifest, 'kleio', kleio.token, 'success');
+  assert(cleanupWorker(manifest, 'odysseus', controller.token, 'success').outcome === 'success', 'the controller did not complete after the merged final summary');
+}
+
+// Atlas owns run-tests.sh. Once he is abandoned (a permanent failure or a controller-budget
+// stop), no runner result can follow even with an installed template selection, and a test he
+// recorded was never run by a runner. Kleio's runner=null summary then merges, blocked by
+// runner-result-missing, and names each canonical that no lane can publish any more, such as the
+// architecture her kleio-architecture fragment was for; the engagement still completes. A
+// registered runner result on disk, or an installed selection with Atlas still present, requires
+// the runner outcome (see testAbandonedRunnerOwnerUnregisteredResult).
+function testAbandonedRunnerOwnerFinalSummary() {
+  const fixture = createFixture('abandoned-runner-owner', ['atlas', 'kleio', 'odysseus']);
+  const { manifest } = fixture;
+  writeTemplateSelection(fixture);
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('abandoned-runner-controller') });
+  const tokens = {};
+  for (const lane of ['atlas', 'kleio']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`abandoned-runner-${lane}`) }).token;
+  }
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'discovery');
+  while (getEngagementStatus(manifest).currentPhase !== 'automation') advanceBarrier(manifest, 'odysseus', controller.token);
+  const automation = { $schema: 'argus/automation-status@2', schemaVersion: 2, engagementId: manifest.engagementId, tests: [{
+    testId: 'TST-0001', owner: 'atlas', status: 'implemented', runner: './run-tests.sh', updatedAt: new Date().toISOString(), coversBugIds: [], evidenceIds: [] }] };
+  writeFragment(manifest, 'atlas', tokens.atlas, 'solution/automation-status.json', 'atlas-automation-status', `${JSON.stringify(automation)}\n`);
+  mergeCanonical(manifest, 'atlas', tokens.atlas, 'solution/automation-status.json');
+  cleanupWorker(manifest, 'atlas', tokens.atlas, 'failure');
+  abandonLane(manifest, 'atlas', controller.token, 'continuation-exhausted');
+  while (getEngagementStatus(manifest).currentPhase !== 'reporting') advanceBarrier(manifest, 'odysseus', controller.token);
+  writeFragment(manifest, 'kleio', tokens.kleio, 'solution/ARCHITECTURE.md', 'kleio-architecture',
+    '## 10. How we used AI\nDelegated recon, verified by the reporter.\n\n## 11. Summary\nOne suite, one report.\n');
+  arriveBarrier(manifest, 'kleio', tokens.kleio, 'reporting');
+  seedFinalSummaryInputs(fixture, { runner: false });
+
+  const expectedReasons = ['canonical-unmerged:run-tests-sh', 'canonical-unmerged:solution-architecture-md', 'lane-abandoned:atlas', 'runner-result-missing'];
+  // The same facts reach Kleio through report-facts, so her copied status is the merged ceiling.
+  const facts = deriveFinalSummaryFacts(manifest, getEngagementStatus(manifest));
+  assert(facts.runner === null && facts.statusCeiling === 'blocked' && JSON.stringify(facts.statusReasons) === JSON.stringify(expectedReasons),
+    `report-facts after an abandoned runner owner: ${JSON.stringify({ runner: facts.runner, statusCeiling: facts.statusCeiling, statusReasons: facts.statusReasons })}`);
+  mergeFinalSummary(fixture, tokens.kleio, { runner: false, fragmentId: 'summary-runner-owner-abandoned' });
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'blocked' && summary.runner === null && summary.counts.automated === 1 &&
+    JSON.stringify(summary.statusReasons) === JSON.stringify(expectedReasons),
+  `a summary after an abandoned runner owner was not blocked by the missing runner result: ${JSON.stringify({ status: summary.status, runner: summary.runner, automated: summary.counts.automated, statusReasons: summary.statusReasons })}`);
+  const rendered = readFileSync(join(fixture.root, 'solution', 'FINAL-SUMMARY.md'), 'utf8');
+  assert(rendered.includes('Status reason: runner-result-missing') && rendered.includes('Status reason: canonical-unmerged:solution-architecture-md') &&
+    rendered.includes('Automation: not run; the lane that owns run-tests.sh was abandoned before any runner result (runner-result-missing).') &&
+    rendered.includes('Automated re-execution: n/a (no runner result)'),
+  'the rendered summary does not report the missing runner result');
+
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'odysseus', controller.token, 'complete');
+  cleanupWorker(manifest, 'kleio', tokens.kleio, 'success');
+  assert(cleanupWorker(manifest, 'odysseus', controller.token, 'success').outcome === 'success', 'the controller did not complete after the abandoned runner owner');
+}
+
+// Atlas proves the runner in W0 and every later run rewrites reports/argus-runner-result.json, so
+// an abandoned Atlas usually leaves a result behind. Its registered bytes stay the runner outcome
+// and cannot be hidden by a runner=null summary. A result he never registered (a later run, or
+// an interrupted write) can no longer be archived and registered by anyone: the summary merges
+// with runner=null, blocked by runner-result-unregistered, and the engagement still completes.
+function testAbandonedRunnerOwnerUnregisteredResult() {
+  const fixture = createFixture('abandoned-runner-unregistered', ['atlas', 'kleio', 'odysseus']);
+  const { manifest } = fixture;
+  writeTemplateSelection(fixture);
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('unregistered-runner-controller') });
+  const tokens = {};
+  for (const lane of ['atlas', 'kleio']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`unregistered-runner-${lane}`) }).token;
+  }
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'discovery');
+  while (getEngagementStatus(manifest).currentPhase !== 'automation') advanceBarrier(manifest, 'odysseus', controller.token);
+  // Atlas archives and registers his first run, then a later run overwrites the live result.
+  const registeredContent = `${JSON.stringify(runnerResultFixture)}\n`;
+  const runnerPath = join(fixture.root, 'reports', 'argus-runner-result.json');
+  mkdirSync(join(fixture.root, 'reports', 'evidence'), { recursive: true });
+  writeFileSync(join(fixture.root, 'reports', 'evidence', 'runner-result-1.json'), registeredContent);
+  writeFileSync(runnerPath, registeredContent);
+  const registry = { $schema: 'argus/evidence-reference@3', schemaVersion: 3, engagementId: manifest.engagementId, references: [{
+    id: 'EVD-0001', kind: 'runner-result', mediaType: 'application/json', source: 'reports/evidence/runner-result-1.json', collectedBy: 'atlas',
+    capturedAt: new Date().toISOString(), redaction: 'synthetic', sha256: createHash('sha256').update(registeredContent).digest('hex'), relatedBugIds: [], relatedSurfaceIds: [] }] };
+  writeFragment(manifest, 'atlas', tokens.atlas, 'solution/evidence-reference.json', 'atlas-runner-evidence', `${JSON.stringify(registry)}\n`);
+  mergeCanonical(manifest, 'kleio', tokens.kleio, 'solution/evidence-reference.json');
+  cleanupWorker(manifest, 'atlas', tokens.atlas, 'failure');
+  abandonLane(manifest, 'atlas', controller.token, 'continuation-exhausted');
+  while (getEngagementStatus(manifest).currentPhase !== 'reporting') advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'kleio', tokens.kleio, 'reporting');
+  seedFinalSummaryInputs(fixture, { runner: false });
+
+  const registered = deriveFinalSummaryFacts(manifest, getEngagementStatus(manifest));
+  assert(registered.runner?.evidenceId === 'EVD-0001' && !registered.statusReasons.includes('runner-result-unregistered') && !registered.statusReasons.includes('runner-result-missing'),
+    `the registered result of an abandoned runner owner is not the runner outcome: ${JSON.stringify({ runner: registered.runner, statusReasons: registered.statusReasons })}`);
+  expectThrowMessage(() => mergeFinalSummary(fixture, tokens.kleio, { runner: false, fragmentId: 'summary-hidden-registered-runner' }), NULL_RUNNER_REFUSAL,
+    'a runner=null summary over the registered result of an abandoned runner owner');
+  assert(getEngagementStatus(manifest).merges['solution/final-summary.json'] === undefined, 'a refused runner=null summary was merged');
+
+  const expectedReasons = ['canonical-unmerged:run-tests-sh', 'canonical-unmerged:solution-architecture-md', 'canonical-unmerged:solution-automation-status-json',
+    'lane-abandoned:atlas', 'runner-result-unregistered'];
+  const later = structuredClone(runnerResultFixture);
+  Object.assign(later, { mode: 'candidate-regression', status: 'fail', exitCode: 13, deliveryGate: false });
+  const overwrites = [['a later run', `${JSON.stringify(later)}\n`], ['an interrupted write', '{"$schema":"argus/runner-result@1","mode":']];
+  for (const [label, content] of overwrites) {
+    writeFileSync(runnerPath, content);
+    const facts = deriveFinalSummaryFacts(manifest, getEngagementStatus(manifest));
+    assert(facts.runner === null && facts.statusCeiling === 'blocked' && JSON.stringify(facts.statusReasons) === JSON.stringify(expectedReasons),
+      `report-facts over ${label} of an abandoned runner owner: ${JSON.stringify({ runner: facts.runner, statusCeiling: facts.statusCeiling, statusReasons: facts.statusReasons })}`);
+  }
+  writeFileSync(runnerPath, overwrites[0][1]);
+  mergeFinalSummary(fixture, tokens.kleio, { runner: false, fragmentId: 'summary-runner-unregistered' });
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'blocked' && summary.runner === null && JSON.stringify(summary.statusReasons) === JSON.stringify(expectedReasons),
+    `a summary over an unregistered result of an abandoned runner owner was not blocked by it: ${JSON.stringify({ status: summary.status, runner: summary.runner, statusReasons: summary.statusReasons })}`);
+  const rendered = readFileSync(join(fixture.root, 'solution', 'FINAL-SUMMARY.md'), 'utf8');
+  assert(rendered.includes('Status reason: runner-result-unregistered') &&
+    rendered.includes('Automation: not verified; the lane that owns run-tests.sh was abandoned before it registered reports/argus-runner-result.json (runner-result-unregistered).') &&
+    rendered.includes('Automated re-execution: n/a (unregistered runner result)'),
+  'the rendered summary does not report the unregistered runner result');
+
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'odysseus', controller.token, 'complete');
+  cleanupWorker(manifest, 'kleio', tokens.kleio, 'success');
+  assert(cleanupWorker(manifest, 'odysseus', controller.token, 'success').outcome === 'success', 'the controller did not complete after an unregistered runner result');
+}
+
+// With an installed template selection, Atlas keeps his lease on reporting standby and can still
+// run and register the runner, so a missing runner result justifies no runner=null summary.
+// report-facts refuses to offer one that the merge would refuse and, like the merge, names the
+// recovery: re-dispatch him while his lease is active, or abandon him once it is released, after
+// which the summary merges blocked by runner-result-missing. His registered re-dispatch run
+// then completes the engagement.
+function testRunnerOwnerWithoutRunnerResult() {
+  const reachReporting = (name) => {
+    const fixture = createFixture(name, ['atlas', 'kleio', 'odysseus']);
+    const { manifest } = fixture;
+    writeTemplateSelection(fixture);
+    const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding(`${name}-controller`) });
+    const tokens = { odysseus: controller.token };
+    for (const lane of ['atlas', 'kleio']) {
+      tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`${name}-${lane}`) }).token;
+    }
+    arriveBarrier(manifest, 'atlas', tokens.atlas, 'discovery');
+    while (getEngagementStatus(manifest).currentPhase !== 'automation') advanceBarrier(manifest, 'odysseus', controller.token);
+    arriveBarrier(manifest, 'atlas', tokens.atlas, 'automation');
+    while (getEngagementStatus(manifest).currentPhase !== 'reporting') advanceBarrier(manifest, 'odysseus', controller.token);
+    writeFragment(manifest, 'kleio', tokens.kleio, 'solution/ARCHITECTURE.md', 'kleio-architecture',
+      '## 10. How we used AI\nDelegated recon, verified by the reporter.\n\n## 11. Summary\nOne suite, one report.\n');
+    mergeCanonical(manifest, 'atlas', tokens.atlas, 'solution/ARCHITECTURE.md');
+    arriveBarrier(manifest, 'kleio', tokens.kleio, 'reporting');
+    seedFinalSummaryInputs(fixture, { runner: false });
+    return { fixture, manifest, tokens };
+  };
+  const missing = 'no reports/argus-runner-result.json exists while the run-tests.sh owner atlas is not abandoned';
+  const expectRefused = ({ fixture, manifest, tokens }, expected, label) => {
+    expectThrowMessage(() => deriveFinalSummaryFacts(manifest, getEngagementStatus(manifest)), expected, `report-facts ${label}`);
+    expectThrowMessage(() => mergeFinalSummary(fixture, tokens.kleio, { runner: false, fragmentId: `summary-null-runner-${label.replace(/\W+/gu, '-')}` }),
+      expected, `a runner=null summary ${label}`);
+    assert(getEngagementStatus(manifest).merges['solution/final-summary.json'] === undefined, `a runner=null summary ${label} was merged`);
+    expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', tokens.odysseus),
+      'phase reporting requires the kleio merge of solution/final-summary.json before it can advance', `advance out of reporting ${label}`);
+  };
+  const complete = ({ manifest, tokens }, lanes) => {
+    advanceBarrier(manifest, 'odysseus', tokens.odysseus);
+    arriveBarrier(manifest, 'odysseus', tokens.odysseus, 'complete');
+    for (const lane of lanes) cleanupWorker(manifest, lane, tokens[lane], 'success');
+    assert(cleanupWorker(manifest, 'odysseus', tokens.odysseus, 'success').outcome === 'success', `the controller did not complete after ${lanes.join(', ')}`);
+  };
+
+  const active = reachReporting('runner-owner-active-no-result');
+  expectRefused(active, `${missing}; re-dispatch atlas on reporting standby to run the full-suite and register its archived runner result, then merge the registry and the coverage result again`,
+    'while the runner owner holds an active lease');
+  // Atlas's re-dispatch on his active lease registers the full-suite run; Kleio merges the
+  // registry and the coverage result again, and the summary carries the registered outcome.
+  mergeFinalSummary(active.fixture, active.tokens.kleio, { fragmentId: 'summary-registered-after-redispatch' });
+  const summary = readSolutionJson(active.fixture, 'final-summary.json');
+  assert(summary.runner?.evidenceId === 'EVD-0001' && !summary.statusReasons.some((reason) => reason.startsWith('runner-') || reason === 'template-selection-missing'),
+    `the re-dispatched runner result is not the summary's runner outcome: ${JSON.stringify({ runner: summary.runner, statusReasons: summary.statusReasons })}`);
+  complete(active, ['atlas', 'kleio']);
+
+  const released = reachReporting('runner-owner-released-no-result');
+  cleanupWorker(released.manifest, 'atlas', released.tokens.atlas, 'failure');
+  expectRefused(released, `${missing} and holds no active lease; abandon atlas with engagement barrier abandon so the summary records runner-result-missing`,
+    'after the runner owner was released unabandoned');
+  abandonLane(released.manifest, 'atlas', released.tokens.odysseus, 'worker-failure');
+  mergeFinalSummary(released.fixture, released.tokens.kleio, { runner: false, fragmentId: 'summary-runner-owner-abandoned-in-reporting' });
+  const abandoned = readSolutionJson(released.fixture, 'final-summary.json');
+  assert(abandoned.status === 'blocked' && abandoned.runner === null &&
+    JSON.stringify(abandoned.statusReasons) === JSON.stringify(['canonical-unmerged:run-tests-sh', 'canonical-unmerged:solution-automation-status-json',
+      'lane-abandoned:atlas', 'runner-result-missing']),
+  `a summary after abandoning the released runner owner was not blocked by the missing runner result: ${JSON.stringify({ status: abandoned.status, runner: abandoned.runner, statusReasons: abandoned.statusReasons })}`);
+  complete(released, ['kleio']);
+}
+
+// A W3 full-suite pass cannot certify tests changed in the later review loop. Only a
+// registered full-suite result whose policy-pass event names the latest APPROVE can close out.
+function testRunnerAfterAutomationReview() {
+  const reachReporting = (name) => {
+    const fixture = createFixture(name, ['aristarchus', 'atlas', 'kleio', 'minos', 'odysseus']);
+    const { manifest } = fixture;
+    writeTemplateSelection(fixture);
+    mkdirSync(join(fixture.root, 'tests'), { recursive: true });
+    writeFileSync(join(fixture.root, 'tests', 'regression.spec.ts'), 'try { assertInvariant(); } catch {}\n');
+    const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding(`${name}-controller`) });
+    const tokens = { odysseus: controller.token };
+    for (const lane of ['aristarchus', 'atlas', 'kleio', 'minos']) {
+      tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`${name}-${lane}`) }).token;
+    }
+    while (getEngagementStatus(manifest).currentPhase !== 'verification') {
+      const phase = getEngagementStatus(manifest).currentPhase;
+      for (const lane of getBarrierStatus(manifest, phase).participants) arriveBarrier(manifest, lane, tokens[lane], phase);
+      if (phase.includes('proof')) mergeEmptyLedger(fixture, tokens.minos, phase === 'proof' ? 'review-ledger' : null);
+      if (phase === 'automation') seedFinalSummaryInputs(fixture);
+      advanceBarrier(manifest, 'odysseus', tokens.odysseus);
+    }
+    const review = structuredClone(automationReviewFixture);
+    review.engagementId = manifest.engagementId;
+    const approval = review.reviews.pop();
+    review.reviews[0].corpus = reviewCorpusDigest(manifest);
+    writeFragment(manifest, 'aristarchus', tokens.aristarchus, 'solution/automation-review.json', 'review-block', `${JSON.stringify(review)}\n`);
+    mergeCanonical(manifest, 'aristarchus', tokens.aristarchus, 'solution/automation-review.json');
+    writeFileSync(join(fixture.root, 'tests', 'regression.spec.ts'), 'assertInvariant();\n');
+    approval.corpus = reviewCorpusDigest(manifest);
+    assert(approval.corpus.sha256 !== review.reviews[0].corpus.sha256, 'the review fix did not change the test corpus');
+    review.reviews.push(approval);
+    writeFragment(manifest, 'aristarchus', tokens.aristarchus, 'solution/automation-review.json', 'review-approve', `${JSON.stringify(review)}\n`);
+    mergeCanonical(manifest, 'aristarchus', tokens.aristarchus, 'solution/automation-review.json');
+    mergeEmptyLedger(fixture, tokens.minos);
+    for (const lane of getBarrierStatus(manifest, 'verification').participants) arriveBarrier(manifest, lane, tokens[lane], 'verification');
+    advanceBarrier(manifest, 'odysseus', tokens.odysseus);
+    assert(getEngagementStatus(manifest).currentPhase === 'reporting', 'review fixture did not reach reporting');
+    seedFinalSummaryInputs(fixture);
+    return { fixture, manifest, tokens };
+  };
+  const event = { caseId: 'automation-review.REV-02', category: 'policy', status: 'pass', expected: false,
+    lifecycle: 'n/a', bugId: null, reason: 'automation-review-approved' };
+  const reviewedRun = { ...structuredClone(runnerResultFixture), categories: { ...runnerResultFixture.categories, policy: 1 },
+    events: [...runnerResultFixture.events, event] };
+  const active = reachReporting('runner-after-review-active');
+  const refusal = 'registered runner result does not prove a full-suite run after REV-02; re-dispatch atlas on reporting standby to rerun full-suite after REV-02 and register it, then merge the registry and the coverage result again';
+  for (const [label, result] of [
+    ['pre-review run', runnerResultFixture],
+    ['earlier review event', { ...reviewedRun, events: [...runnerResultFixture.events, { ...event, caseId: 'automation-review.REV-01' }] }],
+    ['denied review event', { ...reviewedRun, events: [...runnerResultFixture.events, { ...event, status: 'denied', reason: 'automation-review-blocked' }] }],
+    ['non-policy review event', { ...reviewedRun, categories: { ...runnerResultFixture.categories, automation: 2 },
+      events: [...runnerResultFixture.events, { ...event, category: 'automation' }] }],
+    ['non-full-suite run', { ...reviewedRun, mode: 'baseline', deliveryGate: false }],
+  ]) {
+    seedFinalSummaryInputs(active.fixture, { runnerResult: result });
+    expectThrowMessage(() => deriveFinalSummaryFacts(active.manifest, getEngagementStatus(active.manifest)), refusal, `report-facts with ${label}`);
+    expectThrowMessage(() => mergeFinalSummary(active.fixture, active.tokens.kleio, {
+      runnerResult: result, fragmentId: `summary-${label.replace(/\W+/gu, '-')}`,
+    }), refusal, `final-summary merge with ${label}`);
+    assert(getEngagementStatus(active.manifest).merges['solution/final-summary.json'] === undefined, `${label} produced a final summary`);
+  }
+  unlinkSync(join(active.fixture.root, 'reports', 'argus-runner-result.json'));
+  seedFinalSummaryInputs(active.fixture, { runner: false });
+  expectThrowMessage(() => deriveFinalSummaryFacts(active.manifest, getEngagementStatus(active.manifest)), refusal, 'report-facts without a post-review runner');
+  expectThrowMessage(() => mergeFinalSummary(active.fixture, active.tokens.kleio, { runner: false, fragmentId: 'summary-review-without-runner' }),
+    refusal, 'final-summary merge without a post-review runner');
+  seedFinalSummaryInputs(active.fixture);
+  const state = getEngagementStatus(active.manifest);
+  const noReviewer = deriveFinalSummaryFacts(active.manifest, { ...state,
+    dispatchableAgents: (state.dispatchableAgents ?? active.manifest.selectedAgents).filter((lane) => lane !== 'aristarchus') });
+  const modeB = deriveFinalSummaryFacts({ ...active.manifest, mode: 'B' }, state);
+  assert(!noReviewer.statusReasons.includes('runner-predates-automation-review') && !modeB.statusReasons.includes('runner-predates-automation-review'),
+    'the new runner-review gate changed Mode B or no-dispatchable-review paths');
+
+  mergeFinalSummary(active.fixture, active.tokens.kleio, { runnerResult: reviewedRun, fragmentId: 'summary-after-review-rerun' });
+  const summary = readSolutionJson(active.fixture, 'final-summary.json');
+  assert(summary.status === 'completed' && summary.automationReview.reviewId === 'REV-02' && summary.runner?.evidenceId === 'EVD-0001' &&
+    !summary.statusReasons.includes('runner-predates-automation-review'), 'the registered post-APPROVE full-suite run did not complete the summary');
+  arriveBarrier(active.manifest, 'kleio', active.tokens.kleio, 'reporting');
+  advanceBarrier(active.manifest, 'odysseus', active.tokens.odysseus);
+  arriveBarrier(active.manifest, 'odysseus', active.tokens.odysseus, 'complete');
+  for (const lane of ['aristarchus', 'atlas', 'kleio', 'minos']) cleanupWorker(active.manifest, lane, active.tokens[lane], 'success');
+  assert(cleanupWorker(active.manifest, 'odysseus', active.tokens.odysseus, 'success').outcome === 'success', 'the reviewed runner engagement did not complete');
+
+  const released = reachReporting('runner-after-review-released');
+  cleanupWorker(released.manifest, 'atlas', released.tokens.atlas, 'failure');
+  const facts = deriveFinalSummaryFacts(released.manifest, getEngagementStatus(released.manifest));
+  assert(facts.statusCeiling === 'blocked' && facts.statusReasons.includes('runner-predates-automation-review') && facts.runner?.status === 'pass',
+    'a released runner owner left a stale passing runner green after APPROVE');
+  mergeFinalSummary(released.fixture, released.tokens.kleio, { fragmentId: 'summary-stale-runner-blocked' });
+  const blocked = readSolutionJson(released.fixture, 'final-summary.json');
+  assert(blocked.status === 'blocked' && blocked.statusReasons.includes('runner-predates-automation-review'), 'the summary did not preserve the stale-runner blocked ceiling');
+}
+
+function writeTemplateSelection(fixture) {
+  writeFileSync(join(fixture.root, 'ai_agents_internal', 'template-selection.json'), `${JSON.stringify({
+    $schema: 'argus/template-selection@1', schemaVersion: 1, contractId: 'argus/template-selection@1', targetRoot: fixture.root,
+    runtime: 'typescript', packageManager: 'npm', framework: 'playwright', testRunner: 'playwright', testRoot: 'tests', harnessRoot: 'tests/support',
+    ci: [], action: 'build', choiceSource: 'explicit-user', capabilitiesSha256: '0'.repeat(64), unsupported: [], extensionPoints: [],
+  })}\n`, { mode: 0o600 });
+}
+
+function assertStateSchema(fixture, label) {
+  const state = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
+  assert(validateStateSchema(state), `${label} violates engagement-state.schema.json: ${stateSchemaAjv.errorsText(validateStateSchema.errors)}`);
+}
+
+// Drives a Mode A engagement with a validator and one hunter to the start of deep-hunt-2,
+// with an empty ledger snapshot recorded for proof and deep-proof-1.
+function runToSecondDeepHunt(name) {
+  const fixture = createFixture(name, ['hermes', 'kleio', 'minos', 'odysseus']);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding(`${name}-controller`) });
+  const tokens = { controller: controller.token };
+  for (const lane of ['hermes', 'kleio', 'minos']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`${name}-${lane}`) }).token;
+  }
+  advanceBarrier(manifest, 'odysseus', tokens.controller);
+  arriveBarrier(manifest, 'hermes', tokens.hermes, 'hunting');
+  advanceBarrier(manifest, 'odysseus', tokens.controller);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'proof');
+  mergeEmptyLedger(fixture, tokens.minos, `${name}-proof`);
+  advanceBarrier(manifest, 'odysseus', tokens.controller);
+  expectThrowMessage(() => skipPhases(manifest, 'odysseus', tokens.controller, 'controller-budget'), 'phase deep-hunt-1 is not skippable', 'skip of the first deep-hunt pass');
+  arriveBarrier(manifest, 'hermes', tokens.hermes, 'deep-hunt-1');
+  advanceBarrier(manifest, 'odysseus', tokens.controller);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'deep-proof-1');
+  // bug-ledger@2 is one complete document, so the next proof phase re-merges it.
+  mergeEmptyLedger(fixture, tokens.minos);
+  const state = getEngagementStatus(manifest);
+  assert(state.ledgerSnapshots['deep-proof-1']?.newConfirmed.length === 0 &&
+    JSON.stringify(state.ledgerSnapshots['deep-proof-1'].fragmentIds) === JSON.stringify([`${name}-proof`]) &&
+    state.ledgerSnapshots.proof.mergedAt <= state.ledgerSnapshots['deep-proof-1'].mergedAt,
+  'deep-proof-1 did not record its own snapshot of the re-merged ledger');
+  advanceBarrier(manifest, 'odysseus', tokens.controller);
+  assert(getEngagementStatus(manifest).currentPhase === 'deep-hunt-2', 'phase did not reach deep-hunt-2');
+  return { fixture, tokens };
+}
+
+// Writes the empty ledger fragment when an id is given, then merges the canonical ledger.
+function mergeEmptyLedger(fixture, token, fragmentId) {
+  if (fragmentId) {
+    const ledger = { $schema: 'argus/bug-ledger@2', schemaVersion: 2, engagementId: fixture.manifest.engagementId, bugs: [] };
+    writeFragment(fixture.manifest, 'minos', token, 'solution/bug-ledger.json', fragmentId, `${JSON.stringify(ledger)}\n`);
+  }
+  mergeCanonical(fixture.manifest, 'minos', token, 'solution/bug-ledger.json');
+}
+
+// The final-summary merge derives its facts from a merged coverage result and the runner result.
+// These fixtures have no Kalchas to publish the coverage inputs, so the helper seeds a complete,
+// merge-recorded coverage result bound to the current input files, and a delivery-gate runner
+// result registered as runner-result evidence; with the empty ledger every fact is clean, and
+// the only status reasons left are the recorded phase skips. With runner=false it seeds no
+// runner result or evidence and submits runner=null; fragmentId names a superseding fragment.
+function mergeFinalSummary(fixture, token, { runner = true, runnerResult = runnerResultFixture, fragmentId = 'final-summary' } = {}) {
+  seedFinalSummaryInputs(fixture, { runner, runnerResult });
+  const summary = structuredClone(finalSummaryFixture);
+  summary.engagementId = fixture.manifest.engagementId;
+  Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [], residuals: [] });
+  summary.counts = { bugs: { confirmed: 0, suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, headline: 0 }, regression: { wired: 0, uncovered: [] }, automated: 0, evidence: 0 };
+  summary.automationReview = { status: 'not-applicable', reviewId: null, round: null, blockers: 0, warnings: 0 };
+  if (!runner) summary.runner = null;
+  writeFragment(fixture.manifest, 'kleio', token, 'solution/final-summary.json', fragmentId, `${JSON.stringify(summary)}\n`);
+  mergeCanonical(fixture.manifest, 'kleio', token, 'solution/final-summary.json');
+}
+
+// Seeds the merged coverage result, and with runner=true the registered runner result, that the
+// final-summary facts are derived from.
+function seedFinalSummaryInputs(fixture, { runner = true, runnerResult = runnerResultFixture } = {}) {
+  const coverage = structuredClone(coverageResultFixture);
+  coverage.engagementId = fixture.manifest.engagementId;
+  coverage.surfaces.find((surface) => surface.surfaceId === 'SRF-UI-HOME').executed = true;
+  coverage.criticalUnexecuted = [];
+  coverage.overall.caseDepth = { plannedWeight: 5, executedWeight: 5, verifiedWeight: 5, coverage: 1, unplannedSurfaces: [], gaps: [] };
+  const coverageContent = `${JSON.stringify(coverage, null, 2)}\n`;
+  const runnerContent = `${JSON.stringify(runnerResult)}\n`;
+  const digest = (content) => createHash('sha256').update(content).digest('hex');
+  const registry = { $schema: 'argus/evidence-reference@3', schemaVersion: 3, engagementId: fixture.manifest.engagementId, references: [{
+    id: 'EVD-0001', kind: 'runner-result', mediaType: 'application/json', source: 'reports/evidence/runner-result.json', collectedBy: 'atlas',
+    capturedAt: new Date().toISOString(), redaction: 'synthetic', sha256: digest(runnerContent), relatedBugIds: [], relatedSurfaceIds: [] }] };
+  const registryContent = `${JSON.stringify(registry, null, 2)}\n`;
+  mkdirSync(join(fixture.root, 'solution'), { recursive: true });
+  mkdirSync(join(fixture.root, 'reports', 'evidence'), { recursive: true });
+  writeFileSync(join(fixture.root, 'solution', 'coverage-result.json'), coverageContent);
+  if (runner) {
+    writeFileSync(join(fixture.root, 'solution', 'evidence-reference.json'), registryContent);
+    writeFileSync(join(fixture.root, 'reports', 'evidence', 'runner-result.json'), runnerContent);
+    writeFileSync(join(fixture.root, 'reports', 'argus-runner-result.json'), runnerContent);
+  }
+  const inputs = Object.fromEntries(['surface-inventory', 'coverage-observations', 'evidence-reference', 'bug-ledger', 'automation-status'].map((name) => {
+    const path = join(fixture.root, 'solution', `${name}.json`);
+    return [`solution/${name}.json`, existsSync(path) ? digest(readFileSync(path)) : null];
+  }));
+  const state = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
+  const mergedAt = new Date().toISOString();
+  if (runner) state.merges['solution/evidence-reference.json'] = { owner: 'kleio', fragments: 1, sha256: digest(registryContent), mergedAt };
+  state.merges['solution/coverage-result.json'] = { owner: 'kleio', fragments: 1, sha256: digest(coverageContent), mergedAt, inputs };
+  writeFileSync(fixture.statePath, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+function readSolutionJson(fixture, name) {
+  return JSON.parse(readFileSync(join(fixture.root, 'solution', name), 'utf8'));
 }
 
 function testAuthenticatedControllerRecovery() {
@@ -302,9 +1625,12 @@ function createFixture(name, selectedAgents = ['atlas', 'hermes', 'odysseus']) {
     mode: 'A',
     engagementId: name,
     selectedAgents,
+    phasePlan: derivePhasePlan(orchestrationPlan, capabilityMatrix, 'A', selectedAgents, raci),
   });
+  const manifestErrors = validateEngagementManifest(manifest);
+  assert(manifestErrors.length === 0, `derived engagement manifest is invalid: ${manifestErrors.join('; ')}`);
   const initialized = initializeEngagementState(manifest);
-  assert(initialized.state.schemaVersion === 2, 'new engagement state did not use schemaVersion 2');
+  assert(initialized.state.schemaVersion === 3, 'new engagement state did not use schemaVersion 3');
   assert(!Object.hasOwn(initialized.state, 'migrations'), 'new engagement state retained a migration surface');
   assertPrivateSingleLink(initialized.path, 'new engagement state');
   return { root, manifest, statePath: initialized.path };
@@ -385,6 +1711,37 @@ function testAuthenticatedMonotonicHeartbeats() {
   unlinkSync(statePeer);
 }
 
+// A phase-scoped re-dispatch (Minos cluster threads, the consolidator, a repair round) reuses
+// the lane's allocation, so it cannot open a new execution generation. A `started` record at
+// completed 0 opens a new work unit instead; every monotonic rule still holds inside a unit.
+function testRedispatchedHeartbeatWorkUnits() {
+  const { manifest } = createFixture('heartbeat-work-units', ['hermes', 'minos', 'odysseus']);
+  const odysseus = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('work-unit-controller') });
+  const minos = allocateWorker(manifest, 'minos', { controllerToken: odysseus.token, executionBinding: executionBinding('work-unit-minos') });
+  const hermes = allocateWorker(manifest, 'hermes', { controllerToken: odysseus.token, executionBinding: executionBinding('work-unit-hermes') });
+  let second = 0;
+  const at = () => `2026-07-12T09:00:${String(second++).padStart(2, '0')}.000Z`;
+  const beat = (lane, token, completed, total, status) => appendHeartbeat(manifest, lane, token, 'proof', completed, total, status, at());
+  // Two cluster threads, each a complete work unit, then the consolidator.
+  for (let cluster = 0; cluster < 2; cluster += 1) {
+    beat('minos', minos.token, 0, 1, 'started');
+    beat('minos', minos.token, 1, 1, 'complete');
+  }
+  beat('minos', minos.token, 0, 3, 'started');
+  beat('minos', minos.token, 1, 3, 'running');
+  expectThrowMessage(() => beat('minos', minos.token, 0, 3, 'running'), 'heartbeat progress regressed from 1 to 0', 'progress regression inside a consolidator work unit');
+  expectThrowMessage(() => beat('minos', minos.token, 1, 4, 'running'), 'heartbeat total changed within proof', 'total drift inside a consolidator work unit');
+  beat('minos', minos.token, 3, 3, 'complete');
+  expectThrowMessage(() => beat('minos', minos.token, 3, 3, 'running'), 'heartbeat status regressed from complete to running', 'resume after completion inside one work unit');
+  expectThrowMessage(() => beat('minos', minos.token, 1, 2, 'started'), 'heartbeat total changed within proof', 'a started record with progress opened a work unit');
+  // Repair round 2 reopens the filing lane on its lease, also after a thread that ended at running.
+  beat('hermes', hermes.token, 0, 2, 'running');
+  beat('hermes', hermes.token, 1, 2, 'running');
+  beat('hermes', hermes.token, 0, 1, 'started');
+  beat('hermes', hermes.token, 1, 1, 'complete');
+  for (const [lane, token] of [['hermes', hermes.token], ['minos', minos.token], ['odysseus', odysseus.token]]) cleanupWorker(manifest, lane, token, 'interrupted');
+}
+
 function executionBinding(seed, overrides = {}) {
   const digest = createHash('sha256').update(seed).digest('hex');
   return {
@@ -421,6 +1778,14 @@ function expectThrow(operation, label) {
   try { operation(); }
   catch { failed = true; }
   assert(failed, `${label} unexpectedly succeeded`);
+}
+
+function expectThrowMessage(operation, expected, label) {
+  let message = null;
+  try { operation(); }
+  catch (error) { message = error.message; }
+  assert(message !== null, `${label} unexpectedly succeeded`);
+  assert(message === expected, `${label} failed with "${message}" instead of "${expected}"`);
 }
 
 function assert(condition, message) {

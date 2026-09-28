@@ -6,8 +6,17 @@
       "catalog": "atalanta",
       "operation": "remove",
       "pointer": "/entries/21",
-      "rejects": ["schema", "runtime"],
+      "rejects": ["runtime"],
       "runtimeIncludes": "exactly 22 entries"
+    },
+    {
+      "name": "atalanta-unregistered-role",
+      "catalog": "atalanta",
+      "operation": "replace",
+      "pointer": "/role",
+      "value": "unregistered-hunter",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "registered capability-matrix catalog role"
     },
     {
       "name": "atalanta-duplicate-id",
@@ -58,7 +67,7 @@
       "catalog": "proteus",
       "operation": "remove",
       "pointer": "/entries/14",
-      "rejects": ["schema", "runtime"],
+      "rejects": ["runtime"],
       "runtimeIncludes": "exactly 15 entries"
     },
     {
@@ -87,6 +96,32 @@
       "value": "The callback eventually succeeds.",
       "rejects": ["runtime"],
       "runtimeIncludes": "redirects are revalidated"
+    },
+    {
+      "name": "ariadne-entry-count",
+      "catalog": "ariadne",
+      "operation": "remove",
+      "pointer": "/entries/20",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 21 entries"
+    },
+    {
+      "name": "ariadne-notification-marker-drift",
+      "catalog": "ariadne",
+      "operation": "replace",
+      "pointer": "/entries/16/oracles/0",
+      "value": "The notification is sent when the event happens.",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly one notification per documented recipient"
+    },
+    {
+      "name": "ariadne-failed-job-marker-drift",
+      "catalog": "ariadne",
+      "operation": "replace",
+      "pointer": "/entries/20/oracles/0",
+      "value": "A failed job is logged somewhere.",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "silently dropped job"
     },
     {
       "name": "metis-iso-count",
@@ -165,6 +200,217 @@
       "value": true,
       "rejects": ["schema", "runtime"],
       "runtimeIncludes": "/runtimeRead is not allowed"
+    },
+    {
+      "name": "lynceus-entry-count",
+      "catalog": "lynceus",
+      "operation": "remove",
+      "pointer": "/entries/9",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 10 entries"
+    },
+    {
+      "name": "lynceus-tap-target-guessed-threshold",
+      "catalog": "lynceus",
+      "operation": "replace",
+      "pointer": "/entries/1/oracles/1",
+      "value": "Any control smaller than 44 by 44 pixels is a confirmed defect",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "guessed universal pixel threshold"
+    },
+    {
+      "name": "lynceus-charset-byte-counting-drift",
+      "catalog": "lynceus",
+      "operation": "replace",
+      "pointer": "/entries/2/oracles/1",
+      "value": "The counter and the limit count each typed character toward the maximum",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "code points, not bytes"
+    },
+    {
+      "name": "lynceus-boundary-rule-drift",
+      "catalog": "lynceus",
+      "operation": "replace",
+      "pointer": "/entries/7/oracles/0",
+      "value": "The badge, label, or eligibility renders correctly near the boundary",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "inclusive or exclusive rule"
+    },
+    {
+      "name": "antigone-entry-count",
+      "catalog": "antigone",
+      "operation": "remove",
+      "pointer": "/entries/22",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 23 entries"
+    },
+    {
+      "name": "antigone-unknown-route",
+      "catalog": "antigone",
+      "operation": "replace",
+      "pointer": "/entries/0/routes/0",
+      "value": "wcag",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "unknown route wcag"
+    },
+    {
+      "name": "antigone-wcag22-marker-drift",
+      "catalog": "antigone",
+      "operation": "replace",
+      "pointer": "/entries/15/oracles/0",
+      "value": "The focused component stays mostly visible when sticky content is shown",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "2.4.11 Focus Not Obscured (Minimum)"
+    },
+    {
+      "name": "charon-entry-count",
+      "catalog": "charon",
+      "operation": "remove",
+      "pointer": "/entries/11",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 12 entries"
+    },
+    {
+      "name": "charon-unknown-route",
+      "catalog": "charon",
+      "operation": "replace",
+      "pointer": "/entries/0/routes/0",
+      "value": "database",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "unknown route database"
+    },
+    {
+      "name": "charon-read-only-marker-drift",
+      "catalog": "charon",
+      "operation": "replace",
+      "pointer": "/entries/0/construct/0",
+      "value": "Open a database session with the provided credentials before the first query",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "default_transaction_read_only"
+    },
+    {
+      "name": "charon-api-echo-marker-drift",
+      "catalog": "charon",
+      "operation": "replace",
+      "pointer": "/entries/3/construct/2",
+      "value": "Read the amounts back through the API and recompute every derived amount",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "stored bytes, not the API echo"
+    },
+    {
+      "name": "orion-entry-count",
+      "catalog": "orion",
+      "operation": "remove",
+      "pointer": "/entries/12",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 13 entries"
+    },
+    {
+      "name": "orion-sibling-divergence-demoted-to-hypothesis",
+      "catalog": "orion",
+      "operation": "replace",
+      "pointer": "/entries/0/oracles/0",
+      "value": "Enablement and click outcome match the cited client-validation requirement; a sibling form's behaviour is a hypothesis, not proof, and a server rejecting invalid input with 4xx is not itself a UI defect",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: consistency oracle: file it as Suspected"
+    },
+    {
+      "name": "orion-double-submit-unconditional-oracle",
+      "catalog": "orion",
+      "operation": "replace",
+      "pointer": "/entries/2/oracles/0",
+      "value": "Every mutating CTA creates exactly one effect however often it is activated",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: cited action contract"
+    },
+    {
+      "name": "orion-sniffing-bypass-lane-drift",
+      "catalog": "orion",
+      "operation": "replace",
+      "pointer": "/entries/10/oracles/0",
+      "value": "Every documented restriction is enforced with a clear rejection message, so a silent no-op on an over-limit file is a defect, and a content-sniffing bypass the server accepts is filed here as an upload defect",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: routed to Perseus"
+    },
+    {
+      "name": "ariadne-export-security-half-drift",
+      "catalog": "ariadne",
+      "operation": "replace",
+      "pointer": "/entries/18/oracles/2",
+      "value": "Another principal's rows in your own export stay a journey finding, and every exported cell value is checked here",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: formula or CSV injection"
+    },
+    {
+      "name": "perseus-entry-count",
+      "catalog": "perseus",
+      "operation": "remove",
+      "pointer": "/entries/22",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "exactly 23 entries"
+    },
+    {
+      "name": "perseus-foreign-prefix-id",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/0/id",
+      "value": "PRO-T01",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "must equal \"PER-T01\""
+    },
+    {
+      "name": "perseus-unknown-route",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/0/routes/0",
+      "value": "pentest",
+      "rejects": ["schema", "runtime"],
+      "runtimeIncludes": "unknown route pentest"
+    },
+    {
+      "name": "perseus-upload-sniffing-marker-drift",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/17/oracles/0",
+      "value": "The server accepts only the file types the upload control declares, neutralises path-traversal in the stored filename, and enforces the size limit",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: content-sniffing bypass"
+    },
+    {
+      "name": "perseus-csrf-token-marker-drift",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/18/oracles/0",
+      "value": "A state-changing request is rejected when it arrives from another origin, and a persisted query or mutation executes only when bound to its registered operation",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: anti-forgery token"
+    },
+    {
+      "name": "perseus-open-redirect-marker-drift",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/19/oracles/0",
+      "value": "The redirect target stays on the application's own pages for every documented flow",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: validated against an allowlist"
+    },
+    {
+      "name": "perseus-download-authentication-only-drift",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/20/oracles/0",
+      "value": "Every download endpoint requires an authenticated session before it returns a file, report, or export",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: per-object authorization"
+    },
+    {
+      "name": "perseus-csv-injection-oracle-drift",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/22/oracles/0",
+      "value": "The downloaded export opens in a spreadsheet and shows every stored field value",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: formula-trigger character"
     }
   ]
 }

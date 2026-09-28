@@ -1,0 +1,242 @@
+{
+  "$schema": "argus/technique-catalog@1",
+  "schemaVersion": 1,
+  "catalogId": "argus/technique-catalog/antigone@1",
+  "role": "antigone",
+  "catalogType": "hunter",
+  "valuePolicy": "discover-never-assume",
+  "executionRule": "each-applicable-entry-covered-or-gap",
+  "absentSurfaceDisposition": "not-applicable-with-evidence",
+  "entries": [
+    {
+      "id": "ANG-T01",
+      "title": "Programmatic accessible name on every form control",
+      "scope": ["form-controls"],
+      "techniques": ["checklist-based-testing", "equivalence-partitioning"],
+      "appliesWhen": "surface-present",
+      "construct": ["Walk every form on every screen, including admin and operator panels, and list each input, select, textarea, custom combobox, checkbox and radio group from the accessibility tree", "Read each control's computed accessible name and its source: label for, wrapping label, aria-labelledby or aria-label; a visible adjacent text node that is not programmatically bound supplies no name", "Read the required state and the instruction and error association of each control: required or aria-required, and aria-describedby pointing at the inline instruction or error", "Read the autocomplete token of every field that collects information about the user"],
+      "oracles": ["Every control exposes a programmatic accessible name that identifies its purpose (1.3.1 Info and Relationships, 3.3.2 Labels or Instructions, 4.1.2 Name, Role, Value); a control named only by an unbound visual caption, or by a placeholder that vanishes on input, is a defect", "A radio or checkbox group exposes its group label, required state is exposed programmatically, and each inline error is associated with the field it describes", "A field that collects information about the user carries the matching autocomplete token (1.3.5 Identify Input Purpose)"],
+      "routes": ["accessibility"]
+    },
+    {
+      "id": "ANG-T02",
+      "title": "Keyboard operability of every interactive element, including non-semantic widgets",
+      "scope": ["keyboard", "custom-widget"],
+      "techniques": ["checklist-based-testing", "state-transition"],
+      "appliesWhen": "always",
+      "construct": ["Drive every primary screen with Tab, Shift+Tab, Enter, Space, Escape and the arrow keys only, with no pointer input", "List every element a pointer user can activate, including clickable div and span elements, answer options, star ratings and custom toggles, and match each against the keyboard focus sequence", "Activate each reachable element from the keyboard and read the resulting state from the accessibility tree or the page, so a focusable element that does nothing is caught"],
+      "oracles": ["Every function available to a pointer is reachable and operable from the keyboard alone and the action fires (2.1.1 Keyboard); a non-semantic control that cannot take focus or cannot be operated with Enter or Space is a defect", "Focus can always leave every component with standard keys, except a correctly managed modal that releases focus on close (2.1.2 No Keyboard Trap)", "Each custom control exposes a role and state that match its behaviour (4.1.2 Name, Role, Value)"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T03",
+      "title": "Modal dialog focus lifecycle",
+      "scope": ["modal-dialog", "focus-management"],
+      "techniques": ["state-transition"],
+      "appliesWhen": "surface-present",
+      "construct": ["Open every dialog, drawer and overlay from the keyboard and record where focus lands", "Tab and Shift+Tab past the last and the first focusable element of the open dialog, then press Escape", "Close the dialog through each of its close paths, including Escape, the close button, confirm and cancel, and record where focus lands each time"],
+      "oracles": ["Focus moves into the dialog on open, stays inside it while it is modal, and Escape closes it (2.1.2 No Keyboard Trap, 2.4.3 Focus Order)", "On every close path focus returns to the trigger or to the next logical element, never to the document start or to an element removed from the page", "The dialog exposes a dialog role, an accessible name and its modal state, and content behind it is not reachable while it is open (4.1.2 Name, Role, Value)"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T04",
+      "title": "Status messages announced for dynamic results",
+      "scope": ["live-region", "dynamic-content"],
+      "techniques": ["checklist-based-testing", "state-transition"],
+      "appliesWhen": "surface-present",
+      "construct": ["Enumerate every dynamic update that happens without a focus change: search result counts, no-results messages, cart, enrolment and assessment results, save confirmations and asynchronous errors", "Trigger each update from the keyboard and read the live-region markup that carries it: role status, alert or log, or an aria-live container present in the tree before the update"],
+      "oracles": ["Every status message that does not take focus is exposed through a live region so assistive technology announces it (4.1.3 Status Messages); a silent dynamic update is a defect", "A live region injected together with its content, or one hidden from the accessibility tree, counts as silent"],
+      "routes": ["accessibility"]
+    },
+    {
+      "id": "ANG-T05",
+      "title": "Announced content matches the new state",
+      "scope": ["live-region", "form-validation"],
+      "techniques": ["state-transition", "equivalence-partitioning"],
+      "appliesWhen": "surface-present",
+      "construct": ["After each dynamic event, including a result count, no results, a validation error and an asynchronous success or failure, capture the live-region text with --eval before and after the event", "Compare the announced text with the rendered state: the announced count against the rendered item count, and the no-results message against a result set that is actually empty", "Submit each form with one invalid field at a time and then with every field valid, and capture the announced and associated error text", "Take the expected message family from the specification or the error catalogue, never from a hard-coded literal"],
+      "oracles": ["The announcement reflects the actual new state; a stale, hard-coded or contradictory announcement is as broken as a silent one (4.1.3 Status Messages)", "A field error names the offending field and the rule it broke, not a generic failure message (3.3.1 Error Identification, 3.3.3 Error Suggestion)", "A change of state with no announcement, including a silent success, is a defect"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T06",
+      "title": "Live-region politeness and announcement at documented boundaries",
+      "scope": ["live-region"],
+      "techniques": ["decision-table", "boundary-value-analysis", "state-transition"],
+      "appliesWhen": "surface-present",
+      "construct": ["Build the decision table politeness {polite, assertive, off} x update {routine count, blocking error, success} from the live regions found on each screen", "Where a count or progress value crosses a documented boundary that changes the message family, such as last item remaining, limit reached, from N or after N, construct the count at N-1, N and N+1 and capture each announcement"],
+      "oracles": ["Each update uses the documented politeness pairing: a blocking error interrupts, while a routine count neither seizes focus nor interrupts speech (4.1.3 Status Messages)", "The announced message family switches exactly at the documented boundary under its inclusive or exclusive rule; the equality point is asserted, not only the interior"],
+      "routes": ["accessibility"]
+    },
+    {
+      "id": "ANG-T07",
+      "title": "Focus indicator survives at the suppression boundary",
+      "scope": ["focus-management", "visual-contrast"],
+      "techniques": ["boundary-value-analysis", "equivalence-partitioning"],
+      "appliesWhen": "always",
+      "construct": ["Reach every interactive element with Tab, never with the pointer, because :focus-visible differs from :focus under pointer input", "With --eval read the computed outline, outline-width, outline-color, box-shadow, border and background at :focus and at :focus-visible across the default, hover, active, disabled-but-focusable and focus-within container states", "Where the native outline is suppressed, identify the replacement indicator and measure its contrast against the adjacent colours"],
+      "oracles": ["Every keyboard-focusable element shows a visible focus indicator (2.4.7 Focus Visible); outline none, a zero width or a transparent colour with no compensating box-shadow, border or background change is a defect", "A replacement indicator meets the selected standard's non-text contrast threshold against the adjacent colours (1.4.11 Non-text Contrast); the replacement is measured, never assumed"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T08",
+      "title": "Bypass blocks, page title, headings and landmarks",
+      "scope": ["document-structure"],
+      "techniques": ["checklist-based-testing"],
+      "appliesWhen": "always",
+      "construct": ["On every page type, including deep operator, admin and player pages, read the page title, the heading outline and the landmark set from the accessibility tree", "Press Tab once after page load, follow the first focusable element, activate any skip link and record where focus lands"],
+      "oracles": ["A mechanism bypasses the blocks repeated on multiple pages, and a skip link moves focus to the main content rather than only scrolling (2.4.1 Bypass Blocks)", "Each page has a title that describes its topic or purpose (2.4.2 Page Titled), one main landmark, and a heading outline with a first-level heading and no skipped level (1.3.1 Info and Relationships, 2.4.6 Headings and Labels)"],
+      "routes": ["accessibility"]
+    },
+    {
+      "id": "ANG-T09",
+      "title": "Accessible names and announcements keep charset integrity",
+      "scope": ["internationalization", "live-region"],
+      "techniques": ["equivalence-partitioning", "boundary-value-analysis"],
+      "appliesWhen": "surface-present",
+      "construct": ["Discover the target locales from recon, then build the partitions ASCII, target-locale diacritics, combining marks, emoji and other astral-plane characters, and right-to-left or bidirectional text when it is in scope", "Drive each partition into every field whose value is later announced or becomes part of an accessible name: a search term echoed in a live region, an item title voiced on add, an error that echoes the input", "Construct the exact-boundary value whose code-point count equals the documented field limit while its byte length exceeds it", "Read the declared language of the page and of every passage in another language"],
+      "oracles": ["The accessible name and the live-region text round-trip intact: no mojibake, no truncation inside a code point or surrogate pair, and no stripped combining mark that changes the word (4.1.2 Name, Role, Value, 4.1.3 Status Messages)", "At the exact code-point boundary the exposed name is intact and never silently cut by a byte counter", "The page and every passage in another language declare their language so assistive technology voices them correctly (3.1.1 Language of Page, 3.1.2 Language of Parts)"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T10",
+      "title": "Composite-widget key contract and ARIA state machine",
+      "scope": ["custom-widget", "keyboard"],
+      "techniques": ["state-transition", "decision-table"],
+      "appliesWhen": "surface-present",
+      "construct": ["Determine each widget role from the accessibility tree, such as tablist, listbox, combobox, menu, slider, switch, radiogroup, disclosure or grid, and take its key contract from the ARIA Authoring Practices pattern", "Drive the full contract: arrow keys inside the composite with roving tabindex, Home and End, Escape to collapse, Enter and Space to activate, and type-ahead where the pattern specifies it", "After every key action read aria-expanded, aria-selected, aria-checked, aria-pressed, aria-current and the focused element"],
+      "oracles": ["A composite widget is a single Tab stop and the arrow keys move the active item within it (2.1.1 Keyboard, 2.4.3 Focus Order)", "Every keyboard action flips the ARIA state in the tree to match the visual state, and focus lands where the pattern specifies after each transition (4.1.2 Name, Role, Value)"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T11",
+      "title": "Keyboard route to every pointer-reachable value",
+      "scope": ["pointer-input", "custom-widget"],
+      "techniques": ["boundary-value-analysis", "equivalence-partitioning"],
+      "appliesWhen": "surface-present",
+      "construct": ["List every value or selection a pointer reaches by dragging or precise pointing: slider thumbs, drag reordering, custom date pickers and resize handles", "Read the pointer-reachable range from the widget state with --eval, such as aria-valuemin, aria-valuemax, aria-valuenow or the list order, instead of performing the drag, which the hunt driver cannot do", "Construct the keyboard route to the minimum, the maximum and one interior value of that range, then read the resulting state"],
+      "oracles": ["Every state reachable by pointer is reachable by keyboard with the same result (2.1.1 Keyboard); a pointer-only value with no keyboard equivalent is an operability blocker"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T12",
+      "title": "Text and non-text contrast in every rendered state",
+      "scope": ["visual-contrast"],
+      "techniques": ["boundary-value-analysis", "equivalence-partitioning"],
+      "appliesWhen": "always",
+      "construct": ["With --eval read the computed foreground, effective background, font size and weight of text in the default, hover, focus, placeholder, link, visited and error states", "Compute the contrast ratio of text and of meaningful non-text elements, including input borders, icons, focus rings, chart segments and state indicators, against their adjacent colours", "List every place where colour carries meaning: error fields, required markers, links inside text and status chips"],
+      "oracles": ["Text meets the selected standard's contrast threshold for its size and weight (1.4.3 Contrast (Minimum)); the report records the measured ratio and both colours, and inactive components, pure decoration and logotypes are recorded as exempt", "User-interface components and meaningful graphics meet the non-text contrast threshold against their adjacent colours (1.4.11 Non-text Contrast)", "No information, state or action is conveyed by colour alone (1.4.1 Use of Color)"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T13",
+      "title": "Text alternatives for non-text content",
+      "scope": ["non-text-content"],
+      "techniques": ["checklist-based-testing", "error-guessing"],
+      "appliesWhen": "surface-present",
+      "construct": ["List every image, icon-only button or link, chart, canvas, embedded media item and CAPTCHA with its text alternative from the accessibility tree", "Judge each alternative against the purpose the element serves on the page, and check that decorative images are hidden from assistive technology"],
+      "oracles": ["Every meaningful non-text element has a text alternative that serves the same purpose, and decorative content has an empty alternative or is hidden (1.1.1 Non-text Content); a present but meaningless alternative, such as a file name, is a defect", "Every icon-only link and button has a name that states its purpose in context (2.4.4 Link Purpose (In Context), 4.1.2 Name, Role, Value)"],
+      "routes": ["accessibility"]
+    },
+    {
+      "id": "ANG-T14",
+      "title": "Time limits, moving content and flashing",
+      "scope": ["timing-motion"],
+      "techniques": ["state-transition", "checklist-based-testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Inventory every session timeout, countdown, auto-advancing carousel, auto-updating feed, animation and flashing element from recon and the live page", "For each time limit, record whether it can be turned off, adjusted or extended before it expires, and let one expire to observe the warning and the data that is kept", "Re-drive animated screens with the hunt driver's --reduced-motion flag, which flips the prefers-reduced-motion media feature; if the driver lacks the flag, request it through Odysseus before marking this row covered"],
+      "oracles": ["Every time limit can be turned off, adjusted or extended after a warning, unless it is a real-time event or essential (2.2.1 Timing Adjustable)", "Moving, blinking, scrolling or auto-updating content that starts automatically and lasts more than five seconds can be paused, stopped or hidden (2.2.2 Pause, Stop, Hide), and nothing flashes more than three times in any one-second period (2.3.1 Three Flashes or Below Threshold)", "A documented reduced-motion commitment is honoured under the reduced-motion preference; an untested motion check stays a gap, never a pass"],
+      "routes": ["accessibility"]
+    },
+    {
+      "id": "ANG-T15",
+      "title": "Predictable context changes and consistent navigation",
+      "scope": ["navigation-consistency", "form-controls"],
+      "techniques": ["state-transition", "use-case"],
+      "appliesWhen": "always",
+      "construct": ["Move focus onto every control and change every select, checkbox, radio and text value from the keyboard without submitting, and record any change of context: navigation, a new window, a focus jump or a submitted form", "Across every page in a set, record the order of the repeated navigation components and the names of components that share a function"],
+      "oracles": ["Receiving focus never changes the context (3.2.1 On Focus), and changing a setting changes the context only when the user was told beforehand (3.2.2 On Input)", "Repeated navigation occurs in the same relative order on every page (3.2.3 Consistent Navigation), and components with the same function are identified consistently (3.2.4 Consistent Identification)"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T16",
+      "title": "Focused component not entirely hidden by author-created content",
+      "scope": ["focus-management", "overlay-content"],
+      "techniques": ["boundary-value-analysis", "state-transition"],
+      "appliesWhen": "surface-present",
+      "construct": ["Inventory the author-created content that can overlap the page at each supported viewport: sticky headers and footers, cookie and consent banners, chat launchers, toasts, non-modal dialogs and fixed toolbars", "Tab through every screen and, for each focused element, read its bounding rectangle and the rectangle of every overlapping fixed or sticky element with --eval after the page has scrolled the element into view", "Where the user opened the overlay, check whether it can be dismissed, or the focused element revealed, without advancing keyboard focus, for example with Escape"],
+      "oracles": ["When a component receives keyboard focus it is not entirely hidden due to author-created content (2.4.11 Focus Not Obscured (Minimum)); a focused element fully covered by a sticky header, footer or banner is a defect", "Partial overlap passes at this level; content the user opened and can dismiss without moving focus, and content the user repositioned, do not count as obscuring"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T17",
+      "title": "Single-pointer alternative to every dragging movement",
+      "scope": ["pointer-input", "drag-interaction"],
+      "techniques": ["equivalence-partitioning", "checklist-based-testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Inventory every function operated by dragging: sortable lists, board cards, slider thumbs, range handles, map panning, resize handles, drag-and-drop file zones and swipe-to-dismiss", "For each one, read the end state the drag produces from the widget state or the documented behaviour with --eval instead of performing the drag, which the hunt driver cannot do", "Find and activate a single-pointer path to the same end state, such as a click on the track, increment buttons, a move-to menu, a click-to-place target or a file picker button, using clicks only"],
+      "oracles": ["All functionality that uses a dragging movement can be achieved by a single pointer without dragging, unless dragging is essential or the behaviour is determined by the user agent and not modified by the author (2.5.7 Dragging Movements)", "A keyboard route alone does not satisfy this criterion; a drag-only function with no single-pointer alternative is a defect even when a keyboard route exists"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T18",
+      "title": "Pointer target size or spacing meets the minimum",
+      "scope": ["pointer-input", "target-size"],
+      "techniques": ["boundary-value-analysis", "equivalence-partitioning"],
+      "appliesWhen": "always",
+      "construct": ["With --eval list every pointer target on each screen at each supported viewport with its bounding box in CSS pixels, including icon buttons, pagination links, close controls, row actions and form checkboxes", "For every target under 24 by 24 CSS pixels, center a 24 CSS pixel diameter circle on its bounding box and test whether it intersects another target or the circle of another undersized target", "Classify each remaining undersized target against the exceptions with evidence: an equivalent control on the same page, a target inline in a sentence, a user-agent control the author did not restyle, or an essential presentation", "Measure the boundary cases at exactly 24 CSS pixels and one pixel below"],
+      "oracles": ["The target for pointer input is at least 24 by 24 CSS pixels, or meets the spacing, equivalent, inline, user-agent-control or essential exception (2.5.8 Target Size (Minimum)); an undersized target whose spacing circle intersects a neighbour, with no exception, is a defect", "Exactly 24 CSS pixels passes and anything smaller needs a recorded exception; the verdict records the measured size, the exception claimed and its evidence"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T19",
+      "title": "Help mechanisms in a consistent relative order",
+      "scope": ["help-mechanism", "navigation-consistency"],
+      "techniques": ["checklist-based-testing", "equivalence-partitioning"],
+      "appliesWhen": "surface-present",
+      "construct": ["Inventory the help mechanisms on each page from recon and the live page, shown directly or through a direct link: human contact details, a human contact mechanism such as a form or chat, a self-help option such as a help centre, and a fully automated contact mechanism such as a chatbot", "For every set of pages that repeats a mechanism, record its position in the serialized page order relative to the surrounding content, such as header, navigation, main and footer, at the same viewport, zoom and orientation"],
+      "oracles": ["A help mechanism repeated on multiple pages occurs in the same order relative to other page content on each of them unless the user initiated the change (3.2.6 Consistent Help); a mechanism that moves to another relative position between pages of the same page variation is a defect", "The criterion does not require any help mechanism to exist; a page set with no repeated help mechanism records this row not-applicable with evidence"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T20",
+      "title": "Previously entered information is not requested again",
+      "scope": ["multi-step-process", "form-controls"],
+      "techniques": ["use-case", "state-transition"],
+      "appliesWhen": "surface-present",
+      "construct": ["Map every multi-step process, such as registration, checkout, application wizards, profile completion and support requests, and record each value the user enters or is given at each step", "Walk each process forward and backward from the keyboard and, at every later step, list the fields that ask for information already entered or provided in the same process", "For each repeated request, check whether the value is pre-filled or offered for selection, such as a same-as-shipping option or a pick list of earlier entries, and whether back navigation keeps what was entered"],
+      "oracles": ["Information previously entered by or provided to the user that is required again in the same process is either auto-populated or available for the user to select (3.3.7 Redundant Entry); a repeated blank request is a defect", "Re-entry is accepted only when it is essential, required for the security of the content, or the earlier value is no longer valid, and the report names the exception that applies"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T21",
+      "title": "Authentication without an unassisted cognitive function test",
+      "scope": ["authentication", "form-controls"],
+      "techniques": ["decision-table", "checklist-based-testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Enumerate every step of every authentication process with the authorized test accounts only: sign-in, second factor, one-time codes, password reset, re-authentication and CAPTCHA challenges", "For each step that relies on memory, transcription or puzzle solving, check the assisting mechanisms: paste is not blocked, password and one-time-code fields expose autocomplete tokens so a password manager can fill them, and a code is not split into per-character boxes that defeat paste", "For each CAPTCHA or puzzle, look for an alternative method that is not a cognitive function test, or confirm that the test is object recognition or identification of content the user provided"],
+      "oracles": ["No step of an authentication process requires a cognitive function test unless the step offers an alternative method, a mechanism that assists completion, object recognition or personal content (3.3.8 Accessible Authentication (Minimum)); a sign-in or code field that blocks paste or password-manager filling is a defect", "Transcribing a one-time code by hand counts as a cognitive function test when neither paste nor autofill is supported"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T22",
+      "title": "Reflow at 320 CSS pixels, text resize and orientation",
+      "scope": ["responsive-layout"],
+      "techniques": ["boundary-value-analysis", "equivalence-partitioning"],
+      "appliesWhen": "always",
+      "construct": ["Drive every primary screen with --viewport at a width equivalent to 320 CSS pixels, and horizontally scrolling content at a height equivalent to 256 CSS pixels", "At that size compare the scrolling element's scroll width with its client width, and look for clipped text, overlapping controls, off-screen menus and functions that disappear", "Inside the isolated browser context, scale text to 200 percent and switch between portrait and landscape viewports, then repeat the loss checks", "Record every region that needs a two-dimensional layout for its meaning, such as maps, data tables, diagrams, video, games and toolbars, as an exception with its reason"],
+      "oracles": ["Content is presented without loss of information or functionality and without scrolling in two dimensions at 320 CSS pixels wide, or 256 CSS pixels high for horizontal content, except regions that need a two-dimensional layout (1.4.10 Reflow)", "Text resized to 200 percent loses no content or functionality (1.4.4 Resize Text), and content is not locked to one display orientation unless that orientation is essential (1.3.4 Orientation)"],
+      "routes": ["accessibility", "ui"]
+    },
+    {
+      "id": "ANG-T23",
+      "title": "Text spacing override without loss of content",
+      "scope": ["responsive-layout", "text-presentation"],
+      "techniques": ["boundary-value-analysis", "checklist-based-testing"],
+      "appliesWhen": "always",
+      "construct": ["Inside the isolated browser context only, apply a user style override with --eval that sets line height to 1.5 times the font size, spacing after paragraphs to 2 times the font size, letter spacing to 0.12 times the font size and word spacing to 0.16 times the font size, and changes no other property", "Re-drive every primary screen and component with the override in place, and read clipped overflow, overlapping text, truncated labels and hidden controls with --eval and screenshots"],
+      "oracles": ["No loss of content or functionality occurs with line height at 1.5 times, paragraph spacing at 2 times, letter spacing at 0.12 times and word spacing at 0.16 times the font size (1.4.12 Text Spacing); text cut off by a fixed-height container or overlapping another element is a defect", "The override simulates a user stylesheet and never changes the application; a script that does not use one of these properties is checked only with the properties it uses"],
+      "routes": ["accessibility", "ui"]
+    }
+  ]
+}

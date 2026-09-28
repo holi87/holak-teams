@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
   "runtime": "java",
-  "sharedContract": "argus/template-contract@1",
+  "sharedContract": "argus/template-contract@2",
   "framework": "junit-playwright-restassured",
   "runner": "junit5",
+  "adapter": "qa.support.argus.ArgusOutcomeListener",
   "packageManagers": ["maven"],
   "layoutPlaceholders": { "testRoot": "src/test/java", "harnessRoot": "src/test/java/qa/support" },
-  "tagAdapter": { "contract-smoke": "@Tag(\"contract-smoke\")", "quarantine": "@Tag(\"quarantine\")", "regression": "@Tag(\"regression\")", "bug-provenance": "@bug:<canonical-or-origin>" },
+  "tagAdapter": { "contract-smoke": "@Tag(\"contract-smoke\")", "quarantine": "@Tag(\"quarantine\")", "regression": "@Tag(\"regression\")", "bug-provenance": "@Tag(\"bug:<canonical-or-origin>\")", "lane": "@Tag(\"<lane>\")" },
   "extensionPoints": ["build-tool-adapter", "test-root", "harness-root", "ci-command"],
   "unsupportedByDefault": ["gradle", "testng"]
 }

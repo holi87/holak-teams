@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/scripts/eval/discovery/schemas/replay-request.schema.json",
+  "title": "Argus discovery evaluation Mode A regression replay request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "runId", "case", "runnerMode", "frameworkRoot", "replayRoot", "target", "seconds", "resultPath"],
+  "properties": {
+    "schema": { "const": "argus-eval/replay-request@1" },
+    "runId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+    "case": { "type": "string", "pattern": "^(?:all-on|all-off|all-off-baseline|only-[a-z][a-z0-9-]*)$" },
+    "runnerMode": { "enum": ["defect-evidence", "candidate-regression", "baseline"] },
+    "frameworkRoot": { "$ref": "#/$defs/absolutePath" },
+    "replayRoot": { "$ref": "#/$defs/absolutePath" },
+    "target": { "type": "string", "pattern": "^http://(?:127\\.0\\.0\\.1|localhost|\\[::1\\]):[0-9]{1,5}$" },
+    "seconds": { "type": "integer", "minimum": 1, "maximum": 7200 },
+    "resultPath": { "$ref": "#/$defs/absolutePath" }
+  },
+  "$defs": {
+    "absolutePath": { "type": "string", "pattern": "^/(?:[^/\\u0000]+/)*[^/\\u0000]+$" }
+  }
+}

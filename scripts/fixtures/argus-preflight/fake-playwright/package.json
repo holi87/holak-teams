@@ -1,0 +1,10 @@
+{
+  "name": "playwright",
+  "version": "0.0.0-argus-fixture",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./index.mjs"
+    }
+  }
+}

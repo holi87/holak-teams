@@ -4,8 +4,8 @@
   "agentsScanned": 27,
   "skillsScanned": 7,
   "entrypointsScanned": 1,
-  "runtimeFilesScanned": 9,
-  "runtimeImportsScanned": 16,
+  "runtimeFilesScanned": 10,
+  "runtimeImportsScanned": 24,
   "hooksScanned": 1,
   "pluginAssetReferences": [
     {
@@ -23,6 +23,8 @@
     {
       "value": "references/BROWSER-ISOLATION.md",
       "consumers": [
+        "hermes",
+        "proteus",
         "skill:qa-browser"
       ]
     },
@@ -142,13 +144,29 @@
       "consumers": [
         "ariadne"
       ]
+    },
+    {
+      "value": "templates/common/solution/TEST-STRATEGY.md",
+      "consumers": [
+        "metis"
+      ]
     }
   ],
   "targetFileReferences": [
     {
       "value": "ai_agents_internal/",
       "consumers": [
-        "kleio"
+        "atlas",
+        "kleio",
+        "skill:qa-core"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/browser-runtime.json",
+      "consumers": [
+        "daidalos",
+        "kalchas",
+        "penelope"
       ]
     },
     {
@@ -177,13 +195,26 @@
       ]
     },
     {
+      "value": "ai_agents_internal/recon/driver.config.json",
+      "consumers": [
+        "kalchas"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/template-selection.json",
+      "consumers": [
+        "atlas",
+        "skill:orchestration-core"
+      ]
+    },
+    {
       "value": "bugs/",
       "consumers": [
         "antigone",
         "ariadne",
-        "aristarchus",
         "asklepios",
         "atalanta",
+        "atlas",
         "charon",
         "hermes",
         "kleio",
@@ -194,6 +225,7 @@
         "perseus",
         "pistis",
         "proteus",
+        "skill:qa-core",
         "talos",
         "theseus",
         "tyche"
@@ -321,12 +353,20 @@
       "value": "package.json",
       "consumers": [
         "asklepios",
+        "atlas",
         "tiresias"
+      ]
+    },
+    {
+      "value": "playwright.config.ts",
+      "consumers": [
+        "atlas"
       ]
     },
     {
       "value": "pom.xml",
       "consumers": [
+        "atlas",
         "tiresias"
       ]
     },
@@ -334,12 +374,14 @@
       "value": "pyproject.toml",
       "consumers": [
         "asklepios",
+        "atlas",
         "tiresias"
       ]
     },
     {
       "value": "README.md",
       "consumers": [
+        "atlas",
         "kleio"
       ]
     },
@@ -347,13 +389,36 @@
       "value": "reports/",
       "consumers": [
         "atlas",
-        "kleio"
+        "kleio",
+        "skill:qa-core"
       ]
     },
     {
       "value": "reports/argus-runner-result.json",
       "consumers": [
+        "aristarchus",
+        "atlas",
+        "kleio",
+        "skill:qa-framework-runner"
+      ]
+    },
+    {
+      "value": "reports/counterfactual-plan.tsv",
+      "consumers": [
+        "aristarchus"
+      ]
+    },
+    {
+      "value": "reports/evidence/",
+      "consumers": [
         "atlas"
+      ]
+    },
+    {
+      "value": "reports/expected-bugs.txt",
+      "consumers": [
+        "atlas",
+        "minos"
       ]
     },
     {
@@ -395,6 +460,19 @@
       ]
     },
     {
+      "value": "reports/test-inventory.tsv",
+      "consumers": [
+        "asklepios",
+        "skill:qa-framework-runner"
+      ]
+    },
+    {
+      "value": "requirements.txt",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
       "value": "run-tests.sh",
       "consumers": [
         "aegis",
@@ -409,6 +487,8 @@
         "minos",
         "mnemosyne",
         "nike",
+        "skill:qa-core",
+        "skill:qa-framework-runner",
         "talos"
       ]
     },
@@ -419,9 +499,35 @@
       ]
     },
     {
-      "value": "scripts/hunt-driver.mjs",
+      "value": "scripts/*.sh",
       "consumers": [
-        "daidalos"
+        "atlas"
+      ]
+    },
+    {
+      "value": "scripts/baseline-coverage.mjs",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "scripts/inventory-gate.sh",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "scripts/outcome-event.sh",
+      "consumers": [
+        "atlas",
+        "skill:qa-framework-runner"
+      ]
+    },
+    {
+      "value": "scripts/runner-lib.sh",
+      "consumers": [
+        "atlas",
+        "skill:qa-framework-runner"
       ]
     },
     {
@@ -430,7 +536,8 @@
         "aristarchus",
         "atlas",
         "kleio",
-        "minos"
+        "minos",
+        "skill:qa-core"
       ]
     },
     {
@@ -448,24 +555,40 @@
       ]
     },
     {
+      "value": "solution/antigone-ledger.json",
+      "consumers": [
+        "antigone"
+      ]
+    },
+    {
       "value": "solution/ARCHITECTURE.md",
       "consumers": [
         "atlas",
         "kleio",
         "metis",
+        "skill:orchestration-core",
         "talos"
+      ]
+    },
+    {
+      "value": "solution/automation-review.json",
+      "consumers": [
+        "aristarchus",
+        "kleio"
       ]
     },
     {
       "value": "solution/automation-status.json",
       "consumers": [
-        "atlas"
+        "atlas",
+        "minos"
       ]
     },
     {
       "value": "solution/bug-ledger.json",
       "consumers": [
         "aegis",
+        "aristarchus",
         "kleio",
         "minos",
         "mnemosyne"
@@ -474,9 +597,14 @@
     {
       "value": "solution/BUG-LEDGER.md",
       "consumers": [
-        "aristarchus",
         "kleio",
         "minos"
+      ]
+    },
+    {
+      "value": "solution/charon-ledger.json",
+      "consumers": [
+        "charon"
       ]
     },
     {
@@ -486,10 +614,40 @@
       ]
     },
     {
+      "value": "solution/counterfactual/",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
+      "value": "solution/counterfactual/<BUG-NNNN>.json",
+      "consumers": [
+        "aegis",
+        "atlas",
+        "daidalos",
+        "mnemosyne",
+        "nike",
+        "talos"
+      ]
+    },
+    {
+      "value": "solution/counterfactual/<id>.json",
+      "consumers": [
+        "skill:qa-framework-runner"
+      ]
+    },
+    {
+      "value": "solution/counterfactual/BUG-NNNN.json",
+      "consumers": [
+        "aristarchus"
+      ]
+    },
+    {
       "value": "solution/coverage-observations.json",
       "consumers": [
         "atlas",
-        "kleio"
+        "kleio",
+        "skill:qa-core"
       ]
     },
     {
@@ -501,6 +659,12 @@
       ]
     },
     {
+      "value": "solution/discovery/capability-evidence.json",
+      "consumers": [
+        "kalchas"
+      ]
+    },
+    {
       "value": "solution/discovery/contract-drift.json",
       "consumers": [
         "atalanta",
@@ -508,8 +672,16 @@
       ]
     },
     {
+      "value": "solution/environment.tsv",
+      "consumers": [
+        "atlas",
+        "skill:qa-framework-runner"
+      ]
+    },
+    {
       "value": "solution/evidence-reference.json",
       "consumers": [
+        "atlas",
         "kleio"
       ]
     },
@@ -563,6 +735,12 @@
       ]
     },
     {
+      "value": "solution/findings/triage/<phase>/<cluster>.md",
+      "consumers": [
+        "minos"
+      ]
+    },
+    {
       "value": "solution/IMPLEMENTATION-REPORT.md",
       "consumers": [
         "aristarchus",
@@ -583,11 +761,23 @@
       ]
     },
     {
+      "value": "solution/lynceus-ledger.json",
+      "consumers": [
+        "lynceus"
+      ]
+    },
+    {
       "value": "solution/ORACLES.md",
       "consumers": [
         "ariadne",
         "kalchas",
         "metis"
+      ]
+    },
+    {
+      "value": "solution/orion-ledger.json",
+      "consumers": [
+        "orion"
       ]
     },
     {
@@ -656,6 +846,19 @@
       ]
     },
     {
+      "value": "solution/perseus-ledger.json",
+      "consumers": [
+        "perseus"
+      ]
+    },
+    {
+      "value": "solution/quarantine.tsv",
+      "consumers": [
+        "asklepios",
+        "skill:qa-framework-runner"
+      ]
+    },
+    {
       "value": "solution/RESILIENCE-REPORT.md",
       "consumers": [
         "tyche"
@@ -680,6 +883,14 @@
       "value": "solution/TEST-HEALTH.md",
       "consumers": [
         "asklepios"
+      ]
+    },
+    {
+      "value": "solution/test-lanes.tsv",
+      "consumers": [
+        "aristarchus",
+        "atlas",
+        "skill:qa-framework-runner"
       ]
     },
     {
@@ -709,6 +920,18 @@
       "consumers": [
         "minos",
         "tiresias"
+      ]
+    },
+    {
+      "value": "src/argus/fault-injector.ts",
+      "consumers": [
+        "nike"
+      ]
+    },
+    {
+      "value": "src/oracles",
+      "consumers": [
+        "atlas"
       ]
     },
     {
@@ -771,6 +994,7 @@
     {
       "value": "tests/resilience/",
       "consumers": [
+        "atlas",
         "nike"
       ]
     },
@@ -796,6 +1020,12 @@
       "consumers": [
         "metis"
       ]
+    },
+    {
+      "value": "tsconfig.json",
+      "consumers": [
+        "atlas"
+      ]
     }
   ],
   "commandReferences": [
@@ -816,7 +1046,8 @@
     {
       "value": "claude",
       "consumers": [
-        "odysseus"
+        "odysseus",
+        "skill:orchestration-core"
       ]
     },
     {
@@ -896,6 +1127,12 @@
       ]
     },
     {
+      "value": "java",
+      "consumers": [
+        "atlas"
+      ]
+    },
+    {
       "value": "k6",
       "consumers": [
         "aristarchus",
@@ -955,7 +1192,9 @@
         "ariadne",
         "atalanta",
         "charon",
+        "daidalos",
         "hermes",
+        "kalchas",
         "orion",
         "penelope",
         "perseus",
@@ -986,13 +1225,15 @@
     {
       "value": "pytest",
       "consumers": [
-        "kleio"
+        "kleio",
+        "skill:qa-framework-runner"
       ]
     },
     {
       "value": "python",
       "consumers": [
-        "ariadne"
+        "ariadne",
+        "atlas"
       ]
     },
     {
@@ -1050,6 +1291,18 @@
       "assetId": "browser-isolation",
       "destination": "references/BROWSER-ISOLATION.md",
       "consumers": [
+        {
+          "consumer": "hermes",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "references/BROWSER-ISOLATION.md"
+        },
+        {
+          "consumer": "proteus",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "references/BROWSER-ISOLATION.md"
+        },
         {
           "consumer": "skill:qa-browser",
           "kind": "skill",
@@ -1163,6 +1416,12 @@
           "kind": "agent",
           "mechanism": "argus-assets-path",
           "reference": "coverage-contract"
+        },
+        {
+          "consumer": "skill:qa-core",
+          "kind": "skill",
+          "mechanism": "argus-assets-path",
+          "reference": "coverage-contract"
         }
       ]
     },
@@ -1198,6 +1457,12 @@
           "consumer": "orchestration:controller",
           "kind": "orchestration",
           "mechanism": "required-asset",
+          "reference": "raci-matrix"
+        },
+        {
+          "consumer": "runtime:observedLaneArtifacts",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
           "reference": "raci-matrix"
         }
       ]
@@ -1951,6 +2216,12 @@
           "reference": "runtime-schemas"
         },
         {
+          "consumer": "kalchas",
+          "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "runtime-schemas"
+        },
+        {
           "consumer": "minos",
           "kind": "agent",
           "mechanism": "plugin-path",
@@ -1997,6 +2268,12 @@
           "kind": "orchestration",
           "mechanism": "required-asset",
           "reference": "capability-matrix"
+        },
+        {
+          "consumer": "runtime:observedLaneArtifacts",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "capability-matrix"
         }
       ]
     },
@@ -2004,6 +2281,12 @@
       "assetId": "technique-catalogs-bundle",
       "destination": "capabilities/technique-catalogs.bundle.b64",
       "consumers": [
+        {
+          "consumer": "antigone",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "antigone"
+        },
         {
           "consumer": "ariadne",
           "kind": "agent",
@@ -2017,10 +2300,34 @@
           "reference": "atalanta"
         },
         {
+          "consumer": "charon",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "charon"
+        },
+        {
+          "consumer": "lynceus",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "lynceus"
+        },
+        {
           "consumer": "metis",
           "kind": "agent",
           "mechanism": "technique-catalog-assignment",
           "reference": "metis"
+        },
+        {
+          "consumer": "orion",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "orion"
+        },
+        {
+          "consumer": "perseus",
+          "kind": "agent",
+          "mechanism": "technique-catalog-assignment",
+          "reference": "perseus"
         },
         {
           "consumer": "proteus",
@@ -2066,6 +2373,12 @@
         },
         {
           "consumer": "runtime:assertTrustedModelRoutingAssets",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "model-policy"
+        },
+        {
+          "consumer": "runtime:controllerMaxTurns",
           "kind": "command",
           "mechanism": "cli-require-asset",
           "reference": "model-policy"
@@ -2182,6 +2495,12 @@
           "consumer": "bin/argus-assets",
           "kind": "runtime",
           "mechanism": "runtime-import",
+          "reference": "../lib/finding-quality.mjs"
+        },
+        {
+          "consumer": "bin/argus-assets",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
           "reference": "../lib/json-schema.mjs"
         },
         {
@@ -2236,6 +2555,12 @@
           "consumer": "lib/contracts.mjs",
           "kind": "runtime",
           "mechanism": "runtime-import",
+          "reference": "./evidence.mjs"
+        },
+        {
+          "consumer": "lib/contracts.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
           "reference": "./finding-quality.mjs"
         },
         {
@@ -2260,13 +2585,49 @@
           "consumer": "lib/engagement.mjs",
           "kind": "runtime",
           "mechanism": "runtime-import",
+          "reference": "./evidence.mjs"
+        },
+        {
+          "consumer": "lib/engagement.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
           "reference": "./finding-quality.mjs"
         },
         {
           "consumer": "lib/engagement.mjs",
           "kind": "runtime",
           "mechanism": "runtime-import",
+          "reference": "./json-schema.mjs"
+        },
+        {
+          "consumer": "lib/engagement.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
           "reference": "./model-policy.mjs"
+        },
+        {
+          "consumer": "lib/evidence.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./authorization.mjs"
+        },
+        {
+          "consumer": "lib/evidence.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./json-schema.mjs"
+        },
+        {
+          "consumer": "lib/finding-quality.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./coverage.mjs"
+        },
+        {
+          "consumer": "lib/finding-quality.mjs",
+          "kind": "runtime",
+          "mechanism": "runtime-import",
+          "reference": "./evidence.mjs"
         },
         {
           "consumer": "lib/orchestration-plan.mjs",
@@ -2311,6 +2672,12 @@
           "reference": "typescript:common"
         },
         {
+          "consumer": "metis",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "templates/common/solution/TEST-STRATEGY.md"
+        },
+        {
           "consumer": "minos",
           "kind": "agent",
           "mechanism": "plugin-path",
@@ -2329,7 +2696,43 @@
           "reference": "typescript:runtime"
         },
         {
+          "consumer": "daidalos",
+          "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "typescript-template"
+        },
+        {
+          "consumer": "hermes",
+          "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "typescript-template"
+        },
+        {
+          "consumer": "kalchas",
+          "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "typescript-template"
+        },
+        {
+          "consumer": "penelope",
+          "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "typescript-template"
+        },
+        {
+          "consumer": "proteus",
+          "kind": "agent",
+          "mechanism": "argus-assets-path",
+          "reference": "typescript-template"
+        },
+        {
           "consumer": "runtime:copyBrowserDriver",
+          "kind": "command",
+          "mechanism": "cli-require-asset",
+          "reference": "typescript-template"
+        },
+        {
+          "consumer": "runtime:pinnedPlaywrightVersion",
           "kind": "command",
           "mechanism": "cli-require-asset",
           "reference": "typescript-template"

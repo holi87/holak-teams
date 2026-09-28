@@ -1,5 +1,5 @@
-import { calculateCoverage } from './coverage.mjs';
-import { reconcileCaseEvidence, reconcileFindings } from './finding-quality.mjs';
+import { calculateCoverage, coverageEvidenceReferences } from './coverage.mjs';
+import { ledgerEvidenceIds, quarantineFindings, reconcileCoverageEvidence, reconcileFindings } from './finding-quality.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import {
   chmodSync,
@@ -12,6 +12,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -20,7 +21,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalFragment } from './contracts.mjs';
+import { fileURLToPath } from 'node:url';
+import { assertSupersession, collectionOwnershipErrors, isCollectionContract, mergeCanonicalDocuments, migrateCanonicalDocument, renderFinalSummary, schemaId, stableIdentity, validateCanonicalDocument, validateCanonicalFragment } from './contracts.mjs';
+import { binaryRegistrationErrors, binaryReviewAuditErrors, isBinaryReference, loadRedactionPatterns, parseAuditLog, validateEvidenceContent } from './evidence.mjs';
+import { compileJsonSchema } from './json-schema.mjs';
 import {
   modelAuthenticatedDocumentSha256,
   modelConfigSha256,
@@ -28,23 +32,49 @@ import {
   verifyModelDocumentAuthentication,
 } from './model-policy.mjs';
 
-const PHASES = ['preflight', 'discovery', 'hunting', 'automation', 'verification', 'reporting', 'complete'];
-const HUNTERS = new Set(['antigone', 'ariadne', 'atalanta', 'charon', 'hermes', 'lynceus', 'orion', 'perseus', 'proteus', 'tiresias', 'tyche']);
-const AUTOMATION = new Set(['aegis', 'asklepios', 'atlas', 'daidalos', 'mnemosyne', 'nike', 'penelope', 'pistis', 'talos', 'theseus']);
-const VERIFIERS = new Set(['aristarchus', 'minos']);
-const REPORTERS = new Set(['kleio', 'metis', 'minos']);
-const ENGAGEMENT_STATE_VERSION = 2;
+const ENGAGEMENT_MANIFEST_VERSION = 2;
+const ENGAGEMENT_STATE_VERSION = 3;
+// The phase plan is derived from the packaged orchestration plan when the manifest is
+// created (derivePhasePlan). The runtime never hard-codes phase ids or lane membership.
+const PHASE_WAVES = ['controller', 'W0', 'W1', 'W2', 'W3', 'W4'];
+const PHASE_KINDS = ['control', 'work', 'proof', 'deep-hunt'];
+const PASS_PHASE_KINDS = ['proof', 'deep-hunt'];
+const PHASE_KEYS = ['id', 'wave', 'kind', 'pass', 'skippable', 'participants', 'standby'];
+const PROOF_VALIDATOR = 'minos';
+const SKIP_REASONS = ['converged', 'controller-budget'];
+// A permanently failed or budget-stopped worker lane is abandoned by the controller so the
+// barriers stop waiting for it; the record is exactly these keys. Only a budget stop may
+// abandon a lane that was never allocated, because the other reasons describe a worker that ran.
+const ABANDON_REASONS = ['continuation-exhausted', 'worker-failure', 'controller-budget'];
+const UNALLOCATED_ABANDON_REASON = 'controller-budget';
+const ABANDONABLE_OUTCOMES = ['failure', 'interrupted'];
+const ABANDONED_LANE_KEYS = ['reason', 'phase', 'abandonedAt'];
+const LEDGER_SNAPSHOT_STATUSES = [
+  ['confirmed', 'confirmed'], ['suspected', 'suspected'], ['needsOracle', 'needs-oracle'],
+  ['bounced', 'bounced'], ['quarantined', 'quarantined'],
+];
+const LEDGER_SNAPSHOT_KEYS = ['fragmentIds', ...LEDGER_SNAPSHOT_STATUSES.map(([field]) => field), 'newConfirmed', 'mergedAt'];
+const CANONICAL_MERGE_MODES = ['concatenate', 'latest-revision'];
 const HEARTBEAT_STATUSES = ['started', 'running', 'blocked', 'degraded', 'complete', 'failed'];
 const EXECUTION_BINDING_FIELDS = ['modelDecisionId', 'modelDecisionIntegritySha256', 'dispatchId', 'attempt', 'runtime'];
 const DISPATCH_AUTHORIZATION_FIELDS = [
   'dispatchAuthorizationSha256', 'dispatchAuthorizationNonce', 'dispatchAuthorizedAt',
   'dispatchAuthorizationExpiresAt', 'dispatchParentSessionId',
 ];
+// A conditional lane is sealed with its model decision but allocates only after the
+// controller records the recon gate verdicts during discovery. Odysseus resolves the gates
+// and Kalchas's discovery arrival is their evidence, so neither can be conditional.
+const UNCONDITIONAL_LANES = ['odysseus', 'kalchas'];
+const GATE_RESOLUTION_KEYS = ['resolvedAt', 'evidenceSha256', 'capabilities', 'lanes'];
+const GATE_VERDICT_KEYS = ['status', 'basis', 'reason'];
+const GATE_RESOLUTION_PHASE = 'discovery';
 
-export function createDefaultEngagement({ template, target, targetRoot, artifactRoot, mode, engagementId, selectedAgents, browserSupport, accessibilityRequirement }) {
+export function createDefaultEngagement({ template, target, targetRoot, artifactRoot, mode, engagementId, selectedAgents, browserSupport, accessibilityRequirement, phasePlan }) {
+  if (!Array.isArray(phasePlan)) throw new Error('createDefaultEngagement requires a derived phasePlan');
   const manifest = structuredClone(template);
   const agents = [...new Set(selectedAgents)].sort();
   manifest.$schema = 'https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/engagement-manifest.schema.json';
+  manifest.schemaVersion = ENGAGEMENT_MANIFEST_VERSION;
   manifest.engagementId = engagementId;
   manifest.mode = mode;
   manifest.target = { identifier: target, root: targetRoot };
@@ -52,7 +82,7 @@ export function createDefaultEngagement({ template, target, targetRoot, artifact
   manifest.selectedAgents = agents;
   manifest.accessibilityPolicy = accessibilityPolicy(manifest.accessibilityPolicy, accessibilityRequirement);
   manifest.browserPolicy.coverage = deriveBrowserCoverage(manifest.browserPolicy.coverage, browserSupport);
-  manifest.phasePlan = PHASES.map((id) => ({ id, participants: phaseParticipants(id, agents) }));
+  manifest.phasePlan = structuredClone(phasePlan);
   return manifest;
 }
 
@@ -85,7 +115,7 @@ export function deriveBrowserCoverage(fallback, support) {
 export function validateEngagementManifest(manifest) {
   const errors = [];
   if (!plainObject(manifest)) return ['manifest must be a JSON object'];
-  if (manifest.schemaVersion !== 1) errors.push('schemaVersion must be 1');
+  if (manifest.schemaVersion !== ENGAGEMENT_MANIFEST_VERSION) errors.push(`schemaVersion must be ${ENGAGEMENT_MANIFEST_VERSION}`);
   if (!nonEmpty(manifest.engagementId)) errors.push('engagementId is required');
   if (!['A', 'B', 'C', 'D'].includes(manifest.mode)) errors.push('mode must be A, B, C, or D');
   if (!plainObject(manifest.target) || !nonEmpty(manifest.target.identifier) || !(manifest.target.root === null || nonEmpty(manifest.target.root))) {
@@ -114,17 +144,7 @@ export function validateEngagementManifest(manifest) {
   }
   validateAccessibilityPolicy(manifest.accessibilityPolicy, errors);
   validateBrowserPolicy(manifest.browserPolicy, manifest.selectedAgents, errors);
-  if (!Array.isArray(manifest.phasePlan) || manifest.phasePlan.length !== PHASES.length) {
-    errors.push(`phasePlan must contain ${PHASES.join(', ')}`);
-  } else {
-    const ids = manifest.phasePlan.map((phase) => phase?.id);
-    if (JSON.stringify(ids) !== JSON.stringify(PHASES)) errors.push(`phasePlan order must be ${PHASES.join(', ')}`);
-    for (const phase of manifest.phasePlan) {
-      if (!stringList(phase?.participants, false) || !phase.participants.every((slug) => manifest.selectedAgents.includes(slug))) {
-        errors.push(`phase ${phase?.id ?? '(missing)'} participants must be selected agent slugs`);
-      }
-    }
-  }
+  validatePhasePlan(manifest.phasePlan, Array.isArray(manifest.selectedAgents) ? manifest.selectedAgents : [], errors);
   const policy = manifest.writePolicy;
   if (!plainObject(policy)) return [...errors, 'writePolicy must be an object'];
   for (const key of ['auditPath', 'fragmentRoot', 'checkpointRoot', 'workerRoot']) {
@@ -138,12 +158,14 @@ export function validateEngagementManifest(manifest) {
   } else {
     const paths = new Set();
     for (const item of policy.canonicalArtifacts) {
-      if (!safeRelative(item?.path) || !validSlug(item?.owner) || !['markdown', 'text', 'json', 'json-document'].includes(item?.format) || (item.schema !== undefined && ![null, 'bug-ledger', 'lane-plan', 'evidence-reference', 'automation-status', 'surface-inventory', 'coverage-observations', 'coverage-result', 'final-summary'].includes(item.schema)) || (item.schema && item.format !== 'json-document')) {
+      if (!safeRelative(item?.path) || !validSlug(item?.owner) || !['markdown', 'text', 'json', 'json-document'].includes(item?.format) || (item.schema !== undefined && ![null, 'bug-ledger', 'lane-plan', 'evidence-reference', 'automation-status', 'surface-inventory', 'coverage-observations', 'coverage-result', 'final-summary', 'automation-review'].includes(item.schema)) || (item.schema && item.format !== 'json-document')) {
         errors.push('canonical artifact path, owner, or format is invalid');
       } else if (paths.has(item.path)) errors.push(`duplicate canonical artifact: ${item.path}`);
       else paths.add(item.path);
+      errors.push(...canonicalMergeErrors(item));
     }
   }
+  validateOwnedWritePolicy(policy, errors);
   const bypass = policy.bypass;
   if (!plainObject(bypass) || typeof bypass.enabled !== 'boolean' || !stringList(bypass.allowedPaths, false) || !bypass.allowedPaths.every(safeRelative)) {
     errors.push('writePolicy.bypass is invalid');
@@ -170,22 +192,28 @@ export function validateEngagementManifest(manifest) {
 }
 
 export function createInitialEngagementState(manifest) {
+  const phases = phaseIds(manifest);
   return {
     $schema: 'https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/engagement-state.schema.json',
     schemaVersion: ENGAGEMENT_STATE_VERSION,
     engagementId: manifest.engagementId,
     revision: 0,
-    currentPhase: 'discovery',
+    currentPhase: phases[1],
     completedPhases: ['preflight'],
+    skippedPhases: {},
     dispatchableAgents: null,
+    conditionalAgents: null,
+    gateResolution: null,
+    abandonedLanes: {},
     allocations: {},
-    barriers: Object.fromEntries(PHASES.map((phase) => [phase, []])),
+    barriers: Object.fromEntries(phases.map((phase) => [phase, []])),
     exclusiveLocks: {},
     nextIds: Object.fromEntries(Object.keys(manifest.idAllocators).map((kind) => [kind, 1])),
     idKeys: Object.fromEntries(Object.keys(manifest.idAllocators).map((kind) => [kind, {}])),
     checkpoints: {},
     fragments: {},
     merges: {},
+    ledgerSnapshots: {},
   };
 }
 
@@ -200,30 +228,53 @@ export function initializeEngagementState(manifest) {
   return { state: readState(manifest), created: true, path: statePath };
 }
 
-export function bindDispatchableAgents(manifest, agents) {
+export function bindDispatchableAgents(manifest, agents, conditional = {}) {
   const normalized = [...new Set(agents ?? [])].sort();
   if (!normalized.includes('odysseus') || normalized.some((lane) => !manifest.selectedAgents.includes(lane))) {
     throw new Error('dispatchable agent projection must include Odysseus and remain within selectedAgents');
   }
+  const conditionalAgents = normalizeConditionalAgents(conditional, normalized);
   return mutateState(manifest, (state) => {
     if (Object.values(state.allocations).some((allocation) => allocation.status === 'active')) {
       throw new Error('dispatchable agent projection must be sealed before allocation');
     }
     if (Array.isArray(state.dispatchableAgents)) {
-      if (JSON.stringify(state.dispatchableAgents) !== JSON.stringify(normalized)) {
+      if (JSON.stringify(state.dispatchableAgents) !== JSON.stringify(normalized) ||
+          JSON.stringify(state.conditionalAgents) !== JSON.stringify(conditionalAgents)) {
         throw new Error('dispatchable agent projection is immutable once bound');
       }
       return { result: normalized, changed: false };
     }
     state.dispatchableAgents = normalized;
+    state.conditionalAgents = conditionalAgents;
     return { result: normalized, changed: true };
   });
+}
+
+// Conditional lanes are dispatchable workers whose preflight record still waits on target or
+// browser gates. Keys and gate lists are sorted so the bound projection compares byte-stably.
+function normalizeConditionalAgents(conditional, dispatchable) {
+  if (conditional === null || conditional === undefined) return {};
+  if (!plainObject(conditional)) throw new Error('conditional lanes must be an object of lane gate lists');
+  const normalized = {};
+  for (const lane of Object.keys(conditional).sort()) {
+    if (!dispatchable.includes(lane) || UNCONDITIONAL_LANES.includes(lane)) {
+      throw new Error(`conditional lane ${lane} must be a dispatchable worker other than ${UNCONDITIONAL_LANES.join(' and ')}`);
+    }
+    const gates = conditional[lane];
+    if (!Array.isArray(gates) || gates.length === 0 || !gates.every(validCapabilityId)) {
+      throw new Error(`conditional lane ${lane} must list one or more capability ids`);
+    }
+    normalized[lane] = [...new Set(gates)].sort();
+  }
+  return normalized;
 }
 
 export function allocateWorker(manifest, lane, { resumeToken, controllerToken, executionBinding, dispatchAuthorization } = {}) {
   requireSelected(manifest, lane);
   return mutateState(manifest, (state) => {
     requireDispatchableState(state, lane);
+    requireConditionalRelease(state, lane);
     const workerRoot = engagementPath(manifest, join(manifest.writePolicy.workerRoot, lane));
     const leasePath = join(workerRoot, '.lease');
     const leaseEntry = lstatEntry(leasePath);
@@ -246,6 +297,7 @@ export function allocateWorker(manifest, lane, { resumeToken, controllerToken, e
     }
     if (leaseEntry) throw new Error(`unexpected existing lease file for ${lane}`);
     const recoveredFromCrash = existing?.status === 'active';
+    if (Object.hasOwn(state.abandonedLanes, lane)) throw new Error(`${lane} was abandoned (${state.abandonedLanes[lane].reason}) and cannot be allocated again`);
     let binding;
     let dispatchBinding;
     if (recoveredFromCrash) {
@@ -259,6 +311,11 @@ export function allocateWorker(manifest, lane, { resumeToken, controllerToken, e
     } else {
       binding = validateExecutionBinding(executionBinding);
       requireControllerAllocation(manifest, state, lane, controllerToken, { bootstrap: true });
+      // A released allocation consumed its dispatch lineage: its decisions already carry their
+      // one telemetry event each, so a new allocation on that lineage could never record its own.
+      if (existing?.status === 'released' && (existing.dispatchId === binding.dispatchId || existing.modelDecisionId === binding.modelDecisionId)) {
+        throw new Error(`${lane} dispatch ${binding.dispatchId} was consumed by its released allocation; retry on an active lease with engagement start-attempt, or abandon a permanently failed lane with engagement barrier abandon`);
+      }
       dispatchBinding = validateDispatchAuthorization(manifest, lane, binding, dispatchAuthorization);
       if (binding.runtime === 'codex') validateDispatchAuthorizationUse(manifest, state, lane, existing, dispatchBinding, { operation: 'allocation' });
     }
@@ -302,8 +359,10 @@ export function startWorkerAttempt(manifest, lane, { token, controllerToken, exe
   return mutateState(manifest, (state) => {
     requireDispatchableState(state, lane);
     const allocation = state.allocations[lane];
-    requireLeaseState(manifest, state, lane, token);
-    requireLiveLeaseFile(manifest, state, lane, token);
+    // A worker retry may be started on controller authority alone; the controller then
+    // receives the rotated lane token without ever holding the consumed one.
+    const authority = requireLaneOrControllerAuthority(manifest, state, lane, { token, controllerToken });
+    if (authority === 'lane') requireLiveLeaseFile(manifest, state, lane, token);
     requireControllerAllocation(manifest, state, lane, controllerToken ?? (lane === 'odysseus' ? token : null));
     if (!hasExecutionBinding(allocation)) throw new Error(`${lane} retry requires an authenticated active attempt`);
     if (binding.runtime !== allocation.runtime || binding.dispatchId !== allocation.dispatchId || binding.attempt !== allocation.attempt + 1) {
@@ -311,6 +370,7 @@ export function startWorkerAttempt(manifest, lane, { token, controllerToken, exe
     }
     const decision = loadImmutableSelectedDecision(manifest, lane, binding);
     validateRetryLineage(manifest, state, allocation, decision);
+    requireRetryBackoffElapsed(lane, decision);
     const dispatchBinding = validateDispatchAuthorization(manifest, lane, binding, dispatchAuthorization, allocation.allocationId);
     if (binding.runtime === 'codex') validateDispatchAuthorizationUse(manifest, state, lane, allocation, dispatchBinding, { operation: 'retry' });
     const nextToken = randomBytes(32).toString('hex');
@@ -318,7 +378,7 @@ export function startWorkerAttempt(manifest, lane, { token, controllerToken, exe
     if (dispatchBinding) Object.assign(allocation, dispatchBindingWithHistory(allocation, dispatchBinding));
     allocation.leaseTokenSha256 = sha256(nextToken);
     return {
-      result: { ...publicAllocation(allocation), token: nextToken, attemptStarted: true, previousAttempt: binding.attempt - 1 },
+      result: { ...publicAllocation(allocation), token: nextToken, attemptStarted: true, previousAttempt: binding.attempt - 1, authority },
       changed: true,
     };
   });
@@ -357,17 +417,46 @@ export function releaseExclusive(manifest, lane, token, resource) {
 export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, content) {
   const canonical = requireCanonical(manifest, canonicalPath);
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(fragmentId)) throw new Error('fragment id must be a stable filename-safe identifier');
+  const revised = canonical.merge === 'latest-revision';
+  if (revised && lane !== canonical.owner) throw new Error(`${canonical.path} revisions are written only by ${canonical.owner}`);
+  if (isSingleDocumentCanonical(canonical) && lane !== canonical.owner) {
+    throw new Error(`${canonical.path} is a single-document contract; only ${canonical.owner} may submit fragments`);
+  }
   let persistedContent = String(content);
   if (canonical.schema) {
     const { errors, document } = validateCanonicalFragment(canonical.schema, content);
     if (errors.length) throw new Error(`fragment does not satisfy a compatible ${canonical.schema} contract: ${errors.join('; ')}`);
     if (document.engagementId !== manifest.engagementId) throw new Error(`fragment engagementId does not match ${manifest.engagementId}`);
+    if (canonical.schema === 'evidence-reference') {
+      const registration = document.references.flatMap((ref) => binaryRegistrationErrors(ref, lane));
+      if (registration.length) throw new Error(registration.join('; '));
+    }
+    // An owned collection record belongs to its lane, so the writer learns of a foreign record now.
+    const ownership = collectionOwnershipErrors(canonical.schema, document, lane, canonical.owner);
+    if (ownership.length) throw new Error(ownership.join('; '));
     const migrated = migrateCanonicalDocument(canonical.schema, document);
     if (migrated !== document) persistedContent = `${JSON.stringify(migrated, null, 2)}\n`;
   }
   let digest = sha256(persistedContent);
   return mutateState(manifest, (state) => {
     requireLeaseState(manifest, state, lane, token);
+    const list = state.fragments[canonical.path] ?? [];
+    if (canonical.schema === 'evidence-reference') {
+      const incoming = new Map(JSON.parse(persistedContent).references.map((ref) => [ref.id, JSON.stringify(ref)]));
+      // Check under the state lock before creating an immutable file: another lane may have
+      // registered this ID after schema validation, and a rejected file must never persist.
+      for (const record of list) {
+        const existing = readManagedFile(engagementPath(manifest, record.path), `evidence fragment ${record.path}`);
+        if (sha256(existing) !== record.sha256) throw new Error(`fragment digest drift: ${record.path}`);
+        const checked = validateCanonicalFragment('evidence-reference', existing);
+        if (checked.errors.length) throw new Error(`invalid evidence fragment ${record.path}: ${checked.errors.join('; ')}`);
+        for (const ref of checked.document.references) {
+          if (incoming.has(ref.id) && incoming.get(ref.id) !== JSON.stringify(ref)) {
+            throw new Error(`evidence reference ${ref.id} conflicts with fragment ${record.path}; allocate a new ID with argus-assets engagement id --kind evidence --identity ${lane}:<source>`);
+          }
+        }
+      }
+    }
     const key = sha256(canonical.path).slice(0, 16);
     const dir = engagementPath(manifest, join(manifest.writePolicy.fragmentRoot, key));
     const path = join(dir, `${fragmentId}--${lane}.${canonical.format.startsWith('json') ? 'json' : canonical.format === 'markdown' ? 'md' : 'txt'}`);
@@ -387,9 +476,12 @@ export function writeFragment(manifest, lane, token, canonicalPath, fragmentId, 
       writeFileSync(path, persistedContent, { flag: 'wx', mode: 0o600 });
       chmodSync(path, 0o600);
     }
-    const list = state.fragments[canonical.path] ?? [];
-    const record = { id: fragmentId, lane, path: relative(manifest.artifactRoot, path).split(sep).join('/'), sha256: digest };
-    if (!list.some((item) => item.id === fragmentId && item.lane === lane)) list.push(record);
+    // An identical replay keeps the record, and with it the sequence, it was first given.
+    const replay = list.find((item) => item.id === fragmentId && item.lane === lane);
+    if (replay) return { result: replay, changed: false };
+    const record = { id: fragmentId, lane, path: relative(manifest.artifactRoot, path).split(sep).join('/'), sha256: digest, sequence: nextFragmentSequence(state.fragments) };
+    if (revised) record.revision = nextFragmentRevision(list);
+    list.push(record);
     state.fragments[canonical.path] = list.sort(fragmentOrder);
     return { result: record, changed: true };
   });
@@ -408,10 +500,24 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
       if (sha256(content) !== record.sha256) throw new Error(`fragment digest drift: ${record.path}`);
       return content.toString('utf8').trimEnd();
     });
+    // Every revision stays digest-checked above; only the highest one is published.
+    const latest = canonical.merge === 'latest-revision' ? latestFragmentRevision(canonical, records) : null;
+    let quarantined = [];
+    let effective = null;
+    let coverageInputs = null;
     let output;
     if (canonical.format === 'json-document') {
-      const documents = contents.map((content) => JSON.parse(content));
-      const document = mergeCanonicalDocuments(canonical.schema, documents);
+      let documents = contents.map((content) => JSON.parse(content));
+      // A superseded single document stays digest-checked and valid; only the latest one is merged.
+      if (isSingleDocumentCanonical(canonical) && records.length > 1) {
+        effective = supersedingFragment(manifest, canonical, records, contents);
+        documents = [documents[records.indexOf(effective)]];
+      }
+      // An owned collection record is superseded by its owner's later fragment of the same key.
+      const writers = isCollectionContract(canonical.schema) ? records.map((record) => ({ lane: record.lane, sequence: fragmentSequence(canonical, record) })) : null;
+      const document = mergeCanonicalDocuments(canonical.schema, documents, { writers, canonicalOwner: canonical.owner });
+      if (canonical.schema === 'evidence-reference') verifyEvidenceRegistry(manifest, records, documents, document);
+      if (canonical.schema === 'automation-review') assertCurrentReviewCorpus(manifest, document);
       if (canonical.schema === 'coverage-result') {
         const readDocument = (kind, path) => {
           const checked = validateCanonicalFragment(kind, readManagedFile(engagementPath(manifest, path), path));
@@ -420,64 +526,639 @@ export function mergeCanonical(manifest, owner, token, canonicalPath) {
         };
         const inventory = readDocument('surface-inventory', 'solution/surface-inventory.json');
         const observations = readDocument('coverage-observations', 'solution/coverage-observations.json');
-        if (observations.observations.some(row => row.cases?.length)) {
-          const evidence = readDocument('evidence-reference', 'solution/evidence-reference.json');
-          const errors = reconcileCaseEvidence(inventory, observations, evidence,
-            source => readManagedFile(engagementPath(manifest, source), 'coverage evidence'));
+        const evidence = existsSync(engagementPath(manifest, 'solution/evidence-reference.json'))
+          ? readDocument('evidence-reference', 'solution/evidence-reference.json') : null;
+        // Defect outcomes follow the canonical ledger; only an engagement without Minos may omit it.
+        let ledger = null;
+        if (state.merges['solution/bug-ledger.json']) ledger = readDocument('bug-ledger', 'solution/bug-ledger.json');
+        else if ((state.dispatchableAgents ?? manifest.selectedAgents).includes('minos')) throw new Error('coverage defect outcomes require the canonical bug ledger');
+        // Once Atlas has merged the automation status, every credited runner case must map to its surface.
+        const automationStatus = state.merges['solution/automation-status.json']
+          ? readDocument('automation-status', 'solution/automation-status.json') : null;
+        const readArtifact = source => readManagedFile(engagementPath(manifest, source), 'coverage evidence');
+        if (evidence && coverageEvidenceReferences(inventory, observations).length) {
+          const errors = reconcileCoverageEvidence(inventory, observations, evidence, readArtifact);
           if (errors.length) throw new Error(errors.join('; '));
         }
-        const calculated = calculateCoverage(inventory, observations);
+        const calculated = calculateCoverage(inventory, observations, { evidence, ledger, automationStatus, readArtifact });
         const canonicalJson = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
           ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
         if (canonicalJson({ ...document, generatedAt: null }) !== canonicalJson({ ...calculated, generatedAt: null })) throw new Error('coverage result does not match canonical inputs');
+        coverageInputs = coverageInputDigests(manifest);
       }
-      if (canonical.schema === 'final-summary' && document.coverage) {
-        const path = engagementPath(manifest, 'solution/coverage-result.json');
-        if (existsSync(path)) {
-          const checked = validateCanonicalFragment('coverage-result', readManagedFile(path, 'canonical case depth'));
-          if (checked.errors.length || checked.document.engagementId !== manifest.engagementId) throw new Error('invalid final coverage source');
-          const depth = checked.document.overall.caseDepth;
-          if (depth) {
-            document.coverage.caseDepth = depth;
-            if ((depth.coverage === null || depth.gaps.length || depth.unplannedSurfaces.length) && document.status === 'completed') document.status = 'degraded';
-          } else delete document.coverage.caseDepth;
-        } else if (document.coverage.caseDepth) throw new Error('case depth claim requires canonical coverage result');
-      }
-      if (canonical.schema === 'final-summary' && document.runner === null && (manifest.mode !== 'B' || document.counts.automated !== 0)) throw new Error('runner=null is only valid for Mode B without automation');
-      if (canonical.schema === 'bug-ledger' && document.bugs.some(bug => bug.status === 'confirmed')) {
+      if (canonical.schema === 'final-summary') applyFinalSummaryFacts(manifest, state, document);
+      if (canonical.schema === 'bug-ledger' && document.bugs.some(bug => ledgerEvidenceIds(bug).length > 0)) {
         const evidencePath = engagementPath(manifest, 'solution/evidence-reference.json');
         const evidenceRecords = state.fragments['solution/evidence-reference.json'] ?? [];
         // Minos runs before Kleio's reporting wave. Verify immutable contributions
         // directly; requiring the later canonical evidence merge would deadlock.
+        const registrars = new Map();
         const content = evidenceRecords.length ? JSON.stringify(mergeCanonicalDocuments('evidence-reference', evidenceRecords.map(record => {
           const raw = readManagedFile(engagementPath(manifest, record.path), 'finding evidence fragment');
           if (sha256(raw) !== record.sha256) throw new Error('finding evidence fragment digest drift');
-          return JSON.parse(raw);
+          const fragment = JSON.parse(raw);
+          for (const ref of fragment.references ?? []) registrars.set(ref.id, record.lane);
+          return fragment;
         }))) : readManagedFile(evidencePath, 'finding evidence registry');
         const checked = validateCanonicalFragment('evidence-reference', content);
         if (checked.errors.length) throw new Error(`invalid finding evidence registry: ${checked.errors.join('; ')}`);
-        const errors = reconcileFindings(document, checked.document,
-          source => readManagedFile(engagementPath(manifest, source), 'finding evidence'));
+        const binaryAudit = binaryAuditVerifier(manifest);
+        const { errors, byBug } = reconcileFindings(document, checked.document,
+          source => readManagedFile(engagementPath(manifest, source), 'finding evidence'),
+          { verifyReference: ref => (registrars.has(ref.id) ? binaryRegistrationErrors(ref, registrars.get(ref.id)) : []).concat(binaryAudit(ref)) });
         if (errors.length) throw new Error(`finding reconciliation failed: ${errors.join('; ')}`);
+        quarantined = quarantineLedgerFindings(document, byBug);
       }
       output = `${JSON.stringify(document, null, 2)}\n`;
     } else if (canonical.format === 'json') output = `${JSON.stringify(contents.map((content) => JSON.parse(content)), null, 2)}\n`;
+    else if (latest) output = `${contents[records.indexOf(latest)]}\n`;
     else output = `${contents.join('\n\n')}\n`;
     const destination = engagementPath(manifest, canonical.path);
-    atomicWrite(destination, output);
+    atomicWrite(destination, output, canonical.executable ? 0o700 : 0o600);
     if (canonical.schema === 'final-summary') {
       atomicWrite(engagementPath(manifest, 'solution/FINAL-SUMMARY.md'), renderFinalSummary(JSON.parse(output), { launchAssurance: manifest.launchAssurance }));
     }
     const result = { owner, fragments: records.length, sha256: sha256(output), mergedAt: new Date().toISOString() };
+    if (latest) Object.assign(result, { revision: latest.revision, supersededFragments: records.length - 1 });
+    if (effective) Object.assign(result, { effectiveFragment: effective.id, supersededFragments: records.length - 1 });
+    if (canonical.schema === 'bug-ledger') result.quarantined = quarantined;
+    if (coverageInputs) result.inputs = coverageInputs;
     state.merges[canonical.path] = result;
+    if (canonical.schema === 'bug-ledger') {
+      state.ledgerSnapshots[state.currentPhase] = ledgerSnapshot(manifest, state, JSON.parse(output), records, result.mergedAt);
+    }
     return { result: { ...result, path: destination }, changed: true };
+  });
+}
+
+// Aristarchus's review record binds each round to the test corpus it judged: every file that
+// decides what the runner executes and how. The corpus is the selected template's test and
+// harness roots (or, without a valid selection, the generated test directories), the runner
+// entry point and scripts/, the target-owned runner declarations, Maven test resources, and the
+// runner and dependency configuration files at the artifact root, minus dependency and cache
+// directories and the packaged hunt driver. Build and report output lives at the artifact root,
+// outside every corpus root, so a spec below tests/**/reports/ or tests/**/build/ stays in the
+// corpus. Each line is `<path>\0<sha256>\n`, and the digest covers the sorted lines, so it
+// changes whenever a corpus file is added, removed, or edited.
+const REVIEW_CORPUS_EXCLUDED_SEGMENTS = new Set(['node_modules', '.git', '.venv', 'venv', '__pycache__', '.pytest_cache']);
+const REVIEW_CORPUS_EXCLUDED_FILES = new Set([
+  'scripts/hunt-driver.mjs', 'scripts/driver.config.json', 'scripts/driver.config.example.json', 'scripts/driver-config.schema.json',
+]);
+const REVIEW_CORPUS_FIXED_ROOTS = [
+  'run-tests.sh', 'scripts', 'solution/test-lanes.tsv', 'solution/environment.tsv', 'solution/quarantine.tsv',
+  'solution/counterfactual', 'src/test/resources',
+];
+const REVIEW_CORPUS_ROOT_CONFIG = /^(?:playwright\.config\.[cm]?[jt]s|package(?:-lock)?\.json|tsconfig(?:\.[A-Za-z0-9_-]+)?\.json|pyproject\.toml|conftest\.py|pytest\.ini|setup\.cfg|tox\.ini|requirements[A-Za-z0-9_.-]*\.txt|pom\.xml)$/;
+const TEMPLATE_SELECTION_RECORD = 'ai_agents_internal/template-selection.json';
+const TEMPLATE_SELECTION_SCHEMA = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas', 'template-selection.schema.json');
+let templateSelectionValidator = null;
+
+export function reviewCorpusDigest(manifest) {
+  const root = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
+  const selection = reviewTemplateSelection(manifest);
+  const candidates = selection
+    ? [selection.testRoot, selection.harnessRoot]
+    : manifest.writePolicy.generatedTestRoots.map((path) => path.replace(/\/+$/, ''))
+      .filter((path) => canonicalCorpusRoot(path) && reviewCorpusEntry(root, path)?.isDirectory());
+  const configs = readdirSync(root).filter((name) => REVIEW_CORPUS_ROOT_CONFIG.test(name));
+  const present = [...new Set([...candidates, ...REVIEW_CORPUS_FIXED_ROOTS, ...configs])].filter((path) => reviewCorpusEntry(root, path));
+  const roots = present.filter((path) => !present.some((other) => path.startsWith(`${other}/`))).sort();
+  const files = new Map();
+  for (const path of roots) collectReviewCorpus(root, path, files);
+  const lines = [...files].map(([path, digest]) => `${path}\0${digest}\n`).sort();
+  return { sha256: sha256(lines.join('')), fileCount: files.size, roots };
+}
+
+// The canonical review record, verified against its merge record, or null before the first merge.
+export function readAutomationReview(manifest, state) {
+  const canonical = automationReviewCanonical(manifest);
+  const merge = state.merges?.[canonical.path];
+  if (!merge) return null;
+  const content = readManagedFile(engagementPath(manifest, canonical.path), canonical.path);
+  if (sha256(content) !== merge.sha256) throw new Error(`${canonical.path} does not match its merge record`);
+  const { errors, document } = validateCanonicalFragment('automation-review', content);
+  if (errors.length) throw new Error(`${canonical.path} is invalid: ${errors.join('; ')}`);
+  if (document.engagementId !== manifest.engagementId) throw new Error(`${canonical.path} engagementId does not match ${manifest.engagementId}`);
+  return { path: canonical.path, document, latest: document.reviews.at(-1) };
+}
+
+// approved: the latest round APPROVEs the current corpus. blocked: it BLOCKs. stale: it APPROVEd
+// a corpus that has since changed. absent: Aristarchus is dispatchable and nothing is merged yet.
+export function automationReviewStatus(manifest, state) {
+  const review = readAutomationReview(manifest, state);
+  if (!review) {
+    const required = (state.dispatchableAgents ?? manifest.selectedAgents).includes('aristarchus');
+    return { status: required ? 'absent' : 'not-applicable', reviewId: null, round: null, blockers: 0, warnings: 0 };
+  }
+  const { latest } = review;
+  const status = latest.verdict === 'BLOCK' ? 'blocked'
+    : latest.corpus.sha256 !== reviewCorpusDigest(manifest).sha256 ? 'stale' : 'approved';
+  return { status, reviewId: latest.reviewId, round: latest.round, blockers: latest.blockers.length, warnings: latest.warnings.length };
+}
+
+function automationReviewCanonical(manifest) {
+  const canonical = manifest.writePolicy.canonicalArtifacts.find((item) => item.schema === 'automation-review');
+  if (!canonical) throw new Error('engagement manifest declares no automation-review canonical artifact');
+  return canonical;
+}
+
+// A merge publishes only a latest round that judged the corpus as it is now.
+function assertCurrentReviewCorpus(manifest, document) {
+  const latest = document.reviews.at(-1);
+  const current = reviewCorpusDigest(manifest);
+  if (latest.corpus.sha256 !== current.sha256) {
+    throw new Error(`automation review ${latest.reviewId} judged corpus ${latest.corpus.sha256}, but the current test corpus is ${current.sha256}; re-review required`);
+  }
+}
+
+// A selection counts only when it is a schema-valid record whose roots are canonical relative
+// paths; otherwise the digest falls back to the generated test roots.
+function reviewTemplateSelection(manifest) {
+  const path = engagementPath(manifest, TEMPLATE_SELECTION_RECORD);
+  const entry = reviewCorpusEntry(resolvePhysical(manifest.artifactRoot, manifest.artifactRoot), TEMPLATE_SELECTION_RECORD);
+  if (!entry) return null;
+  let selection;
+  try { selection = JSON.parse(readManagedFile(path, TEMPLATE_SELECTION_RECORD).toString('utf8')); }
+  catch { return null; }
+  templateSelectionValidator ??= compileJsonSchema(JSON.parse(readFileSync(TEMPLATE_SELECTION_SCHEMA, 'utf8')));
+  if (templateSelectionValidator(selection).length || !canonicalCorpusRoot(selection.testRoot) || !canonicalCorpusRoot(selection.harnessRoot)) return null;
+  return selection;
+}
+
+function canonicalCorpusRoot(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(value) && value.split('/').every((part) => part !== '.' && part !== '..');
+}
+
+// lstat of a corpus path below the physical artifact root, or null when it does not exist. A
+// symbolic link anywhere on the path throws, so the corpus cannot alias files outside it.
+function reviewCorpusEntry(root, path) {
+  let cursor = root;
+  let stats = null;
+  for (const part of path.split('/')) {
+    cursor = join(cursor, part);
+    try { stats = lstatSync(cursor); }
+    catch (error) {
+      if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return null;
+      throw error;
+    }
+    if (stats.isSymbolicLink()) throw new Error(`automation review corpus cannot contain a symbolic link: ${relative(root, cursor).split(sep).join('/')}`);
+  }
+  return stats;
+}
+
+function collectReviewCorpus(root, path, files) {
+  if (path.split('/').some((part) => REVIEW_CORPUS_EXCLUDED_SEGMENTS.has(part)) || REVIEW_CORPUS_EXCLUDED_FILES.has(path)) return;
+  const absolute = join(root, ...path.split('/'));
+  const stats = lstatSync(absolute);
+  if (stats.isSymbolicLink()) throw new Error(`automation review corpus cannot contain a symbolic link: ${path}`);
+  if (stats.isDirectory()) {
+    for (const name of readdirSync(absolute).sort()) collectReviewCorpus(root, `${path}/${name}`, files);
+    return;
+  }
+  if (!stats.isFile()) throw new Error(`automation review corpus entry is not a regular file: ${path}`);
+  const fd = openSync(absolute, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try { files.set(path, sha256(readFileSync(fd))); }
+  finally { closeSync(fd); }
+}
+
+// Kleio writes the final summary's narrative, never its facts. Counts, likely-but-unproven
+// findings, unresolved proof residuals, the review verdict, the runner outcome, coverage, and
+// source schemas are derived from the merge-verified canonical inputs, and every status reason
+// carries a ceiling the merged status can never be better than (completed < degraded < blocked).
+const FINAL_SUMMARY_DERIVED_FIELDS = Object.freeze(['counts', 'unproven', 'residuals', 'automationReview', 'runner', 'coverage', 'sourceSchemas', 'statusReasons']);
+const FINAL_SUMMARY_STATUS_ORDER = Object.freeze(['completed', 'degraded', 'blocked']);
+const FINAL_SUMMARY_TESTED_STATUSES = new Set(['implemented', 'passed', 'failed']);
+const FINAL_SUMMARY_DEGRADING_EXIT_CODES = new Set([11, 12, 13, 14, 15]);
+const FINAL_SUMMARY_RUNNER_RESULT = 'reports/argus-runner-result.json';
+const FINAL_SUMMARY_COVERAGE_RESULT = 'solution/coverage-result.json';
+const TEMPLATE_SELECTION_MISSING = 'template-selection-missing';
+const RUNNER_RESULT_MISSING = 'runner-result-missing';
+const RUNNER_RESULT_UNREGISTERED = 'runner-result-unregistered';
+const RUNNER_PREDATES_AUTOMATION_REVIEW = 'runner-predates-automation-review';
+const FINAL_SUMMARY_RUNNER_SCRIPT = 'run-tests.sh';
+
+// Without a fragment (`engagement report-facts`) the runner outcome is read whenever the runner
+// result exists. With a fragment, a non-null runner requires that file, and a null runner stays
+// null so the merge can enforce the Mode B unfunded-automation rule against derived counts;
+// once the run-tests.sh owner was abandoned, an existing result is read for a null runner too.
+export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
+  const dispatchable = state.dispatchableAgents ?? manifest.selectedAgents;
+  const ledger = readMergedCanonical(manifest, state, 'solution/bug-ledger.json', 'bug-ledger');
+  if (!ledger && dispatchable.includes('minos')) throw new Error('final summary counts require the canonical bug ledger while minos is dispatchable');
+  const evidence = readMergedCanonical(manifest, state, 'solution/evidence-reference.json', 'evidence-reference');
+  const automationStatus = readMergedCanonical(manifest, state, 'solution/automation-status.json', 'automation-status');
+  const coverageResult = readMergedCanonical(manifest, state, FINAL_SUMMARY_COVERAGE_RESULT, 'coverage-result');
+  if (!coverageResult) throw new Error(`final summary coverage requires the merged canonical ${FINAL_SUMMARY_COVERAGE_RESULT}`);
+  // The coverage merge recalculated its result from these canonical inputs; any later change to
+  // one of them (a superseding inventory, new observations or evidence, a re-merged ledger or
+  // automation status) makes the published coverage stale until it is merged again.
+  const recorded = state.merges[FINAL_SUMMARY_COVERAGE_RESULT].inputs;
+  if (!recorded) throw new Error(`${FINAL_SUMMARY_COVERAGE_RESULT} merge records no canonical inputs; merge it again`);
+  const changed = Object.entries(coverageInputDigests(manifest)).filter(([path, digest]) => recorded[path] !== digest).map(([path]) => path);
+  if (changed.length) throw new Error(`${FINAL_SUMMARY_COVERAGE_RESULT} is stale: ${changed.join(', ')} changed after it was merged; merge it again`);
+  const review = readAutomationReview(manifest, state);
+  const automationReview = automationReviewStatus(manifest, state);
+
+  const bugs = ledger?.bugs ?? [];
+  const idsWith = (status) => bugs.filter((bug) => bug.status === status).map((bug) => bug.id).sort();
+  const confirmed = idsWith('confirmed');
+  const suspected = idsWith('suspected').length;
+  const tested = (automationStatus?.tests ?? []).filter((test) => FINAL_SUMMARY_TESTED_STATUSES.has(test.status));
+  const regressed = new Set(tested.flatMap((test) => test.coversBugIds));
+  const counts = {
+    bugs: {
+      confirmed: confirmed.length,
+      suspected,
+      needsOracle: idsWith('needs-oracle').length,
+      bounced: idsWith('bounced').length,
+      quarantined: idsWith('quarantined').length,
+      duplicate: idsWith('duplicate').length,
+      rejected: idsWith('rejected').length,
+      headline: confirmed.length + suspected,
+    },
+    regression: {
+      wired: confirmed.filter((id) => regressed.has(id)).length,
+      uncovered: confirmed.filter((id) => !regressed.has(id)),
+    },
+    automated: tested.length,
+    evidence: evidence?.references.length ?? 0,
+  };
+  const unproven = bugs.filter((bug) => bug.status === 'suspected' || bug.status === 'needs-oracle')
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+    .map((bug) => {
+      if (!bug.missingProof) throw new Error(`${bug.id} is ${bug.status} without missingProof`);
+      return { id: bug.id, title: bug.title, severity: bug.severity, status: bug.status, missing: [...bug.missingProof.elements], detail: bug.missingProof.detail };
+    });
+  // A bounced or quarantined finding the proof loop left unresolved (proofLoop.exhaustion) is a
+  // named residual of the final report; it is never dropped.
+  const residuals = bugs.filter((bug) => bug.status === 'bounced' || bug.status === 'quarantined')
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+    .map((bug) => {
+      if (bug.status === 'bounced' ? !bug.repair : !bug.quarantine) throw new Error(`${bug.id} is ${bug.status} without ${bug.status === 'bounced' ? 'repair' : 'quarantine'}`);
+      return {
+        id: bug.id, title: bug.title, severity: bug.severity, status: bug.status,
+        repairRound: bug.repair?.round ?? null, missing: [...(bug.repair?.missing ?? [])], reasons: [...(bug.quarantine?.reasons ?? [])],
+      };
+    });
+
+  const runnerPresent = Boolean(lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT)));
+  const runnerOwner = manifest.writePolicy.canonicalArtifacts.find((item) => item.path === FINAL_SUMMARY_RUNNER_SCRIPT)?.owner;
+  const runnerOwnerAbandoned = manifest.mode !== 'B' && Boolean(runnerOwner) && Object.hasOwn(state.abandonedLanes, runnerOwner);
+  const runnerRead = (fragment && fragment.runner !== null) || (runnerPresent && (!fragment || runnerOwnerAbandoned))
+    ? readRunnerResult(manifest) : null;
+  // The live runner result counts only as the registered runner-result evidence with its exact
+  // bytes, so a hand-written or since-overwritten file cannot stand in for a recorded run. The
+  // bytes are matched before they are parsed. Only the abandoned run-tests.sh owner could still
+  // archive and register a result, so a result it left unregistered (a later run, or an
+  // interrupted write) is named by runner-result-unregistered instead of cited.
+  const runnerEvidence = runnerRead && (evidence?.references ?? []).find((ref) => ref.kind === 'runner-result' && ref.sha256 === runnerRead.sha256);
+  const runnerUnregistered = Boolean(runnerRead && !runnerEvidence && runnerOwnerAbandoned);
+  if (runnerRead && !runnerEvidence && !runnerOwnerAbandoned) {
+    throw new Error(`${FINAL_SUMMARY_RUNNER_RESULT} (sha256 ${runnerRead.sha256}) is not registered runner-result evidence in the merged solution/evidence-reference.json; a later run replaced the registered result, or none was registered: the run-tests.sh owner reruns full-suite and archives and registers that run, never this one, then the registry is merged again`);
+  }
+  const runnerResult = runnerEvidence ? parseRunnerResult(runnerRead.content) : null;
+  const runner = runnerResult && {
+    mode: runnerResult.mode,
+    status: runnerResult.status,
+    exitCode: runnerResult.exitCode,
+    resultPath: FINAL_SUMMARY_RUNNER_RESULT,
+    evidenceId: runnerEvidence.id,
+    categories: Object.fromEntries(['product', 'automation', 'infrastructure', 'skip', 'policy'].map((category) => [category, runnerResult.categories[category]])),
+    deliveryGate: runnerResult.deliveryGate,
+  };
+  // W3 can pass before Aristarchus reviews and repairs the corpus in verification. Its
+  // registered result proves delivery only if the full-suite policy gate observed the latest
+  // APPROVE. Atlas can recover on reporting standby while his lease is active; otherwise keep
+  // the actual runner outcome but block closeout instead of presenting a pre-review green.
+  const runnerPredatesReview = manifest.mode !== 'B' && dispatchable.includes('aristarchus') && automationReview.status === 'approved' &&
+    (runnerResult !== null || !runnerPresent) &&
+    !(runnerResult?.mode === 'full-suite' && runnerResult.events.some((event) =>
+      event.caseId === `automation-review.${automationReview.reviewId}` && event.category === 'policy' && event.status === 'pass'));
+  if (runnerPredatesReview && state.allocations[runnerOwner]?.status === 'active') {
+    throw new Error(`registered runner result does not prove a full-suite run after ${automationReview.reviewId}; re-dispatch ${runnerOwner} on reporting standby to rerun full-suite after ${automationReview.reviewId} and register it, then merge the registry and the coverage result again`);
+  }
+
+  const overall = coverageResult.overall;
+  const coverage = {
+    resultPath: FINAL_SUMMARY_COVERAGE_RESULT,
+    discoveryCompleteness: coverageResult.discovery.completeness,
+    executionCoverage: overall.executionCoverage,
+    assertionQuality: overall.assertionQuality,
+    evidenceQuality: overall.evidenceQuality,
+    automatedExecution: overall.automatedExecution,
+    scopedOutcomes: coverageResult.scopedOutcomes.length,
+    criticalUnexecuted: [...coverageResult.criticalUnexecuted],
+    ...(overall.caseDepth ? { caseDepth: structuredClone(overall.caseDepth) } : {}),
+  };
+  const sourceSchemas = [ledger, evidence, automationStatus, runnerResult, coverageResult, review?.document]
+    .filter(Boolean).map((document) => document.$schema);
+
+  const ceilings = new Map();
+  if (runnerPredatesReview) ceilings.set(RUNNER_PREDATES_AUTOMATION_REVIEW, 'blocked');
+  if (['blocked', 'stale', 'absent'].includes(automationReview.status)) ceilings.set(`automation-review-${automationReview.status}`, 'blocked');
+  if (runner && counts.regression.uncovered.length > 0) ceilings.set('confirmed-bug-without-regression', 'blocked');
+  if (coverage.criticalUnexecuted.length > 0) ceilings.set('critical-surface-unexecuted', 'degraded');
+  if (residuals.length > 0) ceilings.set('unresolved-proof-residuals', 'degraded');
+  // Required-case depth is unproven unless the coverage result records it complete: a missing
+  // depth, an unplanned surface, or any gap counts, so a summary cannot overstate coverage.
+  const depth = coverage.caseDepth;
+  if (!depth || depth.coverage === null || depth.gaps.length > 0 || depth.unplannedSurfaces.length > 0) ceilings.set('case-depth-gaps', 'degraded');
+  if (runner && runner.deliveryGate !== true) ceilings.set('runner-not-delivery-gate', 'degraded');
+  if (runner && FINAL_SUMMARY_DEGRADING_EXIT_CODES.has(runner.exitCode)) ceilings.set(`runner-exit-${runner.exitCode}`, 'degraded');
+  for (const reason of skippedPhaseStatusReasons(state)) ceilings.set(reason, 'degraded');
+  for (const reason of gateUnmetStatusReasons(state)) ceilings.set(reason, 'degraded');
+  for (const reason of abandonedLaneStatusReasons(state)) ceilings.set(reason, 'degraded');
+  for (const reason of unmergedCanonicalStatusReasons(manifest, state)) ceilings.set(reason, 'degraded');
+  // Modes A, C, and D fund automation, but without the operator's installed template selection
+  // no framework, runner, or runner result can exist, and once the lane that owns the runner
+  // script is abandoned no runner result can follow or be registered. Each justifies a null
+  // runner outcome and blocks the summary; none ever excuses a registered runner result. With a
+  // selection installed and the dispatchable runner-script owner not abandoned, a missing runner
+  // result justifies nothing, so no null runner is offered: the refusal names the recovery.
+  if (!runner && manifest.mode !== 'B') {
+    const selection = reviewTemplateSelection(manifest);
+    if (!selection) ceilings.set(TEMPLATE_SELECTION_MISSING, 'blocked');
+    if (runnerUnregistered) ceilings.set(RUNNER_RESULT_UNREGISTERED, 'blocked');
+    else if (runnerOwnerAbandoned && !runnerPresent) ceilings.set(RUNNER_RESULT_MISSING, 'blocked');
+    else if (selection && !runnerPresent && dispatchable.includes(runnerOwner)) throw new Error(pendingRunnerResultRefusal(runnerOwner, state));
+  }
+  const statusReasons = [...ceilings.keys()].sort();
+  const statusCeiling = [...ceilings.values()].reduce(worseFinalSummaryStatus, 'completed');
+  return { counts, unproven, residuals, automationReview, runner, coverage, sourceSchemas, statusCeiling, statusReasons };
+}
+
+// While the runner-script owner holds its lease on reporting standby, it can still run the
+// full-suite and register the result; once released unabandoned, only its abandonment can
+// justify the null runner outcome.
+function pendingRunnerResultRefusal(owner, state) {
+  const missing = `no ${FINAL_SUMMARY_RUNNER_RESULT} exists while the ${FINAL_SUMMARY_RUNNER_SCRIPT} owner ${owner} is not abandoned`;
+  return state.allocations[owner]?.status === 'active'
+    ? `${missing}; re-dispatch ${owner} on reporting standby to run the full-suite and register its archived runner result, then merge the registry and the coverage result again`
+    : `${missing} and holds no active lease; abandon ${owner} with engagement barrier abandon so the summary records ${RUNNER_RESULT_MISSING}`;
+}
+
+// The merge overwrites every derived field of Kleio's fragment and never raises its status.
+function applyFinalSummaryFacts(manifest, state, document) {
+  const facts = deriveFinalSummaryFacts(manifest, state, document);
+  if (document.runner === null && !nullRunnerAllowed(manifest, facts)) {
+    throw new Error(`runner=null is only valid for Mode B without automation, or in Mode A, C, or D without a ${FINAL_SUMMARY_RUNNER_RESULT} while no template selection is installed and nothing was automated, or after the ${FINAL_SUMMARY_RUNNER_SCRIPT} owner was abandoned while no ${FINAL_SUMMARY_RUNNER_RESULT} is registered runner-result evidence`);
+  }
+  for (const field of FINAL_SUMMARY_DERIVED_FIELDS) document[field] = facts[field];
+  document.status = worseFinalSummaryStatus(document.status, facts.statusCeiling);
+  const errors = validateCanonicalDocument('final-summary', document);
+  if (errors.length) throw new Error(`derived final summary is invalid: ${errors.join('; ')}`);
+}
+
+// A null runner outcome is valid for Mode B without automation. In Modes A, C, and D it needs a
+// blocking status reason: the abandoned runner-script owner left a result nobody can register
+// any more, or no runner result exists and either the template selection is missing while
+// nothing was automated or the runner-script owner, whose recorded tests no runner ever
+// executed, was abandoned.
+function nullRunnerAllowed(manifest, facts) {
+  if (manifest.mode === 'B') return facts.counts.automated === 0;
+  if (facts.statusReasons.includes(RUNNER_RESULT_UNREGISTERED)) return true;
+  if (lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT))) return false;
+  if (facts.statusReasons.includes(RUNNER_RESULT_MISSING)) return true;
+  return facts.counts.automated === 0 && facts.statusReasons.includes(TEMPLATE_SELECTION_MISSING);
+}
+
+function worseFinalSummaryStatus(left, right) {
+  return FINAL_SUMMARY_STATUS_ORDER.indexOf(left) >= FINAL_SUMMARY_STATUS_ORDER.indexOf(right) ? left : right;
+}
+
+// A canonical input counts only once merged, and only while its file still matches the digest
+// its merge record published.
+function readMergedCanonical(manifest, state, path, schema) {
+  const canonical = requireCanonical(manifest, path);
+  if (canonical.schema !== schema) throw new Error(`${path} is not declared as the ${schema} canonical`);
+  const merge = state.merges?.[canonical.path];
+  if (!merge) return null;
+  const content = readManagedFile(engagementPath(manifest, canonical.path), canonical.path);
+  if (sha256(content) !== merge.sha256) throw new Error(`${canonical.path} does not match its merge record`);
+  const { errors, document } = validateCanonicalFragment(schema, content);
+  if (errors.length) throw new Error(`${canonical.path} is invalid: ${errors.join('; ')}`);
+  if (document.engagementId !== manifest.engagementId) throw new Error(`${canonical.path} engagementId does not match ${manifest.engagementId}`);
+  return document;
+}
+
+function readRunnerResult(manifest) {
+  const path = engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT);
+  if (!lstatEntry(path)) throw new Error(`final summary runner outcome requires ${FINAL_SUMMARY_RUNNER_RESULT}`);
+  const content = readManagedFile(path, FINAL_SUMMARY_RUNNER_RESULT);
+  return { content, sha256: sha256(content) };
+}
+
+function parseRunnerResult(content) {
+  const { errors, document } = validateCanonicalFragment('runner-result', content);
+  if (errors.length) throw new Error(`${FINAL_SUMMARY_RUNNER_RESULT} is invalid: ${errors.join('; ')}`);
+  return document;
+}
+
+// The digest of each canonical coverage input file as it is now, or null when it does not exist.
+const COVERAGE_RESULT_INPUTS = Object.freeze([
+  'solution/surface-inventory.json', 'solution/coverage-observations.json', 'solution/evidence-reference.json',
+  'solution/bug-ledger.json', 'solution/automation-status.json',
+]);
+function coverageInputDigests(manifest) {
+  return Object.fromEntries(COVERAGE_RESULT_INPUTS.map((path) => {
+    const absolute = engagementPath(manifest, path);
+    return [path, lstatEntry(absolute) ? sha256(readManagedFile(absolute, path)) : null];
+  }));
+}
+
+const LANE_OUTCOMES_SCHEMA_ID = 'argus/lane-outcomes@1';
+const LANE_OUTCOMES_SCHEMA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas');
+const LANE_OUTCOMES_DECISION_FILE = /^MDR-[a-f0-9]{24}\.json$/;
+const LANE_OUTCOMES_LEDGER = 'solution/bug-ledger.json';
+const LANE_OUTCOMES_AUTOMATION = 'solution/automation-status.json';
+const LANE_OUTCOMES_LEDGER_STATUSES = Object.freeze({
+  confirmed: 'confirmed',
+  suspected: 'suspected',
+  'needs-oracle': 'needsOracle',
+  bounced: 'bounced',
+  quarantined: 'quarantined',
+  duplicate: 'duplicate',
+  rejected: 'rejected',
+});
+const LANE_OUTCOMES_HEADLINE_STATUSES = new Set(['confirmed', 'suspected']);
+const LANE_OUTCOMES_SEVERE = new Set(['Blocker', 'Critical']);
+let laneOutcomeValidators = null;
+
+// The count-only per-lane outcome report (argus/lane-outcomes@1) the controller cites at
+// closeout. It never writes: it reads the immutable model decisions, the telemetry log, and the
+// merged, digest-checked bug ledger and automation status. Only the active Odysseus controller
+// token, re-checked against the live lease under the state lock, may compute it. Every decision
+// and telemetry event must be schema-valid, bound to this engagement, and name a selected lane,
+// so one inconsistent record fails the report instead of undercounting it. A ledger row or test
+// attributed to an unselected lane is counted under sources, never dropped.
+export function computeLaneOutcomes(manifest, policy, { controllerToken, generatedAt = new Date().toISOString() } = {}) {
+  const decisionDirectory = policy?.routing?.decisionDirectory;
+  const telemetryPath = policy?.telemetry?.defaultPath;
+  if (!safeRelative(decisionDirectory) || !String(decisionDirectory).startsWith('ai_agents_internal/')) {
+    throw new Error('lane outcomes require a model policy decision directory under ai_agents_internal/');
+  }
+  if (!safeRelative(telemetryPath) || !String(telemetryPath).startsWith('ai_agents_internal/')) {
+    throw new Error('lane outcomes require a model policy telemetry path under ai_agents_internal/');
+  }
+  laneOutcomeValidators ??= {
+    decision: compileJsonSchema(JSON.parse(readFileSync(join(LANE_OUTCOMES_SCHEMA_DIR, 'model-decision.schema.json'), 'utf8'))),
+    telemetry: compileJsonSchema(JSON.parse(readFileSync(join(LANE_OUTCOMES_SCHEMA_DIR, 'model-telemetry-event.schema.json'), 'utf8'))),
+  };
+  return withStateLock(manifest, () => {
+    const state = readState(manifest);
+    requireControllerAllocation(manifest, state, 'odysseus', controllerToken);
+    const lanes = new Map(manifest.selectedAgents.map((agent) => [agent, emptyLaneOutcome(agent)]));
+    const selectedLane = (agent, label) => {
+      if (!lanes.has(agent)) throw new Error(`${label} names ${agent}, which is not selected for engagement ${manifest.engagementId}`);
+      return lanes.get(agent);
+    };
+
+    const decisions = readLaneOutcomeDecisions(manifest, decisionDirectory, laneOutcomeValidators.decision);
+    for (const decision of decisions.values()) {
+      const counts = selectedLane(decision.agent, `model decision ${decision.decisionId}`).decisions;
+      counts.total += 1;
+      if (decision.signal === 'normal') counts.normal += 1;
+      else counts.escalations += 1;
+      if (decision.signal === 'turn-limit') counts.turnLimit += 1;
+      if (decision.signal === 'no-artifact') counts.noArtifact += 1;
+      if (decision.signal === 'zero-candidates') counts.zeroCandidates += 1;
+      if (decision.reasonCode === 'AUTO_CONTINUE_SELECTED') counts.autoContinued += 1;
+      if (decision.reasonCode === 'BACKOFF_RETRY_SELECTED') counts.backoffRetries += 1;
+      if (decision.status === 'blocked') counts.blocked += 1;
+    }
+
+    const events = readLaneOutcomeTelemetry(manifest, telemetryPath, laneOutcomeValidators.telemetry, decisions);
+    for (const event of events) {
+      const telemetry = selectedLane(event.agent, `model telemetry event ${event.eventId}`).telemetry;
+      telemetry.events += 1;
+      if (event.success) telemetry.successes += 1;
+      else telemetry.failures += 1;
+      telemetry.totalTokens += event.totalTokens;
+      if (typeof event.reportedCostUsd === 'number') telemetry.reportedCostUsd = (telemetry.reportedCostUsd ?? 0) + event.reportedCostUsd;
+    }
+
+    let unattributedLedgerRows = 0;
+    const ledger = readMergedCanonical(manifest, state, LANE_OUTCOMES_LEDGER, 'bug-ledger');
+    for (const bug of ledger?.bugs ?? []) {
+      const counts = lanes.get(bug.lane)?.ledger;
+      if (!counts) {
+        unattributedLedgerRows += 1;
+        continue;
+      }
+      if (!Object.hasOwn(LANE_OUTCOMES_LEDGER_STATUSES, bug.status)) throw new Error(`${LANE_OUTCOMES_LEDGER} ${bug.id} has unknown status ${bug.status}`);
+      counts.reported += 1;
+      counts[LANE_OUTCOMES_LEDGER_STATUSES[bug.status]] += 1;
+      if (bug.wired === true) counts.wired += 1;
+      if (LANE_OUTCOMES_HEADLINE_STATUSES.has(bug.status) && LANE_OUTCOMES_SEVERE.has(bug.severity)) counts.severe += 1;
+    }
+
+    let unattributedTests = 0;
+    const automationStatus = readMergedCanonical(manifest, state, LANE_OUTCOMES_AUTOMATION, 'automation-status');
+    for (const test of automationStatus?.tests ?? []) {
+      const counts = lanes.get(test.owner)?.automation;
+      if (!counts) {
+        unattributedTests += 1;
+        continue;
+      }
+      counts.tests += 1;
+      if (test.coversBugIds.length > 0) counts.coveringBugs += 1;
+      if (test.status === 'failed') counts.failed += 1;
+    }
+
+    const mergedDigest = (path, document) => (document ? state.merges[requireCanonical(manifest, path).path].sha256 : null);
+    return {
+      schema: LANE_OUTCOMES_SCHEMA_ID,
+      schemaVersion: 1,
+      engagementId: manifest.engagementId,
+      generatedAt,
+      sources: {
+        bugLedgerSha256: mergedDigest(LANE_OUTCOMES_LEDGER, ledger),
+        automationStatusSha256: mergedDigest(LANE_OUTCOMES_AUTOMATION, automationStatus),
+        decisions: decisions.size,
+        telemetryEvents: events.length,
+        unattributedLedgerRows,
+        unattributedTests,
+      },
+      // Costs are summed in micro-dollars so repeated recomputation never drifts in the last digit.
+      lanes: [...lanes.values()].map((lane) => ({
+        ...lane,
+        telemetry: {
+          ...lane.telemetry,
+          reportedCostUsd: lane.telemetry.reportedCostUsd === null ? null : Math.round(lane.telemetry.reportedCostUsd * 1e6) / 1e6,
+        },
+      })),
+    };
+  });
+}
+
+function emptyLaneOutcome(agent) {
+  return {
+    agent,
+    decisions: { total: 0, normal: 0, turnLimit: 0, escalations: 0, noArtifact: 0, zeroCandidates: 0, autoContinued: 0, backoffRetries: 0, blocked: 0 },
+    telemetry: { events: 0, successes: 0, failures: 0, totalTokens: 0, reportedCostUsd: null },
+    ledger: { reported: 0, confirmed: 0, suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, wired: 0, severe: 0 },
+    automation: { tests: 0, coveringBugs: 0, failed: 0 },
+  };
+}
+
+// Every MDR file directly under the decision directory, keyed by decision ID. Operator records
+// and selection locks share the directory and are skipped by name; a decision must be a
+// single-link regular file whose identity, path, engagement, and integrity digest all agree.
+function readLaneOutcomeDecisions(manifest, decisionDirectory, validate) {
+  const directory = engagementPath(manifest, decisionDirectory);
+  const entry = lstatEntry(directory);
+  const decisions = new Map();
+  if (!entry) return decisions;
+  if (entry.isSymbolicLink() || !entry.isDirectory()) throw new Error(`${decisionDirectory} must be a real directory`);
+  for (const name of readdirSync(directory).filter((item) => LANE_OUTCOMES_DECISION_FILE.test(item)).sort()) {
+    const relativePath = `${decisionDirectory}/${name}`;
+    let decision;
+    try { decision = JSON.parse(readManagedFile(join(directory, name), `model decision ${relativePath}`).toString('utf8')); }
+    catch (error) { throw new Error(`model decision ${relativePath} is unreadable: ${error.message}`); }
+    const errors = validate(decision);
+    if (errors.length) throw new Error(`model decision ${relativePath} is invalid: ${errors.map((item) => `${item.instancePath || '/'} ${item.message}`).join('; ')}`);
+    if (`${decision.decisionId}.json` !== name || decision.relativePath !== relativePath) throw new Error(`model decision ${relativePath} does not match its file name`);
+    if (decision.engagementId !== manifest.engagementId) throw new Error(`model decision ${relativePath} belongs to another engagement`);
+    if (modelDecisionIntegritySha256(decision) !== decision.integritySha256) throw new Error(`model decision ${relativePath} failed its integrity digest`);
+    decisions.set(decision.decisionId, decision);
+  }
+  return decisions;
+}
+
+// The append-only telemetry log: one schema-valid event per immutable decision, each bound to
+// that decision's integrity digest, lane, dispatch, and attempt.
+function readLaneOutcomeTelemetry(manifest, telemetryPath, validate, decisions) {
+  const path = engagementPath(manifest, telemetryPath);
+  if (!lstatEntry(path)) return [];
+  const lines = readManagedFile(path, `model telemetry ${telemetryPath}`).toString('utf8').split('\n').filter((line) => line.trim() !== '');
+  const seen = new Set();
+  return lines.map((line, index) => {
+    const label = `${telemetryPath} line ${index + 1}`;
+    let event;
+    try { event = JSON.parse(line); }
+    catch { throw new Error(`${label} is not valid JSON`); }
+    const errors = validate(event);
+    if (errors.length) throw new Error(`${label} is invalid: ${errors.map((item) => `${item.instancePath || '/'} ${item.message}`).join('; ')}`);
+    if (event.engagementId !== manifest.engagementId) throw new Error(`${label} belongs to another engagement`);
+    const decision = decisions.get(event.decisionId);
+    if (!decision || decision.integritySha256 !== event.decisionIntegritySha256 || decision.agent !== event.agent ||
+        decision.dispatchId !== event.dispatchId || decision.attempt !== event.attempt || decision.runtime !== event.runtime) {
+      throw new Error(`${label} is not bound to an immutable decision of this engagement`);
+    }
+    if (seen.has(event.decisionId)) throw new Error(`${label} repeats telemetry for ${event.decisionId}`);
+    seen.add(event.decisionId);
+    return event;
   });
 }
 
 export function allocateId(manifest, lane, token, kind, identity) {
   const allocator = manifest.idAllocators[kind];
   if (!allocator) throw new Error(`unknown ID allocator: ${kind}`);
-  if (allocator.owner !== lane) throw new Error(`${kind} IDs are owned by ${allocator.owner}, not ${lane}`);
+  const anyActiveLane = kind === 'evidence' && allocator.owner === 'any-active-lane';
+  if (!anyActiveLane && allocator.owner !== lane) throw new Error(`${kind} IDs are owned by ${allocator.owner}, not ${lane}`);
+  if (anyActiveLane && (typeof identity !== 'string' || !identity.startsWith(`${lane}:`) || !identity.slice(lane.length + 1).trim())) {
+    throw new Error(`evidence identity must start with ${lane}: and include a non-empty source`);
+  }
   const identityHash = stableIdentity(identity);
   return mutateState(manifest, (state) => {
     requireLeaseState(manifest, state, lane, token);
@@ -494,7 +1175,7 @@ export function allocateId(manifest, lane, token, kind, identity) {
 }
 
 export function writeCheckpoint(manifest, lane, token, phase, sequence, dispatchId, attempt, payload) {
-  if (!PHASES.includes(phase)) throw new Error(`unknown phase: ${phase}`);
+  if (!phaseIds(manifest).includes(phase)) throw new Error(`unknown phase: ${phase}`);
   if (!Number.isInteger(sequence) || sequence < 0) throw new Error('checkpoint sequence must be a non-negative integer');
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(dispatchId ?? '')) throw new Error('checkpoint dispatchId is invalid');
   if (!Number.isInteger(attempt) || attempt < 1) throw new Error('checkpoint attempt must be a positive integer');
@@ -552,7 +1233,7 @@ export function ensurePreflightHeartbeat(manifest, timestamp = new Date().toISOS
     const relativePath = relative(manifest.artifactRoot, path).split(sep).join('/');
     const allocation = state.allocations.odysseus;
     if (existsSync(path)) {
-      const records = parseHeartbeatLog(readManagedFile(path, 'Odysseus heartbeat').toString('utf8'), 'odysseus');
+      const records = parseHeartbeatLog(readManagedFile(path, 'Odysseus heartbeat').toString('utf8'), 'odysseus', phaseIds(manifest));
       const initial = records[0];
       if (initial?.phase === 'preflight' && initial.completed === 0 && initial.total === 1 && initial.status === 'running') {
         return { disposition: 'existing', wrote: false, lane: 'odysseus', path: relativePath, record: initial };
@@ -569,7 +1250,8 @@ export function ensurePreflightHeartbeat(manifest, timestamp = new Date().toISOS
 
 function appendHeartbeatRecord(manifest, lane, phase, completed, total, status, timestamp, { initialOnly = false, executionBinding = null } = {}) {
   if (!manifest.selectedAgents.includes(lane)) throw new Error(`heartbeat lane is not selected: ${lane}`);
-  if (!PHASES.includes(phase)) throw new Error(`heartbeat phase is invalid: ${phase}`);
+  const phases = phaseIds(manifest);
+  if (!phases.includes(phase)) throw new Error(`heartbeat phase is invalid: ${phase}`);
   if (!Number.isInteger(completed) || completed < 0 || !Number.isInteger(total) || total < 1 || completed > total) {
     throw new Error('heartbeat progress must satisfy 0 <= completed <= total');
   }
@@ -580,9 +1262,9 @@ function appendHeartbeatRecord(manifest, lane, phase, completed, total, status, 
   const fd = openManagedAppendFile(path, `${lane} heartbeat`);
   try {
     const existing = readFileSync(fd, 'utf8');
-    const records = parseHeartbeatLog(existing, lane);
+    const records = parseHeartbeatLog(existing, lane, phases);
     const candidate = { lane, phase, completed, total, status, recordedAt: timestamp, ...(executionBinding ?? {}) };
-    if (records.length > 0) validateHeartbeatTransition(records.at(-1), candidate);
+    if (records.length > 0) validateHeartbeatTransition(records.at(-1), candidate, phases);
     const generation = executionBinding ? `\t${executionBinding.allocationId}\t${executionBinding.dispatchId}\t${executionBinding.attempt}` : '';
     writeFileSync(fd, `${timestamp}\t${lane}\t${phase}\t${completed}/${total}\t${status}${generation}\n`);
     fsyncSync(fd);
@@ -601,12 +1283,12 @@ function heartbeatPath(manifest, lane, { createRoot = false } = {}) {
   return join(heartbeatRoot, `${lane}.log`);
 }
 
-function parseHeartbeatLog(content, expectedLane) {
+function parseHeartbeatLog(content, expectedLane, phases) {
   if (content === '') return [];
   if (!content.endsWith('\n')) throw new Error(`heartbeat log for ${expectedLane} has an incomplete record`);
   const records = content.trimEnd().split('\n').map((line, index) => {
-    const match = line.match(/^([^\t]+)\t([a-z][a-z0-9-]*)\t(preflight|discovery|hunting|automation|verification|reporting|complete)\t(\d+)\/(\d+)\t(started|running|blocked|degraded|complete|failed)(?:\t([a-f0-9]{24})\t([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\t([1-9][0-9]*))?$/);
-    if (!match || match[2] !== expectedLane || !validDate(match[1])) throw new Error(`heartbeat log for ${expectedLane} has an invalid record at line ${index + 1}`);
+    const match = line.match(/^([^\t]+)\t([a-z][a-z0-9-]*)\t([a-z][a-z0-9-]*)\t(\d+)\/(\d+)\t(started|running|blocked|degraded|complete|failed)(?:\t([a-f0-9]{24})\t([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\t([1-9][0-9]*))?$/);
+    if (!match || match[2] !== expectedLane || !phases.includes(match[3]) || !validDate(match[1])) throw new Error(`heartbeat log for ${expectedLane} has an invalid record at line ${index + 1}`);
     const completed = Number(match[4]);
     const total = Number(match[5]);
     if (!Number.isSafeInteger(completed) || !Number.isSafeInteger(total) || total < 1 || completed < 0 || completed > total) {
@@ -617,14 +1299,14 @@ function parseHeartbeatLog(content, expectedLane) {
       ...(match[7] ? { allocationId: match[7], dispatchId: match[8], attempt: Number(match[9]) } : {}),
     };
   });
-  for (let index = 1; index < records.length; index += 1) validateHeartbeatTransition(records[index - 1], records[index]);
+  for (let index = 1; index < records.length; index += 1) validateHeartbeatTransition(records[index - 1], records[index], phases);
   return records;
 }
 
-function validateHeartbeatTransition(previous, candidate) {
+function validateHeartbeatTransition(previous, candidate, phases) {
   if (Date.parse(candidate.recordedAt) < Date.parse(previous.recordedAt)) throw new Error('heartbeat timestamp regressed');
-  const previousPhase = PHASES.indexOf(previous.phase);
-  const candidatePhase = PHASES.indexOf(candidate.phase);
+  const previousPhase = phases.indexOf(previous.phase);
+  const candidatePhase = phases.indexOf(candidate.phase);
   if (candidatePhase < previousPhase) throw new Error(`heartbeat phase regressed from ${previous.phase} to ${candidate.phase}`);
   const previousGeneration = previous.allocationId !== undefined;
   const candidateGeneration = candidate.allocationId !== undefined;
@@ -638,6 +1320,10 @@ function validateHeartbeatTransition(previous, candidate) {
     return;
   }
   if (candidatePhase > previousPhase) return;
+  // A phase-scoped re-dispatch on the same allocation (a Minos cluster thread, the consolidator,
+  // a repair round) opens its own work unit with `started` at completed 0. The monotonic rules
+  // below apply within each work unit, never across them.
+  if (candidate.status === 'started' && candidate.completed === 0) return;
   if (candidate.total !== previous.total) throw new Error(`heartbeat total changed within ${candidate.phase}`);
   if (candidate.completed < previous.completed) throw new Error(`heartbeat progress regressed from ${previous.completed} to ${candidate.completed}`);
   const allowed = {
@@ -651,16 +1337,17 @@ function validateHeartbeatTransition(previous, candidate) {
   if (!allowed[previous.status].includes(candidate.status)) throw new Error(`heartbeat status regressed from ${previous.status} to ${candidate.status}`);
 }
 
-export function arriveBarrier(manifest, lane, token, phase) {
+export function arriveBarrier(manifest, lane, token, phase, { controllerToken } = {}) {
   return mutateState(manifest, (state) => {
-    requireLeaseState(manifest, state, lane, token);
+    const authority = requireLaneOrControllerAuthority(manifest, state, lane, { token, controllerToken });
+    if (Object.hasOwn(state.skippedPhases, phase)) throw new Error(`phase ${phase} was skipped (${state.skippedPhases[phase].reason})`);
     if (state.currentPhase !== phase) throw new Error(`current phase is ${state.currentPhase}, not ${phase}`);
     const participants = barrierParticipants(manifest, state, phase);
     if (!participants.includes(lane)) throw new Error(`${lane} is not a participant in ${phase}`);
     const arrivals = new Set(state.barriers[phase] ?? []);
     arrivals.add(lane);
     state.barriers[phase] = [...arrivals].sort();
-    return { result: barrierStatus(manifest, state, phase), changed: true };
+    return { result: { ...barrierStatus(manifest, state, phase), authority }, changed: true };
   });
 }
 
@@ -671,11 +1358,137 @@ export function advanceBarrier(manifest, lane, token) {
     const phase = state.currentPhase;
     const status = barrierStatus(manifest, state, phase);
     if (!status.complete) throw new Error(`phase ${phase} is waiting for: ${status.missing.join(', ')}`);
-    const index = PHASES.indexOf(phase);
-    if (index < 0 || index === PHASES.length - 1) throw new Error(`phase ${phase} cannot advance`);
+    // Conditional lanes are verdict-bound in discovery: leaving it unresolved would strand
+    // them, because gate resolution runs only while discovery is the current phase.
+    if (phase === GATE_RESOLUTION_PHASE && hasConditionalLanes(state) && state.gateResolution === null) {
+      throw new Error('discovery cannot advance before engagement resolve-gates records the conditional lane verdicts');
+    }
+    // A proof phase ends with the validator's ledger merge: its snapshot is the convergence
+    // evidence a later deep-hunt skip is checked against.
+    if (phaseDefinition(manifest, phase).kind === 'proof' && status.participants.includes(PROOF_VALIDATOR) &&
+        !Object.hasOwn(state.ledgerSnapshots, phase)) {
+      throw new Error(`proof phase ${phase} requires a Minos bug-ledger merge before it can advance`);
+    }
+    // The merged final summary is the engagement's only completion record, so the phase its
+    // owner reports in cannot advance, and the engagement cannot complete, without it.
+    const summary = finalSummaryCanonical(manifest);
+    if (summary && status.participants.includes(summary.owner) && !readMergedCanonical(manifest, state, summary.path, 'final-summary')) {
+      throw new Error(`phase ${phase} requires the ${summary.owner} merge of ${summary.path} before it can advance`);
+    }
+    const phases = phaseIds(manifest);
+    const index = phases.indexOf(phase);
+    const next = index < 0 ? undefined : nextUnskippedPhase(phases, state, index);
+    if (!next) throw new Error(`phase ${phase} cannot advance`);
     if (!state.completedPhases.includes(phase)) state.completedPhases.push(phase);
-    state.currentPhase = PHASES[index + 1];
+    state.currentPhase = next;
     return { result: { completed: phase, currentPhase: state.currentPhase }, changed: true };
+  });
+}
+
+// Skips the remaining deep-hunt passes. Only Odysseus may skip, only from the untouched
+// start of a skippable deep-hunt pass, and a converged skip must be backed by the previous
+// proof phase's ledger snapshot recording zero new confirmed defects. Every skip is recorded
+// with its reason; a controller-budget skip later degrades a completed final summary.
+export function skipPhases(manifest, lane, token, reason) {
+  if (lane !== 'odysseus') throw new Error('only odysseus may skip phases');
+  return mutateState(manifest, (state) => {
+    requireLeaseState(manifest, state, lane, token);
+    const current = state.currentPhase;
+    const definition = phaseDefinition(manifest, current);
+    if (definition.skippable !== true) throw new Error(`phase ${current} is not skippable`);
+    if (definition.kind !== 'deep-hunt') throw new Error('only a deep-hunt pass can start a skip');
+    if ((state.barriers[current] ?? []).length > 0) throw new Error(`phase ${current} already has arrivals`);
+    if (!SKIP_REASONS.includes(reason)) throw new Error('skip reason must be converged or controller-budget');
+    let basis = null;
+    if (reason === 'converged') {
+      const previous = manifest.phasePlan.find((phase) => phase.kind === 'proof' && phase.pass === definition.pass - 1);
+      const snapshot = previous ? state.ledgerSnapshots[previous.id] : undefined;
+      if (!snapshot || snapshot.newConfirmed.length > 0) {
+        throw new Error(`converged skip requires ${previous?.id ?? `the pass ${definition.pass - 1} proof phase`} to record zero new confirmed defects`);
+      }
+      basis = previous.id;
+    }
+    const phases = phaseIds(manifest);
+    const start = phases.indexOf(current);
+    const skippedAt = new Date().toISOString();
+    const skipped = [];
+    for (const phase of manifest.phasePlan.slice(start)) {
+      if (!PASS_PHASE_KINDS.includes(phase.kind) || phase.pass < definition.pass) break;
+      state.skippedPhases[phase.id] = { reason, skippedAt, basis };
+      skipped.push(phase.id);
+    }
+    const next = nextUnskippedPhase(phases, state, start);
+    if (!next) throw new Error(`phase ${current} has no later phase to continue with`);
+    state.currentPhase = next;
+    return { result: { skipped, currentPhase: state.currentPhase, reason }, changed: true };
+  });
+}
+
+// Abandons a worker lane that can never arrive again, so no barrier deadlocks on it. Only the
+// active Odysseus controller may abandon, only a lane already released with outcome failure or
+// interrupted or, for a controller-budget stop, a lane that was never allocated, and never a
+// lane the runtime itself depends on (see nonAbandonableLanes). The lane then leaves every
+// phase's participants and standby lanes, like a gate-unmet lane, cannot be allocated again,
+// and the final-summary merge names it as lane-abandoned:<lane>.
+export function abandonLane(manifest, lane, controllerToken, reason) {
+  requireSelected(manifest, lane);
+  if (!ABANDON_REASONS.includes(reason)) throw new Error(`abandon reason must be one of ${ABANDON_REASONS.join(', ')}`);
+  if (nonAbandonableLanes(manifest).includes(lane)) throw new Error(`${lane} cannot be abandoned; its permanent failure stops the engagement`);
+  return mutateState(manifest, (state) => {
+    requireControllerAuthority(manifest, state, lane, controllerToken);
+    requireDispatchableState(state, lane);
+    if (Object.hasOwn(state.abandonedLanes, lane)) throw new Error(`${lane} was already abandoned (${state.abandonedLanes[lane].reason})`);
+    if (omittedConditionalLanes(state).has(lane)) throw new Error(`${lane} was omitted as gate-unmet and holds no barrier`);
+    const allocation = state.allocations[lane];
+    if (!abandonableAllocation(allocation, reason)) {
+      throw new Error(allocation
+        ? `${lane} can be abandoned only after its cleanup with outcome failure or interrupted`
+        : `${lane} was never allocated; only a ${UNALLOCATED_ABANDON_REASON} stop can abandon it`);
+    }
+    state.abandonedLanes[lane] = { reason, phase: state.currentPhase, abandonedAt: new Date().toISOString() };
+    return { result: { lane, ...state.abandonedLanes[lane], barrier: barrierStatus(manifest, state, state.currentPhase) }, changed: true };
+  });
+}
+
+// Read-only precondition check for gate resolution. The CLI runs it before interpreting any
+// evidence, so a call that resolveConditionalGates would refuse never probes a browser or
+// rewrites the browser runtime record. It returns the gates the resolution must cover.
+export function conditionalGateRequest(manifest, controllerToken) {
+  return withStateLock(manifest, () => {
+    const state = readState(manifest);
+    requireGateResolutionPreconditions(manifest, state, controllerToken);
+    return { conditionalAgents: structuredClone(state.conditionalAgents), capabilities: conditionalGateUnion(state.conditionalAgents) };
+  });
+}
+
+// Records the one-shot verdict for every conditional gate. Only the controller may resolve,
+// only in discovery after Kalchas has arrived, and only once. The caller supplies a verdict
+// per capability; the lane outcomes are always computed here: a lane is released exactly
+// when every one of its gates is proven, and otherwise it is omitted as gate-unmet.
+export function resolveConditionalGates(manifest, controllerToken, resolution = {}) {
+  if (!plainObject(resolution) || Object.keys(resolution).some((key) => !['evidenceSha256', 'capabilities'].includes(key))) {
+    throw new Error('gate resolution accepts only evidenceSha256 and capabilities; lane verdicts are computed by the runtime');
+  }
+  const { evidenceSha256 = null, capabilities } = resolution;
+  if (!(evidenceSha256 === null || /^[a-f0-9]{64}$/.test(evidenceSha256))) throw new Error('gate resolution evidenceSha256 must be null or a SHA-256 hex digest');
+  return mutateState(manifest, (state) => {
+    requireGateResolutionPreconditions(manifest, state, controllerToken);
+    const required = conditionalGateUnion(state.conditionalAgents);
+    if (!plainObject(capabilities) || JSON.stringify(Object.keys(capabilities).sort()) !== JSON.stringify(required)) {
+      throw new Error(`gate resolution must cover exactly the conditional gates: ${required.join(', ')}`);
+    }
+    const verdicts = {};
+    for (const id of required) {
+      if (!validGateVerdict(capabilities[id])) throw new Error(`gate verdict for ${id} must be exactly status (proven or unmet), basis, and reason`);
+      verdicts[id] = { status: capabilities[id].status, basis: capabilities[id].basis, reason: capabilities[id].reason };
+    }
+    state.gateResolution = {
+      resolvedAt: new Date().toISOString(),
+      evidenceSha256,
+      capabilities: verdicts,
+      lanes: conditionalLaneVerdicts(state.conditionalAgents, verdicts),
+    };
+    return { result: structuredClone(state.gateResolution), changed: true };
   });
 }
 
@@ -683,15 +1496,15 @@ export function getBarrierStatus(manifest, phase) {
   return barrierStatus(manifest, readState(manifest), phase ?? readState(manifest).currentPhase);
 }
 
-export function cleanupWorker(manifest, lane, token, outcome) {
+export function cleanupWorker(manifest, lane, token, outcome, { controllerToken } = {}) {
   if (!['success', 'failure', 'interrupted'].includes(outcome)) throw new Error('cleanup outcome must be success, failure, or interrupted');
   return mutateState(manifest, (state) => {
     const allocation = state.allocations[lane];
     if (!allocation) throw new Error(`no allocation exists for ${lane}`);
-    if (!nonEmpty(token) || allocation.leaseTokenSha256 !== sha256(token)) throw new Error(`invalid lease for ${lane}`);
+    const authority = cleanupAuthority(manifest, state, lane, allocation, { token, controllerToken });
     if (allocation.status === 'released') {
       if (allocation.outcome !== outcome) throw new Error(`${lane} was already cleaned with outcome ${allocation.outcome}`);
-      return { result: { lane, outcome, released: true, idempotent: true }, changed: false };
+      return { result: { lane, outcome, released: true, idempotent: true, authority }, changed: false };
     }
     if (lane === 'odysseus') {
       const activePeers = Object.values(state.allocations).filter((candidate) => candidate.lane !== lane && candidate.status === 'active');
@@ -705,11 +1518,19 @@ export function cleanupWorker(manifest, lane, token, outcome) {
         throw new Error('Odysseus success cleanup requires the terminal complete phase and its completed final barrier');
       }
     } else if (outcome === 'success') {
-      const requiredPhases = PHASES.filter((phase) => barrierParticipants(manifest, state, phase).includes(lane));
-      const missingArrivals = requiredPhases.filter((phase) => !(state.barriers[phase] ?? []).includes(lane));
-      const lastPhaseIndex = Math.max(-1, ...requiredPhases.map((phase) => PHASES.indexOf(phase)));
-      if (missingArrivals.length > 0 || PHASES.indexOf(state.currentPhase) < lastPhaseIndex) {
-        throw new Error(`${lane} success cleanup requires all declared barrier arrivals; missing: ${missingArrivals.join(', ') || 'phase not reached'}`);
+      // A lane keeps one allocation while any later phase may still need it: as a participant
+      // until it has arrived everywhere, and on standby (proof repair, oracle desk) until the
+      // standby phase has passed. Skipped phases need nobody.
+      const phases = phaseIds(manifest);
+      const currentIndex = phases.indexOf(state.currentPhase);
+      const pending = phases.filter((phase, index) => {
+        if (Object.hasOwn(state.skippedPhases, phase)) return false;
+        if (barrierParticipants(manifest, state, phase).includes(lane) &&
+            (index > currentIndex || !(state.barriers[phase] ?? []).includes(lane))) return true;
+        return index >= currentIndex && standbyLanes(manifest, state, phase).includes(lane);
+      });
+      if (pending.length > 0) {
+        throw new Error(`${lane} success cleanup is not yet available: pending ${pending.join(', ')}; the lease stays active and Odysseus performs terminal cleanup`);
       }
     }
     const checkpointPlan = prepareCheckpointArchive(manifest, state, lane, allocation);
@@ -747,8 +1568,26 @@ export function cleanupWorker(manifest, lane, token, outcome) {
     allocation.status = 'released';
     allocation.releasedAt = new Date().toISOString();
     allocation.outcome = outcome;
-    return { result: { lane, outcome, released: true }, changed: true };
+    return { result: { lane, outcome, released: true, authority }, changed: true };
   });
+}
+
+// Cleanup accepts the lane's own token on an active or an already released allocation,
+// exactly as before, and a missing lease file does not block it. A worker may instead be
+// cleaned on controller authority: while active through the full authority check (live lease
+// marker included), and once released only as an idempotent replay, where no lease file is
+// left to check and the active controller allocation alone is required.
+function cleanupAuthority(manifest, state, lane, allocation, { token, controllerToken }) {
+  if (nonEmpty(token)) {
+    if (allocation.leaseTokenSha256 !== sha256(token)) throw new Error(`invalid lease for ${lane}`);
+    return 'lane';
+  }
+  if (allocation.status === 'released' && lane !== 'odysseus' && nonEmpty(controllerToken)) {
+    requireControllerAuthority(manifest, state, lane, controllerToken);
+    return 'controller';
+  }
+  if (allocation.status === 'released') throw new Error(`invalid lease for ${lane}`);
+  return requireLaneOrControllerAuthority(manifest, state, lane, { controllerToken });
 }
 
 function prepareCheckpointArchive(manifest, state, lane, allocation) {
@@ -796,15 +1635,20 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
   const command = tool === 'Bash' ? String(toolInput.command ?? '') : '';
   const commandSha256 = command ? sha256(command) : null;
   const artifactPhysical = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
+  const lane = guardLaneIdentity(payload);
   let paths = [];
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/i.test(tool)) paths = collectDirectPaths(toolInput);
   else if (tool === 'Bash') {
-    const packaged = classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256);
+    const driverDenial = huntDriverLaneDenial(command, lane);
+    if (driverDenial) return guardDecision('deny', 'GUARD-SHELL-AMBIGUOUS', driverDenial, [], commandSha256);
+    const optIn = classifyEngagementOptIn(command, manifest, manifestPath, payload, cwd, commandSha256);
+    if (optIn) return optIn;
+    const packaged = classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256, lane);
     if (packaged?.decision) return packaged.decision;
     if (packaged?.paths) paths = packaged.paths;
     else {
       if (referencesPackagedCommand(command)) {
-        return guardDecision('deny', 'GUARD-SHELL-AMBIGUOUS', 'packaged command must be one exact standalone invocation', [], commandSha256);
+        return guardDecision('deny', 'GUARD-SHELL-AMBIGUOUS', `packaged command must be one exact standalone invocation${metacharacterHint(command)}`, [], commandSha256);
       }
       if (shellMayCreateLink(command)) {
         return guardDecision('deny', 'GUARD-LINK-ALIAS', 'shell command may create a filesystem link before a guarded write', [], commandSha256);
@@ -815,6 +1659,7 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
     }
   } else return guardDecision('allow', 'GUARD-ALLOW', 'tool is outside the filesystem-write matcher', [], commandSha256);
   if (paths.length === 0) return guardDecision('deny', 'GUARD-PATH-UNRESOLVED', 'write tool has no recognized destination', [], commandSha256);
+  const selectedRoots = selectedTemplateWriteRoots(manifest);
 
   const evaluated = [];
   for (const rawPath of [...new Set(paths)]) {
@@ -844,9 +1689,16 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
       return guardDecision('deny', 'GUARD-CANONICAL-SINGLE-WRITER', 'canonical artifacts require immutable fragments and owner merge', evaluated, commandSha256);
     }
     if (isBypassed(manifest, physical, bypassToken, now)) continue;
+    const owned = ownedWriteRootFor(manifest, physical, selectedRoots);
+    if (owned) {
+      const denial = ownedWriteDenial(owned, lane);
+      if (denial) return guardDecision('deny', 'GUARD-OWNED-ARTIFACT', denial, evaluated, commandSha256);
+      continue;
+    }
     const allowedRoots = [
       ...manifest.writePolicy.allowedArtifactRoots,
       ...manifest.writePolicy.generatedTestRoots,
+      ...selectedRoots.generated,
       manifest.writePolicy.workerRoot,
       manifest.writePolicy.fragmentRoot,
       manifest.writePolicy.checkpointRoot,
@@ -872,6 +1724,164 @@ export function buildGuardAudit({ manifest, payload, decision, timestamp }) {
     paths: decision.paths,
     commandSha256: decision.commandSha256,
   };
+}
+
+// Lane-owned write roots: every writePolicy.ownedArtifactRoots entry, plus the harness root of
+// the operator's template selection, is writable only by its listed owners. Ownership outranks
+// every ordinary write root, except that a selected test root nested inside the selected
+// harness root stays open to every lane.
+function validateOwnedWritePolicy(policy, errors) {
+  if (policy.ownedArtifactRoots !== undefined) {
+    if (!Array.isArray(policy.ownedArtifactRoots)) errors.push('writePolicy.ownedArtifactRoots must be an array');
+    else {
+      const canonical = new Set(Array.isArray(policy.canonicalArtifacts) ? policy.canonicalArtifacts.map((item) => item?.path) : []);
+      const declared = [];
+      for (const item of policy.ownedArtifactRoots) {
+        if (!plainObject(item) || Object.keys(item).some((key) => !['path', 'owners'].includes(key)) || !canonicalCorpusRoot(item.path) ||
+            item.path.split('/')[0] === 'ai_agents_internal' || !stringList(item.owners, true) || !item.owners.every(validSlug)) {
+          errors.push('owned artifact root path or owners are invalid');
+        } else if (canonical.has(item.path)) errors.push(`owned artifact root is a canonical artifact: ${item.path}`);
+        else if (declared.some((path) => overlappingPaths(path, item.path))) errors.push(`owned artifact roots overlap: ${item.path}`);
+        else declared.push(item.path);
+      }
+    }
+  }
+  const selected = policy.selectedTemplateRoots;
+  if (selected !== undefined && (!plainObject(selected) || Object.keys(selected).some((key) => !['harnessRootOwners', 'rootConfigOwners'].includes(key)) ||
+      !stringList(selected.harnessRootOwners, true) || !selected.harnessRootOwners.every(validSlug))) {
+    errors.push('writePolicy.selectedTemplateRoots must name unique harnessRootOwners');
+  } else if (selected?.rootConfigOwners !== undefined && (!stringList(selected.rootConfigOwners, true) || !selected.rootConfigOwners.every(validSlug))) {
+    errors.push('writePolicy.selectedTemplateRoots.rootConfigOwners must name unique owners');
+  }
+}
+
+// Claude Code, not the model, writes the PreToolUse payload: a subagent carries agent_id and its
+// agent_type (`argus:<slug>`), while the main thread, which is the controller, carries no
+// agent_id. A payload without the PreToolUse event name (such as the packaged CLI's own write
+// check) or with any other agent shape identifies no lane.
+function guardLaneIdentity(payload) {
+  if (payload?.hook_event_name !== 'PreToolUse') return null;
+  const agentType = payload.agent_type ?? null;
+  if (agentType === null) return (payload.agent_id ?? null) === null ? 'odysseus' : null;
+  const match = typeof agentType === 'string' ? /^(?:argus:)?([a-z][a-z0-9-]*)$/.exec(agentType) : null;
+  return match ? match[1] : null;
+}
+
+// The owned root that physically contains the destination, or null; declared and selected owned
+// roots never overlap. A root whose path crosses a symbolic link, or that cannot be resolved,
+// is returned as unsafe, so the write is denied.
+function ownedWriteRootFor(manifest, physical, selectedRoots) {
+  const rootConfig = selectedRootConfigFor(manifest, physical, selectedRoots);
+  for (const root of [...(manifest.writePolicy.ownedArtifactRoots ?? []), ...selectedRoots.owned, ...rootConfig]) {
+    try {
+      const artifactPhysical = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
+      const rootPhysical = resolvePhysical(root.path, artifactPhysical);
+      if (!within(rootPhysical, physical)) continue;
+      if ((root.open ?? []).some((path) => within(resolvePhysical(path, artifactPhysical), physical))) return null;
+      return { ...root, safe: rootPhysical === join(artifactPhysical, ...root.path.split('/')) };
+    } catch {
+      return { ...root, safe: false };
+    }
+  }
+  return null;
+}
+
+function ownedWriteDenial(owned, lane) {
+  const owners = owned.owners.join(', ');
+  if (!owned.safe) return `lane-owned ${owned.path} crosses a symbolic link`;
+  if (!lane) return `lane-owned ${owned.path} is written only by ${owners}; the writing lane is not identified`;
+  if (!owned.owners.includes(lane)) return `lane-owned ${owned.path} is written only by ${owners}, not ${lane}`;
+  return null;
+}
+
+// Roots granted by the operator's explicit template selection. The record sits in the control
+// plane, which no worker can write, and counts only when it is schema-valid and names this
+// artifact or target root. The test root joins the generated test roots; the harness root is
+// owned by selectedTemplateRoots.harnessRootOwners. A root is granted only below the artifact
+// root through real directories, outside ai_agents_internal, clear of every canonical, owned,
+// and control path (and, for the harness root, of every shared artifact root), and physically
+// disjoint from the target root. Anything else grants nothing, so a doubtful record fails closed.
+// The same record also grants selectedTemplateRoots.rootConfigOwners the framework's root
+// configuration (see selectedRootConfigFor).
+function selectedTemplateWriteRoots(manifest) {
+  const none = { generated: [], owned: [], rootConfigOwners: null };
+  const policy = manifest.writePolicy.selectedTemplateRoots;
+  if (!plainObject(policy)) return none;
+  try {
+    const selection = reviewTemplateSelection(manifest);
+    if (!selection || !selectionNamesEngagementRoot(manifest, selection.targetRoot)) return none;
+    const testRoot = grantableTemplateRoot(manifest, selection.testRoot, { owned: false }) ? selection.testRoot : null;
+    const harnessRoot = grantableTemplateRoot(manifest, selection.harnessRoot, { owned: true }) ? selection.harnessRoot : null;
+    return {
+      generated: testRoot ? [testRoot] : [],
+      owned: harnessRoot
+        ? [{ path: harnessRoot, owners: [...policy.harnessRootOwners], open: testRoot && testRoot.startsWith(`${harnessRoot}/`) ? [testRoot] : [] }]
+        : [],
+      rootConfigOwners: stringList(policy.rootConfigOwners, true) ? [...policy.rootConfigOwners] : null,
+    };
+  } catch {
+    return none;
+  }
+}
+
+// The runner and dependency configuration a selected framework keeps at the artifact root:
+// every root file the review corpus digests (REVIEW_CORPUS_ROOT_CONFIG) plus the scaffold's
+// own root files. `run-tests.sh` and `README.md` stay canonical. A valid selection record grants
+// each such file, as a lane-owned path, to rootConfigOwners, under the checks a selected harness
+// root passes: real directories below the artifact root, clear of every reserved path, and
+// physically disjoint from the target root, so an artifact root that is the target grants none.
+const SELECTED_ROOT_CONFIG_FILES = new Set(['.gitignore', 'argus-template.json', 'scripts/app-source-guard.mjs']);
+
+function selectedRootConfigFor(manifest, physical, selectedRoots) {
+  if (!selectedRoots.rootConfigOwners) return [];
+  try {
+    const path = relative(resolvePhysical(manifest.artifactRoot, manifest.artifactRoot), physical).split(sep).join('/');
+    if (!REVIEW_CORPUS_ROOT_CONFIG.test(path) && !SELECTED_ROOT_CONFIG_FILES.has(path)) return [];
+    return grantableTemplateRoot(manifest, path, { owned: true, file: true }) ? [{ path, owners: selectedRoots.rootConfigOwners }] : [];
+  } catch {
+    return [];
+  }
+}
+
+function selectionNamesEngagementRoot(manifest, targetRoot) {
+  if (!nonEmpty(targetRoot) || !isAbsolute(targetRoot) || !existsSync(targetRoot)) return false;
+  const named = realpathSync(targetRoot);
+  return [manifest.artifactRoot, manifest.target?.root].some((root) => nonEmpty(root) && existsSync(root) && realpathSync(root) === named);
+}
+
+// A file root (`file`) may already exist as a regular file; every other existing part of the
+// path must be a real directory.
+function grantableTemplateRoot(manifest, root, { owned, file = false }) {
+  if (!canonicalCorpusRoot(root) || root.split('/')[0] === 'ai_agents_internal') return false;
+  const policy = manifest.writePolicy;
+  const reserved = [
+    ...policy.canonicalArtifacts.map((item) => item.path),
+    ...(policy.ownedArtifactRoots ?? []).map((item) => item.path),
+    policy.auditPath, policy.fragmentRoot, policy.checkpointRoot, policy.workerRoot, manifest.statePath,
+    ...(owned ? policy.allowedArtifactRoots : []),
+  ].map((path) => path.replace(/\/+$/, ''));
+  if (reserved.some((path) => overlappingPaths(path, root))) return false;
+  const artifactPhysical = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
+  let cursor = artifactPhysical;
+  const parts = root.split('/');
+  for (const [index, part] of parts.entries()) {
+    cursor = join(cursor, part);
+    let stats;
+    try { stats = lstatSync(cursor); }
+    catch (error) {
+      if (error.code === 'ENOENT') break;
+      throw error;
+    }
+    if (stats.isSymbolicLink() || !(file && index === parts.length - 1 ? stats.isFile() : stats.isDirectory())) return false;
+  }
+  if (!nonEmpty(manifest.target?.root)) return true;
+  const rootPhysical = resolvePhysical(root, artifactPhysical);
+  const targetPhysical = resolvePhysical(manifest.target.root, artifactPhysical);
+  return !within(targetPhysical, rootPhysical) && !within(rootPhysical, targetPhysical);
+}
+
+function overlappingPaths(left, right) {
+  return left === right || right.startsWith(`${left}/`) || left.startsWith(`${right}/`);
 }
 
 export function engagementPath(manifest, relativePath) {
@@ -950,24 +1960,26 @@ function reclaimAbandonedStateLock(lockPath) {
   if (lockEntry.isSymbolicLink() || !lockEntry.isDirectory()) throw new Error('engagement state lock path is unsafe');
   if (!stateLockIsAbandoned(lockPath)) return false;
   const ownerEntry = lstatEntry(join(lockPath, 'owner.json'));
-  const claimPath = join(lockPath, '.reclaim');
-  try {
-    mkdirSync(claimPath);
-    createManagedFile(join(claimPath, 'owner.json'), `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`, 'state lock reclaim owner');
-  } catch (error) {
+  // The claim sits beside the lock and names the directory judged abandoned. A caller that
+  // loses the race never writes into a lock another caller has re-acquired, and a claim
+  // left by a killed reclaimer blocks only that one directory.
+  const claimPath = `${lockPath}.reclaim-${lockEntry.dev}-${lockEntry.ino}`;
+  try { mkdirSync(claimPath); }
+  catch (error) {
     if (error.code === 'EEXIST') return false;
     throw error;
   }
-  let quarantine = null;
   try {
+    createManagedFile(join(claimPath, 'owner.json'), `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`, 'state lock reclaim owner');
     if (!sameDirectoryIdentity(lockEntry, lstatEntry(lockPath)) ||
-        !sameFilesystemEntry(ownerEntry, lstatEntry(join(lockPath, 'owner.json')))) return false;
-    quarantine = `${lockPath}.stale-${process.pid}-${randomBytes(6).toString('hex')}`;
+        !sameFilesystemEntry(ownerEntry, lstatEntry(join(lockPath, 'owner.json'))) ||
+        !stateLockIsAbandoned(lockPath)) return false;
+    const quarantine = `${lockPath}.stale-${process.pid}-${randomBytes(6).toString('hex')}`;
     renameSync(lockPath, quarantine);
     rmSync(quarantine, { recursive: true, force: true });
     return true;
   } finally {
-    if (!quarantine && sameDirectoryIdentity(lockEntry, lstatEntry(lockPath))) rmSync(claimPath, { recursive: true, force: true });
+    rmSync(claimPath, { recursive: true, force: true });
   }
 }
 
@@ -1169,12 +2181,17 @@ function dispatchBindingWithHistory(allocation, dispatchBinding) {
   };
 }
 
+// A retry carries exactly one immutable lineage. A worker escalation resumes from its
+// current checkpoint. A pre-spawn model-unavailable retry and a controller-observed
+// outcome restart (no-artifact, zero-candidates, uncheckpointed turn-limit) bind the prior
+// selected decision and the exact active allocation instead, because no checkpoint exists.
 function validateRetryLineage(manifest, state, allocation, decision) {
   if (decision.signal === 'normal') throw new Error(`${allocation.lane} retry cannot use a normal baseline decision`);
   const escalation = decision.escalationBinding;
   const availability = decision.availabilityBinding;
-  if (Boolean(escalation) === Boolean(availability)) {
-    throw new Error(`${allocation.lane} retry requires exactly one immutable escalation or availability lineage`);
+  const outcome = decision.outcomeBinding;
+  if ([escalation, availability, outcome].filter(Boolean).length !== 1) {
+    throw new Error(`${allocation.lane} retry requires exactly one immutable escalation, availability, or outcome lineage`);
   }
   if (escalation) {
     const checkpoint = state.checkpoints[allocation.lane];
@@ -1190,13 +2207,27 @@ function validateRetryLineage(manifest, state, allocation, decision) {
       throw new Error(`${allocation.lane} retry checkpoint bytes differ from the immutable lineage`);
     }
   } else {
+    const lineage = availability ?? outcome;
+    const kind = availability ? 'availability' : 'outcome';
     const expectedAllocationSha256 = sha256(JSON.stringify(allocation));
-    if (availability.previousDecisionId !== allocation.modelDecisionId ||
-        availability.previousDecisionIntegritySha256 !== allocation.modelDecisionIntegritySha256 ||
-        availability.allocationId !== allocation.allocationId || availability.allocationSha256 !== expectedAllocationSha256) {
-      throw new Error(`${allocation.lane} retry availability lineage is stale or belongs to another allocation`);
+    if (lineage.previousDecisionId !== allocation.modelDecisionId ||
+        lineage.previousDecisionIntegritySha256 !== allocation.modelDecisionIntegritySha256 ||
+        lineage.allocationId !== allocation.allocationId || lineage.allocationSha256 !== expectedAllocationSha256) {
+      throw new Error(`${allocation.lane} retry ${kind} lineage is stale or belongs to another allocation`);
     }
   }
+}
+
+// A backoff retry may not rebind the allocation before its decision's backoff has elapsed,
+// measured from the immutable decision creation time. The CLI waits or refuses first; this
+// is the runtime's own fail-closed check for every other caller.
+function requireRetryBackoffElapsed(lane, decision, now = Date.now()) {
+  const backoffSeconds = decision.continuation?.backoffSeconds ?? 0;
+  if (backoffSeconds === 0) return;
+  if (!Number.isInteger(backoffSeconds) || backoffSeconds < 0) throw new Error(`${lane} retry backoff is malformed`);
+  const createdAt = Date.parse(decision.createdAt);
+  if (!Number.isFinite(createdAt)) throw new Error(`${lane} retry decision has no valid creation time for its backoff`);
+  if (now < createdAt + backoffSeconds * 1000) throw new Error(`${lane} retry backoff has not elapsed`);
 }
 
 function hasExecutionBinding(allocation) {
@@ -1222,11 +2253,49 @@ function requireLiveLeaseFile(manifest, state, lane, token) {
   if (!allocation || allocation.status !== 'active' || !nonEmpty(token) || allocation.leaseTokenSha256 !== sha256(token)) {
     throw new Error(`invalid or inactive lease for ${lane}`);
   }
+  requireLiveLeaseMarker(manifest, state, lane);
+}
+
+// The lane's allocation is active and its managed `.lease` file still carries the exact
+// allocation marker. No token is involved: this proves the lease is live, not who holds it.
+function requireLiveLeaseMarker(manifest, state, lane) {
+  const allocation = state.allocations[lane];
+  if (!allocation || allocation.status !== 'active') throw new Error(`no active allocation exists for ${lane}`);
   const leasePath = engagementPath(manifest, join(manifest.writePolicy.workerRoot, lane, '.lease'));
   if (!existsSync(leasePath)) throw new Error(`active lease file is missing for ${lane}`);
   const content = readManagedFile(leasePath, `${lane} lease`).toString('utf8').trim();
   if (content === leaseMarker(allocation)) return;
   throw new Error(`active lease marker does not match the allocation for ${lane}`);
+}
+
+// A worker-lane operation is authorized either by the lane's own active lease token or by
+// the active Odysseus controller token. A supplied lane token is always judged on its own
+// and never falls back to controller authority. Controller authority exists only for worker
+// lanes (Odysseus's lane token is the controller token) and only while the worker's
+// allocation is active with a live lease marker, so it can neither act on a lane that was
+// never allocated nor revive a released one. The controller already receives every lane
+// token at allocation and workers never receive the controller token, so this grants the
+// controller nothing it could not already do and grants a worker nothing at all.
+function requireLaneOrControllerAuthority(manifest, state, lane, { token, controllerToken } = {}) {
+  if (nonEmpty(token)) {
+    requireLeaseState(manifest, state, lane, token);
+    return 'lane';
+  }
+  if (lane !== 'odysseus' && nonEmpty(controllerToken)) {
+    requireSelected(manifest, lane);
+    requireControllerAuthority(manifest, state, lane, controllerToken);
+    requireLiveLeaseMarker(manifest, state, lane);
+    return 'controller';
+  }
+  throw new Error(`lease token is required for ${lane}`);
+}
+
+function requireControllerAuthority(manifest, state, lane, controllerToken) {
+  const controller = state.allocations.odysseus;
+  if (!controller || controller.status !== 'active' || controller.leaseTokenSha256 !== sha256(controllerToken)) {
+    throw new Error(`${lane} controller authority requires the active Odysseus controller token`);
+  }
+  requireControllerAllocation(manifest, state, lane, controllerToken);
 }
 
 function requireSelected(manifest, lane) {
@@ -1237,6 +2306,56 @@ function requireDispatchableState(state, lane) {
   if (Array.isArray(state.dispatchableAgents) && !state.dispatchableAgents.includes(lane)) {
     throw new Error(`${lane} is outside the immutable dispatchable agent projection`);
   }
+}
+
+function requireConditionalRelease(state, lane) {
+  if (!plainObject(state.conditionalAgents) || !Object.hasOwn(state.conditionalAgents, lane)) return;
+  const gates = state.conditionalAgents[lane];
+  const verdict = state.gateResolution?.lanes?.[lane];
+  if (!verdict) throw new Error(`${lane} is conditional on ${gates.join(', ')}; run engagement resolve-gates first`);
+  if (verdict !== 'released') {
+    const unmet = gates.filter((gate) => state.gateResolution.capabilities[gate]?.status !== 'proven');
+    throw new Error(`${lane} was omitted: gate unmet (${unmet.join(', ')})`);
+  }
+}
+
+function requireGateResolutionPreconditions(manifest, state, controllerToken) {
+  requireLeaseState(manifest, state, 'odysseus', controllerToken);
+  if (state.gateResolution !== null) throw new Error('gate resolution is immutable once recorded');
+  if (!hasConditionalLanes(state)) throw new Error('no conditional lanes await gate resolution');
+  if (state.currentPhase !== GATE_RESOLUTION_PHASE) {
+    throw new Error(`resolve-gates runs only in ${GATE_RESOLUTION_PHASE}; the current phase is ${state.currentPhase}`);
+  }
+  if (state.dispatchableAgents.includes('kalchas') && !(state.barriers[GATE_RESOLUTION_PHASE] ?? []).includes('kalchas')) {
+    throw new Error('resolve-gates requires the Kalchas discovery arrival');
+  }
+}
+
+function hasConditionalLanes(state) {
+  return plainObject(state.conditionalAgents) && Object.keys(state.conditionalAgents).length > 0;
+}
+
+function conditionalGateUnion(conditionalAgents) {
+  return [...new Set(Object.values(conditionalAgents ?? {}).flat())].sort();
+}
+
+function conditionalLaneVerdicts(conditionalAgents, verdicts) {
+  return Object.fromEntries(Object.entries(conditionalAgents).map(([lane, gates]) =>
+    [lane, gates.every((gate) => verdicts[gate]?.status === 'proven') ? 'released' : 'gate-unmet']));
+}
+
+// Lanes omitted by gate resolution leave every phase's participants and standby lanes, like
+// a role that was never dispatchable, so no barrier or success cleanup waits for them.
+function omittedConditionalLanes(state) {
+  const lanes = plainObject(state.gateResolution?.lanes) ? state.gateResolution.lanes : {};
+  return new Set(Object.keys(lanes).filter((lane) => lanes[lane] === 'gate-unmet'));
+}
+
+function validGateVerdict(verdict) {
+  return plainObject(verdict) && Object.keys(verdict).length === GATE_VERDICT_KEYS.length &&
+    GATE_VERDICT_KEYS.every((key) => Object.hasOwn(verdict, key)) && ['proven', 'unmet'].includes(verdict.status) &&
+    typeof verdict.basis === 'string' && /^[a-z][a-z0-9+-]{0,63}$/.test(verdict.basis) &&
+    nonEmpty(verdict.reason) && verdict.reason.length <= 240;
 }
 
 function requireCanonical(manifest, path) {
@@ -1258,10 +2377,34 @@ function barrierStatus(manifest, state, phase) {
 }
 
 function barrierParticipants(manifest, state, phase) {
-  const participants = phaseDefinition(manifest, phase).participants;
-  if (!Array.isArray(state.dispatchableAgents)) return participants;
+  return projectedPhaseLanes(state, phase, phaseDefinition(manifest, phase).participants);
+}
+
+// Standby lanes do not arrive at a barrier; they stay allocated so the phase can re-dispatch
+// them on their active lease.
+function standbyLanes(manifest, state, phase) {
+  return projectedPhaseLanes(state, phase, phaseDefinition(manifest, phase).standby);
+}
+
+function projectedPhaseLanes(state, phase, lanes) {
+  if (Object.hasOwn(state.skippedPhases, phase)) return [];
+  const present = lanes.filter((lane) => !Object.hasOwn(state.abandonedLanes, lane));
+  if (!Array.isArray(state.dispatchableAgents)) return present;
   const dispatchable = new Set(state.dispatchableAgents);
-  return participants.filter((lane) => dispatchable.has(lane));
+  const omitted = omittedConditionalLanes(state);
+  return present.filter((lane) => dispatchable.has(lane) && !omitted.has(lane));
+}
+
+// Lanes the runtime itself depends on: Odysseus runs the engagement, Kalchas's discovery arrival
+// is the gate-resolution evidence, Minos's merge gates every proof phase, and the final-summary
+// owner writes the only completion record. Abandoning one would silently lift that gate.
+function nonAbandonableLanes(manifest) {
+  const summaryOwner = finalSummaryCanonical(manifest)?.owner;
+  return [...new Set([...UNCONDITIONAL_LANES, PROOF_VALIDATOR, ...(summaryOwner ? [summaryOwner] : [])])].sort();
+}
+
+function finalSummaryCanonical(manifest) {
+  return manifest.writePolicy.canonicalArtifacts.find((item) => item.schema === 'final-summary');
 }
 
 function phaseDefinition(manifest, phase) {
@@ -1270,14 +2413,59 @@ function phaseDefinition(manifest, phase) {
   return definition;
 }
 
-function phaseParticipants(phase, agents) {
-  if (phase === 'preflight' || phase === 'complete') return agents.filter((agent) => agent === 'odysseus');
-  if (phase === 'discovery') return agents.filter((agent) => agent === 'kalchas');
-  if (phase === 'hunting') return agents.filter((agent) => HUNTERS.has(agent));
-  if (phase === 'automation') return agents.filter((agent) => AUTOMATION.has(agent));
-  if (phase === 'verification') return agents.filter((agent) => VERIFIERS.has(agent));
-  if (phase === 'reporting') return agents.filter((agent) => REPORTERS.has(agent));
-  return [];
+function phaseIds(manifest) {
+  return manifest.phasePlan.map((phase) => phase.id);
+}
+
+function nextUnskippedPhase(phases, state, index) {
+  return phases.slice(index + 1).find((phase) => !Object.hasOwn(state.skippedPhases, phase));
+}
+
+function ledgerSnapshot(manifest, state, ledger, records, mergedAt) {
+  const phases = phaseIds(manifest);
+  const currentIndex = phases.indexOf(state.currentPhase);
+  const byStatus = (status) => [...new Set(ledger.bugs.filter((bug) => bug.status === status).map((bug) => bug.id))].sort();
+  const snapshot = { fragmentIds: records.map((record) => record.id) };
+  for (const [field, status] of LEDGER_SNAPSHOT_STATUSES) snapshot[field] = byStatus(status);
+  // Convergence counts only defects no earlier proof phase had already confirmed. A merge in a
+  // work or deep-hunt phase (rolling triage) keeps its own snapshot but is never "earlier", so it
+  // cannot hide the next proof pass's new confirmations.
+  const earlier = new Set(Object.entries(state.ledgerSnapshots)
+    .filter(([phase]) => phases.indexOf(phase) < currentIndex && phaseDefinition(manifest, phase).kind === 'proof')
+    .flatMap(([, previous]) => previous.confirmed));
+  snapshot.newConfirmed = snapshot.confirmed.filter((id) => !earlier.has(id));
+  snapshot.mergedAt = mergedAt;
+  return snapshot;
+}
+
+// Recorded skips that left planned work undone. The final summary cannot claim completion
+// while any exists; a converged skip is evidence-backed and does not count.
+function skippedPhaseStatusReasons(state) {
+  return [...new Set(Object.values(state.skippedPhases)
+    .filter((skip) => skip.reason !== 'converged')
+    .map((skip) => `deep-hunt-skipped:${skip.reason}`))].sort();
+}
+
+// Sealed lanes that gate resolution omitted. Their unmet gates stay in state.gateResolution;
+// each lane is a named gap the final summary cannot report as completed coverage.
+function gateUnmetStatusReasons(state) {
+  const lanes = state.gateResolution?.lanes ?? {};
+  return Object.keys(lanes).filter((lane) => lanes[lane] === 'gate-unmet').sort().map((lane) => `gate-unmet:${lane}`);
+}
+
+// Lanes the controller abandoned after a permanent failure or a budget stop. Their reason stays in
+// state.abandonedLanes; each is work the final summary cannot report as completed.
+function abandonedLaneStatusReasons(state) {
+  return Object.keys(state.abandonedLanes).sort().map((lane) => `lane-abandoned:${lane}`);
+}
+
+// Canonicals whose owner was abandoned before merging them. Only the owner merges a canonical,
+// so no lane can publish one any more, and fragments other lanes submitted for it stay
+// unmerged. The reason names the path lowercased, each other character run replaced by '-'.
+function unmergedCanonicalStatusReasons(manifest, state) {
+  return [...new Set(manifest.writePolicy.canonicalArtifacts
+    .filter((canonical) => Object.hasOwn(state.abandonedLanes, canonical.owner) && !state.merges[canonical.path])
+    .map((canonical) => `canonical-unmerged:${canonical.path.toLowerCase().replace(/[^a-z0-9]+/gu, '-')}`))].sort();
 }
 
 function publicAllocation(allocation) {
@@ -1379,12 +2567,17 @@ function validateStateAllocations(manifest, state) {
 function validateCurrentState(manifest, state) {
   const errors = validateStateAllocations(manifest, state);
   if (!Number.isInteger(state.revision) || state.revision < 0) errors.push('revision must be a non-negative integer');
-  if (!PHASES.includes(state.currentPhase)) errors.push('currentPhase is invalid');
-  if (!Array.isArray(state.completedPhases) || state.completedPhases.some((phase) => !PHASES.includes(phase))) errors.push('completedPhases are invalid');
+  const phases = phaseIds(manifest);
+  if (!phases.includes(state.currentPhase)) errors.push('currentPhase is invalid');
+  if (!Array.isArray(state.completedPhases) || state.completedPhases.some((phase) => !phases.includes(phase))) errors.push('completedPhases are invalid');
+  validateSkippedPhases(manifest, state, errors);
+  validateLedgerSnapshots(phases, state.ledgerSnapshots, errors);
   if (!(state.dispatchableAgents === null || (stringList(state.dispatchableAgents, true) &&
       state.dispatchableAgents.includes('odysseus') && state.dispatchableAgents.every((lane) => manifest.selectedAgents.includes(lane))))) {
     errors.push('dispatchableAgents must be null or an immutable selected projection containing odysseus');
   }
+  validateConditionalLanes(state, errors);
+  validateAbandonedLanes(manifest, state, errors);
   if (!plainObject(state.checkpoints)) errors.push('checkpoints must be an object');
   else for (const [lane, checkpoint] of Object.entries(state.checkpoints)) {
     const allocation = state.allocations?.[lane];
@@ -1392,7 +2585,7 @@ function validateCurrentState(manifest, state) {
       errors.push(`${lane}: checkpoint is not bound to a selected allocation`);
       continue;
     }
-    if (!PHASES.includes(checkpoint.phase)
+    if (!phases.includes(checkpoint.phase)
       || !Number.isInteger(checkpoint.sequence) || checkpoint.sequence < 0
       || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(checkpoint.dispatchId ?? '')
       || !Number.isInteger(checkpoint.attempt) || checkpoint.attempt < 1
@@ -1405,6 +2598,140 @@ function validateCurrentState(manifest, state) {
     }
   }
   return errors;
+}
+
+function validateSkippedPhases(manifest, state, errors) {
+  const skipped = state.skippedPhases;
+  if (!plainObject(skipped)) {
+    errors.push('skippedPhases must be an object');
+    return;
+  }
+  const phases = phaseIds(manifest);
+  for (const [phase, skip] of Object.entries(skipped)) {
+    const definition = manifest.phasePlan.find((item) => item.id === phase);
+    if (definition?.skippable !== true) errors.push(`skippedPhases.${phase}: phase is not skippable`);
+    if (Array.isArray(state.completedPhases) && state.completedPhases.includes(phase)) errors.push(`skippedPhases.${phase}: a skipped phase cannot be completed`);
+    if (!plainObject(skip) || Object.keys(skip).length !== 3 || !SKIP_REASONS.includes(skip.reason) || !validDate(skip.skippedAt) ||
+        !(skip.basis === null || phases.includes(skip.basis))) {
+      errors.push(`skippedPhases.${phase}: skip record must be exactly reason, skippedAt, and basis`);
+    }
+  }
+  if (Object.hasOwn(skipped, state.currentPhase)) errors.push('currentPhase must not be a skipped phase');
+}
+
+// A lane is abandonable once released with outcome failure or interrupted, or, only for a
+// controller-budget stop, while it has never been allocated.
+function abandonableAllocation(allocation, reason) {
+  if (allocation === undefined) return reason === UNALLOCATED_ABANDON_REASON;
+  return allocation?.status === 'released' && ABANDONABLE_OUTCOMES.includes(allocation.outcome);
+}
+
+// An abandoned lane stays released with the failure or interrupted outcome its abandonment
+// required, or stays unallocated after a controller-budget abandonment, is never a lane the
+// runtime depends on, and its record is exactly reason, phase, and abandonedAt.
+function validateAbandonedLanes(manifest, state, errors) {
+  const abandoned = state.abandonedLanes;
+  if (!plainObject(abandoned)) {
+    errors.push('abandonedLanes must be an object');
+    return;
+  }
+  const phases = phaseIds(manifest);
+  const protectedLanes = nonAbandonableLanes(manifest);
+  for (const [lane, record] of Object.entries(abandoned)) {
+    const allocation = plainObject(state.allocations) ? state.allocations[lane] : undefined;
+    if (!manifest.selectedAgents.includes(lane) || protectedLanes.includes(lane) ||
+        (Array.isArray(state.dispatchableAgents) && !state.dispatchableAgents.includes(lane))) {
+      errors.push(`abandonedLanes.${lane}: lane must be a dispatchable worker other than ${protectedLanes.join(', ')}`);
+    }
+    if (!abandonableAllocation(allocation, record?.reason)) {
+      errors.push(`abandonedLanes.${lane}: lane must stay released with outcome ${ABANDONABLE_OUTCOMES.join(' or ')}, or unallocated after a ${UNALLOCATED_ABANDON_REASON} abandonment`);
+    }
+    if (omittedConditionalLanes(state).has(lane)) errors.push(`abandonedLanes.${lane}: a gate-unmet lane holds no barrier and cannot be abandoned`);
+    if (!plainObject(record) || Object.keys(record).length !== ABANDONED_LANE_KEYS.length ||
+        !ABANDONED_LANE_KEYS.every((key) => Object.hasOwn(record, key)) || !ABANDON_REASONS.includes(record.reason) ||
+        !phases.includes(record.phase) || !validDate(record.abandonedAt)) {
+      errors.push(`abandonedLanes.${lane}: record must be exactly ${ABANDONED_LANE_KEYS.join(', ')}`);
+    }
+  }
+}
+
+// conditionalAgents and gateResolution are bound with the dispatchable projection: both stay
+// null until it exists, then conditionalAgents is the sealed (possibly empty) lane map and
+// gateResolution is null until the one-shot resolution, whose lane verdicts must be exactly
+// the ones its capability verdicts imply.
+function validateConditionalLanes(state, errors) {
+  const conditional = state.conditionalAgents;
+  const resolution = state.gateResolution;
+  if (!Array.isArray(state.dispatchableAgents)) {
+    if (conditional !== null) errors.push('conditionalAgents must be null until the dispatchable projection is bound');
+    if (resolution !== null) errors.push('gateResolution must be null until the dispatchable projection is bound');
+    return;
+  }
+  if (!plainObject(conditional)) {
+    errors.push('conditionalAgents must be an object once the dispatchable projection is bound');
+    return;
+  }
+  const lanes = Object.keys(conditional);
+  let lanesValid = JSON.stringify(lanes) === JSON.stringify([...lanes].sort());
+  if (!lanesValid) errors.push('conditionalAgents lanes must be sorted');
+  for (const lane of lanes) {
+    const gates = conditional[lane];
+    if (!state.dispatchableAgents.includes(lane) || UNCONDITIONAL_LANES.includes(lane)) {
+      errors.push(`conditionalAgents.${lane}: lane must be a dispatchable worker other than ${UNCONDITIONAL_LANES.join(' and ')}`);
+      lanesValid = false;
+    }
+    if (!Array.isArray(gates) || gates.length === 0 || !gates.every(validCapabilityId) ||
+        JSON.stringify(gates) !== JSON.stringify([...new Set(gates)].sort())) {
+      errors.push(`conditionalAgents.${lane}: gates must be a sorted, unique, non-empty capability id list`);
+      lanesValid = false;
+    }
+  }
+  if (resolution === null) return;
+  if (!plainObject(resolution) || Object.keys(resolution).length !== GATE_RESOLUTION_KEYS.length ||
+      !GATE_RESOLUTION_KEYS.every((key) => Object.hasOwn(resolution, key)) || !validDate(resolution.resolvedAt) ||
+      !(resolution.evidenceSha256 === null || /^[a-f0-9]{64}$/.test(resolution.evidenceSha256 ?? '')) ||
+      !plainObject(resolution.capabilities) || !plainObject(resolution.lanes)) {
+    errors.push(`gateResolution must be exactly ${GATE_RESOLUTION_KEYS.join(', ')}`);
+    return;
+  }
+  if (!lanesValid) return;
+  if (lanes.length === 0) {
+    errors.push('gateResolution requires at least one conditional lane');
+    return;
+  }
+  const required = conditionalGateUnion(conditional);
+  if (JSON.stringify(Object.keys(resolution.capabilities).sort()) !== JSON.stringify(required)) {
+    errors.push('gateResolution.capabilities must cover exactly the conditional gates');
+    return;
+  }
+  for (const [id, verdict] of Object.entries(resolution.capabilities)) {
+    if (!validGateVerdict(verdict)) errors.push(`gateResolution.capabilities.${id}: verdict must be exactly status, basis, and reason`);
+  }
+  if (JSON.stringify(Object.keys(resolution.lanes).sort()) !== JSON.stringify(lanes)) {
+    errors.push('gateResolution.lanes must cover exactly the conditional lanes');
+    return;
+  }
+  const expected = conditionalLaneVerdicts(conditional, resolution.capabilities);
+  for (const lane of lanes) {
+    if (resolution.lanes[lane] !== expected[lane]) errors.push(`gateResolution.lanes.${lane} must be ${expected[lane]}`);
+  }
+}
+
+function validateLedgerSnapshots(phases, snapshots, errors) {
+  if (!plainObject(snapshots)) {
+    errors.push('ledgerSnapshots must be an object');
+    return;
+  }
+  for (const [phase, snapshot] of Object.entries(snapshots)) {
+    if (!phases.includes(phase)) errors.push(`ledgerSnapshots.${phase}: unknown phase`);
+    if (!plainObject(snapshot) || Object.keys(snapshot).length !== LEDGER_SNAPSHOT_KEYS.length ||
+        !LEDGER_SNAPSHOT_KEYS.every((key) => Object.hasOwn(snapshot, key)) ||
+        !Array.isArray(snapshot.fragmentIds) || !snapshot.fragmentIds.every(nonEmpty) ||
+        ![...LEDGER_SNAPSHOT_STATUSES.map(([field]) => field), 'newConfirmed'].every((field) => stringList(snapshot[field], false)) ||
+        !validDate(snapshot.mergedAt)) {
+      errors.push(`ledgerSnapshots.${phase}: snapshot must be exactly ${LEDGER_SNAPSHOT_KEYS.join(', ')}`);
+    }
+  }
 }
 
 function recoverInterruptedAllocation(manifest, state, lane, allocation) {
@@ -1432,17 +2759,88 @@ function collectDirectPaths(value, output = []) {
 }
 
 function shellMayWrite(command) {
-  return /(?:^|[;&|\s])(?:rm|mv|cp|install|touch|mkdir|chmod|chown|truncate|tee|patch)(?:\s|$)|(?:^|\s)(?:sed\s+[^\n]*-[A-Za-z]*i|perl\s+[^\n]*-[A-Za-z]*[pi][A-Za-z]*)|(?:^|[^<])>{1,2}\s*[^&]|\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|unlink(?:Sync)?|rename(?:Sync)?|chmod(?:Sync)?|rm(?:Sync)?|rmdir(?:Sync)?|rmtree|remove|write_text|write_bytes|open|allocateWorker|startWorkerAttempt)\s*\(|\.write_(?:text|bytes)\s*\(/i.test(command);
+  return /(?:^|[;&|\s])(?:rm|mv|cp|install|touch|mkdir|chmod|chown|truncate|tee|patch)(?:\s|$)|(?:^|\s)(?:sed\s+[^\n]*-[A-Za-z]*i|perl\s+[^\n]*-[A-Za-z]*[pi][A-Za-z]*)|(?:^|[^<])>{1,2}\s*[^&]|\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|unlink(?:Sync)?|rename(?:Sync)?|chmod(?:Sync)?|rm(?:Sync)?|rmdir(?:Sync)?|rmtree|remove|write_text|write_bytes|open|allocateWorker|startWorkerAttempt|resolveConditionalGates)\s*\(|\.write_(?:text|bytes)\s*\(/i.test(command);
 }
 
 function shellMayCreateLink(command) {
   return /(?:^|[;&|\s])(?:[^\s;&|]*\/)?(?:ln|link)(?:\s|$)|\b(?:linkSync|symlinkSync|link|symlink)\s*\(|\.(?:hardlink_to|symlink_to)\s*\(/i.test(command);
 }
 
-function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256) {
+// Inside an engagement preflight writes its report only as the sealed preflight.json or as a
+// new diagnostic beside it, so a rerun can never overwrite another control artifact.
+const PREFLIGHT_REPORT_NAME = /^preflight(?:-[A-Za-z0-9_-]+)?\.json$/;
+
+// A packaged command is refused when any of these appear anywhere in it, quoted or not.
+const PACKAGED_COMMAND_METACHARACTER = /[;&|>\n\r`]|\$\(/;
+const METACHARACTER_NAMES = Object.freeze({ ';': 'a semicolon (;)', '&': 'an ampersand (&)', '|': 'a pipe (|)', '>': 'a redirection (>)', '`': 'a backtick (`)', '$(': 'a command substitution ($()', '\n': 'a newline', '\r': 'a carriage return' });
+
+// Names the refused character, never the command, so the audited reason stays command-free.
+function metacharacterHint(command) {
+  const found = PACKAGED_COMMAND_METACHARACTER.exec(command)?.[0];
+  if (!found) return '';
+  return `; it contains ${METACHARACTER_NAMES[found]}${/(?:^|\s)--json\s/.test(command) ? ', which an inline --json value must write as a JSON \\u escape' : ''}`;
+}
+
+// The packaged hunt driver runs its own `authorization check --lane <--agent>` calls out of the
+// guard's sight, so a command that names the driver and an agent must name the calling lane.
+function huntDriverLaneDenial(command, lane) {
+  const tokens = command.replace(/\\([\s\S])/g, '$1').replace(/["']/g, '').split(/\s+/);
+  const agents = tokens.flatMap((token, index) => (token === '--agent' ? [tokens[index + 1]] : token.startsWith('--agent=') ? [token.slice(8)] : []));
+  if (agents.length === 0 || !tokens.some((token) => /hunt-driver\.mjs$/.test(token))) return null;
+  if (!lane) return 'the packaged hunt driver requires an identified calling lane';
+  return agents.every((agent) => agent === lane) ? null : `the packaged hunt driver --agent must name the calling lane ${lane}`;
+}
+
+// Engagement opt-ins (RUNNER-CONTRACT.md). ARGUS_FAULT_INJECTION and ARGUS_ENVIRONMENT_RESET
+// reach the target only through the engagement's own run-tests.sh, whose runner library asks
+// for the exclusive window and the authorization decision of the calling lane, and only that
+// library issues ARGUS_FAULT_INJECTION_GRANT to the fault injectors. A command that names an
+// opt-in must therefore be one standalone run-tests.sh invocation that assigns
+// ARGUS_ENGAGEMENT_LANE the caller's own lane and names no other engagement's manifests.
+const ENGAGEMENT_OPT_IN = /ARGUS_(?:FAULT_INJECTION|ENVIRONMENT_RESET)/;
+const ENVIRONMENT_ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
+
+function classifyEngagementOptIn(command, manifest, manifestPath, payload, cwd, commandSha256) {
+  const shellResolved = command.replace(/\\([\s\S])/g, '$1').replace(/["']/g, '');
+  if (!ENGAGEMENT_OPT_IN.test(shellResolved)) return null;
+  const deny = (reason) => guardDecision('deny', 'GUARD-ENGAGEMENT-OPT-IN', reason, [], commandSha256);
+  if (/ARGUS_FAULT_INJECTION_GRANT/.test(shellResolved)) {
+    return deny('ARGUS_FAULT_INJECTION_GRANT is issued only by scripts/runner-lib.sh after the chaos authorization');
+  }
+  if (PACKAGED_COMMAND_METACHARACTER.test(command) || command.includes('$')) {
+    return deny(`an engagement opt-in must be one standalone run-tests.sh invocation without expansions${metacharacterHint(command)}`);
+  }
+  const tokens = shellTokens(command.trim());
+  const assigned = new Map();
+  let index = tokens[0] === 'env' ? 1 : 0;
+  for (let match; index < tokens.length && (match = ENVIRONMENT_ASSIGNMENT.exec(tokens[index])); index += 1) {
+    if (assigned.has(match[1])) return deny(`an engagement opt-in command assigns ${match[1]} twice`);
+    assigned.set(match[1], match[2].replace(/^(["'])([\s\S]*)\1$/, '$2'));
+  }
+  if (tokens[index] === 'bash') index += 1;
+  const runner = tokens[index];
+  const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
+  const samePhysical = (path, expected) => {
+    try { return resolvePhysical(path, cwd) === resolvePhysical(expected, cwd); } catch { return false; }
+  };
+  if (!runner || basename(runner) !== 'run-tests.sh' || !samePhysical(runner, join(manifest.artifactRoot, 'run-tests.sh'))) {
+    return deny("an engagement opt-in reaches the target only through the engagement's run-tests.sh");
+  }
+  const lane = guardLaneIdentity(payload);
+  if (!lane || assigned.get('ARGUS_ENGAGEMENT_LANE') !== lane) {
+    return deny('an engagement opt-in must set ARGUS_ENGAGEMENT_LANE to the calling lane');
+  }
+  for (const [name, expected] of [['ARGUS_ENGAGEMENT_MANIFEST', activeManifest], ['ARGUS_AUTHORIZATION_MANIFEST', join(dirname(activeManifest), 'authorization.json')]]) {
+    if (assigned.has(name) && !samePhysical(assigned.get(name), expected)) return deny(`${name} must name the active engagement's file`);
+  }
+  return guardDecision('allow', 'GUARD-ALLOW', "the engagement's runner decides the opt-in for the calling lane", [], commandSha256);
+}
+
+function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSha256, lane) {
   const value = command.trim();
-  if (/[;&|>\n\r`]|\$\(/.test(value)) return null;
-  const tokens = shellTokens(value);
+  if (PACKAGED_COMMAND_METACHARACTER.test(value)) return null;
+  const words = shellWords(value);
+  const tokens = words.map((word) => word.text);
   const index = tokens.findIndex((token) => token === 'argus-assets' || token.endsWith('/argus-assets'));
   if (index !== 0) return null;
   const primary = tokens[index + 1];
@@ -1450,24 +2848,52 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
   const allow = (reason) => ({ decision: guardDecision('allow', 'GUARD-ALLOW', reason, [], commandSha256) });
   const deny = (reason) => ({ decision: guardDecision('deny', 'GUARD-SHELL-AMBIGUOUS', reason, [], commandSha256) });
   const optionNames = tokens.filter((token) => token.startsWith('--'));
+  // Every later check reads these words, so each must be exactly the argv word the shell builds.
+  if (words.some((word) => word.ambiguous)) {
+    return deny(inlineBatchInputDenial(tokens, optionNames) ??
+      'packaged command words must be literal: a word joins quoted and unquoted text, leaves a quote open, or uses shell expansion, glob, escape, or tilde syntax; single-quote each whole word that needs quoting');
+  }
   if (new Set(optionNames).size !== optionNames.length) return deny('duplicate command options are forbidden');
   if (['help', '--help', '-h', 'list', 'path', 'inventory', 'verify'].includes(primary)) return allow('packaged read-only command');
   if (primary === 'engagement') {
     if (operation === 'init') return deny('engagement init cannot run inside an active engagement');
-    if (['validate', 'allocate', 'start-attempt', 'status', 'claim', 'release', 'fragment', 'merge', 'id', 'checkpoint', 'heartbeat', 'barrier', 'cleanup'].includes(operation)) {
+    if (operation === 'report-facts') return classifyReportFactsCommand(tokens.slice(index + 3), manifest, manifestPath, cwd, allow, deny);
+    if (operation === 'lane-outcomes') return classifyLaneOutcomesCommand(tokens.slice(index + 3), manifest, manifestPath, cwd, allow, deny);
+    if (['validate', 'allocate', 'start-attempt', 'status', 'claim', 'release', 'fragment', 'merge', 'id', 'checkpoint', 'heartbeat', 'barrier', 'cleanup', 'resolve-gates'].includes(operation)) {
       const requestedManifest = optionValue(tokens, '--manifest');
       const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
       if (requestedManifest && resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
         return deny('engagement operation targets a manifest other than the active engagement');
       }
+      const batchInput = inlineBatchInputDenial(tokens, optionNames);
+      if (batchInput) return deny(batchInput);
       return allow('packaged engagement controller owns the bounded mutation');
     }
     return deny('unknown engagement controller operation');
   }
   if (primary === 'authorization') {
-    if (operation === 'check') return allow('packaged authorization audit owns the bounded mutation');
+    if (operation === 'check' && optionNames.includes('--at')) return deny('authorization check --at is a test-only clock override and is refused inside an active engagement');
+    // The audit event records --lane, and a binary capture's review is bound to its collector's
+    // event, so a lane can ask only for itself: Claude Code, not the model, names the caller.
+    if (operation === 'check' && !lane) return deny('authorization check requires an identified calling lane');
+    if (operation === 'check' && optionValue(tokens, '--lane') !== lane) return deny(`authorization check --lane must name the calling lane ${lane}`);
+    if (operation === 'check') {
+      // The CLI appends its audit beside --manifest, so only the engagement's own manifest keeps
+      // that append inside the control directory.
+      const requested = optionValue(tokens, '--manifest');
+      const expected = join(dirname(manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json')), 'authorization.json');
+      try {
+        if (!requested || resolvePhysical(requested, cwd) !== resolvePhysical(expected, cwd)) {
+          return deny('authorization check must name the active engagement authorization manifest ai_agents_internal/authorization.json');
+        }
+      } catch {
+        return deny('authorization check manifest cannot be resolved safely');
+      }
+      return allow('packaged authorization audit owns the bounded mutation');
+    }
     return deny('authorization init cannot run inside an active engagement');
   }
+  if (primary === 'browser') return deny('browser provisioning is host/operator-only and cannot run inside an active engagement');
   if (primary === 'schema') {
     if (['list', 'validate'].includes(operation)) return allow('packaged schema command is read-only');
     return deny('unknown schema operation');
@@ -1481,7 +2907,11 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     if (!requestedManifest || resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
       return deny('model operation must bind to the active engagement manifest');
     }
-    if (operation === 'telemetry' && !optionValue(tokens, '--decision')) return deny('model telemetry requires an immutable decision file');
+    if (operation === 'telemetry' && optionNames.filter((name) => name === '--decision' || name === '--json').length !== 1) {
+      return deny('model telemetry requires exactly one of an immutable --decision file or an inline --json batch');
+    }
+    const batchInput = inlineBatchInputDenial(tokens, optionNames);
+    if (batchInput) return deny(batchInput);
     return allow('packaged model controller owns the bounded trust, request, decision, or telemetry mutation');
   }
   if (primary === 'orchestration') {
@@ -1513,13 +2943,26 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
       const destination = optionValue(tokens, '--destination');
       return destination ? { paths: [destination] } : deny('template scaffold destination is missing');
     }
+    // The installed selection grants write roots, so only the operator binds it, at launch.
+    if (['verify', 'install'].includes(operation)) return deny('template selection verify/install is host/operator-only and cannot run inside an active engagement');
     return deny('unknown template operation');
   }
   if (primary === 'preflight') {
-    const root = optionValue(tokens, '--artifact-root') ?? manifest.artifactRoot;
+    // As the CLI does: the artifact root defaults to a path target, else the working directory,
+    // and --output resolves against that root, never against the working directory.
+    const target = optionValue(tokens, '--target');
+    const root = optionValue(tokens, '--artifact-root') ?? (target && !/^https?:\/\//i.test(target) ? target : cwd);
     const output = optionValue(tokens, '--output') ?? 'ai_agents_internal/preflight.json';
-    if (resolvePhysical(root, cwd) !== resolvePhysical(manifest.artifactRoot, manifest.artifactRoot)) return { paths: [root] };
-    if (!String(output).replace(/^\.\//, '').startsWith('ai_agents_internal/')) return { paths: [output] };
+    try {
+      const artifactPhysical = resolvePhysical(manifest.artifactRoot, manifest.artifactRoot);
+      if (resolvePhysical(root, cwd) !== artifactPhysical) return { paths: [root] };
+      const report = resolvePhysical(output, artifactPhysical);
+      if (dirname(report) !== join(artifactPhysical, 'ai_agents_internal') || !PREFLIGHT_REPORT_NAME.test(basename(report))) {
+        return deny('preflight --output must be ai_agents_internal/preflight.json or a diagnostic ai_agents_internal/preflight-<name>.json');
+      }
+    } catch {
+      return deny('preflight artifact root or output cannot be resolved safely');
+    }
     return allow('packaged preflight writes only dedicated engagement control artifacts');
   }
   if (primary === 'redact') {
@@ -1530,6 +2973,10 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
     const destination = tokens[index + 3];
     return destination ? { paths: [destination] } : deny('copy-template destination is missing');
   }
+  if (primary === 'copy-runner-kit') {
+    const destination = tokens[index + 3];
+    return destination ? { paths: [destination] } : deny('copy-runner-kit destination is missing');
+  }
   if (primary === 'copy-browser-driver') {
     const destination = tokens[index + 2];
     return destination ? { paths: [
@@ -1538,7 +2985,122 @@ function classifyPackagedCommand(command, manifest, manifestPath, cwd, commandSh
       join(destination, 'scripts', 'driver-config.schema.json'),
     ] } : deny('copy-browser-driver destination is missing');
   }
+  if (primary === 'automation-review') {
+    return classifyAutomationReviewCommand(operation, tokens.slice(index + 3), manifest, manifestPath, cwd, allow, deny);
+  }
+  if (Object.hasOwn(PACKAGED_QUERY_OPTIONS, primary)) {
+    return classifyPackagedQuery(primary, operation, tokens.slice(index + 3), allow, deny);
+  }
   return deny('unknown packaged command operation');
+}
+
+// `engagement report-facts` only reads the merge-verified canonical inputs. It must name the
+// active manifest and accepts only --manifest and --output; stdout is read-only, and a file
+// output goes through the ordinary write-root and canonical-owner checks.
+function classifyReportFactsCommand(args, manifest, manifestPath, cwd, allow, deny) {
+  for (let cursor = 0; cursor < args.length; cursor += 2) {
+    const value = args[cursor + 1];
+    if (!['--manifest', '--output'].includes(args[cursor]) || !value || value.startsWith('--')) {
+      return deny('engagement report-facts accepts only --manifest <path> and --output <json|->');
+    }
+  }
+  const requestedManifest = optionValue(args, '--manifest');
+  const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
+  try {
+    if (!requestedManifest || resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
+      return deny('engagement report-facts must bind to the active engagement manifest');
+    }
+  } catch {
+    return deny('engagement report-facts manifest cannot be resolved safely');
+  }
+  const output = optionValue(args, '--output') ?? '-';
+  return output === '-' ? allow('engagement report-facts to stdout is read-only') : { paths: [output] };
+}
+
+// `engagement lane-outcomes` writes only its fixed control artifact,
+// ai_agents_internal/lane-outcomes.json, and has no output option. It must name the active
+// manifest and carry the controller token, and accepts exactly those two options, so a
+// smuggled --output or lease token fails closed here.
+function classifyLaneOutcomesCommand(args, manifest, manifestPath, cwd, allow, deny) {
+  for (let cursor = 0; cursor < args.length; cursor += 2) {
+    const value = args[cursor + 1];
+    if (!['--manifest', '--controller-token'].includes(args[cursor]) || !value || value.startsWith('--')) {
+      return deny('engagement lane-outcomes accepts only --manifest <path> and --controller-token <odysseus-token>');
+    }
+  }
+  if (!optionValue(args, '--controller-token')) return deny('engagement lane-outcomes requires --controller-token');
+  const requestedManifest = optionValue(args, '--manifest');
+  const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
+  try {
+    if (!requestedManifest || resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
+      return deny('engagement lane-outcomes must bind to the active engagement manifest');
+    }
+  } catch {
+    return deny('engagement lane-outcomes manifest cannot be resolved safely');
+  }
+  return allow('packaged engagement controller owns the idempotent lane-outcomes control artifact');
+}
+
+// Automation review commands only read the engagement and the test corpus. They must name the
+// active manifest, accept exactly their declared options, and only `check --emit-gate <path>`
+// writes: that destination goes through the ordinary write-root and canonical-owner checks.
+const AUTOMATION_REVIEW_OPTIONS = Object.freeze({
+  digest: Object.freeze({ values: ['--manifest'], flags: [] }),
+  check: Object.freeze({ values: ['--manifest', '--emit-gate'], flags: ['--json'] }),
+});
+
+function classifyAutomationReviewCommand(operation, args, manifest, manifestPath, cwd, allow, deny) {
+  if (!Object.hasOwn(AUTOMATION_REVIEW_OPTIONS, operation ?? '')) return deny('unknown automation-review operation');
+  const accepted = AUTOMATION_REVIEW_OPTIONS[operation];
+  for (let cursor = 0; cursor < args.length; cursor += 1) {
+    if (accepted.flags.includes(args[cursor])) continue;
+    const value = args[cursor + 1];
+    if (!accepted.values.includes(args[cursor]) || !value || value.startsWith('--')) {
+      return deny(`automation-review ${operation} accepts only its declared options`);
+    }
+    cursor += 1;
+  }
+  const requestedManifest = optionValue(args, '--manifest');
+  const activeManifest = manifestPath ?? join(manifest.artifactRoot, 'ai_agents_internal', 'engagement.json');
+  try {
+    if (!requestedManifest || resolvePhysical(requestedManifest, cwd) !== resolvePhysical(activeManifest, cwd)) {
+      return deny('automation review must bind to the active engagement manifest');
+    }
+  } catch {
+    return deny('automation review manifest cannot be resolved safely');
+  }
+  const gate = optionValue(args, '--emit-gate');
+  return gate ? { paths: [gate] } : allow(`automation-review ${operation} is read-only`);
+}
+
+// Packaged queries print to stdout only. Each operation lists exactly the options its CLI
+// parser accepts, so an unexpected option (for example a smuggled --output) fails closed here
+// instead of depending on the CLI to reject it. `coverage calculate --output <path>` is the one
+// write-capable form; its destination goes through the ordinary write-root and owner checks.
+const PACKAGED_QUERY_OPTIONS = Object.freeze({
+  technique: Object.freeze({ scopes: ['--role'], select: ['--role', '--inventory'] }),
+  raci: Object.freeze({ list: [], route: ['--surface', '--activity', '--artifact', '--transition'] }),
+  coverage: Object.freeze({
+    validate: ['--inventory', '--observations', '--evidence', '--ledger', '--automation-status', '--root'],
+    calculate: ['--inventory', '--observations', '--evidence', '--ledger', '--automation-status', '--root', '--output'],
+  }),
+});
+
+function classifyPackagedQuery(primary, operation, args, allow, deny) {
+  const operations = PACKAGED_QUERY_OPTIONS[primary];
+  if (!Object.hasOwn(operations, operation ?? '')) return deny(`unknown ${primary} operation`);
+  const accepted = operations[operation];
+  for (let cursor = 0; cursor < args.length; cursor += 2) {
+    const value = args[cursor + 1];
+    if (!accepted.includes(args[cursor]) || !value || value.startsWith('--')) {
+      return deny(`${primary} ${operation} accepts only its declared options, each with a value`);
+    }
+  }
+  if (primary === 'coverage' && operation === 'calculate') {
+    const output = optionValue(args, '--output') ?? '-';
+    return output === '-' ? allow('coverage calculation writes only to stdout') : { paths: [output] };
+  }
+  return allow(`packaged ${primary} ${operation} query is read-only`);
 }
 
 function referencesPackagedCommand(command) {
@@ -1551,9 +3113,23 @@ function optionValue(tokens, name) {
   return index >= 0 ? tokens[index + 1] : undefined;
 }
 
+// Controller batch input is inline only: exactly one single-line JSON object as the `--json`
+// argv value. A batch file would have to live in the artifact root, which every worker can
+// read, so `--json -`, `--json @file`, or a path is refused here, and so is stdin fed by a
+// redirection or here-string (a heredoc or pipe never reaches this point: newlines and `|`
+// are already refused for every packaged command).
+function inlineBatchInputDenial(tokens, optionNames) {
+  if (!optionNames.includes('--json')) return null;
+  const value = optionValue(tokens, '--json');
+  if (typeof value !== 'string' || !/^\{[^\n\r]*\}$/.test(value)) return 'batch --json input must be one inline single-line JSON object';
+  if (tokens.some((token) => token.startsWith('<'))) return 'batch input is inline only; redirected, heredoc, and here-string stdin are refused';
+  return null;
+}
+
 function collectShellWritePaths(command) {
   const paths = [];
-  for (const match of command.matchAll(/(?:^|\s)(?:[0-9]*>>?|&>)\s*(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/g)) paths.push(match[1] ?? match[2] ?? match[3]);
+  // A redirection target is one whole shell word: 'reports'/../app joins into reports/../app.
+  for (const match of command.matchAll(/(?:^|\s)(?:[0-9]*>>?|&>)\s*((?:"[^"]*"|'[^']*'|[^\s;&|"'])+)/g)) paths.push(shellTokens(match[1])[0]);
   for (const match of command.matchAll(/\b(?:writeFileSync|writeFile|appendFileSync|appendFile|unlinkSync|unlink|renameSync|rename|chmodSync|chmod|rmSync|rm|rmdirSync|rmdir|rmtree|remove|open)\s*\(\s*[rbuf]*["']([^"']+)["']/gi)) paths.push(match[1]);
   for (const match of command.matchAll(/\bPath\s*\(\s*[rbuf]*["']([^"']+)["']\s*\)\s*\.write_(?:text|bytes)/gi)) paths.push(match[1]);
   const segments = command.split(/&&|\|\||;|\n/);
@@ -1572,7 +3148,52 @@ function collectShellWritePaths(command) {
 }
 
 function shellTokens(value) {
-  return [...value.matchAll(/"([^"]*)"|'([^']*)'|([^\s]+)/g)].map((match) => match[1] ?? match[2] ?? match[3]);
+  return shellWords(value).map((word) => word.text);
+}
+
+// Unquoted characters every shell passes through literally. Anything else is expansion, glob,
+// brace, tilde, escape, comment, history, subshell, or redirection syntax.
+const SHELL_LITERAL_CHARACTERS = /^[A-Za-z0-9_.\/:@%+,=-]*$/;
+
+// Splits a command into words the way bash and zsh build argv: adjacent unquoted,
+// single-quoted, and double-quoted pieces join into one word without their quotes. A word is
+// ambiguous when the guard cannot be sure it is the literal argv word: it joins a quoted piece
+// to any other piece, leaves a quote open, carries an unquoted character outside the literal
+// set or a leading `=` (zsh equals expansion), or holds `$`, a backslash, a backtick, or `!`
+// inside double quotes. Single-quoted text is always literal.
+function shellWords(value) {
+  const words = [];
+  let word = null;
+  let cursor = 0;
+  while (cursor < value.length) {
+    const character = value[cursor];
+    if (/\s/.test(character)) {
+      if (word) words.push(word);
+      word = null;
+      cursor += 1;
+      continue;
+    }
+    word ??= { text: '', pieces: 0, quoted: false, ambiguous: false };
+    if (character === "'" || character === '"') {
+      const close = value.indexOf(character, cursor + 1);
+      const text = value.slice(cursor + 1, close < 0 ? value.length : close);
+      if (close < 0 || (character === '"' && /[$\\`!]/.test(text))) word.ambiguous = true;
+      word.quoted = true;
+      cursor = close < 0 ? value.length : close + 1;
+      word.text += text;
+    } else {
+      let end = cursor;
+      while (end < value.length && !/[\s'"]/.test(value[end])) end += 1;
+      const text = value.slice(cursor, end);
+      if (!SHELL_LITERAL_CHARACTERS.test(text) || (word.pieces === 0 && text.startsWith('='))) word.ambiguous = true;
+      cursor = end;
+      word.text += text;
+    }
+    word.pieces += 1;
+    if (word.quoted && word.pieces > 1) word.ambiguous = true;
+  }
+  if (word) words.push(word);
+  return words.map(({ text, ambiguous }) => ({ text, ambiguous }));
 }
 
 function looksLikePath(value) {
@@ -1615,16 +3236,153 @@ function fragmentOrder(a, b) {
   return a.id.localeCompare(b.id) || a.lane.localeCompare(b.lane) || a.path.localeCompare(b.path);
 }
 
+// A canonical artifact concatenates its fragments unless it declares latest-revision: then its
+// owner alone writes numbered revisions and a merge publishes only the highest one. Structured
+// documents keep their contract merge, so latest-revision is limited to markdown and text. An
+// `executable` text canonical (the runner script) is published owner-executable (0700).
+function canonicalMergeErrors(item) {
+  if (!plainObject(item)) return [];
+  const errors = item.executable !== undefined && (item.executable !== true || item.format !== 'text')
+    ? ['canonical artifact executable is valid only as true on a text artifact'] : [];
+  if (item.merge === undefined) return errors;
+  if (!CANONICAL_MERGE_MODES.includes(item.merge)) return [...errors, `canonical artifact merge must be ${CANONICAL_MERGE_MODES.join(' or ')}`];
+  if (item.merge === 'latest-revision' && !['markdown', 'text'].includes(item.format)) return [...errors, 'latest-revision merge is valid only for markdown and text artifacts'];
+  return errors;
+}
+
+function nextFragmentRevision(records) {
+  return 1 + Math.max(0, ...records.map((record) => (Number.isInteger(record.revision) ? record.revision : 0)));
+}
+
+// Every revision must be an owner record with its own positive number; the highest one wins.
+function latestFragmentRevision(canonical, records) {
+  const seen = new Set();
+  let latest = null;
+  for (const record of records) {
+    if (!Number.isInteger(record.revision) || record.revision < 1) throw new Error(`${canonical.path} fragment ${record.id} has no revision`);
+    if (record.lane !== canonical.owner) throw new Error(`${canonical.path} revisions are written only by ${canonical.owner}`);
+    if (seen.has(record.revision)) throw new Error(`${canonical.path} has more than one fragment at revision ${record.revision}`);
+    seen.add(record.revision);
+    if (!latest || record.revision > latest.revision) latest = record;
+  }
+  return latest;
+}
+
+// Fragments of every canonical share one write sequence, so an owner's successive documents
+// are totally ordered. Records written before sequences existed count as 0.
+function nextFragmentSequence(fragments) {
+  let highest = 0;
+  for (const list of Object.values(fragments)) {
+    for (const record of list) if (Number.isInteger(record?.sequence) && record.sequence > highest) highest = record.sequence;
+  }
+  return highest + 1;
+}
+
+function fragmentSequence(canonical, record) {
+  if (record.sequence === undefined) return 0;
+  if (!Number.isInteger(record.sequence) || record.sequence < 1) throw new Error(`${canonical.path} fragment ${record.id} has an invalid sequence`);
+  return record.sequence;
+}
+
+// A json-document canonical that is not a collection contract publishes one complete document.
+function isSingleDocumentCanonical(canonical) {
+  return canonical.format === 'json-document' && !isCollectionContract(canonical.schema);
+}
+
+// Only the owner supersedes a single-document canonical. Every fragment must still be a valid
+// document of this engagement; in write-sequence order (a tie is ambiguous) each one keeps the
+// contract's stability invariants relative to its predecessor, and the latest one is effective.
+function supersedingFragment(manifest, canonical, records, contents) {
+  const ordered = records.map((record, index) => {
+    if (record.lane !== canonical.owner) throw new Error(`${canonical.path} is a single-document contract; only ${canonical.owner} may submit fragments`);
+    const { errors, document } = validateCanonicalFragment(canonical.schema, contents[index]);
+    if (errors.length) throw new Error(`${canonical.path} fragment ${record.id} is invalid: ${errors.join('; ')}`);
+    if (document.engagementId !== manifest.engagementId) throw new Error(`${canonical.path} fragment ${record.id} engagementId does not match ${manifest.engagementId}`);
+    return { record, document, sequence: fragmentSequence(canonical, record) };
+  }).sort((left, right) => left.sequence - right.sequence);
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previous = ordered[index - 1];
+    const next = ordered[index];
+    if (previous.sequence === next.sequence) {
+      throw new Error(`${canonical.path} fragments ${previous.record.id} and ${next.record.id} share sequence ${next.sequence}`);
+    }
+    assertSupersession(canonical.schema, previous.document, next.document);
+  }
+  return ordered.at(-1).record;
+}
+
+// Kleio's evidence registry merge re-verifies every reference before publishing it: binary
+// references must come from their reviewer's own fragment, retained bytes must still match
+// their digest and content rules, and binary captures must be bound to the audited grant.
+function verifyEvidenceRegistry(manifest, records, fragments, merged) {
+  const errors = [];
+  fragments.forEach((fragment, index) => {
+    for (const ref of fragment.references) errors.push(...binaryRegistrationErrors(ref, records[index].lane));
+  });
+  const binaryAudit = binaryAuditVerifier(manifest);
+  let patterns = null;
+  for (const ref of merged.references) {
+    let bytes;
+    try { bytes = readManagedFile(engagementPath(manifest, ref.source), `evidence ${ref.id}`); }
+    catch (error) { errors.push(`evidence ${ref.id} is missing or unsafe: ${error.message}`); continue; }
+    if (sha256(bytes) !== ref.sha256) { errors.push(`evidence digest drift ${ref.id}`); continue; }
+    errors.push(...validateEvidenceContent(ref, bytes, { patterns: patterns ??= loadRedactionPatterns() }));
+    errors.push(...binaryAudit(ref));
+  }
+  if (errors.length) throw new Error(`evidence registry verification failed: ${errors.join('; ')}`);
+}
+
+// Returns the audit-binding check for binary references, reading the authorization audit at
+// most once per merge and only when a binary reference needs it.
+function binaryAuditVerifier(manifest) {
+  let events = null;
+  return (ref) => {
+    if (!isBinaryReference(ref)) return [];
+    try {
+      events ??= loadAuthorizationAudit(manifest);
+    } catch (error) {
+      return [`binary evidence ${ref.id} audit binding cannot be verified: ${error.message}`];
+    }
+    return verifyBinaryReviewAudit(manifest, ref, events);
+  };
+}
+
+// A binary reference needs one allow decision for binary-evidence, recorded for its
+// collecting lane in this engagement at exactly review.auditTimestamp.
+function verifyBinaryReviewAudit(manifest, ref, events = loadAuthorizationAudit(manifest)) {
+  return binaryReviewAuditErrors(ref, events, manifest.engagementId);
+}
+
+// The audit log is the plain file named by authorization.json audit.path, beside it under
+// ai_agents_internal/; a missing log holds no decisions.
+function loadAuthorizationAudit(manifest) {
+  const authorization = JSON.parse(readManagedFile(engagementPath(manifest, 'ai_agents_internal/authorization.json'), 'authorization manifest').toString('utf8'));
+  const configured = authorization?.audit?.path;
+  const name = typeof configured === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$/.test(configured) ? configured : 'authorization-audit.jsonl';
+  const path = engagementPath(manifest, join('ai_agents_internal', name));
+  if (!existsSync(path)) return [];
+  return parseAuditLog(readManagedFile(path, 'authorization audit').toString('utf8'));
+}
+
+// A per-bug reconciliation failure quarantines that row instead of failing the merge. The
+// demoted document must still satisfy the ledger contract, or the merge fails closed.
+function quarantineLedgerFindings(document, byBug) {
+  const quarantined = quarantineFindings(document, byBug);
+  const errors = validateCanonicalDocument('bug-ledger', document);
+  if (errors.length) throw new Error(`quarantined bug ledger is invalid: ${errors.join('; ')}`);
+  return quarantined;
+}
+
 function atomicWriteJson(path, value) {
   atomicWrite(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function atomicWrite(path, content) {
+function atomicWrite(path, content, mode = 0o600) {
   mkdirSync(dirname(path), { recursive: true });
   if (existsSync(path)) assertManagedFile(path, 'atomic write destination');
   const temporary = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
   try {
-    createManagedFile(temporary, content, 'atomic write temporary');
+    createManagedFile(temporary, content, 'atomic write temporary', mode);
     assertManagedFile(temporary, 'atomic write temporary');
     if (existsSync(path)) assertManagedFile(path, 'atomic write destination');
     renameSync(temporary, path);
@@ -1634,7 +3392,7 @@ function atomicWrite(path, content) {
   }
 }
 
-function createManagedFile(path, content, label) {
+function createManagedFile(path, content, label, mode = 0o600) {
   mkdirSync(dirname(path), { recursive: true });
   const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0);
   let fd;
@@ -1643,7 +3401,7 @@ function createManagedFile(path, content, label) {
     assertManagedDescriptorPath(fd, path, label);
     writeFileSync(fd, content);
     fsyncSync(fd);
-    fchmodSync(fd, 0o600);
+    fchmodSync(fd, mode);
     assertManagedDescriptorPath(fd, path, label);
   } catch (error) {
     if (fd !== undefined) closeSync(fd);
@@ -1770,6 +3528,57 @@ function validateBrowserPolicy(policy, selectedAgents, errors) {
   }
 }
 
+// A manifest carries exactly the phase plan derivePhasePlan produced for its mode and
+// selection. The runtime re-checks every property it relies on instead of trusting the file.
+function validatePhasePlan(plan, selectedAgents, errors) {
+  if (!Array.isArray(plan) || plan.length < 2) {
+    errors.push('phasePlan must contain at least the preflight and complete phases');
+    return;
+  }
+  const ids = plan.map((phase) => phase?.id);
+  if (!ids.every(validSlug) || new Set(ids).size !== ids.length) errors.push('phasePlan ids must be unique slugs');
+  if (ids[0] !== 'preflight' || ids.at(-1) !== 'complete') errors.push('phasePlan must start with preflight and end with complete');
+  let highestWave = 0;
+  plan.forEach((phase, index) => {
+    const id = validSlug(phase?.id) ? phase.id : `#${index}`;
+    if (!plainObject(phase)) {
+      errors.push(`phase ${id} must be an object`);
+      return;
+    }
+    const passKind = PASS_PHASE_KINDS.includes(phase.kind);
+    const unknown = Object.keys(phase).filter((key) => !PHASE_KEYS.includes(key));
+    const missing = PHASE_KEYS.filter((key) => key !== 'pass' && !Object.hasOwn(phase, key));
+    if (unknown.length > 0 || missing.length > 0) errors.push(`phase ${id} must contain exactly id, wave, kind, pass (proof and deep-hunt only), skippable, participants, and standby`);
+    if (!PHASE_KINDS.includes(phase.kind)) errors.push(`phase ${id} kind must be control, work, proof, or deep-hunt`);
+    if (passKind !== (Object.hasOwn(phase, 'pass') && Number.isInteger(phase.pass) && phase.pass >= 0 && phase.pass <= 3)) {
+      errors.push(`phase ${id} pass must be an integer 0-3 exactly when kind is proof or deep-hunt`);
+    }
+    if (typeof phase.skippable !== 'boolean' || (phase.skippable && !(passKind && phase.pass >= 2))) {
+      errors.push(`phase ${id} skippable must be boolean and true only for a proof or deep-hunt pass of 2 or more`);
+    }
+    const waveIndex = PHASE_WAVES.indexOf(phase.wave);
+    if (waveIndex < 0) errors.push(`phase ${id} wave must be controller or W0-W4`);
+    else if (waveIndex > 0) {
+      if (waveIndex < highestWave) errors.push(`phase ${id} regresses wave ${phase.wave}`);
+      highestWave = Math.max(highestWave, waveIndex);
+    }
+    const participants = phase.participants;
+    const standby = phase.standby;
+    if (!stringList(participants, false) || !stringList(standby, false) ||
+        ![...participants, ...standby].every((slug) => validSlug(slug) && selectedAgents.includes(slug))) {
+      errors.push(`phase ${id} participants and standby must be unique selected agent slugs`);
+      return;
+    }
+    for (const slug of participants) if (standby.includes(slug)) errors.push(`phase ${id} lists ${slug} as both participant and standby`);
+    const control = index === 0 || index === plan.length - 1;
+    if (control && (phase.kind !== 'control' || phase.wave !== 'controller' || standby.length > 0 || participants.some((slug) => slug !== 'odysseus'))) {
+      errors.push(`phase ${id} must be a controller control phase with at most odysseus participating and no standby`);
+    }
+    if (!control && (phase.kind === 'control' || phase.wave === 'controller')) errors.push(`phase ${id}: only preflight and complete may be controller control phases`);
+    if (phase.kind === 'proof' && participants.some((slug) => slug !== PROOF_VALIDATOR)) errors.push(`proof phase ${id} participants must be a subset of ${PROOF_VALIDATOR}`);
+  });
+}
+
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -1783,6 +3592,10 @@ function stringList(value, requireNonEmpty) {
 }
 
 function validSlug(value) {
+  return typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
+}
+
+function validCapabilityId(value) {
   return typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
 }
 

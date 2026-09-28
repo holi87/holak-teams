@@ -10,6 +10,9 @@ REAL_CLI="${ARGUS_SMOKE_REAL_CLI:?ARGUS_SMOKE_REAL_CLI is required}"
 HOST_ROOT="${ARGUS_SMOKE_HOST_ROOT:?ARGUS_SMOKE_HOST_ROOT is required}"
 LAUNCHER="${ARGUS_SMOKE_LAUNCHER:?ARGUS_SMOKE_LAUNCHER is required}"
 CLAUDE_FIXTURE="${ARGUS_SMOKE_CLAUDE:?ARGUS_SMOKE_CLAUDE is required}"
+# Optional: also list an operator-approval key with this ID and sign it into the launch, as
+# argus-launch --operator-key-id does, so preflight pins both anchors itself.
+OPERATOR_KEY_ID="${ARGUS_SMOKE_OPERATOR_KEY_ID:-}"
 LAUNCHER="$(cd "$(dirname "$LAUNCHER")" && pwd -P)/$(basename "$LAUNCHER")"
 CLAUDE_FIXTURE="$(cd "$(dirname "$CLAUDE_FIXTURE")" && pwd -P)/$(basename "$CLAUDE_FIXTURE")"
 
@@ -67,6 +70,15 @@ jq -n --arg keyId "$runtime_key_id" --rawfile publicKey "$case_root/runtime-publ
   '{schema:"argus/model-trust-store@1",schemaVersion:1,keys:[
     {keyId:$keyId,purpose:"runtime-attestation",subjectId:"argus-unit-smoke-signer",algorithm:"Ed25519",publicKeyPem:$publicKey,status:"active"}
   ]}' >"$case_root/model-trust.json"
+if [ -n "$OPERATOR_KEY_ID" ]; then
+  openssl genpkey -algorithm ED25519 -out "$case_root/operator-private.pem" >/dev/null 2>&1
+  openssl pkey -in "$case_root/operator-private.pem" -pubout -out "$case_root/operator-public.pem" >/dev/null 2>&1
+  rm -f "$case_root/operator-private.pem"
+  jq --arg keyId "$OPERATOR_KEY_ID" --rawfile publicKey "$case_root/operator-public.pem" \
+    '.keys += [{keyId:$keyId,purpose:"operator-approval",subjectId:"argus-unit-smoke-operator",algorithm:"Ed25519",publicKeyPem:$publicKey,status:"active"}]' \
+    "$case_root/model-trust.json" >"$case_root/model-trust.next.json"
+  mv "$case_root/model-trust.next.json" "$case_root/model-trust.json"
+fi
 chmod 600 "$case_root"/*.pem "$case_root/model-trust.json"
 
 authorization="$case_root/authorization.json"
@@ -90,7 +102,8 @@ fi
 node "$(dirname "$0")/../fixtures/argus-launcher/create-unit-authorization.mjs" \
   "$target_kind" "$target_identity" "$workspace" "$artifact_root" "$mode" "$engagement_id" \
   "$LAUNCHER" "$$" "$CLAUDE_FIXTURE" "$runtime_key_id" "$case_root/model-trust.json" \
-  "$case_root/runtime-private.pem" "$authorization" "$receipt" "$capability_sha256" "$sandbox_probe"
+  "$case_root/runtime-private.pem" "$authorization" "$receipt" "$capability_sha256" "$sandbox_probe" \
+  ${OPERATOR_KEY_ID:+"$OPERATOR_KEY_ID"}
 rm -f "$case_root/runtime-private.pem"
 
 capability="$(tr -d '\n' <"$capability_file")"
@@ -115,6 +128,11 @@ environment=(
   "ARGUS_NATIVE_LAUNCH_RECEIPT=$receipt"
   "ARGUS_NATIVE_LAUNCH_CAPABILITY=$capability"
 )
+# Deliberately wider than argus-launch's allowlist, which never passes database coordinates: a
+# smoke exports them only around the single run that proves preflight ignores them.
+for name in DATABASE_URL PGHOST MYSQL_HOST; do
+  if [ -n "${!name:-}" ]; then environment+=("$name=${!name}"); fi
+done
 cd "$workspace"
 case "$(uname -s)" in
   Darwin)

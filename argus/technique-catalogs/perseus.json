@@ -1,0 +1,242 @@
+{
+  "$schema": "argus/technique-catalog@1",
+  "schemaVersion": 1,
+  "catalogId": "argus/technique-catalog/perseus@1",
+  "role": "perseus",
+  "catalogType": "hunter",
+  "valuePolicy": "discover-never-assume",
+  "executionRule": "each-applicable-entry-covered-or-gap",
+  "absentSurfaceDisposition": "not-applicable-with-evidence",
+  "entries": [
+    {
+      "id": "PER-T01",
+      "title": "Token forgery and signature verification bypass",
+      "scope": ["authentication", "token-integrity"],
+      "techniques": ["decision table", "negative testing"],
+      "appliesWhen": "always",
+      "construct": ["From one freshly issued valid token, derive the alg:none, algorithm-swap, unsigned, tampered-claim, and broken-signature variants and replay each against a protected endpoint"],
+      "oracles": ["Only a correctly signed token from the trusted issuer is accepted; every forged, unsigned, or tampered variant is rejected with 401 and no protected effect occurs"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T02",
+      "title": "Token-lifecycle and time-window enforcement",
+      "scope": ["token-lifecycle", "session"],
+      "techniques": ["boundary value analysis", "state transition"],
+      "appliesWhen": "always",
+      "construct": ["Validate exp, iat, and nbf at login against the sourced lifetime, then exercise a protected endpoint just before exp and again at or after exp, and rotate the refresh token"],
+      "oracles": ["A token is accepted just before exp and rejected with 401 at or after exp, never silently honoured past expiry; a rotated refresh token issues a fresh window and the prior one no longer authenticates"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T03",
+      "title": "Auth-lifecycle uniformity across the full protected surface",
+      "scope": ["authentication", "authorization"],
+      "techniques": ["equivalence partitioning", "state transition"],
+      "appliesWhen": "always",
+      "construct": ["Enumerate every authenticated route and verb from recon and drive each invalid-credential class (expired, not-yet-valid, forged, tampered, wrong-audience or issuer, revoked, another-principal, missing) against the whole matrix"],
+      "oracles": ["Every route rejects each invalid-credential class uniformly with 401 or 403; no route skips verification, honours a stale token, or trusts a claim the others reject"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T04",
+      "title": "Session and token invalidation across lifecycle events",
+      "scope": ["session", "token-lifecycle"],
+      "techniques": ["state transition", "negative testing"],
+      "appliesWhen": "always",
+      "construct": ["Hold a live session, then trigger logout, password change, explicit revocation, and principal deletion, replaying the still-held token after each event as a distinct cell"],
+      "oracles": ["The token stops authenticating after each invalidation event; a deleted or banned principal keeping a live session is treated as an auth-bypass, not a cleanup nit"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T05",
+      "title": "Function-level authorization role and operation matrix",
+      "scope": ["authorization", "access-control"],
+      "techniques": ["role-operation matrix", "decision table"],
+      "appliesWhen": "always",
+      "construct": ["For each module operation call it as each role, unauthenticated, and with an expired or invalid token, covering state-changing verbs and every sub-route, not just object ownership"],
+      "oracles": ["Each operation enforces the documented role gate; function-level authorization drift where a lower role or an unauthenticated caller reaches a protected operation is a defect"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T06",
+      "title": "Object-level access on identifiers and sub-routes",
+      "scope": ["authorization", "object-access"],
+      "techniques": ["object-level access testing", "negative testing"],
+      "appliesWhen": "always",
+      "construct": ["Using a second throwaway account, access another principal's object for every {id} parameter and every /{id}/* sub-route, both read and write"],
+      "oracles": ["The server refuses cross-principal read and write with 403 or 404; an IDOR or BOLA cell that returns another user's object or mutates it is a defect and carries the linked PER-NNN"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T07",
+      "title": "Mass-assignment and privilege escalation past the UI",
+      "scope": ["mass-assignment", "authorization"],
+      "techniques": ["abuse-case testing", "state verification"],
+      "appliesWhen": "always",
+      "construct": ["Submit privileged or scope-escaping fields the UI never exposes (role, isAdmin, ownerId, status, balance, verified, foreign tenant id) on create and update, then re-read the entity"],
+      "oracles": ["The server ignores or strips the injected fields and never binds them; the effect and post-condition prove no privilege was gained and no cross-tenant or forbidden state landed, never a bare 200"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T08",
+      "title": "Server-side boundary and range enforcement past the UI",
+      "scope": ["input-validation", "boundary"],
+      "techniques": ["boundary value analysis", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Bypassing any client cap, disabled field, or hidden control, POST directly the off-by-one and gross-overflow inputs for each documented range, length, enum, or quantity, and construct the exact legal boundary equality"],
+      "oracles": ["The server rejects or clamps out-of-range values so persisted state never leaves the legal partition; the boundary inclusivity matches the spec rather than a UI-only guard"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T09",
+      "title": "Validation-before-authorization ordering leak",
+      "scope": ["authorization", "information-exposure"],
+      "techniques": ["decision table", "negative testing"],
+      "appliesWhen": "always",
+      "construct": ["Build the table of caller (none, valid wrong role, valid right role) against body (well-formed, schema-violating, references a foreign id) and compare responses for the non-authorized caller"],
+      "oracles": ["A non-authorized caller receives an identical authorization-shaped verdict whether the body is valid or garbage, with no field names, enums, existence facts, or timing oracle leaked before the authority check"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T10",
+      "title": "Injection confirm-or-close with captured evidence",
+      "scope": ["injection", "input-validation"],
+      "techniques": ["negative testing", "error guessing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Drive SQL, NoSQL, command, template, and header injection payloads on every string and numeric parameter, recording the exact payload sent and the observed response for each probe"],
+      "oracles": ["A non-finding counts only when the captured response proves the payload was handled as inert data: no 500, no error, stack, or SQL leak, and no out-of-scope rows returned"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T11",
+      "title": "Sensitive-data exposure across response channels",
+      "scope": ["data-exposure", "information-exposure"],
+      "techniques": ["specification-based testing", "error guessing"],
+      "appliesWhen": "always",
+      "construct": ["Inspect every response body, error body, header, and the client bundle for secrets, API keys, password hashes, internal IDs, full PII, or another principal's data"],
+      "oracles": ["No response, error, header, or shipped bundle discloses a secret, credential, internal identifier, stack trace, or data belonging to another principal beyond the documented contract"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T12",
+      "title": "Server-side request forgery on fetched destinations",
+      "scope": ["ssrf", "input-validation"],
+      "techniques": ["abuse-case testing", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Point every server-fetched URL, host, or callback parameter at loopback, link-local metadata, internal names, and alternate schemes or ports non-destructively, and follow redirect chains"],
+      "oracles": ["Blocked internal and metadata destinations are never fetched, redirects are revalidated against the allowlist, and no internal response content is reflected back to the caller"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T13",
+      "title": "Security misconfiguration and response headers",
+      "scope": ["security-misconfig", "headers"],
+      "techniques": ["configuration testing", "checklist-based testing"],
+      "appliesWhen": "always",
+      "construct": ["Check the security headers (CSP, HSTS, X-Content-Type-Options, X-Frame-Options), verbose error output, directory listing, debug endpoints, and default credentials against the sourced environment policy"],
+      "oracles": ["Each required header and hardening control is present and correctly scoped for the environment; a missing header, verbose error, exposed debug endpoint, or default credential is a defect"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T14",
+      "title": "CORS uniformity matrix over the full operation inventory",
+      "scope": ["security-misconfig", "cors"],
+      "techniques": ["configuration testing", "state verification"],
+      "appliesWhen": "always",
+      "construct": ["For every operation in the surface inventory send the actual request (not only the OPTIONS preflight) with a foreign Origin and record Access-Control-Allow-Origin, Access-Control-Allow-Credentials, and Vary"],
+      "oracles": ["Outlier detection is the oracle: a permissive policy (wildcard or reflected origin on an authenticated route) and non-uniform coverage (an endpoint whose CORS headers differ from its siblings, in particular one emitting none where siblings do) are each filed"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T15",
+      "title": "Soft-delete resurrection as a security invariant",
+      "scope": ["state-integrity", "authorization"],
+      "techniques": ["state transition", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["After a delete, deactivate, revoke, or ban returns success, construct the post-delete state and probe direct read, every list and search and aggregate, the principal's still-held token, and a replayed second delete"],
+      "oracles": ["The entity is gone everywhere the security model requires, a deleted principal's token no longer authenticates on any protected route, and the delete is idempotent and non-replayable"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T16",
+      "title": "Concurrency as an integrity and authorization vector",
+      "scope": ["concurrency", "state-integrity"],
+      "techniques": ["state verification", "fault injection"],
+      "appliesWhen": "surface-present",
+      "construct": ["Fire N parallel requests at a limited or scarce resource (last unit, single seat, balance-bearing operation) from owned accounts and observe the settled state"],
+      "oracles": ["The documented limit holds under concurrency; a race that overbooks, double-spends, or grants a second principal access is a security-relevant integrity break, not a performance curiosity"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T17",
+      "title": "Credential handling as an auth-integrity class",
+      "scope": ["credential-policy", "authentication"],
+      "techniques": ["equivalence partitioning", "boundary value analysis"],
+      "appliesWhen": "documented-control",
+      "construct": ["Set and then authenticate with a long password and its truncated prefix, special and diacritic characters, wrong-case variants, and trailing-whitespace variants across register and login"],
+      "oracles": ["A password and its truncated prefix never both authenticate, the set charset is preserved at login, wrong-case is rejected, and whitespace handling is symmetric between register and login"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T18",
+      "title": "File-upload validation and content-type enforcement",
+      "scope": ["file-upload", "input-validation"],
+      "techniques": ["negative testing", "abuse-case testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Upload files whose declared type disagrees with the sniffed content, plus double-extension names, path-traversal filenames, and payloads past the documented size cap"],
+      "oracles": ["The server validates on the sniffed content rather than the client-declared type, rejects a content-sniffing bypass, neutralises path-traversal in the stored filename, and enforces the size limit"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T19",
+      "title": "Cross-site request forgery and persisted-mutation binding",
+      "scope": ["csrf", "request-forgery"],
+      "techniques": ["abuse-case testing", "decision table"],
+      "appliesWhen": "surface-present",
+      "construct": ["Replay each state-changing request without its anti-CSRF token, with a stale or foreign token, and invoke a persisted query or mutation without its bound identifier"],
+      "oracles": ["A state-changing request is rejected unless it carries a valid anti-forgery token bound to the session, and a persisted query or mutation executes only when bound to its registered operation"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T20",
+      "title": "Open-redirect allowlist enforcement",
+      "scope": ["open-redirect", "input-validation"],
+      "techniques": ["negative testing", "equivalence partitioning"],
+      "appliesWhen": "surface-present",
+      "construct": ["Drive every redirect or return-url parameter with an external host, a scheme-relative //host target, and an encoded bypass, then observe the emitted Location"],
+      "oracles": ["The redirect target is validated against an allowlist; no external or scheme-relative //host redirect is honoured, so the parameter cannot be used to bounce a user off-site"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T21",
+      "title": "Download-authorization on file and export endpoints",
+      "scope": ["download-authorization", "object-access"],
+      "techniques": ["object-level access testing", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["From a second throwaway account request each file, report, or export download by its object id, direct storage URL, and any signed-link parameter"],
+      "oracles": ["Every download endpoint enforces per-object authorization so a caller cannot fetch another principal's file, report, or export; an IDOR on a download endpoint is a defect"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T22",
+      "title": "Model-backed surface adversarial abuse",
+      "scope": ["llm", "injection"],
+      "techniques": ["abuse-case testing", "adversarial prompting"],
+      "appliesWhen": "surface-present",
+      "construct": ["When recon flags an AI or LLM-backed surface, drive prompt injection and jailbreak as a hostile user, attempt system-prompt leakage, and feed model output into a downstream sink"],
+      "oracles": ["The model refuses injected instructions, never leaks its system prompt or sensitive data, and its output is neutralised before reaching SQL, HTML, or eval; excessive agency is bounded to the documented scope"],
+      "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T23",
+      "title": "Formula or CSV injection through exported cells",
+      "scope": ["export-generation", "injection"],
+      "techniques": ["abuse-case testing", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["From a throwaway account store benign formula payloads (arithmetic only, never an external link or command) that begin with =, +, -, @, tab, or carriage return in every user-controlled field that reaches a CSV, spreadsheet, or report export, then generate and download that export"],
+      "oracles": ["Every exported cell that begins with a formula-trigger character is neutralised per the OWASP CSV injection guidance, prefixed so it stays text and quoted, so no spreadsheet evaluates it; a raw formula surviving into the downloaded file is a formula or CSV injection defect, while the export's row set stays Ariadne's journey finding"],
+      "routes": ["security", "api"]
+    }
+  ]
+}

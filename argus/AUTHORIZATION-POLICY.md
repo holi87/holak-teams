@@ -35,14 +35,42 @@ argus-assets authorization check \
 Exit 0 and `AUTHORIZATION ALLOW` are both required. Exit 3 or `DENY` means do not perform
 the action. Never reinterpret a denial, retry with weaker parameters without rechecking,
 or split one denied action into smaller calls. Every decision appends a redacted JSONL
-event to the manifest's audit path and names the rule that allowed or denied it.
+event to the manifest's audit path and names the rule that allowed or denied it. Inside an
+engagement a lane checks only for itself: the PreToolUse guard denies an `authorization
+check` whose `--lane`, or a hunt-driver run whose `--agent`, is not the calling lane that
+Claude Code names in the hook payload, and denies both for an unidentified caller. Because
+the audit lands beside `--manifest`, both the guard and the CLI also refuse any manifest
+other than the engagement's `ai_agents_internal/authorization.json`, so a check never
+creates or appends an audit file in target source or beside a canonical artifact.
+
+### Operator manifest at launch
+
+The operator, never an agent, may supply the manifest when starting the engagement:
+
+- `argus-launch claude … --authorization <absolute-path>` takes an operator-owned manifest
+  outside the target and artifact roots. It must be a physical regular file (no symbolic
+  link), satisfy the packaged schema, carry the launch `--engagement-id`, and allow the
+  preflight boundary read of the launch `--target`. The launcher copies it byte-for-byte to
+  `ai_agents_internal/authorization.json` (mode 0600) before the sandbox starts.
+- `--environment <local|test|staging|production>` without `--authorization` installs the
+  default-deny manifest for that environment; `local` is the manifest environment
+  `development`. With `--authorization`, the manifest's `target.environment` must equal it.
+
+The launcher runs the host-only `argus-assets authorization verify` before creating the
+artifact root and `authorization install` before the sandbox starts; the guard denies both
+inside an engagement. An identical existing manifest is kept; a different one is never
+replaced. Both choices are unsigned operator data in the launch payload (or the unattested
+prompt) and in `--dry-run` output (`authorizationSource`, `targetEnvironment`). Preflight
+reloads and validates the installed manifest. Neither flag widens anything the evaluator
+denies: every high-risk action still needs its complete grant, and production-like targets
+still need a production override.
 
 ## 2. Actions and explicit opt-in
 
 Read-only actions are `read`, `browser-read`, `database-read`, and `security-passive`.
 All other target-affecting work is high-risk and requires the exact enabled grant:
 
-- `browser-state-change` — login, submit, upload, checkout, enroll, or any stateful UI flow;
+- `browser-state-change` — login, submit, upload, checkout, enroll, or any stateful UI flow, including client-side network faults, which additionally need the mutation `browser:client-fault`;
 - `binary-evidence` — screenshot/video/binary trace capture after synthetic/masked content and independent review are confirmed;
 - `persistent-mutation` — create/update/delete target data through an API or UI;
 - `security-active` — fuzzing, injection payloads, authz abuse, scanners, or exploit attempts;
@@ -96,16 +124,46 @@ argus-assets redact --input <text-file|-> --output <safe-file|->
 ```
 
 The command redacts structured JSON by sensitive key and applies packaged patterns to
-free text. Authorization audit values pass through the same redactor before write.
+free text. In free text a sensitive key is also matched in JSON syntax (`"password":"…"`,
+`'password': '…'`, escaped `\"password\":\"…\"`), including a cut JSON fragment or JSON
+state embedded in a page, and its whole quoted value is blanked. Authorization audit values
+pass through the same redactor before write.
+The card and phone patterns are scoped so that the numbers that prove a defect (totals,
+IDs, epoch timestamps, log times) stay visible. A card number is a 13-19 digit run with a
+card-network leading digit (2-6) that passes the Luhn checksum. A phone number has a
+leading `+`, a `(555) 123-4567` layout, a phone label in text (`phone:`, `tel:`,
+`mobile=`), or a phone JSON key. Other digit runs are not masked, so evidence must never
+carry a real contact number outside those forms.
 Never print raw input before redaction. Preserve only the minimum non-sensitive evidence
 needed to reproduce a defect.
 
 Binary evidence is fail-closed: the redactor refuses screenshots or other binary input.
-Do not capture a secret/PII-bearing view. If a screenshot is indispensable, mask the
-sensitive region in the target or an approved image tool, independently inspect the
-result, enable the exact `binary-evidence` grant, pass `--binary-reviewed true` (the
-hunt-driver uses `ARGUS_BINARY_EVIDENCE_REVIEWED=true`), record that review in the
-audit/report, and attach only the verified derivative.
+Do not capture a secret/PII-bearing view. If a screenshot, video, or zipped trace is
+indispensable, register it only through this procedure:
+
+1. **Grant.** The operator enables the exact `binary-evidence` grant. Before capture, the
+   collecting lane runs `argus-assets authorization check --lane <collector> --action
+   binary-evidence --binary-reviewed true …` (the hunt-driver runs it with
+   `ARGUS_BINARY_EVIDENCE_REVIEWED=true`) and keeps the `at=` timestamp the `ALLOW` line
+   prints. `--at` is a test-only clock override and is refused while an engagement is
+   active, so the timestamp is the real decision time.
+2. **Audit event.** That check appends the `allow` event for `binary-evidence` to
+   `ai_agents_internal/authorization-audit.jsonl`. One event may back several captures
+   by the same lane, because the binding requires only that the decision precede each
+   capture.
+3. **Derived masked file only.** The collector masks the sensitive regions, or produces
+   synthetic content, and retains only that derivative inside the artifact root. The raw
+   capture never leaves the allocated worker root.
+4. **Second-agent review.** A lane other than the collector (Minos by default, Kleio for a
+   capture Minos collected; `argus-assets raci route --activity review-evidence`)
+   inspects the derivative and registers the reference in its own evidence-reference
+   fragment under its own lane lease, with `review` {`reviewer`, `reviewedAt`, `method`,
+   `auditTimestamp`} and `auditTimestamp` copied from the collector's `at=` value.
+
+Evidence-reference@3 enforces the rest: the collector cannot register its own binary
+capture, `reviewer` differs from `collectedBy`, `auditTimestamp <= capturedAt <=
+reviewedAt`, the bytes carry the declared media-type signature, and every merge requires
+the matching audit event (`CANONICAL-CONTRACTS.md`, "Evidence reference v3 in 5.0").
 Raw screenshots, videos, traces, HAR files, or browser profiles containing sensitive
 state never enter `bugs/`, `solution/`, `reports/`, git, or console output.
 

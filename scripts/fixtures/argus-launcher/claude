@@ -13,6 +13,25 @@ write_turn_cap_behavior() {
     '{requestedTurns:$attempted,completedTurns:$completed,outcome:$outcome,supervisorObserved:true}' >"$output"
 }
 
+# With --output-format json the fixture prints one Claude CLI result document, as the real CLI
+# does at the end of a print-mode run: measured usage, cost, turns, the subtype, and the result
+# text on success only. Otherwise it prints the plain result text (an error on stderr).
+# Usage: emit_result <success|error_max_turns> <text> <num_turns>
+emit_result() {
+  local subtype="$1" text="$2" turns="$3"
+  if [ "$output_format" = json ]; then
+    jq -cn --arg subtype "$subtype" --arg text "$text" --argjson turns "$turns" '
+      {type:"result",subtype:$subtype,is_error:($subtype != "success"),num_turns:$turns,total_cost_usd:0,
+       usage:{input_tokens:10,output_tokens:2,cache_read_input_tokens:0,cache_creation_input_tokens:0},
+       modelUsage:{"claude-opus-fixture":{inputTokens:10,outputTokens:2,cacheReadInputTokens:0,cacheCreationInputTokens:0,costUSD:0}}}
+      + (if $subtype == "success" then {result:$text} else {} end)'
+  elif [ "$subtype" = success ]; then
+    printf '%s\n' "$text"
+  else
+    printf '%s\n' "$text" >&2
+  fi
+}
+
 if [ "${1:-}" = "--version" ]; then
   printf '2.1.0 (Claude Code fixture)\n'
   exit 0
@@ -23,16 +42,47 @@ if [ "${1:-}" = "--help" ]; then
   exit 0
 fi
 
+# Emulates the real CLI's local `auth status --json` report (exit 1 when not logged in). A
+# credential variable logs in; without CLAUDE_CONFIG_DIR the operator's own config and keychain
+# login would apply, so a login probe that does not isolate the config, or that inherits the
+# launcher's Argus environment instead of the child allowlist, is refused as a probe defect.
+if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
+  if env | grep -q '^ARGUS_'; then printf 'fixture: login probe inherited an Argus variable\n' >&2; exit 90; fi
+  auth_method=none
+  if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then auth_method=claude.ai
+  elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then auth_method=api_key
+  elif [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_AUTH_TOKEN:-}" ]; then auth_method=oauth_token
+  fi
+  jq -n --arg method "$auth_method" '{loggedIn:($method != "none"),authMethod:$method,apiProvider:"firstParty"}'
+  [ "$auth_method" != none ] || exit 1
+  exit 0
+fi
+
+# Records the child environment with every secret value replaced.
+record_environment() {
+  env | sed -E 's/^(ARGUS_NATIVE_LAUNCH_CAPABILITY|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN)=.*/\1=<redacted>/' | sort >"$1"
+}
+
 plugin_root=''
 prompt="${!#}"
 previous=''
 max_turns=''
 turn_cap_probe=''
+output_format=text
 for argument in "$@"; do
   if [ "$previous" = '--plugin-dir' ]; then plugin_root="$argument"; fi
   if [ "$previous" = '--max-turns' ]; then max_turns="$argument"; fi
   if [ "$previous" = '--argus-turn-cap-probe' ]; then turn_cap_probe="$argument"; fi
+  if [ "$previous" = '--output-format' ]; then output_format="$argument"; fi
   previous="$argument"
+done
+case "$output_format" in text|json) ;; *) printf 'fixture: unsupported --output-format %s\n' "$output_format" >&2; exit 89 ;; esac
+# The launch grants tools through --allowedTools under dontAsk; it may never bypass permissions.
+for argument in "$@"; do
+  case "$argument" in
+    --dangerously-skip-permissions|--allow-dangerously-skip-permissions|bypassPermissions)
+      printf 'fixture: the launch bypasses permissions (%s)\n' "$argument" >&2; exit 91 ;;
+  esac
 done
 if [ -n "$turn_cap_probe" ]; then
   [[ "$max_turns" =~ ^[1-9][0-9]*$ ]] || { printf 'fixture: turn-cap probe requires a positive integer\n' >&2; exit 87; }
@@ -40,10 +90,32 @@ if [ -n "$turn_cap_probe" ]; then
   exit 42
 fi
 [ -n "$plugin_root" ] || { printf 'fixture: --plugin-dir is missing\n' >&2; exit 80; }
-[ "$max_turns" = 96 ] || { printf 'fixture: native max-turns is not exactly 96\n' >&2; exit 84; }
+[ "$max_turns" = 400 ] || { printf 'fixture: native max-turns is not exactly 400\n' >&2; exit 84; }
 
 case "$prompt" in
   '/argus:run authenticatedLaunch='*) launch_payload="${prompt#'/argus:run authenticatedLaunch='}" ;;
+  '/argus:run target='*' unattestedLaunch=true '*)
+    # An unattested launch carries prose coordinates and no signed material to verify: record
+    # the exact argv and environment for the smoke, then stop without a preflight.
+    [ "${ARGUS_LAUNCH_UNATTESTED:-}" = 1 ] || { printf 'fixture: unattested prompt without ARGUS_LAUNCH_UNATTESTED=1\n' >&2; exit 88; }
+    artifact_root="${prompt#* artifact-root=}"
+    artifact_root="${artifact_root%% mode=*}"
+    engagement_id="${prompt#* engagementId=}"
+    engagement_id="${engagement_id%% *}"
+    [ -d "$artifact_root/ai_agents_internal" ] || { printf 'fixture: unattested prompt omitted the artifact root\n' >&2; exit 81; }
+    record_environment "$artifact_root/ai_agents_internal/fixture-child-environment.txt"
+    printf '%s\n' "$@" >"$artifact_root/ai_agents_internal/fixture-claude-arguments.txt"
+    case "$engagement_id" in
+      *-fixture-error-max-turns)
+        # A controller stopped by its native turn cap: the real CLI reports subtype
+        # error_max_turns without result text and exits non-zero.
+        emit_result error_max_turns "Error: Reached max turns ($max_turns)" "$max_turns"
+        exit 1
+        ;;
+    esac
+    emit_result success ARGUS_FIXTURE_UNATTESTED_PROMPT_OK 1
+    exit 0
+    ;;
   *) printf 'fixture: authenticated launch JSON is missing\n' >&2; exit 86 ;;
 esac
 target="$(printf '%s' "$launch_payload" | jq -er '.target')"
@@ -57,9 +129,13 @@ trust_store="$(printf '%s' "$launch_payload" | jq -er '.["trust-store"]')"
 for value in target artifact_root mode engagement_id authorization receipt trust_store; do
   [ -n "${!value}" ] || { printf 'fixture: prompt omitted %s\n' "$value" >&2; exit 81; }
 done
+# Operator-declared features are unsigned launch input; /argus:run forwards each verbatim.
+feature_arguments=()
+while IFS= read -r feature; do
+  if [ -n "$feature" ]; then feature_arguments+=(--feature "$feature"); fi
+done < <(printf '%s' "$launch_payload" | jq -r '.features // [] | .[]')
 
-env | sed 's/^ARGUS_NATIVE_LAUNCH_CAPABILITY=.*/ARGUS_NATIVE_LAUNCH_CAPABILITY=<redacted>/' | sort \
-  >"$artifact_root/ai_agents_internal/fixture-child-environment.txt"
+record_environment "$artifact_root/ai_agents_internal/fixture-child-environment.txt"
 printf '%s\n' "$@" >"$artifact_root/ai_agents_internal/fixture-claude-arguments.txt"
 write_turn_cap_behavior "$artifact_root/ai_agents_internal/fixture-turn-cap-behavior.json" "$max_turns"
 
@@ -67,6 +143,7 @@ set +e
 "$plugin_root/bin/argus-assets" preflight --target "$target" --artifact-root "$artifact_root" \
   --mode "$mode" --engagement-id "$engagement_id" --model-runtime claude \
   --launch-authorization "$authorization" --launch-receipt "$receipt" --trust-store "$trust_store" \
+  ${feature_arguments[@]+"${feature_arguments[@]}"} \
   --json >"$artifact_root/ai_agents_internal/fixture-preflight-stdout.json"
 preflight_status=$?
 set -e
@@ -77,10 +154,34 @@ jq -e '.checks[] | select(.id == "native-host-execution" and .status == "pass")'
   jq -r '.checks[] | select(.id == "native-host-execution") | .evidence' "$report" >&2
   exit 83
 }
+
+# The granted tools stay subject to the packaged PreToolUse guard. Run the plugin's own hook
+# command the way Claude Code does (CLAUDE_PLUGIN_ROOT set, payload on stdin, the launched
+# environment, cwd = workspace) for granted Write and Bash calls, and record each decision.
+guard_hook="$(jq -er '.hooks.PreToolUse[] | select(.matcher | split("|") | index("Write") and index("Bash")) | .hooks[0].command' \
+  "$plugin_root/hooks/hooks.json")" || { printf 'fixture: the plugin has no Write|Bash PreToolUse hook\n' >&2; exit 92; }
+guard_decision() {
+  local name="$1" tool="$2" subject="$3" output
+  output="$(jq -nc --arg tool "$tool" --arg subject "$subject" --arg cwd "$PWD" '
+    {hook_event_name:"PreToolUse",session_id:"fixture-session",tool_name:$tool,cwd:$cwd,
+     tool_input:(if $tool == "Bash" then {command:$subject} else {file_path:$subject,content:"granted by --allowedTools"} end)}' | \
+    CLAUDE_PLUGIN_ROOT="$plugin_root" bash -c "$guard_hook")" || { printf 'fixture: guard hook failed for %s\n' "$name" >&2; exit 93; }
+  jq -nc --arg name "$name" --arg output "$output" \
+    '{case:$name,decision:(if $output == "" then "allow" else ($output | fromjson | .hookSpecificOutput.permissionDecision) end),
+      reason:(if $output == "" then null else ($output | fromjson | .hookSpecificOutput.permissionDecisionReason) end)}'
+}
+{
+  guard_decision canonical-write Write "$artifact_root/solution/TEST-STRATEGY.md"
+  guard_decision report-write Write "$artifact_root/reports/fixture-guard-probe.json"
+  if [ -d "$target" ]; then
+    guard_decision target-write Write "$target/fixture-guard-probe.txt"
+    guard_decision target-shell Bash "printf granted > '$target/fixture-guard-probe.txt'"
+  fi
+} | jq -s . >"$artifact_root/ai_agents_internal/fixture-guard-decisions.json"
 touch "$artifact_root/ai_agents_internal/fixture-native-ready"
 for _ in $(seq 1 200); do
   [ -f "$artifact_root/ai_agents_internal/fixture-replay-complete" ] && break
   sleep 0.05
 done
 [ -f "$artifact_root/ai_agents_internal/fixture-replay-complete" ] || { printf 'fixture: replay probe timed out\n' >&2; exit 85; }
-printf 'ARGUS_FIXTURE_NATIVE_PREFLIGHT_OK\n'
+emit_result success ARGUS_FIXTURE_NATIVE_PREFLIGHT_OK 1

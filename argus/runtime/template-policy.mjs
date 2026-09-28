@@ -1,22 +1,42 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, posix, relative, resolve, sep } from 'node:path';
 
 const RUNTIMES = ['typescript', 'java', 'python'];
 const IGNORED = new Set(['.git', '.venv', 'ai_agents_internal', 'node_modules', 'target', 'dist', 'build', 'coverage', 'reports']);
+const PRODUCT_LANES = ['api', 'ui', 'perf', 'security', 'db', 'resilience'];
+const RUNNER_ARTIFACTS = {
+  library: 'scripts/runner-lib.sh', inventory: 'reports/test-inventory.tsv', expectedBugs: 'reports/expected-bugs.txt',
+  counterfactualPlan: 'reports/counterfactual-plan.tsv', adapterStatus: 'reports/argus-adapter-status.txt',
+  passArtifacts: 'reports/evidence/passes', activation: 'ARGUS_RUNNER_MODE',
+};
+const LANE_PLAN = { file: 'solution/test-lanes.tsv', undecided: 'not-yet-planned' };
+const ENVIRONMENT = { file: 'solution/environment.tsv', resetOptIn: 'ARGUS_ENVIRONMENT_RESET=execute', resetAuthorizationAction: 'destructive', undecided: 'not-yet-planned' };
+const COUNTERFACTUAL = { directory: 'solution/counterfactual', fixtureSchema: 'argus/counterfactual-fixture@1', requiredTamper: 'observed-defect' };
+// Every runtime's runner kit ships the declarations the shared contract names.
+const RUNNER_KIT_SHARED = [RUNNER_ARTIFACTS.library, LANE_PLAN.file, ENVIRONMENT.file, 'solution/quarantine.tsv', `${COUNTERFACTUAL.directory}/`];
+const RUNNER_KIT_SEGMENT = /^[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?$/;
 
 export function validateTemplateContract(contract) {
   const errors = [];
-  if (!object(contract) || contract.schemaVersion !== 1 || contract.contractId !== 'argus/template-contract@1') return ['template contract identity is invalid'];
+  if (!object(contract) || contract.schemaVersion !== 2 || contract.contractId !== 'argus/template-contract@2') return ['template contract identity is invalid'];
   const modes = ['baseline', 'defect-evidence', 'candidate-regression', 'full-suite'];
   if (!sameSet(contract.runner?.modes, modes) || contract.runner?.resultSchema !== 'argus/runner-result@1' || contract.runner?.result !== 'reports/argus-runner-result.json' || contract.runner?.events !== 'reports/outcomes.raw.tsv' || contract.runner?.evidenceRoot !== 'reports/evidence') errors.push('runner minimum contract is invalid');
   if (!sameSet(contract.runner?.categories, ['product', 'automation', 'infrastructure', 'skip', 'policy']) || !sameSet(contract.runner?.exitCodes, [0, 10, 11, 12, 13, 14, 15])) errors.push('runner categories or exit codes are invalid');
+  if (!exactFields(contract.runner, RUNNER_ARTIFACTS) || !sameSet(contract.runner?.evidencePasses, ['live', 'repeat', 'cf-correct', 'cf-tamper'])) errors.push('runner library, inventory, or evidence-pass contract is invalid');
+  if (!sameSet(contract.tags?.lanes, PRODUCT_LANES) || !sameSet(contract.tags?.harnessLanes, ['contract-smoke', 'setup'])) errors.push('lane tag contract is invalid');
   if (contract.tags?.bugLinked !== 'regression' || contract.tags?.bugProvenance !== '@bug:<canonical-or-origin>') errors.push('regression selection or bug provenance contract is invalid');
   if (contract.retryPolicy?.maximumAttempts !== 1 || contract.retryPolicy?.automaticRetries !== false) errors.push('automatic retries must be disabled');
   if (contract.quarantine?.ledger !== 'solution/quarantine.tsv' || !sameSet(contract.quarantine?.columns, ['case_id', 'owner', 'reason', 'expires_on', 'issue'])) errors.push('quarantine contract is invalid');
+  if (!Array.isArray(contract.quarantine?.forbiddenFor) || !contract.quarantine.forbiddenFor.includes('regression')) errors.push('quarantine must be forbidden for regression tests');
+  if (!exactFields(contract.lanePlan, LANE_PLAN) || !sameSet(contract.lanePlan?.columns, ['lane', 'state', 'owner', 'prerequisites', 'reason']) || !sameSet(contract.lanePlan?.states, ['enabled', 'disabled'])) errors.push('lane plan contract is invalid');
+  if (!exactFields(contract.environment, ENVIRONMENT) || !sameSet(contract.environment?.columns, ['kind', 'command', 'note']) || !sameSet(contract.environment?.kinds, ['reset', 'verify'])) errors.push('environment contract is invalid');
+  if (!exactFields(contract.counterfactual, COUNTERFACTUAL) || !sameSet(contract.counterfactual?.exemptions, ['front-end-logic', 'timing-or-load', 'data-layer', 'fault-injection', 'non-http-protocol'])) errors.push('counterfactual contract is invalid');
   for (const runtime of RUNTIMES) {
     const template = contract.templates?.[runtime];
     if (!object(template) || !string(template.framework) || !string(template.runner) || !list(template.packageManagers) || !list(template.extensionPoints)) errors.push(`${runtime} template contract is invalid`);
+    else if (!string(template.adapter) || !string(template.provenanceMarker) || !string(template.laneMarker)) errors.push(`${runtime} template adapter or marker contract is invalid`);
+    if (object(template) && !validRunnerKit(template.runnerKit)) errors.push(`${runtime} template runner kit contract is invalid`);
   }
   return [...new Set(errors)];
 }
@@ -156,11 +176,35 @@ export function materializeTemplateLayout(destination, selection) {
 
 export function stable(value) { return `${JSON.stringify(value, null, 2)}\n`; }
 
+// Narrows a validated template composition to its runner kit. An entry with a trailing '/'
+// selects every file below that directory; any other entry selects exactly one file. The
+// result keeps the composition order and every ancestor directory of a selected file, and
+// names each kit entry that matched no file so the caller can fail before writing.
+export function selectRunnerKitEntries(entries, runnerKit) {
+  if (!runnerKitList(runnerKit)) throw new Error('runner kit contract is invalid');
+  const files = entries.filter((entry) => entry.type === 'file');
+  const selected = new Set();
+  const missing = [];
+  for (const item of runnerKit) {
+    const matches = item.endsWith('/')
+      ? files.filter((entry) => entry.relativePath.startsWith(item))
+      : files.filter((entry) => entry.relativePath === item);
+    if (!matches.length) missing.push(item);
+    for (const entry of matches) selected.add(entry.relativePath);
+  }
+  const ancestors = new Set();
+  for (const path of selected) {
+    const parts = path.split('/');
+    for (let index = 1; index < parts.length; index += 1) ancestors.add(parts.slice(0, index).join('/'));
+  }
+  const kept = entries.filter((entry) => (entry.type === 'file' ? selected.has(entry.relativePath) : entry.type === 'directory' && ancestors.has(entry.relativePath)));
+  return { entries: kept, missing };
+}
+
 function materializeTypeScript(root, testRoot, harnessRoot, selection) {
   const oldTests = join(root, 'tests');
   const oldHarness = join(root, 'src');
-  moveDirectory(oldTests, testRoot);
-  moveDirectory(oldHarness, harnessRoot);
+  relocate(root, [[oldTests, testRoot], [oldHarness, harnessRoot]]);
   for (const file of walk(root).filter((path) => ['.ts', '.tsx', '.mts', '.cts'].includes(extname(path)))) {
     const oldFile = remapNewToOld(file, testRoot, oldTests, harnessRoot, oldHarness);
     const updated = read(file).replace(/((?:from\s+|import\s*)['"])(\.[^'"]+)(['"])/g, (whole, prefix, specifier, suffix) => {
@@ -182,19 +226,16 @@ function materializeTypeScript(root, testRoot, harnessRoot, selection) {
   const packageJson = JSON.parse(read(packagePath));
   if (packageJson.scripts?.perf) packageJson.scripts.perf = packageJson.scripts.perf.replace('src/', `${selection.harnessRoot}/`);
   writeFileSync(packagePath, stable(packageJson));
-  replaceIn(join(root, 'scripts', 'bug-coverage.mjs'), "join(ROOT, 'tests')", `join(ROOT, ${JSON.stringify(selection.testRoot)})`);
   replaceIn(join(root, 'scripts', 'app-source-guard.mjs'), "  'tests/',", `  ${JSON.stringify(`${selection.testRoot}/`)},`);
   replaceIn(join(root, 'scripts', 'app-source-guard.mjs'), "  'src/',", `  ${JSON.stringify(`${selection.harnessRoot}/`)},`);
+  replaceIn(join(root, 'scripts', 'argus-playwright-reporter.mjs'), "join(ROOT, 'src')", `join(ROOT, ${JSON.stringify(selection.harnessRoot)})`);
   replaceIn(join(root, 'run-tests.sh'), 'TEST_ROOT="${ARGUS_TEST_ROOT:-tests}"', `TEST_ROOT="\${ARGUS_TEST_ROOT:-${selection.testRoot}}"`);
 }
 
 function materializeJava(root, testRoot, harnessRoot, selection) {
   const javaRoot = join(root, 'src', 'test', 'java');
   const support = join(javaRoot, 'qa', 'support');
-  moveDirectory(support, join(harnessRoot, 'qa', 'support'));
-  moveDirectory(javaRoot, testRoot);
-  const resources = join(root, 'src', 'test', 'resources');
-  if (existsSync(resources)) moveDirectory(resources, join(harnessRoot, 'resources'));
+  relocate(root, [[support, join(harnessRoot, 'qa', 'support')], [javaRoot, testRoot], [join(root, 'src', 'test', 'resources'), join(harnessRoot, 'resources')]]);
   const pomPath = join(root, 'pom.xml');
   let pom = read(pomPath);
   const helper = `\n      <plugin>\n        <groupId>org.codehaus.mojo</groupId>\n        <artifactId>build-helper-maven-plugin</artifactId>\n        <version>3.5.0</version>\n        <executions><execution><id>argus-test-roots</id><phase>generate-test-sources</phase><goals><goal>add-test-source</goal></goals><configuration><sources><source>\${project.basedir}/${selection.testRoot}</source><source>\${project.basedir}/${selection.harnessRoot}</source></sources></configuration></execution></executions>\n      </plugin>`;
@@ -206,8 +247,7 @@ function materializeJava(root, testRoot, harnessRoot, selection) {
 }
 
 function materializePython(root, testRoot, harnessRoot, selection) {
-  moveDirectory(join(root, 'tests'), testRoot);
-  moveDirectory(join(root, 'src'), harnessRoot);
+  relocate(root, [[join(root, 'tests'), testRoot], [join(root, 'src'), harnessRoot]]);
   replaceIn(join(root, 'pyproject.toml'), 'testpaths = ["tests"]', `testpaths = [${JSON.stringify(selection.testRoot)}]`);
   replaceIn(join(root, 'pyproject.toml'), 'pythonpath = ["src"]', `pythonpath = [${JSON.stringify(selection.harnessRoot)}]`);
   replaceIn(join(root, 'conftest.py'), '_ROOT / "src"', `_ROOT / ${JSON.stringify(selection.harnessRoot)}`);
@@ -215,30 +255,30 @@ function materializePython(root, testRoot, harnessRoot, selection) {
   replaceIn(join(root, 'run-tests.sh'), 'TEST_ROOT="${ARGUS_TEST_ROOT:-tests}"', `TEST_ROOT="\${ARGUS_TEST_ROOT:-${selection.testRoot}}"`);
 }
 
+// One pass per file, so a selected root that spells another placeholder (src/e2e) is never rewritten twice.
 function rewriteDocs(root, selection) {
-  for (const file of walk(root).filter((path) => extname(path) === '.md')) {
-    let content = read(file);
-    if (selection.runtime === 'java') {
-      content = content
-        .replaceAll('src/test/java/qa/support/', `${selection.harnessRoot}/qa/support/`)
-        .replaceAll('src/test/java/qa/support', `${selection.harnessRoot}/qa/support`)
-        .replaceAll('src/test/java/', `${selection.testRoot}/`)
-        .replaceAll('src/test/resources/', `${selection.harnessRoot}/resources/`)
-        .replaceAll('src/test/java', selection.testRoot)
-        .replaceAll('src/test/resources', `${selection.harnessRoot}/resources`);
-    } else {
-      content = content.replaceAll('tests/', `${selection.testRoot}/`).replaceAll('src/', `${selection.harnessRoot}/`);
-      content = content.replaceAll('`tests`', `\`${selection.testRoot}\``).replaceAll('`src`', `\`${selection.harnessRoot}\``);
-    }
-    writeFileSync(file, content);
-  }
+  const { testRoot: tests, harnessRoot: harness } = selection;
+  const [pattern, replace] = selection.runtime === 'java'
+    ? [/src\/test\/(java\/qa\/support|java|resources)/g, (_, path) => (path === 'java' ? tests : `${harness}/${path === 'resources' ? path : 'qa/support'}`)]
+    : [/`(tests|src)`|(tests|src)\//g, (_, quoted, bare) => (quoted ? `\`${quoted === 'tests' ? tests : harness}\`` : `${bare === 'tests' ? tests : harness}/`)];
+  for (const file of walk(root).filter((path) => extname(path) === '.md')) writeFileSync(file, read(file).replace(pattern, replace));
 }
 
-function moveDirectory(source, destination) {
-  if (!existsSync(source)) return;
-  mkdirSync(dirname(destination), { recursive: true });
-  if (existsSync(destination)) throw new Error(`layout destination already exists: ${destination}`);
-  renameSync(source, destination);
+// Every template root leaves for private staging (nested roots first, emptied parents pruned)
+// before any lands, so a layout may keep, nest in, or swap default roots.
+function relocate(root, moves) {
+  const staging = mkdtempSync(join(root, '.argus-layout-'));
+  const staged = moves.filter(([source]) => existsSync(source)).map(([source, destination], index) => {
+    renameSync(source, join(staging, `${index}`));
+    for (let parent = dirname(source); parent !== root && !readdirSync(parent).length; parent = dirname(parent)) rmdirSync(parent);
+    return [join(staging, `${index}`), destination];
+  });
+  for (const [source, destination] of staged) {
+    mkdirSync(dirname(destination), { recursive: true });
+    if (existsSync(destination)) throw new Error(`layout destination already exists: ${destination}`);
+    renameSync(source, destination);
+  }
+  rmdirSync(staging);
 }
 function replaceIn(path, from, to) { const content = read(path); if (!content.includes(from)) throw new Error(`layout adapter anchor missing: ${path}: ${from}`); writeFileSync(path, content.replaceAll(from, to)); }
 function remapNewToOld(path, newTests, oldTests, newHarness, oldHarness) { if (inside(newTests, path)) return resolve(oldTests, relative(newTests, path)); if (inside(newHarness, path)) return resolve(oldHarness, relative(newHarness, path)); return path; }
@@ -264,6 +304,7 @@ function string(value) { return typeof value === 'string' && value.trim().length
 function list(value) { return Array.isArray(value) && value.length > 0 && value.every(string) && new Set(value).size === value.length; }
 function sorted(value) { return [...value].sort(); }
 function sameSet(actual, expected) { return Array.isArray(actual) && actual.length === expected.length && [...actual].sort().every((item, index) => item === [...expected].sort()[index]); }
+function exactFields(actual, expected) { return object(actual) && Object.entries(expected).every(([key, value]) => actual[key] === value); }
 function uniqueSignals(signals) { return [...new Map(signals.map((item) => [`${item.capability}\0${item.source}`, item])).values()].sort((a, b) => a.capability.localeCompare(b.capability) || a.source.localeCompare(b.source)); }
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
 function canonicalLayoutPath(value) {
@@ -275,3 +316,10 @@ function canonicalLayoutPath(value) {
   return normalized === value && normalized !== '.' && !normalized.startsWith('../') ? normalized : null;
 }
 function withinPath(parent, child) { return child.startsWith(`${parent.replace(/\/$/, '')}/`); }
+function runnerKitEntry(value) {
+  if (typeof value !== 'string') return false;
+  const path = value.endsWith('/') ? value.slice(0, -1) : value;
+  return canonicalLayoutPath(path) === path && path.split('/').every((part) => RUNNER_KIT_SEGMENT.test(part));
+}
+function runnerKitList(value) { return list(value) && value.every(runnerKitEntry); }
+function validRunnerKit(value) { return runnerKitList(value) && RUNNER_KIT_SHARED.every((path) => value.includes(path)); }

@@ -108,7 +108,143 @@ expect_selection_failure() {
   [ ! -e "$output" ] || fail "$label persisted an invalid layout selection"
 }
 
-"$ROOT/scripts/smoke-argus-bug-coverage-parser.sh"
+# A runner kit is exactly the composed-template files its contract entries select (a
+# trailing '/' selects a directory's files) plus their ancestor directories, each byte- and
+# mode-identical to the complete composition.
+assert_runner_kit() {
+  local runtime="$1" composed="$2" kit="$3"
+  KIT_RUNTIME="$runtime" COMPOSED_TREE="$composed" KIT_TREE="$kit" \
+    CONTRACT="$ROOT/argus/claude/capabilities/template-contract.json" node --input-type=module <<'NODE'
+import { createHash } from 'node:crypto';
+import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+function inventory(root, prefix = '', result = new Map()) {
+  for (const name of readdirSync(root).sort()) {
+    const path = join(root, name);
+    const relative = prefix ? `${prefix}/${name}` : name;
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink()) throw new Error(`runner kit: symlink ${relative}`);
+    if (stat.isDirectory()) {
+      result.set(relative, { type: 'directory', mode: stat.mode & 0o777 });
+      inventory(path, relative, result);
+    } else if (stat.isFile()) {
+      result.set(relative, { type: 'file', mode: stat.mode & 0o777, sha256: createHash('sha256').update(readFileSync(path)).digest('hex') });
+    } else throw new Error(`runner kit: unsupported entry ${relative}`);
+  }
+  return result;
+}
+
+const runtime = process.env.KIT_RUNTIME;
+const kitEntries = JSON.parse(readFileSync(process.env.CONTRACT, 'utf8')).templates[runtime].runnerKit;
+const composed = inventory(process.env.COMPOSED_TREE);
+const actual = inventory(process.env.KIT_TREE);
+const expected = new Map();
+for (const entry of kitEntries) {
+  const matches = [...composed].filter(([path, item]) => item.type === 'file' && (entry.endsWith('/') ? path.startsWith(entry) : path === entry));
+  if (!matches.length) throw new Error(`${runtime} runner kit entry selects no composed file: ${entry}`);
+  for (const [path, item] of matches) {
+    expected.set(path, item);
+    const parts = path.split('/');
+    for (let index = 1; index < parts.length; index += 1) {
+      const parent = parts.slice(0, index).join('/');
+      expected.set(parent, composed.get(parent));
+    }
+  }
+}
+const order = (map) => JSON.stringify([...map].sort(([left], [right]) => left.localeCompare(right)));
+if (order(expected) !== order(actual)) {
+  throw new Error(`${runtime} runner kit differs from the composed template\nexpected=${JSON.stringify([...expected.keys()].sort())}\nactual=${JSON.stringify([...actual.keys()].sort())}`);
+}
+for (const outside of ['run-tests.sh', 'argus-template.json', 'README.md', 'solution/STATE_MODEL.md']) {
+  if (actual.has(outside)) throw new Error(`${runtime} runner kit copied a non-kit file: ${outside}`);
+}
+NODE
+}
+
+expect_kit_failure() {
+  local label="$1" cli="$2" runtime="$3" destination="$4" message="$5"
+  if "$cli" copy-runner-kit "$runtime" "$destination" >"$WORK/$label.log" 2>&1; then
+    fail "$label unexpectedly copied a runner kit"
+  fi
+  grep -Fq -- "$message" "$WORK/$label.log" || fail "$label failed for the wrong reason: $(<"$WORK/$label.log")"
+}
+
+# The v2 template contract pins the runner kit, lane vocabulary, lane plan,
+# environment, counterfactual, and per-runtime adapter/marker values. Each targeted
+# drift must fail validation; the source and installed contracts must both pass.
+REPO_ROOT="$ROOT" node --input-type=module <<'NODE' || fail "template contract v2 validation regressed"
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const root = process.env.REPO_ROOT;
+const { validateTemplateContract } = await import(pathToFileURL(join(root, 'argus', 'runtime', 'template-policy.mjs')).href);
+const source = JSON.parse(readFileSync(join(root, 'argus', 'template-contract.json'), 'utf8'));
+const installed = JSON.parse(readFileSync(join(root, 'argus', 'claude', 'capabilities', 'template-contract.json'), 'utf8'));
+const problems = [];
+for (const [label, contract] of [['source', source], ['installed', installed]]) {
+  const errors = validateTemplateContract(contract);
+  if (errors.length) problems.push(`${label} contract rejected: ${errors.join('; ')}`);
+}
+const mutations = [
+  ['schema version 1', (c) => { c.schemaVersion = 1; }, 'template contract identity is invalid'],
+  ['contract id @1', (c) => { c.contractId = 'argus/template-contract@1'; }, 'template contract identity is invalid'],
+  ['runner library', (c) => { c.runner.library = 'scripts/runner.sh'; }, 'runner library, inventory, or evidence-pass contract is invalid'],
+  ['runner activation', (c) => { delete c.runner.activation; }, 'runner library, inventory, or evidence-pass contract is invalid'],
+  ['evidence passes', (c) => { c.runner.evidencePasses = ['live', 'repeat', 'cf-correct']; }, 'runner library, inventory, or evidence-pass contract is invalid'],
+  ['resilience lane', (c) => { c.tags.lanes = c.tags.lanes.filter((lane) => lane !== 'resilience'); }, 'lane tag contract is invalid'],
+  ['harness lanes', (c) => { c.tags.harnessLanes = ['contract-smoke']; }, 'lane tag contract is invalid'],
+  ['quarantine forbiddenFor', (c) => { c.quarantine.forbiddenFor = []; }, 'quarantine must be forbidden for regression tests'],
+  ['lane plan missing', (c) => { delete c.lanePlan; }, 'lane plan contract is invalid'],
+  ['lane plan states', (c) => { c.lanePlan.states = ['enabled', 'disabled', 'skipped']; }, 'lane plan contract is invalid'],
+  ['environment reset action', (c) => { c.environment.resetAuthorizationAction = 'read'; }, 'environment contract is invalid'],
+  ['environment kinds', (c) => { c.environment.kinds = ['reset']; }, 'environment contract is invalid'],
+  ['counterfactual tamper', (c) => { c.counterfactual.requiredTamper = 'any'; }, 'counterfactual contract is invalid'],
+  ['counterfactual exemptions', (c) => { c.counterfactual.exemptions.push('other'); }, 'counterfactual contract is invalid'],
+  ['java lane marker', (c) => { delete c.templates.java.laneMarker; }, 'java template adapter or marker contract is invalid'],
+  ['python adapter', (c) => { c.templates.python.adapter = ' '; }, 'python template adapter or marker contract is invalid'],
+  ['typescript provenance', (c) => { c.templates.typescript.provenanceMarker = null; }, 'typescript template adapter or marker contract is invalid'],
+];
+for (const [label, mutate, expected] of mutations) {
+  const contract = structuredClone(source);
+  mutate(contract);
+  const errors = validateTemplateContract(contract);
+  if (!errors.includes(expected)) problems.push(`${label}: expected "${expected}", got ${JSON.stringify(errors)}`);
+}
+// Runner-kit entries are canonical relative paths with an optional trailing '/' and no
+// globs. The JSON Schema rejects the same malformed entries as the runtime validator; only
+// the runtime validator also requires the shared declarations in every runtime's kit.
+const { compileJsonSchema } = await import(pathToFileURL(join(root, 'argus', 'runtime', 'json-schema.mjs')).href);
+const validateSchema = compileJsonSchema(JSON.parse(readFileSync(join(root, 'argus', 'schemas', 'template-contract.schema.json'), 'utf8')));
+const sourceSchemaErrors = validateSchema(source);
+if (sourceSchemaErrors.length) problems.push(`source contract rejected by its schema: ${JSON.stringify(sourceSchemaErrors)}`);
+const kitMutations = [
+  ['runner kit missing', 'java', (kit, template) => { delete template.runnerKit; }, true],
+  ['runner kit empty', 'python', (kit, template) => { template.runnerKit = []; }, true],
+  ['runner kit glob', 'typescript', (kit) => { kit.push('src/**/*.ts'); }, true],
+  ['runner kit traversal', 'java', (kit) => { kit.push('../outside.sh'); }, true],
+  ['runner kit dot segment', 'python', (kit) => { kit.push('src/./qa/'); }, true],
+  ['runner kit absolute', 'typescript', (kit) => { kit.push('/etc/passwd'); }, true],
+  ['runner kit double separator', 'java', (kit) => { kit.push('src//test/'); }, true],
+  ['runner kit backslash', 'python', (kit) => { kit.push('src\\qa\\argus_plugin.py'); }, true],
+  ['runner kit duplicate', 'typescript', (kit) => { kit.push('scripts/runner-lib.sh'); }, true],
+  ['runner kit shared library', 'java', (kit) => { kit.splice(kit.indexOf('scripts/runner-lib.sh'), 1); }, false],
+  ['runner kit counterfactual prefix', 'python', (kit) => { kit[kit.indexOf('solution/counterfactual/')] = 'solution/counterfactual'; }, false],
+];
+for (const [label, runtime, mutate, schemaRejects] of kitMutations) {
+  const contract = structuredClone(source);
+  mutate(contract.templates[runtime].runnerKit, contract.templates[runtime]);
+  const expected = `${runtime} template runner kit contract is invalid`;
+  const errors = validateTemplateContract(contract);
+  if (!errors.includes(expected)) problems.push(`${label}: expected "${expected}", got ${JSON.stringify(errors)}`);
+  if (schemaRejects && !validateSchema(contract).length) problems.push(`${label}: the JSON Schema accepted a malformed runner kit`);
+}
+if (problems.length) {
+  for (const problem of problems) console.error(problem);
+  process.exit(1);
+}
+NODE
 
 # The supported materialisation interface composes common + runtime layers into a byte-
 # and mode-exact copy of each complete maintainer source tree.
@@ -122,6 +258,80 @@ for runtime in typescript java python; do
   assert_tree_equal "$source" "$WORK/raw-$runtime" "$runtime raw composition"
   test -x "$WORK/raw-$runtime/scripts/runner-contract.sh" || fail "$runtime composition lost executable mode"
 done
+
+# ADAPT path: copy-runner-kit hands an existing suite only the contract-declared runner
+# kit, byte- and mode-identical to the composition above, and says it is not runnable.
+for runtime in typescript java python; do
+  "$CLI" copy-runner-kit "$runtime" "$WORK/kit-$runtime" >"$WORK/kit-$runtime.log" 2>&1 || { cat "$WORK/kit-$runtime.log" >&2; fail "$runtime runner kit copy failed"; }
+  grep -Fxq "COPIED  $runtime runner kit -> $WORK/kit-$runtime" "$WORK/kit-$runtime.log" || fail "$runtime runner kit copy did not report its destination"
+  grep -Fxq 'Integrate into the existing suite; the kit is not a runnable framework.' "$WORK/kit-$runtime.log" || fail "$runtime runner kit copy did not warn that the kit is not runnable"
+  assert_runner_kit "$runtime" "$WORK/raw-$runtime" "$WORK/kit-$runtime" || fail "$runtime runner kit is not an exact subset of the composed template"
+  test -x "$WORK/kit-$runtime/scripts/runner-contract.sh" || fail "$runtime runner kit lost executable mode"
+done
+test -f "$WORK/kit-java/src/test/resources/META-INF/services/org.junit.platform.launcher.TestExecutionListener" || fail "Java runner kit omitted the listener registration"
+test -f "$WORK/kit-python/src/qa/argus_plugin.py" && test ! -e "$WORK/kit-python/src/qa/config.py" || fail "Python runner kit selected the wrong files"
+# The TypeScript kit ships its counterfactual activation (the suite's `test` extends
+# counterfactualTest, clients resolve the API URL through counterfactualApiURL), and every
+# relative import in the kit resolves inside the kit: no seam dangles on src/fixtures or
+# src/config, which stay ADAPT-ME files of the scaffold.
+grep -Fq 'export const counterfactualTest' "$WORK/kit-typescript/src/argus/playwright-fixtures.ts" &&
+  grep -Fq 'export function counterfactualApiURL' "$WORK/kit-typescript/src/argus/api-url.ts" ||
+  fail "TypeScript runner kit omitted the counterfactual activation"
+KIT_TREE="$WORK/kit-typescript" node --input-type=module <<'NODE' || fail "TypeScript runner kit imports a file it does not ship"
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+
+const root = process.env.KIT_TREE;
+const files = [];
+const walk = (directory) => {
+  for (const name of readdirSync(directory)) {
+    const path = join(directory, name);
+    if (statSync(path).isDirectory()) walk(path);
+    else if (/\.(ts|mjs)$/.test(name)) files.push(path);
+  }
+};
+walk(root);
+const dangling = [];
+for (const file of files) {
+  for (const [, specifier] of readFileSync(file, 'utf8').matchAll(/(?:from\s+|import\s*\(?\s*)['"](\.[^'"]+)['"]/g)) {
+    const target = resolve(dirname(file), specifier);
+    if (![target, `${target}.ts`, join(target, 'index.ts')].some((candidate) => existsSync(candidate) && statSync(candidate).isFile())) {
+      dangling.push(`${relative(root, file)} -> ${specifier}`);
+    }
+  }
+}
+if (dangling.length) {
+  console.error(`dangling kit imports: ${dangling.join(', ')}`);
+  process.exit(1);
+}
+NODE
+
+# The counterfactual wiring travels with the kit: the switch that loads Java's extension and
+# the Python fixtures that load each test's variant.
+grep -Eq '^junit\.jupiter\.extensions\.autodetection\.enabled *= *true$' "$WORK/kit-java/src/test/resources/junit-platform.properties" ||
+  fail "Java runner kit omitted the counterfactual extension's autodetection switch"
+grep -Eq '^def _argus_counterfactual\(' "$WORK/kit-python/src/qa/argus_plugin.py" && grep -Eq '^def _argus_stub\(' "$WORK/kit-python/src/qa/argus_plugin.py" ||
+  fail "Python runner kit omitted the counterfactual fixtures"
+
+# The kit copy fails closed before writing: a non-empty or symlinked destination, an
+# unknown runtime, and a contract entry that selects no composed file leave nothing behind.
+mkdir "$WORK/kit-non-empty"
+printf 'preserve\n' >"$WORK/kit-non-empty/sentinel.txt"
+expect_kit_failure kit-non-empty "$CLI" python "$WORK/kit-non-empty" 'refusing to copy into non-empty destination'
+[ "$(find "$WORK/kit-non-empty" -mindepth 1 | wc -l | tr -d ' ')" = 1 ] && grep -Fxq preserve "$WORK/kit-non-empty/sentinel.txt" || fail "non-empty runner kit destination was modified"
+mkdir "$WORK/kit-output-real"
+ln -s "$WORK/kit-output-real" "$WORK/kit-output-link"
+expect_kit_failure kit-symlink "$CLI" java "$WORK/kit-output-link" 'destination cannot be a symbolic link'
+[ -z "$(find "$WORK/kit-output-real" -mindepth 1 -print -quit)" ] || fail "symlinked runner kit destination received files"
+expect_kit_failure kit-unknown-runtime "$CLI" ruby "$WORK/kit-ruby" 'copy-runner-kit runtime must be typescript, java, or python'
+[ ! -e "$WORK/kit-ruby" ] || fail "unknown runtime created a runner kit destination"
+expect_kit_failure kit-missing-destination "$CLI" typescript '' 'copy-runner-kit requires an empty destination path'
+cp -R "$ROOT/argus/claude" "$WORK/plugin-kit-missing"
+jq '.templates.python.runnerKit += ["src/qa/missing_helper.py", "src/qa/oracles"]' \
+  "$ROOT/argus/claude/capabilities/template-contract.json" >"$WORK/plugin-kit-missing/capabilities/template-contract.json"
+expect_kit_failure kit-missing-entry "$WORK/plugin-kit-missing/bin/argus-assets" python "$WORK/kit-missing-entry" \
+  'runner kit entry missing: src/qa/missing_helper.py, src/qa/oracles'
+[ ! -e "$WORK/kit-missing-entry" ] || fail "missing runner kit entry created a destination"
 
 # Every layer is fully inspected before the destination is created. Corruption,
 # symlinks, duplicate files, case-fold collisions, file/ancestor collisions, and
@@ -241,6 +451,26 @@ if "$CLI" template select --target "$FIXTURES/existing-typescript" --runtime typ
 "$CLI" template select --target "$FIXTURES/existing-java" --runtime java --package-manager gradle --test-root src/test/java --harness-root src --output "$WORK/java-adapt.json" >/dev/null
 jq -e '.action == "adapt" and .testRoot == "src/test/java" and .harnessRoot == "src" and (.unsupported | index("package-manager-adapter-required:gradle"))' "$WORK/java-adapt.json" >/dev/null || fail "nested existing Java layout was not preserved"
 if "$CLI" template select --target "$WORK" --package-manager npm --test-root specs --harness-root support --output "$WORK/no-runtime.json" >/dev/null 2>&1; then fail "selection succeeded without explicit runtime choice"; fi
+# A URL target has no tree to detect: detect and select refuse it with a FAIL line that names
+# the artifact root, and a missing directory or a rejected choice is a FAIL line too, never a
+# stack trace.
+expect_template_refusal() {
+  local name="$1" message="$2" status=0
+  shift 2
+  "$@" >"$WORK/$name.out" 2>&1 || status=$?
+  [ "$status" -eq 1 ] || { cat "$WORK/$name.out" >&2; fail "$name exited $status instead of 1"; }
+  grep -Fxq "$message" "$WORK/$name.out" || { cat "$WORK/$name.out" >&2; fail "$name did not report: $message"; }
+  ! grep -Eq '^[[:space:]]+at |^Error: ' "$WORK/$name.out" || { cat "$WORK/$name.out" >&2; fail "$name printed a stack trace"; }
+}
+expect_template_refusal url-detect 'FAIL  template detect: a URL target selects against the artifact root (--target <artifact-root>)' \
+  "$CLI" template detect --target http://127.0.0.1:43999
+expect_template_refusal url-select 'FAIL  template select: a URL target selects against the artifact root (--target <artifact-root>)' \
+  "$CLI" template select --target https://staging.example.test/app --runtime typescript --package-manager npm --test-root specs --harness-root support --output "$WORK/url-selection.json"
+[ ! -e "$WORK/url-selection.json" ] || fail "a URL target produced a template selection"
+expect_template_refusal missing-detect "FAIL  template detect: target repo directory does not exist: $WORK/missing-target" \
+  "$CLI" template detect --target "$WORK/missing-target"
+expect_template_refusal unknown-runtime 'FAIL  template select: explicit --runtime must be typescript, java, or python' \
+  "$CLI" template select --target "$FIXTURES/existing-typescript" --runtime rust --package-manager cargo --test-root specs --harness-root support --output "$WORK/rust-selection.json"
 "$CLI" copy-template typescript "$WORK/unselected" >/dev/null
 set +e
 (cd "$WORK/unselected" && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline >/dev/null 2>&1)
@@ -265,13 +495,21 @@ mkdir -p "$WORK/targets/typescript" "$WORK/targets/java" "$WORK/targets/python"
 for runtime in typescript java python; do
   "$CLI" template scaffold --selection "$WORK/$runtime-selection.json" --destination "$WORK/$runtime" >/dev/null
   jq -e --arg runtime "$runtime" '.runtime == $runtime and .action == "build" and .choiceSource == "explicit-user" and .unsupported == []' "$WORK/$runtime/ai_agents_internal/template-selection.json" >/dev/null || fail "$runtime scaffold omitted its selection record"
-  jq -e '.sharedContract == "argus/template-contract@1" and (.extensionPoints | length) >= 4 and (.tagAdapter | has("contract-smoke")) and (.tagAdapter | has("quarantine")) and (.tagAdapter | has("regression")) and .tagAdapter["bug-provenance"] == "@bug:<canonical-or-origin>"' "$WORK/$runtime/argus-template.json" >/dev/null || fail "$runtime extension or tag contract is missing"
+  case "$runtime" in
+    typescript) provenance='@bug:<canonical-or-origin>' ;;
+    java) provenance='@Tag("bug:<canonical-or-origin>")' ;;
+    python) provenance='@pytest.mark.bug("<canonical-or-origin>")' ;;
+  esac
+  jq -e --arg provenance "$provenance" --arg runtime "$runtime" --slurpfile contract "$ROOT/argus/template-contract.json" '.sharedContract == "argus/template-contract@2" and (.extensionPoints | length) >= 4 and (.tagAdapter | has("contract-smoke")) and (.tagAdapter | has("quarantine")) and (.tagAdapter | has("regression")) and ((.tagAdapter.lane // "") | length) > 0 and .tagAdapter["bug-provenance"] == $provenance and .tagAdapter["bug-provenance"] == $contract[0].templates[$runtime].provenanceMarker and .tagAdapter.lane == $contract[0].templates[$runtime].laneMarker and .adapter == $contract[0].templates[$runtime].adapter' "$WORK/$runtime/argus-template.json" >/dev/null || fail "$runtime extension or tag contract is missing"
   test -f "$WORK/$runtime/solution/bug-ledger.example.json" || fail "$runtime scaffold omitted the canonical bug-ledger example"
   "$CLI" schema validate --kind bug-ledger --input "$WORK/$runtime/solution/bug-ledger.example.json" >/dev/null || fail "$runtime bug-ledger example is schema-invalid"
 done
 jq -e '.tagAdapter.regression == "@regression" and .tagAdapter["bug-provenance"] == "@bug:<canonical-or-origin>"' "$WORK/typescript/argus-template.json" >/dev/null || fail "TypeScript regression selection still depends on the bug provenance tag"
 grep -Fq 'funded, risk-derived UI lane' "$WORK/typescript/solution/ARCHITECTURE.md" || fail 'TypeScript architecture still underfunds the UI lane'
-if rg -qi 'thin (UI |e2e )?smoke' "$WORK/typescript/solution/ARCHITECTURE.md"; then
+thin_smoke_pattern='thin (UI |e2e )?smoke'
+# Positive control: a missing search tool must not read as "no thin smoke lane".
+grep -Eqi "$thin_smoke_pattern" <<<'Keep a thin UI smoke lane' || fail 'thin-smoke check cannot detect the prescribed phrase'
+if grep -Eqi "$thin_smoke_pattern" "$WORK/typescript/solution/ARCHITECTURE.md"; then
   fail 'TypeScript architecture still prescribes a thin UI smoke lane'
 fi
 cmp "$WORK/typescript/solution/bug-ledger.example.json" "$WORK/java/solution/bug-ledger.example.json" >/dev/null || fail "Java bug-ledger example drifted from TypeScript"
@@ -282,45 +520,182 @@ test -d "$WORK/python/quality/python-tests" && test -d "$WORK/python/quality/pyt
 if grep -Fq 'src/test/java' "$WORK/java/README.md"; then fail "Java generated instructions retained the placeholder source root"; fi
 grep -Fq 'retries: 0' "$WORK/typescript/playwright.config.ts" || fail "TypeScript retries are not disabled"
 grep -Fq '<rerunFailingTestsCount>0</rerunFailingTestsCount>' "$WORK/java/pom.xml" || fail "Java reruns are not disabled"
+# The Java stack table names the contract oracle the pom pins (networknt, draft 2020-12), never
+# REST Assured's draft-04 schema module, which cannot express the strict oracle.
+grep -Fq '<groupId>com.networknt</groupId>' "$WORK/java/pom.xml" && grep -Fq '**networknt `json-schema-validator`** (draft 2020-12)' "$WORK/java/README.md" &&
+  ! grep -Fq 'REST Assured `json-schema-validator`' "$WORK/java/README.md" || fail "Java README names a contract oracle the template does not ship"
 if grep -Eq '^[[:space:]]*"pytest-rerunfailures|^[[:space:]]*--reruns' "$WORK/python/requirements.txt" "$WORK/python/pyproject.toml"; then fail "Python template enables automatic reruns"; fi
 
 run_logged typescript-install bash -c "cd '$WORK/typescript' && npm ci --ignore-scripts"
-run_logged typescript-run bash -c "cd '$WORK/typescript' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline -- --grep @contract-smoke"
-run_logged java-run bash -c "cd '$WORK/java' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline -- -Dtest=TemplateContractTest"
-run_logged python-run bash -c "cd '$WORK/python' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline -- quality/python-tests/contract/test_template_contract.py"
+run_logged typescript-run bash -c "cd '$WORK/typescript' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline"
+run_logged java-run bash -c "cd '$WORK/java' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline"
+run_logged python-run bash -c "cd '$WORK/python' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ./run-tests.sh --mode baseline"
 for runtime in typescript java python; do
   jq -e '."$schema" == "argus/runner-result@1" and .mode == "baseline" and .status == "pass" and .exitCode == 0' "$WORK/$runtime/reports/argus-runner-result.json" >/dev/null || fail "$runtime clean-room runner result is invalid"
   test -d "$WORK/$runtime/reports/evidence" || fail "$runtime runner omitted the shared evidence root"
 done
 
-# TypeScript uses the same native regression-selection contract as Java and Python.
-# The separate @bug token remains provenance and may join through a stable origin alias.
-cp "$FIXTURES/regression-selection.spec.ts" "$WORK/typescript/quality/specs/contract/regression-selection.spec.ts"
-cp "$FIXTURES/bug-ledger-origin.json" "$WORK/typescript/solution/bug-ledger.json"
-selection_marker="$WORK/typescript-regression-selected.log"
-rm -f "$selection_marker"
-run_logged typescript-selection-baseline bash -c "cd '$WORK/typescript' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ARGUS_SELECTION_MARKER='$selection_marker' ./run-tests.sh --mode baseline -- --grep '@contract-smoke|@regression'"
-test ! -e "$selection_marker" || fail "TypeScript baseline selected an @regression test"
+# Inside argus-launch every runner runs in the launch OS sandbox, whose only writable root is the
+# artifact root, with TMPDIR inside it. Each clean-room scaffold reruns its contract-smoke
+# baseline through the packaged launcher's own sandbox_exec with the scaffold as the artifact
+# root. A kit temporary file outside TMPDIR (BSD mktemp without a template on macOS) stops the
+# run without a result. The real Node directory leads PATH, as in the discovery replay, so a
+# version-manager shim never needs to write outside the sandbox.
+launcher_sandbox="$(awk '/^escape_sandbox_value\(\) \{$/ { copy = 1 } /^sandbox_probe\(\) \{$/ { exit } copy' "$ROOT/argus/claude/bin/argus-launch")"
+grep -Fxq 'sandbox_exec() {' <<<"$launcher_sandbox" || fail 'the packaged argus-launch has no sandbox_exec'
+sandbox_skip=""
+case "$(uname -s)" in
+  Darwin) command -v sandbox-exec >/dev/null 2>&1 || sandbox_skip='sandbox-exec is unavailable' ;;
+  Linux)
+    if ! command -v bwrap >/dev/null 2>&1; then
+      sandbox_skip='bubblewrap is unavailable'
+    elif ! bwrap --die-with-parent --new-session --unshare-all --share-net --ro-bind / / --dev /dev --proc /proc /bin/true >/dev/null 2>&1; then
+      sandbox_skip='bubblewrap cannot create a sandbox on this host'
+    fi
+    ;;
+  *) sandbox_skip="no argus-launch sandbox on $(uname -s)" ;;
+esac
+if [ -n "$sandbox_skip" ]; then
+  printf 'SKIP  launch-sandbox runners: %s\n' "$sandbox_skip"
+else
+  eval "$launcher_sandbox"
+  node_directory="$(dirname "$(node -p process.execPath)")"
+  for runtime in typescript java python; do
+    scaffold="$(cd "$WORK/$runtime" && pwd -P)"
+    mkdir -p "$scaffold/ai_agents_internal/tmp"
+    # The sandbox is live: a write outside the scaffold fails and leaves nothing behind.
+    # shellcheck disable=SC2016 # The probe command is literal shell for the sandboxed child.
+    if sandbox_exec "$scaffold" "$scaffold" /bin/sh -c 'printf escaped >"$1/sandbox-escape.txt"' sh "$WORK" >/dev/null 2>&1 ||
+      [ -e "$WORK/sandbox-escape.txt" ]; then
+      fail "the argus-launch sandbox let the $runtime scaffold write outside its root"
+    fi
+    rm -f "$scaffold/reports/argus-runner-result.json"
+    set +e
+    sandbox_exec "$scaffold" "$scaffold" env -i "HOME=${HOME:-}" "PATH=$node_directory:$PATH" \
+      "TMPDIR=$scaffold/ai_agents_internal/tmp" ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 \
+      ./run-tests.sh --mode baseline >"$WORK/$runtime-sandboxed.log" 2>&1
+    sandboxed_code=$?
+    set -e
+    if [ "$sandboxed_code" -ne 0 ] ||
+      ! jq -e '."$schema" == "argus/runner-result@1" and .mode == "baseline" and .status == "pass" and .exitCode == 0' \
+        "$scaffold/reports/argus-runner-result.json" >/dev/null 2>&1; then
+      tail -40 "$WORK/$runtime-sandboxed.log" >&2
+      fail "$runtime contract-smoke baseline failed inside the argus-launch sandbox (exit $sandboxed_code)"
+    fi
+  done
+  printf 'PASS  launch-sandbox runners: the three contract-smoke baselines pass inside argus-launch sandbox_exec\n'
+fi
 
-run_logged typescript-selection-candidate bash -c "cd '$WORK/typescript' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ARGUS_SELECTION_MARKER='$selection_marker' ARGUS_SELECTION_EXPECT=candidate-regression ./run-tests.sh --mode candidate-regression"
-grep -Fxq 'candidate-regression' "$selection_marker" || fail "TypeScript candidate-regression did not select @regression"
-rm -f "$selection_marker"
+# The first TypeScript run in a fresh artifact root installs its packages. Inside an engagement
+# the launch sandbox denies the Playwright browser download (its lock lives in the host cache),
+# and browsers are provisioned host-side, so the runner never attempts it there unless
+# PLAYWRIGHT_INSTALL asks; outside an engagement the download stays the default. A stand-in npm
+# links the installed packages, and a stand-in npx fails `playwright install` the way the
+# sandbox does and passes every other call to the real npx.
+first_run_bin="$WORK/first-run-bin"
+first_run_root="$WORK/first-run-artifact-root"
+mkdir -p "$first_run_bin" "$first_run_root/ai_agents_internal"
+printf '{"engagementId":"template-smoke"}\n' >"$first_run_root/ai_agents_internal/engagement.json"
+cat >"$first_run_bin/npm" <<'STUB'
+#!/usr/bin/env bash
+if [ "${1:-}" = ci ]; then ln -s "$FIRST_RUN_NODE_MODULES" node_modules; exit; fi
+exec "$FIRST_RUN_REAL_NPM" "$@"
+STUB
+cat >"$first_run_bin/npx" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$FIRST_RUN_NPX_LOG"
+if [ "${1:-} ${2:-}" = 'playwright install' ]; then
+  echo "Error: EPERM: operation not permitted, mkdir 'ms-playwright/__dirlock' (launch-sandbox stand-in)" >&2
+  exit 1
+fi
+exec "$FIRST_RUN_REAL_NPX" "$@"
+STUB
+chmod 755 "$first_run_bin/npm" "$first_run_bin/npx"
+# Usage: first_run <label> <expected-exit> [env arguments...]
+first_run() {
+  local label="$1" expected="$2" code
+  shift 2
+  "$CLI" template scaffold --selection "$WORK/typescript-selection.json" --destination "$WORK/$label" >/dev/null
+  set +e
+  (cd "$WORK/$label" && env -u PLAYWRIGHT_INSTALL -u ARGUS_ENGAGEMENT_MANIFEST -u ARGUS_NATIVE_LAUNCH_RECEIPT -u ARGUS_LAUNCH_ARTIFACT_ROOT \
+    "PATH=$first_run_bin:$PATH" "FIRST_RUN_NODE_MODULES=$WORK/typescript/node_modules" \
+    "FIRST_RUN_REAL_NPM=$(command -v npm)" "FIRST_RUN_REAL_NPX=$(command -v npx)" "FIRST_RUN_NPX_LOG=$WORK/$label.npx.log" \
+    ARGUS_CONTRACT_SMOKE=1 "$@" ./run-tests.sh --mode baseline >"$WORK/$label.log" 2>&1)
+  code=$?
+  set -e
+  [ "$code" -eq "$expected" ] && jq -e --argjson code "$expected" '.exitCode == $code' "$WORK/$label/reports/argus-runner-result.json" >/dev/null ||
+    { tail -40 "$WORK/$label.log" >&2; fail "$label exited $code instead of $expected"; }
+}
+first_run first-run-engagement 0 "ARGUS_LAUNCH_ARTIFACT_ROOT=$first_run_root"
+grep -q '^tsc --noEmit' "$WORK/first-run-engagement.npx.log" && ! grep -q '^playwright install' "$WORK/first-run-engagement.npx.log" ||
+  fail 'the first in-engagement TypeScript run attempted the browser download or never reached the typecheck'
+grep -Fq 'ARGUS RUNNER: inside an Argus engagement' "$WORK/first-run-engagement.log" || fail 'the first in-engagement run did not say why it skipped the download'
+first_run first-run-explicit 12 "ARGUS_LAUNCH_ARTIFACT_ROOT=$first_run_root" PLAYWRIGHT_INSTALL=1
+first_run first-run-outside 12
+for label in first-run-explicit first-run-outside; do
+  grep -q '^playwright install' "$WORK/$label.npx.log" || fail "$label skipped the browser download"
+  jq -e '[.events[] | select(.reason == "playwright-install-failed")] | length == 1' "$WORK/$label/reports/argus-runner-result.json" >/dev/null ||
+    fail "$label did not record the failed browser download"
+done
 
-run_logged typescript-selection-evidence bash -c "cd '$WORK/typescript' && ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 ARGUS_SELECTION_MARKER='$selection_marker' ARGUS_SELECTION_EXPECT=defect-evidence ARGUS_OUTCOME_FILE='$WORK/typescript/reports/outcomes.raw.tsv' ./run-tests.sh --mode defect-evidence"
-grep -Fxq 'defect-evidence' "$selection_marker" || fail "TypeScript defect-evidence did not select @regression"
-jq -e '.mode == "defect-evidence" and .status == "pass" and .exitCode == 0 and (.events | any(.bugId == "BUG-0001" and .expected and .lifecycle == "reproduced"))' "$WORK/typescript/reports/argus-runner-result.json" >/dev/null || fail "TypeScript expected-RED evidence contract failed"
-
-run_logged typescript-origin-join bash -c "cd '$WORK/typescript' && node scripts/bug-coverage.mjs"
-jq -e '.bug_coverage.total_confirmed == 1 and .bug_coverage.wired_confirmed == 1 and .bug_coverage.uncovered == []' "$WORK/typescript/reports/summary.json" >/dev/null || fail "@bug origin alias did not join the canonical ledger"
+# A layout may keep a template root (tests, src, src/test/java), nest in one (src/e2e, tests/ui),
+# or swap two: every root is staged before any lands, so no move collides with or sweeps up
+# another. The runner, docs, and TypeScript imports follow each root.
+layout_case() {
+  local runtime="$1" manager="$2" test_root="$3" harness_root="$4" test_file="$5" harness_file="$6"
+  local out="$WORK/layout-$runtime-${test_root//\//-}-${harness_root//\//-}"
+  mkdir -p "$out.target"
+  "$CLI" template select --target "$out.target" --runtime "$runtime" --package-manager "$manager" \
+    --test-root "$test_root" --harness-root "$harness_root" --output "$out.json" >/dev/null
+  "$CLI" template scaffold --selection "$out.json" --destination "$out" >"$out.log" 2>&1 || \
+    { cat "$out.log" >&2; fail "$runtime scaffold refused the $test_root + $harness_root layout"; }
+  test -f "$out/$test_root/$test_file" && test -f "$out/$harness_root/$harness_file" || \
+    fail "$runtime $test_root + $harness_root layout misplaced its roots"
+  grep -Fq "TEST_ROOT=\"\${ARGUS_TEST_ROOT:-$test_root}\"" "$out/run-tests.sh" || fail "$runtime $test_root + $harness_root runner ignores its test root"
+  [ -z "$(find "$out" -maxdepth 1 -name '.argus-layout-*' -print -quit)" ] || fail "$runtime $test_root + $harness_root layout left its staging directory"
+  if [ "$runtime" = typescript ]; then
+    ln -s "$WORK/typescript/node_modules" "$out/node_modules"
+    run_logged "typecheck-${out##*/}" bash -c "cd '$out' && node_modules/.bin/tsc --noEmit"
+  fi
+}
+for layout in 'tests support' 'e2e src' 'tests src' 'src tests' 'src/e2e support' 'tests/ui support'; do
+  read -r test_root harness_root <<<"$layout"
+  layout_case typescript npm "$test_root" "$harness_root" setup/auth.setup.ts config/env.ts
+  layout_case python pip "$test_root" "$harness_root" api/test_example_api.py qa/config.py
+done
+for runtime in typescript python; do
+  nested="$WORK/layout-$runtime-src-e2e-support"
+  test ! -e "$nested/support/e2e" && grep -Fq 'src/e2e/' "$nested/README.md" && ! grep -Fq 'support/e2e' "$nested/README.md" || \
+    fail "$runtime harness move swept up the nested src/e2e test root"
+done
+for layout in 'src/test/java support' 'e2e src/test' 'src e2e'; do
+  read -r test_root harness_root <<<"$layout"
+  layout_case java maven "$test_root" "$harness_root" qa/api/ExampleApiTest.java qa/support/Config.java
+  out="$WORK/layout-java-${test_root//\//-}-${harness_root//\//-}"
+  test -f "$out/$harness_root/resources/junit-platform.properties" && test ! -e "$out/$test_root/qa/support" || \
+    fail "Java $test_root + $harness_root layout misplaced its support or resources"
+done
 
 # Shared evaluators and quarantine semantics are byte-identical and fail closed.
 cmp "$WORK/typescript/scripts/runner-contract.sh" "$WORK/java/scripts/runner-contract.sh" >/dev/null || fail "Java runner evaluator drifted"
 cmp "$WORK/typescript/scripts/runner-contract.sh" "$WORK/python/scripts/runner-contract.sh" >/dev/null || fail "Python runner evaluator drifted"
 cmp "$WORK/typescript/scripts/quarantine-contract.sh" "$WORK/java/scripts/quarantine-contract.sh" >/dev/null || fail "Java quarantine evaluator drifted"
 cmp "$WORK/typescript/scripts/quarantine-contract.sh" "$WORK/python/scripts/quarantine-contract.sh" >/dev/null || fail "Python quarantine evaluator drifted"
+# The evaluator joins the register to the inventory (SD-3): one quarantined, non-regression
+# contract-smoke case. The retired tag-count basis and a missing inventory are usage errors.
+printf 'case.one\tcontract-smoke\tfalse\ttrue\t-\t-\t-\t-\n' >"$WORK/quarantine-inventory.tsv"
 printf 'case.one\tatlas\tflaky-clock\t2099-01-01\t#18\n' >"$WORK/quarantine.tsv"
+for arguments in "--tagged-count 1" "--inventory $WORK/quarantine-inventory.tsv --tagged-count 1" "--inventory $WORK/absent-inventory.tsv" ""; do
+  set +e
+  # shellcheck disable=SC2086 # Each case is a deliberately word-split argument list.
+  "$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-usage.tsv" --ledger "$WORK/quarantine.tsv" $arguments >/dev/null 2>&1
+  usage_code=$?
+  set -e
+  [ "$usage_code" -eq 14 ] || fail "quarantine evaluator accepted '$arguments' with exit $usage_code instead of 14"
+done
+test ! -s "$WORK/quarantine-usage.tsv" || fail "quarantine evaluator emitted events for a usage error"
 : >"$WORK/quarantine-events.tsv"
-"$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-events.tsv" --ledger "$WORK/quarantine.tsv" --tagged-count 1
+"$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-events.tsv" --ledger "$WORK/quarantine.tsv" --inventory "$WORK/quarantine-inventory.tsv"
 # The register is what approves the skip, so it is passed in: without it the same event
 # is an unapproved skip, which is the point of the check below.
 "$WORK/typescript/scripts/runner-contract.sh" --mode baseline --events "$WORK/quarantine-events.tsv" --output "$WORK/quarantine-result.json" --runner-exit 0 --quarantine "$WORK/quarantine.tsv"
@@ -332,11 +707,11 @@ set -e
 [ "$unregistered_code" -eq 15 ] || fail "a skip with no quarantine row was accepted as approved"
 printf 'case.one\tatlas\tflaky-clock\t2000-01-01\t#18\n' >"$WORK/quarantine.tsv"
 : >"$WORK/quarantine-events.tsv"
-if "$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-events.tsv" --ledger "$WORK/quarantine.tsv" --tagged-count 1; then fail "expired quarantine unexpectedly passed"; fi
+if "$WORK/typescript/scripts/quarantine-contract.sh" --events "$WORK/quarantine-events.tsv" --ledger "$WORK/quarantine.tsv" --inventory "$WORK/quarantine-inventory.tsv"; then fail "expired quarantine unexpectedly passed"; fi
 set +e
 "$WORK/typescript/scripts/runner-contract.sh" --mode baseline --events "$WORK/quarantine-events.tsv" --output "$WORK/expired-result.json" --runner-exit 1
 expired_code=$?
 set -e
 [ "$expired_code" -eq 13 ] && jq -e '.exitCode == 13 and .categories.policy == 1' "$WORK/expired-result.json" >/dev/null || fail "expired quarantine did not fail as policy exit 13"
 
-printf 'PASS  Argus templates: detected ADAPT, explicit BUILD, arbitrary layouts, three clean-room runners, regression selection, origin-ledger join, shared contract, and quarantine\n'
+printf 'PASS  Argus templates: detected ADAPT, explicit BUILD, arbitrary layouts, three clean-room runners, shared contract, quarantine, and the in-engagement first TypeScript run without a browser download\n'

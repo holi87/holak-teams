@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/argus/schemas/browser-runtime.schema.json",
+  "title": "Argus browser runtime resolution record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "engagementId", "status", "source", "modulePath", "moduleVersion", "packageJsonSha256", "moduleTreeSha256", "moduleTreeRoots", "executablePath", "probedAt", "evidence", "candidates"],
+  "properties": {
+    "$schema": { "const": "argus/browser-runtime@1" },
+    "schemaVersion": { "const": 1 },
+    "engagementId": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["available", "unavailable", "not-probed"] },
+    "source": { "enum": ["profile", "host-provisioned", "target", "workspace", "npm-global", "system-global", "npx-cache", null] },
+    "modulePath": { "type": ["string", "null"], "pattern": "^/" },
+    "moduleVersion": { "type": ["string", "null"], "minLength": 1 },
+    "packageJsonSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "moduleTreeSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "moduleTreeRoots": { "type": "array", "maxItems": 16, "uniqueItems": true, "items": { "type": "string", "pattern": "^/" } },
+    "executablePath": { "type": ["string", "null"], "minLength": 1 },
+    "probedAt": { "type": ["string", "null"], "format": "date-time" },
+    "evidence": { "type": "string", "minLength": 1 },
+    "candidates": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/browserRuntimeCandidate" } }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["status"], "properties": { "status": { "const": "available" } } },
+      "then": {
+        "properties": {
+          "source": { "type": "string" },
+          "modulePath": { "type": "string" },
+          "moduleVersion": { "type": "string" },
+          "packageJsonSha256": { "type": "string" },
+          "moduleTreeSha256": { "type": "string" },
+          "moduleTreeRoots": { "minItems": 1 },
+          "executablePath": { "type": "string" },
+          "probedAt": { "type": "string" },
+          "candidates": { "minItems": 1 }
+        }
+      }
+    },
+    {
+      "if": { "required": ["status"], "properties": { "status": { "enum": ["unavailable", "not-probed"] } } },
+      "then": {
+        "properties": {
+          "source": { "const": null },
+          "modulePath": { "const": null },
+          "moduleVersion": { "const": null },
+          "packageJsonSha256": { "const": null },
+          "moduleTreeSha256": { "const": null },
+          "moduleTreeRoots": { "maxItems": 0 },
+          "executablePath": { "const": null }
+        }
+      }
+    },
+    {
+      "if": { "required": ["status"], "properties": { "status": { "const": "unavailable" } } },
+      "then": { "properties": { "probedAt": { "type": "string" } } }
+    },
+    {
+      "if": { "required": ["status"], "properties": { "status": { "const": "not-probed" } } },
+      "then": { "properties": { "probedAt": { "const": null }, "candidates": { "maxItems": 0 } } }
+    }
+  ],
+  "$defs": {
+    "browserRuntimeCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "modulePath", "result", "evidence"],
+      "properties": {
+        "source": { "enum": ["profile", "host-provisioned", "target", "workspace", "npm-global", "system-global", "npx-cache"] },
+        "modulePath": { "type": "string", "pattern": "^/" },
+        "result": { "enum": ["launched", "failed", "invalid", "not-attempted"] },
+        "evidence": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

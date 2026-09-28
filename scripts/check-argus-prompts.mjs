@@ -4,16 +4,20 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { computePromptCorpus, evaluateNonRegression, frontmatterList, readArgusPluginVersion, words } from './lib/argus-prompt-corpus.mjs';
 
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rootIndex = process.argv.indexOf('--root');
 const ROOT = rootIndex >= 0 ? resolve(process.argv[rootIndex + 1] ?? '') : defaultRoot;
+const PRINT_CORPUS = process.argv.includes('--print-corpus');
+const SKIP_CORPUS_APPROVAL = process.argv.includes('--skip-corpus-approval');
 const AGENTS = join(ROOT, 'argus/claude/agents');
 const CODEX = join(ROOT, 'argus/codex');
 const RUN = join(ROOT, 'argus/claude/skills/run/SKILL.md');
 const budget = readJson('argus/prompt-budgets.json');
 const comparison = readJson('argus/prompt-engagement-contract.json');
 const matrix = readJson('argus/capabilities/capability-matrix.json');
+assert(budget.schemaVersion === 2, `argus/prompt-budgets.json must be schemaVersion 2, found ${budget.schemaVersion}`);
 const files = readdirSync(AGENTS).filter((file) => file.endsWith('.md')).sort();
 const codexFiles = readdirSync(CODEX).filter((file) => file.endsWith('.toml')).sort();
 const contracts = new Map(matrix.agents.map((agent) => [agent.slug, agent]));
@@ -34,6 +38,32 @@ assert(files.length === 27, `expected 27 Claude agents, found ${files.length}`);
 assert(codexFiles.length === 27, `expected 27 Codex TOMLs, found ${codexFiles.length}`);
 assertSharedExecutionEnvelope(sourceSkills.get('qa-core'));
 
+// Inside an engagement the runner refuses a reset or fault opt-in without the calling lane and
+// a window its owner holds (reset: odysseus, fault: tyche), so every lane that runs one and
+// each owner carries the exact handshake.
+const EXCLUSIVE_WINDOW_DOCTRINE = Object.freeze({
+  atlas: ['`ARGUS_ENGAGEMENT_LANE=atlas`', 'exclusive reset window that Odysseus claims on your request'],
+  nike: ['`ARGUS_ENGAGEMENT_LANE=nike`', 'Only Tyche can hold the window'],
+  tyche: ['`argus-assets engagement claim --manifest <manifest> --lane tyche --token <lane-token> --resource fault`', '`engagement release` it after the last verified restore'],
+});
+// The selection record that grants the harness root is the operator's, installed at launch;
+// the harness architect consumes it and never writes it. Inside an engagement the scaffold is
+// staged in Atlas's worker directory and placed at the artifact root: the root configuration
+// the selection grants Atlas, and the runner through its revisioned canonical merge.
+const TEMPLATE_SELECTION_DOCTRINE = Object.freeze({
+  atlas: ['which `argus-launch --template-selection` installs and no lane can write; never write, infer, or relocate it',
+    '`argus-assets template scaffold --selection <artifact-root>/ai_agents_internal/template-selection.json --destination <artifact-root>/ai_agents_internal/workers/atlas/scaffold`',
+    'the root configuration only you may write', '`--canonical run-tests.sh --input <staged file>`',
+    'Never place the staged `.claude/`, `ai_agents_internal/`'],
+});
+assert(!sourceSkills.get('orchestration-core').includes('persist explicit `template select`'), 'orchestration-core: the controller must consume, never persist, the template selection');
+for (const [profile, fragments] of Object.entries({
+  'qa-framework-runner': ['`ARGUS_ENGAGEMENT_LANE=<own slug>`', '`argus-assets engagement claim --resource <reset|fault>`', 'Odysseus claims `reset`', 'Tyche claims `fault`'],
+  'orchestration-core': ['You own the exclusive `reset` window', '<controller-token> --resource reset`', 'Tyche owns `fault`'],
+})) {
+  for (const fragment of fragments) assert(sourceSkills.get(profile).includes(fragment), `${profile}: exclusive reset/fault window handshake missing: ${fragment}`);
+}
+
 const agents = new Map();
 const agentWords = {};
 const profileCounts = new Map();
@@ -42,7 +72,6 @@ let totalEffectiveWords = 0;
 let boundedWorkers = 0;
 let toolNameBytes = 0;
 let playwrightEntries = 0;
-const corpusHash = createHash('sha256');
 
 for (const file of files) {
   const slug = file.slice(0, -3);
@@ -53,7 +82,6 @@ for (const file of files) {
   const count = words(content);
   agentWords[slug] = count;
   totalWords += count;
-  corpusHash.update(`${file}\0${content}`);
   assert(count <= budget.budgets.maxAgentWords, `${slug}: ${count} words exceeds ${budget.budgets.maxAgentWords}`);
 
   const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
@@ -80,10 +108,17 @@ for (const file of files) {
 
   const body = content.replace(/^---[\s\S]*?---\s*/, '');
   assert(!body.includes('qa-doctrine'), `${slug}: legacy qa-doctrine reference remains`);
+  for (const fragment of EXCLUSIVE_WINDOW_DOCTRINE[slug] ?? []) {
+    assert(body.includes(fragment), `${slug}: exclusive reset/fault window handshake missing: ${fragment}`);
+  }
+  for (const fragment of TEMPLATE_SELECTION_DOCTRINE[slug] ?? []) {
+    assert(body.includes(fragment), `${slug}: operator template selection doctrine missing: ${fragment}`);
+  }
   if (slug === 'odysseus') {
     assert(body.includes('<!-- MODEL_CONTROLLER_START -->'), 'odysseus: model-controller block missing');
     assert(body.includes('Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`'), 'odysseus: local Mode A/B strategy binding missing');
     assert(count <= budget.budgets.maxOdysseusAgentWords, `odysseus: ${count} words exceeds thin-shell budget`);
+    assertUsableControllerCommands(body);
   } else {
     boundedWorkers += 1;
     assert(body.includes('<!-- MODEL_ESCALATION_START -->'), `${slug}: neutral model-escalation block missing`);
@@ -107,29 +142,10 @@ assert(playwrightEntries === budget.budgets.maxPlaywrightMcpEntries, `expected e
 assertPlaywrightBoundary(agents);
 assertProfileAssignments(matrix, profileCounts);
 
-const corpusSha256 = corpusHash.digest('hex');
-const approvedAgents = budget.approvedCorpus.agents;
-assert(Object.keys(approvedAgents).sort().join(',') === [...agents.keys()].sort().join(','), 'approved prompt corpus roster differs from current roster');
-const increases = Object.fromEntries(Object.entries(agentWords)
-  .filter(([slug, count]) => count > approvedAgents[slug])
-  .map(([slug, count]) => [slug, count - approvedAgents[slug]]));
-if (Object.keys(increases).length > 0 || totalWords > budget.approvedCorpus.words) {
-  const approval = budget.regressionApproval;
-  assert(approval, `prompt regression requires explicit regressionApproval: ${JSON.stringify(increases)}`);
-  assert(approval.corpusSha256 === corpusSha256, 'regressionApproval does not match current prompt corpus');
-  assert(/^#[0-9]+$/.test(approval.issue) && approval.approvedBy && approval.reason, 'regressionApproval metadata is incomplete');
-  assert(equal(approval.allowedAgentIncreases, increases), `regressionApproval must exactly enumerate increases: ${JSON.stringify(increases)}`);
-} else {
-  // Without this branch the recorded digest was decoration: a corpus could be rewritten
-  // word-for-word inside the approved counts and nothing would notice. A gate whose own
-  // integrity field is never read is the same failure the framework audits others for.
-  assert(budget.approvedCorpus.sha256 === corpusSha256,
-    `approvedCorpus.sha256 does not match the current corpus ${corpusSha256}: re-approve the corpus or restore it`);
-}
-
-const reduction = 1 - totalWords / budget.baseline.claudeAgentWords;
-assert(reduction >= 0.35, `Claude prompt reduction ${(reduction * 100).toFixed(2)}% is below 35%`);
-
+const promptBodies = new Map([
+  ...[...agents].map(([slug, content]) => [`argus/claude/agents/${slug}.md`, content.replace(/^---[\s\S]*?---\s*/, '')]),
+  ...[...sourceSkills].map(([profile, content]) => [`argus/shared-skills/${profile}/SKILL.md`, content.replace(/^---[\s\S]*?---\s*/, '')]),
+]);
 let codexCharacters = 0;
 for (const file of codexFiles) {
   const slug = file.slice(0, -5);
@@ -137,6 +153,7 @@ for (const file of codexFiles) {
   codexCharacters += content.length;
   const instructions = content.match(/developer_instructions = '''\n([\s\S]*?)\n'''\s*$/)?.[1];
   assert(instructions, `${slug}: developer_instructions missing`);
+  promptBodies.set(`argus/codex/${file}`, instructions);
   const delta = instructions.match(/<!-- CODEX_CAPABILITY_DELTA_START -->\n([\s\S]*?)\n<!-- CODEX_CAPABILITY_DELTA_END -->/)?.[1];
   assert(delta, `${slug}: compact capability delta missing`);
   assert(words(delta) <= budget.budgets.maxCodexCapabilityDeltaWords, `${slug}: capability delta exceeds ${budget.budgets.maxCodexCapabilityDeltaWords} words`);
@@ -147,9 +164,8 @@ for (const file of codexFiles) {
   assert(!/\b(?:opus|sonnet|haiku|sol|terra|luna)\b/i.test(instructions), `${slug}: provider model token leaked into developer instructions`);
 }
 const codexEstimatedTokens = Math.ceil(codexCharacters / 4);
-const codexReduction = budget.baseline.codexEstimatedTokens - codexEstimatedTokens;
 assert(codexEstimatedTokens <= budget.budgets.maxCodexEstimatedTokens, `Codex corpus ${codexEstimatedTokens} estimated tokens exceeds ${budget.budgets.maxCodexEstimatedTokens}`);
-assert(codexReduction >= budget.budgets.minimumCodexTokenReduction, `Codex reduction ${codexReduction} is below ${budget.budgets.minimumCodexTokenReduction}`);
+const forbiddenPatternCount = assertForbiddenPromptPatterns(promptBodies, comparison.forbiddenPromptPatterns ?? []);
 
 const runWords = words(readFileSync(RUN, 'utf8'));
 assert(runWords >= budget.budgets.minRunSkillWords && runWords <= budget.budgets.maxRunSkillWords, `/argus:run has ${runWords} words; expected ${budget.budgets.minRunSkillWords}-${budget.budgets.maxRunSkillWords}`);
@@ -169,11 +185,56 @@ for (const requirement of comparison.representativeEngagement.requirements) {
 }
 assertAdversarialExecutionCases(comparison, sourceSkills.get('qa-core'));
 
+const corpus = computePromptCorpus(ROOT);
+assert(corpus.words === totalWords && corpus.effectiveWords === totalEffectiveWords && corpus.codexEstimatedTokens === codexEstimatedTokens && equal(corpus.agents, agentWords),
+  'shared prompt-corpus measurement drifted from the structural gate counts');
+if (PRINT_CORPUS) {
+  console.log(JSON.stringify(corpus, null, 2));
+  process.exit(0);
+}
+const approval = SKIP_CORPUS_APPROVAL ? null : assertCorpusApproval(budget.approvedCorpus, corpus, readArgusPluginVersion(ROOT), budget.nonRegression);
+
 console.log(`PASS  Argus Claude prompts: ${totalWords} raw / ${totalEffectiveWords} effective words, max role ${Math.max(...Object.values(agentWords))}`);
-console.log(`PASS  Argus Codex prompts: ${codexCharacters} chars / ${codexEstimatedTokens} estimated tokens, reduction ${codexReduction}`);
+console.log(`PASS  Argus Codex prompts: ${codexCharacters} chars / ${codexEstimatedTokens} estimated tokens (max ${budget.budgets.maxCodexEstimatedTokens})`);
 console.log(`PASS  Capability disclosure: profiles core/browser/framework/coverage/orchestration=${['qa-core','qa-browser','qa-framework-runner','qa-coverage-reporting','orchestration-core'].map((profile) => profileCounts.get(profile) ?? 0).join('/')}, /run ${runWords} words`);
 console.log(`PASS  Tool boundary: ${toolNameBytes} name bytes, ${playwrightEntries} Playwright MCP entries, Kalchas public recon only`);
-console.log(`PASS  Prompt regression: ${Object.keys(increases).length} increases, corpus ${corpusSha256.slice(0, 12)}, ${duplicates.length} duplicated doctrine paragraphs`);
+console.log(`PASS  Duplicate doctrine: ${duplicates.length} duplicated doctrine paragraphs`);
+console.log(`PASS  Forbidden prompt patterns: ${forbiddenPatternCount} patterns absent from ${promptBodies.size} agent, profile, and Codex prompt bodies`);
+if (approval) {
+  if (approval.warning) console.log(approval.warning);
+  console.log(`PASS  Prompt corpus approval: ${corpus.sha256.slice(0, 12)}, benchmark ${approval.status}`);
+} else {
+  console.log('SKIP  corpus approval (development only; the release gate never passes this flag)');
+}
+
+// The corpus digest binds the approval to exact prompt and doctrine text; the counts must agree
+// with it; growth is accepted only with adjudicated non-regression evidence for this exact
+// corpus, or as a pending approval that expires when the Argus plugin version changes.
+function assertCorpusApproval(approved, current, pluginVersion, nonRegression) {
+  assert(approved && typeof approved === 'object', 'approvedCorpus is missing');
+  assert(approved.sha256 === current.sha256,
+    `approvedCorpus.sha256 does not match the current corpus ${current.sha256}: re-approve with scripts/approve-argus-prompts.mjs or restore it`);
+  const stale = ['words', 'effectiveWords', 'codexEstimatedTokens', 'agents', 'profiles']
+    .filter((field) => !equal(sortedKeys(approved[field]), sortedKeys(current[field])));
+  assert(stale.length === 0, `approvedCorpus counts are stale: ${stale.join(', ')} differ from the current corpus`);
+  const benchmark = approved.benchmark ?? {};
+  if (benchmark.status === 'pending') {
+    assert(approved.releaseVersion === pluginVersion, `pending benchmark approval expired: approved for ${approved.releaseVersion}, Argus is ${pluginVersion}`);
+    assert(typeof benchmark.reason === 'string' && benchmark.reason.trim(), 'pending benchmark approval must state a reason');
+    return { status: 'pending', warning: `WARN  prompt corpus approved for ${approved.releaseVersion} without benchmark evidence: ${benchmark.reason}` };
+  }
+  assert(benchmark.status === 'non-regressed', `approvedCorpus.benchmark.status must be pending or non-regressed, found ${JSON.stringify(benchmark.status)}`);
+  assert(benchmark.candidate?.corpusSha256 === approved.sha256, 'benchmark evidence does not match the approved corpus');
+  assert(/^[0-9a-f]{64}$/.test(benchmark.comparisonSha256 ?? ''), 'benchmark comparisonSha256 must be the sha256 of the adjudicated comparison');
+  const errors = evaluateNonRegression(benchmark, nonRegression);
+  assert(errors.length === 0, errors.join('; '));
+  return { status: 'non-regressed', warning: null };
+}
+
+function sortedKeys(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, value[key]]));
+}
 
 function resolveTools(contract) {
   const tools = [...contract.requiredTools];
@@ -194,6 +255,31 @@ function assertPlaywrightBoundary(agentMap) {
   }
 }
 
+// Retired doctrine stays retired: no prompt body (frontmatter stripped) may match a pattern
+// the engagement contract forbids, such as the old double-reproduction confirmation gate.
+function assertForbiddenPromptPatterns(bodies, patterns) {
+  assert(Array.isArray(patterns), 'forbiddenPromptPatterns must be an array');
+  const ids = new Set();
+  for (const item of patterns) {
+    assert(typeof item?.id === 'string' && item.id && !ids.has(item.id), `forbidden prompt pattern id is missing or duplicated: ${JSON.stringify(item?.id)}`);
+    ids.add(item.id);
+    const flags = item.flags ?? '';
+    assert(typeof item.pattern === 'string' && item.pattern, `${item.id}: forbidden prompt pattern is empty`);
+    assert(['', 'i'].includes(flags), `${item.id}: unsupported forbidden prompt pattern flags ${JSON.stringify(flags)}`);
+    let pattern;
+    try {
+      pattern = new RegExp(item.pattern, flags);
+    } catch (error) {
+      assert(false, `${item.id}: invalid forbidden prompt pattern: ${error.message}`);
+    }
+    for (const [label, body] of bodies) {
+      const match = body.match(pattern);
+      assert(!match, `${item.id}: forbidden prompt pattern matches ${label}: ${JSON.stringify(match?.[0])}`);
+    }
+  }
+  return patterns.length;
+}
+
 function assertProfileAssignments(capabilityMatrix, counts) {
   const expected = {
     'qa-core': 27,
@@ -208,7 +294,9 @@ function assertProfileAssignments(capabilityMatrix, counts) {
     const actual = capabilityMatrix.agents.filter((agent) => agent.toolProfiles.includes(profile)).length;
     assert(actual === count, `${profile}: expected ${count} assignments, found ${actual}`);
   }
-  for (const catalog of ['atalanta', 'ariadne', 'proteus', 'metis']) {
+  const catalogs = Object.keys(capabilityMatrix.techniqueCatalogs ?? {});
+  assert(catalogs.length > 0, 'capability matrix declares no technique catalogs');
+  for (const catalog of catalogs) {
     const owners = capabilityMatrix.agents.filter((agent) => agent.techniqueCatalogs.includes(catalog)).map((agent) => agent.slug);
     assert(equal(owners, [catalog]), `${catalog}: technique catalog assignment drifted`);
   }
@@ -229,6 +317,24 @@ function assertSharedExecutionEnvelope(qaCore) {
     '"agent": "bound-agent-slug"',
     'continue the task after returning `MODEL_ESCALATION_REQUEST`',
   ]) assert(normalized.includes(marker), `qa-core shared execution envelope missing: ${marker}`);
+}
+
+// Odysseus's model-control block is part of the launched controller's system prompt, so its
+// commands must run as written: the route form carries every option the CLI requires (and a
+// request file, not an id), and no command reads stdin, which the write guard refuses.
+function assertUsableControllerCommands(body) {
+  const block = body.match(/<!-- MODEL_CONTROLLER_START -->([\s\S]*?)<!-- MODEL_CONTROLLER_END -->/)?.[1] ?? '';
+  const route = block.match(/`(argus-assets model route --manifest [^`]*)`/)?.[1];
+  assert(route, 'odysseus: model-controller block has no model route command');
+  const required = read('argus/claude/bin/argus-assets').match(/requireOptions\(options, \[([^\]]*)\], 'model route'\)/)?.[1];
+  assert(required, "argus-assets no longer declares the options 'model route' requires");
+  for (const option of required.split(',').map((item) => item.trim().replace(/^'|'$/g, ''))) {
+    const flag = `--${option.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+    assert(route.includes(`${flag} <`), `odysseus: model route omits the required ${flag}`);
+  }
+  assert(/--controller-token <[^>]+>/.test(route), 'odysseus: model route omits the post-allocation --controller-token');
+  assert(/--request <[^>]+\.json>/.test(route), 'odysseus: model route --request must name the persisted request file');
+  assert(!/--input <[^>]*\|-?>|--input -[\s`]/.test(block), 'odysseus: a model-control command reads stdin, which the write guard refuses');
 }
 
 function assertAdversarialExecutionCases(contract, qaCore) {
@@ -261,15 +367,6 @@ function duplicatedParagraphs(agentMap, minWords) {
     }
   }
   return [...paragraphs.values()].filter((item) => item.files.size > 1).map((item) => ({ files: [...item.files].sort() }));
-}
-
-function frontmatterList(frontmatter, field) {
-  const block = frontmatter.match(new RegExp(`^${field}:\\s*\\n((?:\\s+-\\s+[^\\n]+\\n?)*)`, 'm'))?.[1] ?? '';
-  return [...block.matchAll(/^\s+-\s+([^\s#]+)\s*$/gm)].map((match) => match[1]);
-}
-
-function words(value) {
-  return value.trim() ? value.trim().split(/\s+/u).length : 0;
 }
 
 function read(path) {

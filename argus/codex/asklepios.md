@@ -3,12 +3,12 @@ schema: argus/codex-provenance@1
 slug: asklepios
 display_name: Asklepios
 runtime_config: argus/codex/asklepios.toml
-runtime_config_sha256: fc411488467b021d39657e43fac6686d028c090abe393e94c46f52a1131457dc
-developer_instructions_sha256: 3bdfb804595684d77e949177210696c4fbe5b592d78e33d27c0581adca6f9ac5
+runtime_config_sha256: 62522a17becdfd3c27efaddd4ee1b35eaf9e8311e582b95846bd40af94a232ae
+developer_instructions_sha256: eb9160005cef278fc325260a210fb47531e167cba628a19af69f0436d3cd3194
 canonical_source: argus/roles/asklepios.md
-canonical_source_sha256: 71150f916f8a1f44974280b3f1b968d218ef286182d5a22a4ea1167b60725002
-model: terra
-model_reasoning_effort: medium
+canonical_source_sha256: 77d4d31d55eeeb9afdaca16fe3b874cdd8ca620cb53d69b9e002eff679b6617f
+model: sol
+model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 doctrine_profiles: ["qa-core","qa-framework-runner"]
 technique_catalogs: []

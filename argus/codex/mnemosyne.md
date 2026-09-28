@@ -3,12 +3,12 @@ schema: argus/codex-provenance@1
 slug: mnemosyne
 display_name: Mnemosyne
 runtime_config: argus/codex/mnemosyne.toml
-runtime_config_sha256: e5116149af2d696c4928e9e855f33a3ca4bea3c4973325b755d95ec959393748
-developer_instructions_sha256: f96bdc7e66652aa505fdc052d9d9b63f5f69562dc11900557ce7e7a0cfda8287
+runtime_config_sha256: 7272341d6b15102e72175d79ad52c6a9f0ca20b87b133ccaebd6a9198ccb8ec4
+developer_instructions_sha256: 47872fbbf8e2a4c18b963aa67552483802123a2e71130b25c6049853acabf638
 canonical_source: argus/roles/mnemosyne.md
-canonical_source_sha256: 3d1b0caebe06b497d328894284f841b2d7bba2cee17f6ef88e3cdc769a9b37e0
-model: terra
-model_reasoning_effort: medium
+canonical_source_sha256: 946c3f9eedd3575d17100907f15874c4f1a3672c2d3bdd2cf1a298bab61a3f8a
+model: sol
+model_reasoning_effort: xhigh
 sandbox_mode: workspace-write
 doctrine_profiles: ["qa-core","qa-framework-runner"]
 technique_catalogs: []

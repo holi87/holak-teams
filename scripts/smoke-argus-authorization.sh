@@ -100,6 +100,7 @@ expect_check 0 AUTH-ALLOW "$WORK/dev/binary-reviewed.out" \
   --manifest "$DEV_MANIFEST" --lane orion --action binary-evidence \
   --target /tmp/target --source-trust user --binary-reviewed true \
   --at 2026-07-10T12:00:00.000Z
+grep -Fq 'at=2026-07-10T12:00:00.000Z' "$WORK/dev/binary-reviewed.out" || fail "authorization check did not print the audit timestamp a binary-evidence review binds to"
 expect_check 3 AUTH-TARGET-MISMATCH "$WORK/default/target.out" \
   --manifest "$DEFAULT_MANIFEST" --lane hermes --action read \
   --target https://other.example.com --source-trust manifest --at 2026-07-10T12:00:00.000Z
@@ -193,6 +194,92 @@ set -e
 [ "$driver_binary_code" -ne 0 ] || fail "browser driver captured unreviewed binary evidence"
 grep -Fq 'authorization denied binary-evidence' "$WORK/dev/driver-binary.out" || fail "browser driver did not enforce binary evidence review"
 
+# Client-side network faults are state changes, denied by default on production-like targets.
+set +e
+PATH="$ROOT/argus/claude/bin:$PATH" \
+DRIVER_CONFIG="$WORK/default/driver.config.json" \
+ARGUS_AUTHORIZATION_MANIFEST="$DEFAULT_MANIFEST" \
+node "$ROOT/argus/framework-template/scripts/hunt-driver.mjs" \
+  --agent orion --role argus-orion --fail-next '**/api/**' --goto / \
+  >"$WORK/default/driver-fault.out" 2>&1
+driver_fault_code=$?
+set -e
+[ "$driver_fault_code" -eq 2 ] || fail "browser driver client fault on production exited $driver_fault_code: $(<"$WORK/default/driver-fault.out")"
+grep -Fq 'authorization denied browser-state-change' "$WORK/default/driver-fault.out" || fail "browser driver client fault bypassed the production state-change denial"
+
+# A lane granted only browser:state-change still needs the separate browser:client-fault
+# mutation. The driver checks at the current time, so the grants and the time window bracket now.
+mkdir -p "$WORK/client-fault"
+node - "$FULL_FIXTURE" "$WORK/client-fault/authorization.json" <<'NODE'
+const fs = require('fs');
+const [source, target] = process.argv.slice(2);
+const manifest = JSON.parse(fs.readFileSync(source, 'utf8'));
+const startsAt = new Date(Date.now() - 3_600_000).toISOString();
+const endsAt = new Date(Date.now() + 3_600_000).toISOString();
+manifest.engagementId = 'client-fault-not-granted';
+manifest.allowedMutations = ['browser:state-change'];
+manifest.timeWindows = [{ startsAt, endsAt }];
+for (const grant of Object.values(manifest.actionGrants)) Object.assign(grant, { approvedAt: startsAt, expiresAt: endsAt });
+fs.writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+NODE
+CLIENT_FAULT_MANIFEST="$WORK/client-fault/authorization.json"
+set +e
+PATH="$ROOT/argus/claude/bin:$PATH" \
+DRIVER_CONFIG="$WORK/dev/driver.config.json" \
+ARGUS_AUTHORIZATION_MANIFEST="$CLIENT_FAULT_MANIFEST" \
+node "$ROOT/argus/framework-template/scripts/hunt-driver.mjs" \
+  --agent orion --role argus-orion --fail-next '**/api/**' --goto / \
+  >"$WORK/client-fault/driver.out" 2>&1
+client_fault_code=$?
+set -e
+[ "$client_fault_code" -eq 2 ] || fail "browser driver client fault without a grant exited $client_fault_code: $(<"$WORK/client-fault/driver.out")"
+grep -Fq 'authorization denied browser-client-fault' "$WORK/client-fault/driver.out" || fail "browser driver did not require the browser:client-fault grant: $(<"$WORK/client-fault/driver.out")"
+node - "$WORK/client-fault/authorization-audit.jsonl" <<'NODE'
+const fs = require('fs');
+const events = fs.readFileSync(process.argv[2], 'utf8').trim().split('\n').map(JSON.parse);
+const faults = events.filter((event) => event.lane === 'orion' && event.action === 'browser-state-change');
+if (faults.length !== 2) throw new Error(`expected the state-change and client-fault checks, got ${faults.length} events`);
+if (faults[0].decision !== 'allow') throw new Error(`the granted browser:state-change check was ${faults[0].decision}: ${faults[0].ruleId}`);
+if (faults[1].decision !== 'deny' || faults[1].ruleId !== 'AUTH-MUTATION-NOT-ALLOWED') {
+  throw new Error(`the browser:client-fault check was not denied with AUTH-MUTATION-NOT-ALLOWED: ${JSON.stringify(faults[1])}`);
+}
+NODE
+
+# A read-only run still logs in every authenticated account, so each one stays inside
+# accounts.allowedAliases (argus-* here): the primary and every actor, before any launch.
+for read_case in primary actor; do
+  mkdir -p "$WORK/read-$read_case"
+  cp "$FULL_FIXTURE" "$WORK/read-$read_case/authorization.json"
+done
+set +e
+PATH="$ROOT/argus/claude/bin:$PATH" \
+DRIVER_CONFIG="$WORK/dev/driver.config.json" \
+ARGUS_AUTHORIZATION_MANIFEST="$WORK/read-primary/authorization.json" \
+node "$ROOT/argus/framework-template/scripts/hunt-driver.mjs" \
+  --agent orion --role customer-admin --goto / --snapshot \
+  >"$WORK/read-primary/driver.out" 2>&1
+read_primary_code=$?
+PATH="$ROOT/argus/claude/bin:$PATH" \
+DRIVER_CONFIG="$WORK/dev/driver.config.json" \
+ARGUS_AUTHORIZATION_MANIFEST="$WORK/read-actor/authorization.json" \
+node "$ROOT/argus/framework-template/scripts/hunt-driver.mjs" \
+  --agent orion --role argus-orion --actor b=customer-admin --goto / --as b --goto / \
+  >"$WORK/read-actor/driver.out" 2>&1
+read_actor_code=$?
+set -e
+[ "$read_primary_code" -eq 2 ] || fail "browser driver read with an unlisted primary account exited $read_primary_code: $(<"$WORK/read-primary/driver.out")"
+grep -Fq 'authorization denied browser-read;' "$WORK/read-primary/driver.out" || fail "browser driver read bypassed the primary account boundary: $(<"$WORK/read-primary/driver.out")"
+[ "$read_actor_code" -eq 2 ] || fail "browser driver read with an unlisted actor account exited $read_actor_code: $(<"$WORK/read-actor/driver.out")"
+grep -Fq 'authorization denied browser-read for actor b' "$WORK/read-actor/driver.out" || fail "browser driver read bypassed the actor account boundary: $(<"$WORK/read-actor/driver.out")"
+node - "$WORK/read-primary/authorization-audit.jsonl" "$WORK/read-actor/authorization-audit.jsonl" <<'NODE'
+const fs = require('fs');
+const reads = (file) => fs.readFileSync(file, 'utf8').trim().split('\n').map(JSON.parse)
+  .filter((event) => event.lane === 'orion' && event.action === 'browser-read').map((event) => `${event.decision}:${event.ruleId}`);
+const [primary, actor] = process.argv.slice(2).map(reads);
+if (JSON.stringify(primary) !== JSON.stringify(['deny:AUTH-ACCOUNT-BOUNDARY'])) throw new Error(`unlisted primary read audit: ${JSON.stringify(primary)}`);
+if (JSON.stringify(actor) !== JSON.stringify(['allow:AUTH-ALLOW', 'deny:AUTH-ACCOUNT-BOUNDARY'])) throw new Error(`unlisted actor read audit: ${JSON.stringify(actor)}`);
+NODE
+
 # Text artifacts and stdout are redacted; binary screenshots fail closed.
 mkdir -p "$WORK/redaction"
 node - "$WORK/redaction/raw.json" <<'NODE'
@@ -222,6 +309,24 @@ NODE
 printf '%s\n' 'Authorization: Bearer eyJaaaaaa.bbbbbb.cccccc' | "$CLI" redact --input - --output - >"$WORK/redaction/console.txt"
 grep -Fq 'Authorization: [REDACTED]' "$WORK/redaction/console.txt" || fail "console authorization header was not redacted"
 if grep -Fq 'eyJaaaaaa.bbbbbb.cccccc' "$WORK/redaction/console.txt"; then fail "console leaked bearer token"; fi
+# JSON syntax inside text (a cut JSON body, page state in a script, escaped JSON in a string)
+# is redacted by key too: whole quoted values, spaces and escapes included, and a redacted
+# text redacts to itself.
+cat >"$WORK/redaction/embedded.txt" <<'TEXT'
+{"refresh_token":"cut-refresh-value","api_key":"cut-api-value","password":"cut password, value","rows":[{"id":1
+<script>window.__STATE__={"user":{"name":"visible-name","refresh_token":"state-refresh-value","password":"state password value"}};</script>
+{"payload":"{\"password\":\"escaped password value\",\"id\":2}"}
+TEXT
+"$CLI" redact --input "$WORK/redaction/embedded.txt" --output - >"$WORK/redaction/embedded.safe"
+for leaked in cut-refresh-value cut-api-value 'cut password' state-refresh-value 'state password' 'escaped password'; do
+  if grep -Fq "$leaked" "$WORK/redaction/embedded.safe"; then fail "text-mode redaction leaked a quoted JSON value: $leaked"; fi
+done
+for kept in '"refresh_token":"[REDACTED]","api_key":"[REDACTED]","password":"[REDACTED]","rows":[{"id":1' \
+  '{"name":"visible-name","refresh_token":"[REDACTED]","password":"[REDACTED]"}' '{\"password\":\"[REDACTED]\",\"id\":2}'; do
+  grep -Fq -- "$kept" "$WORK/redaction/embedded.safe" || fail "text-mode redaction lost the JSON around a redacted key: $kept"
+done
+"$CLI" redact --input "$WORK/redaction/embedded.safe" --output - | cmp -s - "$WORK/redaction/embedded.safe" \
+  || fail 'text-mode redaction of an already redacted text changed it'
 printf '\211PNG\r\n\032\n\000secret' >"$WORK/redaction/screenshot.png"
 set +e
 "$CLI" redact --input "$WORK/redaction/screenshot.png" --output "$WORK/redaction/screenshot-safe.png" >"$WORK/redaction/binary.out" 2>&1

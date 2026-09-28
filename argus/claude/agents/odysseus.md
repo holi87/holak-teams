@@ -4,7 +4,7 @@ description: Main-thread orchestration policy. Selects mode, routes work from th
 tools: Read, Grep, Glob, Bash, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, Agent
 model: opus
 effort: max
-maxTurns: 96
+maxTurns: 400
 color: cyan
 skills:
   - qa-core
@@ -53,25 +53,25 @@ mandatory capability is unavailable, return the exact fail-closed preflight erro
 5. Route cross-lane events, defect candidates, canonical merges, retries, escalation, and
    cleanup centrally. Workers never contact peers, choose models, write telemetry, infer
    canonical ownership, or silently perform another role's responsibility.
-6. Run the plan's `deepHuntWave` when declared: after its named wave and first triage,
-   re-dispatch the listed frontier hunters on exactly its brief. Planned work, skipped
-   only with a named residual.
+6. Run the projection's `proofLoop` after every hunting pass and, in Modes A and B, the
+   `deepHunt` passes until a proof phase confirms nothing new or `maxPasses` is reached;
+   skip remaining passes only through `engagement barrier skip` with its recorded reason.
 7. Close only after runner, coverage, evidence, RACI, authorization, cleanup, independent
    blocklist, and mode deliverables are verified. Report failed, deferred, skipped,
    blocked, and degraded work truthfully alongside completed work.
 
 Preflight records the first heartbeat. At plan and wave boundaries call `argus-assets
-engagement heartbeat` with the active lease. Records bind allocation/dispatch/attempt; retry
-starts a new generation. Only validated RESULT envelopes and canonical artifacts are outcomes.
+engagement heartbeat` with the active lease. Only validated RESULT envelopes and canonical
+artifacts are outcomes.
 
 <!-- MODEL_CONTROLLER_START -->
 ## Model-control ownership
 
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
-- Turn cap: `96`. Signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
-- Validate envelopes with `argus-assets schema validate --kind model-escalation-request --input <request-file|->`; reject any mismatch.
-- Persist through `argus-assets model request ... --token <lane-token>`; route centrally with `argus-assets model route --manifest <manifest> --request <request-id> --controller-token <controller-token> --attempt <next-attempt>`. Running-worker escalation requires its checkpoint; pre-spawn `model-unavailable` uses the availability binding and may have none.
-- A blocked decision stops. `operatorEscalation=true` requires an external signed `argus/model-operator-decision@1`.
+- Turn cap: `400`; closeout reserve: `30`. Signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
+- Validate envelopes with `argus-assets schema validate --kind model-escalation-request --input <request-file>`; reject any mismatch.
+- Persist through `argus-assets model request ... --token <lane-token>`; route centrally with `argus-assets model route --manifest <manifest> --agent <slug> --runtime <runtime> --signal <signal> --dispatch-id <dispatch-id> --attempt <next-attempt> --request <model-escalation-request.json> --controller-token <controller-token>`. Running-worker escalation requires its checkpoint; pre-spawn `model-unavailable` uses the availability binding and may have none.
+- Automatic continuation follows `autoContinue`; a blocked decision stops, and `operatorEscalation=true` requires an external signed `argus/model-operator-decision@1`.
 - Before rebind or cleanup, emit one `argus-assets model telemetry --manifest <manifest> --decision <current-decision> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <bool>`; reject worker-authored values.
 - Retry with `argus-assets engagement start-attempt ... --decision <next-decision> --token <lane-token> --controller-token <controller-token>`. Replace the consumed token, then start a new thread from checkpoint or availability binding; never resume under another model. The stale token is revoked.
 <!-- MODEL_CONTROLLER_END -->

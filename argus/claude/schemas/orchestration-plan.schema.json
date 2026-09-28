@@ -12,15 +12,20 @@
     "dependencyPolicy",
     "modeCounts",
     "waves",
+    "phases",
     "roles",
-    "mandatoryLanes"
+    "mandatoryLanes",
+    "essentialLanes",
+    "deepHunt",
+    "proofLoop",
+    "huntingBrief"
   ],
   "properties": {
     "$schema": {
-      "const": "argus/orchestration-plan@1"
+      "const": "argus/orchestration-plan@2"
     },
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "capabilityMatrix": {
       "const": "capabilities/capability-matrix.json"
@@ -90,6 +95,14 @@
         }
       }
     },
+    "phases": {
+      "type": "array",
+      "minItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/phase"
+      }
+    },
     "roles": {
       "type": "array",
       "minItems": 27,
@@ -98,26 +111,18 @@
         "$ref": "#/$defs/role"
       }
     },
-    "deepHuntWave": {
+    "deepHunt": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "afterWave",
         "modes",
         "tier",
+        "maxPasses",
+        "continueWhen",
         "roles",
         "brief"
       ],
       "properties": {
-        "afterWave": {
-          "enum": [
-            "W0",
-            "W1",
-            "W2",
-            "W3",
-            "W4"
-          ]
-        },
         "modes": {
           "type": "array",
           "minItems": 1,
@@ -134,8 +139,17 @@
         "tier": {
           "const": "frontier"
         },
+        "maxPasses": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "continueWhen": {
+          "const": "new-confirmed-defects"
+        },
         "roles": {
-          "$ref": "#/$defs/stringList"
+          "$ref": "#/$defs/stringList",
+          "minItems": 1
         },
         "brief": {
           "type": "array",
@@ -145,6 +159,129 @@
             "type": "string",
             "minLength": 3
           }
+        }
+      }
+    },
+    "huntingBrief": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 3
+      }
+    },
+    "proofLoop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validator",
+        "oracleDesk",
+        "maxRepairRounds",
+        "validatorPasses",
+        "routes",
+        "independentReproduction",
+        "acceptedOracleKinds",
+        "justifiedInvariantClasses",
+        "exhaustion"
+      ],
+      "properties": {
+        "validator": {
+          "const": "minos"
+        },
+        "oracleDesk": {
+          "const": "metis"
+        },
+        "maxRepairRounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "validatorPasses": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "order",
+            "clusters"
+          ],
+          "properties": {
+            "order": {
+              "const": "clusters-then-consolidator"
+            },
+            "clusters": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/cluster"
+              }
+            }
+          }
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/route"
+          }
+        },
+        "independentReproduction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "candidates",
+            "selection",
+            "freshState",
+            "unavailable"
+          ],
+          "properties": {
+            "candidates": {
+              "const": "raci.surfaceRoutes[].reproduce"
+            },
+            "selection": {
+              "type": "string",
+              "minLength": 20
+            },
+            "freshState": {
+              "type": "string",
+              "minLength": 20
+            },
+            "unavailable": {
+              "type": "string",
+              "minLength": 20
+            }
+          }
+        },
+        "acceptedOracleKinds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "requirement",
+              "contract",
+              "justified-invariant"
+            ]
+          }
+        },
+        "justifiedInvariantClasses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "server-error",
+              "crash",
+              "data-loss",
+              "authz-breach",
+              "layer-disagreement"
+            ]
+          }
+        },
+        "exhaustion": {
+          "type": "string",
+          "minLength": 20
         }
       }
     },
@@ -180,6 +317,61 @@
         "rule": {
           "type": "array",
           "minItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 20
+          }
+        }
+      }
+    },
+    "essentialLanes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "includeMandatoryLanes",
+        "modes",
+        "rule"
+      ],
+      "properties": {
+        "policy": {
+          "const": "blocked-essential-lane-stops-engagement"
+        },
+        "includeMandatoryLanes": {
+          "type": "boolean"
+        },
+        "modes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ],
+          "properties": {
+            "A": {
+              "$ref": "#/$defs/stringList",
+              "minItems": 1
+            },
+            "B": {
+              "$ref": "#/$defs/stringList",
+              "minItems": 1
+            },
+            "C": {
+              "$ref": "#/$defs/stringList",
+              "minItems": 1
+            },
+            "D": {
+              "$ref": "#/$defs/stringList",
+              "minItems": 1
+            }
+          }
+        },
+        "rule": {
+          "type": "array",
+          "minItems": 2,
           "uniqueItems": true,
           "items": {
             "type": "string",
@@ -244,6 +436,158 @@
         },
         "dependsOn": {
           "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "phase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "wave",
+        "kind",
+        "modes",
+        "skippable",
+        "participants",
+        "standby"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "wave": {
+          "enum": [
+            "W0",
+            "W1",
+            "W2",
+            "W3",
+            "W4"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "work",
+            "proof",
+            "deep-hunt"
+          ]
+        },
+        "pass": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ]
+          }
+        },
+        "skippable": {
+          "type": "boolean"
+        },
+        "participants": {
+          "$ref": "#/$defs/stringList",
+          "minItems": 1
+        },
+        "standby": {
+          "$ref": "#/$defs/stringList"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "proof"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "pass"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "deep-hunt"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "pass"
+            ]
+          }
+        }
+      ]
+    },
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "lanes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "lanes": {
+          "$ref": "#/$defs/stringList",
+          "minItems": 1
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "to",
+        "carries"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "bounced",
+            "needs-oracle",
+            "quarantined",
+            "suspected",
+            "confirmed"
+          ]
+        },
+        "to": {
+          "enum": [
+            "filing-lane",
+            "oracle-desk",
+            "independent-reproducer"
+          ]
+        },
+        "carries": {
+          "type": "string",
+          "minLength": 3
+        },
+        "when": {
+          "type": "string",
+          "minLength": 3
         }
       }
     },

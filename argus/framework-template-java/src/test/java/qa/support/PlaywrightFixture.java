@@ -7,6 +7,7 @@ import com.microsoft.playwright.ConsoleMessage;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.Response;
+import com.microsoft.playwright.Route;
 import com.microsoft.playwright.options.AriaRole;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -16,6 +17,8 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
+import qa.support.argus.ArgusCounterfactualExtension;
+import qa.support.argus.FaultInjector;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,6 +41,9 @@ import java.util.regex.Pattern;
  *       TypeScript template's {@code consoleGuard} auto-fixture.</li>
  *   <li>Parameter injection: declare {@code Page}, {@code BrowserContext} or {@code Browser}
  *       on a test method and it is supplied here — specs never new-up Playwright themselves.</li>
+ *   <li><b>Counterfactual passes</b> ({@code ARGUS_EVIDENCE_PASS=cf-*}): a {@code @Tag("ui")}
+ *       test's API traffic is routed to the fixture's loopback stub instead of the target, and
+ *       the auth-once login is not attempted (it would reach the real API).</li>
  * </ul>
  *
  * Use with {@code @ExtendWith(PlaywrightFixture.class)}. Determinism: parallel execution is
@@ -76,7 +82,7 @@ public class PlaywrightFixture
      * (the UI tests then fail cleanly on their assertions rather than erroring in setup).
      */
     private void ensureStorageState() {
-        if (Files.exists(STORAGE_STATE)) return;
+        if (Files.exists(STORAGE_STATE) || ArgusCounterfactualExtension.active()) return;
         BrowserContext tmp = null;
         try {
             tmp = browser.newContext(new Browser.NewContextOptions().setBaseURL(Config.uiUrl()));
@@ -105,8 +111,26 @@ public class PlaywrightFixture
             opts.setStorageStatePath(STORAGE_STATE);
         }
         context = browser.newContext(opts);
+        routeCounterfactualApi(ctx);
         page = context.newPage();
         attachConsoleGuard(page);
+    }
+
+    /**
+     * In a counterfactual pass, answers the UI's API calls ({@code ARGUS_API_ROUTE_PATTERN}, else
+     * the real {@code API_URL} + {@code /**}) from the variant loaded for this test. A request
+     * the variant does not declare gets 501 and fails the test once it finishes.
+     */
+    private void routeCounterfactualApi(ExtensionContext ctx) {
+        if (!ArgusCounterfactualExtension.routesBrowser(ctx)) return;
+        context.route(ArgusCounterfactualExtension.routePattern(), route -> {
+            ArgusCounterfactualExtension.RoutedResponse stubbed =
+                    ArgusCounterfactualExtension.fulfil(route.request().method(), route.request().url());
+            route.fulfill(new Route.FulfillOptions()
+                    .setStatus(stubbed.status())
+                    .setHeaders(stubbed.headers())
+                    .setBodyBytes(stubbed.body()));
+        });
     }
 
     @Override
@@ -129,17 +153,19 @@ public class PlaywrightFixture
      * Auto-guard for every UI test: a {@code console.error} or any HTTP response with status
      * &ge; 500 on the fixture-managed page is collected here and asserted empty in
      * {@link #afterEach}. Silent JS errors and broken XHRs are signals the assertions alone
-     * would miss. Mirrors the TypeScript template's {@code consoleGuard} auto-fixture.
+     * would miss. Errors and 5xx responses observed while a {@link FaultInjector} fault is
+     * active are that fault's intended effect. Mirrors the TypeScript template's
+     * {@code consoleGuard}.
      */
     private void attachConsoleGuard(Page p) {
         consoleGuardViolations = new ArrayList<>();
         p.onConsoleMessage((ConsoleMessage msg) -> {
-            if ("error".equals(msg.type()) && !consoleGuardAllowed(msg.text())) {
+            if ("error".equals(msg.type()) && !FaultInjector.active() && !consoleGuardAllowed(msg.text())) {
                 consoleGuardViolations.add("console.error: " + msg.text());
             }
         });
         p.onResponse((Response res) -> {
-            if (res.status() >= 500 && !consoleGuardAllowed(res.url())) {
+            if (res.status() >= 500 && !FaultInjector.active() && !consoleGuardAllowed(res.url())) {
                 consoleGuardViolations.add(
                         "HTTP " + res.status() + ": " + res.request().method() + " " + res.url());
             }

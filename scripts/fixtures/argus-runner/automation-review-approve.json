@@ -1,0 +1,53 @@
+{
+  "$schema": "argus/automation-review@1",
+  "schemaVersion": 1,
+  "engagementId": "fixture-1",
+  "owner": "aristarchus",
+  "reviews": [
+    {
+      "reviewId": "REV-01",
+      "round": 1,
+      "supersedes": null,
+      "verdict": "BLOCK",
+      "reviewedAt": "2026-07-10T10:00:00.000Z",
+      "corpus": { "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "fileCount": 4, "roots": ["run-tests.sh", "scripts", "tests"] },
+      "reviewedCommit": null,
+      "blockers": [
+        {
+          "id": "ARB-001",
+          "file": "tests/api/widget.spec.ts",
+          "line": 8,
+          "category": "swallowed-failure",
+          "pattern": "try/catch around the widget total assertion never rethrows",
+          "consequence": "The BUG-0001 regression passes green on the buggy build; the gate is dishonest.",
+          "ownerLane": "talos",
+          "direction": "Remove the catch so the assertion failure propagates."
+        }
+      ],
+      "warnings": [],
+      "resolved": [],
+      "uncoveredConfirmedBugs": [],
+      "evidenceCommands": [
+        { "command": "grep -rn -E 'catch' tests/api/widget.spec.ts", "exitCode": 0, "outputSha256": "3333333333333333333333333333333333333333333333333333333333333333" }
+      ]
+    },
+    {
+      "reviewId": "REV-02",
+      "round": 2,
+      "supersedes": "REV-01",
+      "verdict": "APPROVE",
+      "reviewedAt": "2026-07-10T11:30:00.000Z",
+      "corpus": { "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "fileCount": 4, "roots": ["run-tests.sh", "scripts", "tests"] },
+      "reviewedCommit": "0123456789abcdef0123456789abcdef01234567",
+      "blockers": [],
+      "warnings": [],
+      "resolved": [
+        { "blockerId": "ARB-001", "previousReviewId": "REV-01", "resolution": "The catch was removed; the regression is RED on the buggy build at the widget total assertion." }
+      ],
+      "uncoveredConfirmedBugs": [],
+      "evidenceCommands": [
+        { "command": "grep -rn -E 'catch' tests/api/widget.spec.ts", "exitCode": 1, "outputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }
+      ]
+    }
+  ]
+}

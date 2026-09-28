@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/scripts/eval/discovery/schemas/final-verdicts.schema.json",
+  "title": "Argus discovery evaluation final verdicts v1 (human spot-check decisions over first-pass judge verdicts)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "createdAt", "runsSha256", "judgeSha256", "sheetSha256", "judge", "spotCheck", "reliability", "runs"],
+  "properties": {
+    "schema": { "const": "argus-eval/final-verdicts@1" },
+    "status": { "enum": ["final", "provisional", "judge-unreliable"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "runsSha256": { "$ref": "#/$defs/sha256" },
+    "judgeSha256": { "$ref": "#/$defs/sha256" },
+    "sheetSha256": { "$ref": "#/$defs/sha256" },
+    "judge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "effort", "passes", "claudeVersion", "systemPromptSha256", "includeSuspected"],
+      "properties": {
+        "model": { "const": "opus" },
+        "effort": { "const": "max" },
+        "passes": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "claudeVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$" },
+        "systemPromptSha256": { "$ref": "#/$defs/sha256" },
+        "includeSuspected": { "type": "boolean" }
+      }
+    },
+    "spotCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["all", "samplingSeed", "rate", "minimum", "items", "reviewed", "pending"],
+      "properties": {
+        "all": { "type": "boolean" },
+        "samplingSeed": { "type": ["integer", "null"], "minimum": 0, "maximum": 4294967295 },
+        "rate": { "type": ["number", "null"], "minimum": 0.000001, "maximum": 1 },
+        "minimum": { "type": ["integer", "null"], "minimum": 0, "maximum": 999999 },
+        "items": { "$ref": "#/$defs/count" },
+        "reviewed": { "$ref": "#/$defs/count" },
+        "pending": { "$ref": "#/$defs/count" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "all": { "const": true } } },
+          "then": { "properties": { "samplingSeed": { "type": "null" }, "rate": { "type": "null" }, "minimum": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "all": { "const": false } } },
+          "then": { "properties": { "samplingSeed": { "type": "integer" }, "rate": { "type": "number" }, "minimum": { "type": "integer" } } }
+        }
+      ]
+    },
+    "reliability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["randomSampled", "randomReviewed", "randomOverturned", "overturnRate", "maxOverturnRate"],
+      "properties": {
+        "randomSampled": { "$ref": "#/$defs/count" },
+        "randomReviewed": { "$ref": "#/$defs/count" },
+        "randomOverturned": { "$ref": "#/$defs/count" },
+        "overturnRate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "maxOverturnRate": { "const": 0.1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "randomReviewed": { "const": 0 } } },
+          "then": { "properties": { "overturnRate": { "type": "null" }, "randomOverturned": { "const": 0 } } }
+        },
+        {
+          "if": { "properties": { "randomReviewed": { "minimum": 1 } } },
+          "then": { "properties": { "overturnRate": { "type": "number" } } }
+        }
+      ]
+    },
+    "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "final" } } },
+      "then": { "properties": { "spotCheck": { "properties": { "pending": { "const": 0 } } } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "provisional" } } },
+      "then": { "properties": { "spotCheck": { "properties": { "pending": { "minimum": 1 } } } } }
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findingId", "status", "outcome", "seedId", "duplicateOf", "source", "confidence", "reason", "evidenceRef", "humanReproduced", "reviewer", "overturned"],
+      "properties": {
+        "findingId": { "type": "string", "pattern": "^BUG-[0-9]{4}$" },
+        "status": { "enum": ["confirmed", "suspected", "needs-oracle", "bounced", "quarantined"] },
+        "outcome": { "enum": ["real", "false-positive", "duplicate"] },
+        "seedId": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]*$" },
+        "duplicateOf": { "type": ["string", "null"], "pattern": "^BUG-[0-9]{4}$" },
+        "source": { "enum": ["human", "judge"] },
+        "confidence": { "enum": ["high", "medium", "low", null] },
+        "reason": { "type": "string", "minLength": 1 },
+        "evidenceRef": { "type": ["string", "null"], "pattern": "^/(?:[^/\\u0000]+/)*[^/\\u0000]+$" },
+        "humanReproduced": { "type": ["boolean", "null"] },
+        "reviewer": { "type": ["string", "null"], "minLength": 1 },
+        "overturned": { "type": ["boolean", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "source": { "const": "human" } } },
+          "then": { "properties": { "confidence": { "type": "null" }, "humanReproduced": { "type": "boolean" }, "reviewer": { "type": "string" }, "overturned": { "type": "boolean" } } }
+        },
+        {
+          "if": { "properties": { "source": { "const": "judge" } } },
+          "then": { "properties": { "confidence": { "type": "string" }, "humanReproduced": { "type": "null" }, "reviewer": { "type": "null" }, "evidenceRef": { "type": "null" }, "overturned": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "humanReproduced": { "const": true } } },
+          "then": { "properties": { "evidenceRef": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "outcome": { "enum": ["false-positive", "duplicate"] } } },
+          "then": { "properties": { "seedId": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "outcome": { "const": "duplicate" } } },
+          "then": { "properties": { "duplicateOf": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "outcome": { "enum": ["real", "false-positive"] } } },
+          "then": { "properties": { "duplicateOf": { "type": "null" } } }
+        }
+      ]
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "verdicts"],
+      "properties": {
+        "runId": { "type": "string", "pattern": "^r[0-9]{1,2}-[AB]-(?:faulty|corrected)-[a-z][a-z0-9-]{0,31}$" },
+        "verdicts": { "type": "array", "items": { "$ref": "#/$defs/verdict" } }
+      }
+    }
+  }
+}

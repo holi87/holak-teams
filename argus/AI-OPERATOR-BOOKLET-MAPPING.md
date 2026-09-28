@@ -146,9 +146,9 @@ The booklet's 5-point sweep maps one-to-one onto the Perseus security lane
 
 | Booklet item | Disposition | Where / reason |
 |---|---|---|
-| Inventory the agent set (agent → responsibility → I/O → DoD) | **Enforced** | Generated capability + RACI matrices (`argus/capabilities/`, `argus/raci.json` → `RACI-CONTRACT.md`); preflight emits a per-role `ready/degraded/deferred/skipped/blocked` disposition |
+| Inventory the agent set (agent → responsibility → I/O → DoD) | **Enforced** | Generated capability + RACI matrices (`argus/capabilities/`, `argus/raci.json` → `RACI-CONTRACT.md`); preflight emits a per-role `ready/degraded/conditional/deferred/skipped/blocked` disposition; a `conditional` role is sealed but allocates only after `argus-assets engagement resolve-gates` releases its `pendingGates` |
 | Confirm launch mode & fallback; `ARGUS_LAUNCH_UNATTESTED=1` works | **Enforced** | `orchestration-core` fail-closed preflight + the unattested exception (`--unattested-launch`, `trust=unattested`, operator/Codex escalation stays blocked) |
-| DB out of scope enforced in tooling, not prose | **Partially enforced** | No DB-specific tool ships in the plugin, DB hunting is disposition-gated to Charon/Mnemosyne (only when `db-access` is `ready`), and unknown/staging/production targets default to read-only per the authorization manifest. But most roles hold generic `Bash`, and the packaged `PreToolUse` guard (`evaluateWriteGuard`) blocks filesystem *writes*, not reads — a command with no detected mutation is allowed — so a direct DB *read* by a non-DB role is bounded by the authorization manifest, not hard-blocked at tool level. Hard tool-level read-blocking would need per-role runtime command enforcement, which is not shipped. |
+| DB out of scope enforced in tooling, not prose | **Partially enforced** | No DB-specific tool ships in the plugin, DB hunting is disposition-gated to Charon/Mnemosyne (only when `db-access` is available; a lane missing `db-access` stays `skipped`, never `conditional`, because recon never releases it; only an operator `--feature db-access` at launch makes it available), and unknown/staging/production targets default to read-only per the authorization manifest. But most roles hold generic `Bash`, and the packaged `PreToolUse` guard (`evaluateWriteGuard`) blocks filesystem *writes*, not reads — a command with no detected mutation is allowed — so a direct DB *read* by a non-DB role is bounded by the authorization manifest, not hard-blocked at tool level. Hard tool-level read-blocking would need per-role runtime command enforcement, which is not shipped. |
 | Argus-only tooling | **Enforced** | Each role's `tools` frontmatter is pinned by the capability matrix and asserted (`frontmatter tools differ from requiredTools + toolProfiles` fails the gate) |
 | Shared `AGENTS.md` + `decision-log.md` | **Rejected as new artifacts** | See rules 12–13 above — mapped to existing sources of truth. |
 
@@ -188,10 +188,12 @@ No single role finds, validates, and automates its own defect.
 
 The booklet run assumes the frontier roles reason on the strongest available model. Status:
 
-- The 12 frontier roles (`ariadne`, `aristarchus`, `atalanta`, `atlas`, `kalchas`, `metis`,
-  `minos`, `odysseus`, `orion`, `perseus`, `tiresias`, `tyche`) declare `model: opus`; the 15 execution roles
-  declare `model: sonnet`. Both are generated from `argus/model-policy.json` (frontier tier
-  `claude.model = opus`).
+- All 27 roles use the frontier tier and declare `model: opus` with `effort: max` (Codex
+  `sol` / `xhigh`), generated from `argus/model-policy.json` (frontier tier
+  `claude.model = opus`). The standard tier remains available only to a role with a
+  justified `baseline.standardAllowlist` entry; orchestration, judgment, and analysis roles
+  and every hunter lane stay on the frontier tier regardless. Worker turn caps are 80-200,
+  and hunter caps are 120-160.
 - `opus` is an **alias**. Claude Code 2.1.250 resolves it to the latest opus family member,
   `claude-opus-5` (CLI alias table `opus → claude-opus-5`; verified on live agent runs via
   `--output-format json` `modelUsage.canonicalModel`). No repo change is needed for the

@@ -33,18 +33,54 @@ marcus, deliver the requested increment with tests and CI.
 
 ### Start Argus
 
-Argus 4 requires its packaged authenticated launcher. A direct `/argus:run` session fails
+Argus 5 requires its packaged authenticated launcher. A direct `/argus:run` session fails
 preflight because it lacks the signed launch authorization, verified receipt, and inherited
-one-shot OS capability.
+one-shot OS capability. Every flag is listed by `argus-launch --help`.
+
+#### Check the host
 
 ```bash
-PLUGIN_ROOT="$HOME/.claude/plugins/cache/holak-teams/argus/4.0.0"
+# Newest installed Argus version in the plugin cache
+PLUGIN_ROOT="$(ls -d "$HOME"/.claude/plugins/cache/holak-teams/argus/* | sort -V | tail -n 1)"
+
+"$PLUGIN_ROOT/bin/argus-launch" doctor --browser
+```
+
+`doctor` checks the reviewed Claude 2.x turn-cap contract, confirms that Claude reports a
+login inside the launch's isolated config (see "Claude credentials"), and runs the OS
+sandbox behavior probes. `--browser` then runs `argus-launch probe-browser`, which needs no
+Claude CLI: it resolves a host Playwright package (`--module <absolute-dir>`, else `npm root -g`, then the
+Homebrew and system global `node_modules`), starts its headless Chromium inside the launch
+sandbox, and takes one screenshot. `probe-browser` exits 0 (PASS), 2 (FAIL), or 3 (SKIP: no
+Playwright module). Under `doctor --browser`, a SKIP only warns and a FAIL fails doctor.
+
+#### Claude credentials
+
+The launch runs Claude with a fresh `CLAUDE_CONFIG_DIR` inside the artifact root, so a
+keychain or claude.ai subscription login does not carry over. Export one credential variable
+before `doctor` and every launch:
+
+```bash
+export ANTHROPIC_API_KEY='<api-key>'
+# or, for a subscription: create a long-lived token once, then export it
+claude setup-token
+export CLAUDE_CODE_OAUTH_TOKEN='<token>'
+```
+
+A gateway can use `ANTHROPIC_AUTH_TOKEN` with `ANTHROPIC_BASE_URL`. The launcher passes each
+variable through only when it is set and never copies a credential file. `doctor` and every
+launch, dry runs included, first run `claude auth status` in the launch's isolated
+environment and stop when it reports no login. Processes inside the sandbox run as your user
+and can read the session environment, including this variable.
+
+#### Launch
+
+```bash
 TARGET="$(cd /path/to/target && pwd -P)"
 ARTIFACT_ROOT="$(cd /path/to/artifacts && pwd -P)"
 OPERATOR_ROOT="$(cd /secure/operator && pwd -P)"
 TRUST_STORE="$(cd /secure/trust && pwd -P)/model-trust.json"
 
-"$PLUGIN_ROOT/bin/argus-launch" doctor
 "$PLUGIN_ROOT/bin/argus-launch" claude \
   --target "$TARGET" \
   --artifact-root "$ARTIFACT_ROOT" \
@@ -52,14 +88,23 @@ TRUST_STORE="$(cd /secure/trust && pwd -P)/model-trust.json"
   --engagement-id qa-001 \
   --trust-store "$TRUST_STORE" \
   --runtime-key-id runtime-2026 \
+  --operator-key-id operator-2026 \
   --request-output "$OPERATOR_ROOT/qa-001.request.json" \
   --launch-authorization "$OPERATOR_ROOT/qa-001.authorization.json"
 ```
 
-The launcher writes the immutable request and waits up to five minutes. In the isolated
-runtime-attestation signer, review every request field, sign the exact payload, and write
-the authorization atomically. The signer may hold the private key; the launcher,
-controller, workers, and their sandbox must not.
+`--runtime-key-id` and `--operator-key-id` name the trust store's `runtime-attestation` and
+`operator-approval` keys (see "Model trust and revocation"). The request signs both, and the
+launch preflight pins both anchors when it creates the engagement. There is no subsequent
+in-session `model trust` step or preflight rerun.
+
+The launcher writes the immutable request and waits up to five minutes (`--wait-seconds
+<30..300>`). In the isolated runtime-attestation signer, review every request field, sign
+the exact payload, and write the authorization atomically. The signer may hold the private
+key; the launcher, controller, workers, and their sandbox must not. A signer built for
+Argus 4 must be updated first: 5.0 authorizations and receipts require `maxTurns: 400` and
+`sandboxPolicy: os-native-target-readonly@3`, and a 5.0 request carries the signed
+`operatorKeyId` field, which a strict signer must accept.
 
 ```bash
 "$PLUGIN_ROOT/bin/argus-assets" model payload \
@@ -77,12 +122,23 @@ mv "$OPERATOR_ROOT/qa-001.authorization.json.tmp" \
 rm -f payload.txt signature.bin
 ```
 
-The launcher binds Odysseus to Claude `opus`, maximum effort, and the native 96-turn cap.
+The launcher binds Odysseus to Claude `opus`, maximum effort, and the native 400-turn cap;
+the controller reserves the last 30 turns for canonical merges and the final report.
 It supports local paths and normalized HTTP(S) URLs, requires target and artifact roots to
 be physically disjoint, disables session persistence, starts from an environment allowlist,
-and uses `sandbox-exec` on macOS or Bubblewrap on Linux. Only the alias-free artifact root
-is writable; Claude config and temporary files stay inside it. If the reviewed Claude 2.x
+and uses `sandbox-exec` on macOS or Bubblewrap on Linux. Claude runs headless with
+`--permission-mode dontAsk` and an explicit `--allowedTools` list of the tools the packaged
+agents declare, so workers can write and run commands without a prompt. Permissions are never
+bypassed: the packaged write guard and the sandbox still enforce every call from any workspace.
+Unattested launches export `ARGUS_LAUNCH_ARTIFACT_ROOT` to retain that guard binding. Only the
+alias-free artifact root is writable; Claude config and temporary files stay inside it. If the reviewed Claude 2.x
 turn-cap contract or OS sandbox is unavailable, launch stops.
+
+The sandbox policy is `os-native-target-readonly@3`. It adds to @2 only the
+`RootDomainUserClient` IOKit user client and the `org.chromium.*` mach names that headless
+Chromium needs; file writes stay confined to the artifact root. Headless Chromium under
+Linux Bubblewrap is unverified: treat browser lanes there as unavailable until
+`argus-launch probe-browser` passes on that host.
 
 Modes are:
 
@@ -91,14 +147,97 @@ Modes are:
 - `C`: regression automation;
 - `D`: targeted capability-selected run.
 
-The preflight creates its control files below `ai_agents_internal/` before probing the target. Review authorization and engagement manifests before allowing target-affecting actions.
+#### Optional launch flags
+
+These flags work for attested and unattested launches alike. None is part of the signed
+launch request, and none widens what the authorization evaluator allows. `--dry-run`
+validates them and reports the choice without installing anything.
+
+- `--provision-browser` prepares the host before the sandbox starts. It runs
+  `argus-assets browser provision`, which reuses a host Playwright matching the template's
+  pinned version that already launches headless Chromium, or installs that release into
+  `~/.cache/argus/browser-runtime/<x.y.z>` (outside the artifact root, read-only to the
+  sandbox) and Chromium into Playwright's host default cache. A provisioning failure stops
+  the launch. Preflight still re-probes the runtime inside the sandbox and records the result
+  in `ai_agents_internal/browser-runtime.json`; it never installs a runtime itself. Host
+  provisioning never executes Playwright candidates from the artifact root, target, or workspace.
+- `--authorization <absolute-path>` supplies your authorization manifest. It must be a
+  physical regular file outside the target and artifact roots, satisfy the packaged
+  authorization-manifest schema, carry this `--engagement-id`, and allow the preflight read
+  of this `--target`. The launcher copies it to `ai_agents_internal/authorization.json`
+  (mode 0600) and refuses when a different manifest is already there.
+- `--environment <local|test|staging|production>` without `--authorization` installs the
+  packaged default-deny manifest for that environment (`local` maps to `development`). With
+  `--authorization`, the manifest's `target.environment` must match. Without either flag,
+  preflight creates the default-deny manifest with environment `unknown`. Staging and
+  production stay read-only without an explicit production override.
+- `--feature <capability-id>` (repeatable) declares a target capability that the sandbox's
+  cleared environment cannot reveal, for example `db-access`, `source-access`,
+  `non-rest-surface`, or `multi-service`. Each id must be a key of the packaged
+  `capabilities/capability-matrix.json`. Features only widen which lanes preflight marks
+  available. `db-access` and `multi-service` can come only from this flag; recon never
+  releases them.
+- `--template-selection <absolute-path>` supplies your explicit framework choice, which
+  Modes A, C, and D need to build or adapt an automation framework. On the host, run
+  `argus-assets template detect --target "$TARGET"`, then `argus-assets template select
+  --target "$TARGET" --runtime <typescript|java|python> --package-manager <npm|maven|pip>
+  --test-root <path> --harness-root <path> --output "$OPERATOR_ROOT/template-selection.json"`
+  and pass that file. A URL target has no tree to detect, and both commands refuse one: create
+  the artifact root first (`mkdir -m 700 /path/to/artifacts`) and run both with
+  `--target "$ARTIFACT_ROOT"` instead. The selection file must be a physical regular file
+  outside the target and artifact roots; the launcher copies it to
+  `ai_agents_internal/template-selection.json` (mode 0600).
+  Without it no runner can run: the final summary reports `runner: null` and is `blocked` by
+  `template-selection-missing` (see `TEMPLATE-CONTRACT.md`).
+- `--usage-json <absolute-path>` writes Claude's final JSON result (usage, cost, turn count,
+  and a subtype such as `error_max_turns`) to a new file outside the artifact root. Its
+  parent must be a physical directory owned by you and not group- or world-writable.
+
+#### Preflight and lane dispositions
+
+Preflight creates its control files below `ai_agents_internal/` before probing the target
+and writes `ai_agents_internal/preflight.json` (report schemaVersion 3). Every role gets one
+of `not-selected`, `ready`, `degraded`, `conditional`, `deferred`, `skipped`, or `blocked`:
+
+- A blocked Odysseus, Kalchas, Metis, Minos, Kleio, Atlas (outside Mode B), or mandatory
+  hunter of Mode A or B stops the engagement before target execution.
+- Any other blocked lane becomes `deferred` with `downgradedFrom=blocked`. It is never
+  dispatched, and `residualRisks` names what its absence leaves uncovered.
+- A `conditional` lane waits only on target or browser gates listed in `pendingGates`. After
+  Kalchas's recon writes `solution/discovery/capability-evidence.json`, the controller runs
+  `argus-assets engagement resolve-gates` once. The runtime re-checks each gate itself and
+  releases the lane or omits it with the unmet gate recorded.
+
+The first allocation seals `preflight.json`; preflight is never rerun after that. Review
+the authorization and engagement manifests before allowing target-affecting actions.
+
+#### Upgrading from Argus 4
+
+Argus 5 writes engagement manifest v2, engagement state v3, and preflight report v3, and
+rejects older versions with no migration. A 4.x artifact root cannot be resumed: finish or
+clean an active 4.x engagement with its original runtime, then start 5.0 in a fresh
+artifact root.
+
+#### Unattested launch
+
+Hosts that cannot provision Ed25519 keys can opt in to an unattested launch. Replace the five
+signer flags (`--trust-store`, `--runtime-key-id`, `--operator-key-id`, `--request-output`,
+`--launch-authorization`) with `--unattested`; combining it with any of them is refused. It
+skips only the cryptographic launch attestation; the OS sandbox still runs, and every report
+names the engagement UNATTESTED.
+The launcher refuses `--unattested` while `ARGUS_MODEL_TRUST_STORE` is set or
+`~/.config/argus/model-trust.json` exists. See `argus/ENGAGEMENT-POLICY.md` for the
+residual risk.
 
 ## Manual Claude plugin install
+
+The Argus package is checked against ceilings of 2,630,000 generated runtime bytes and
+3,680,000 bytes for the complete installed plugin.
 
 Marketplace installation is recommended. For a local development checkout, Claude Code can load either plugin root directly:
 
 ```bash
-claude --plugin-dir "$HOME/Desktop/GenAI/my_agents/hephaestus/claude"
+claude --plugin-dir /path/to/holak-teams/hephaestus/claude
 ```
 
 Argus must still be started through `argus/claude/bin/argus-launch`; loading its plugin directory directly does not satisfy the execution contract.
@@ -142,15 +281,12 @@ chmod 600 "$TRUST_STORE.tmp"
 mv "$TRUST_STORE.tmp" "$TRUST_STORE"
 ```
 
-Pin the two identities before decisions, rerun preflight because the manifest digest changed, and keep the same host-store path available:
-
-```bash
-export ARGUS_MODEL_TRUST_STORE="$TRUST_STORE"
-argus-assets model trust \
-  --manifest "$ARTIFACT_ROOT/ai_agents_internal/engagement.json" \
-  --runtime-key-id argus-runtime-2026-01 \
-  --operator-key-id argus-operator-2026-01
-```
+Pass the store and both key IDs to the attested launch (`--trust-store "$TRUST_STORE"
+--runtime-key-id argus-runtime-2026-01 --operator-key-id argus-operator-2026-01`). The signed
+request binds both identities, and the single launch preflight pins them and the secure
+host-store path when it creates the engagement. No `argus-assets model trust` step or preflight
+rerun follows: inside an engagement the write guard denies `model trust`. Keep the same
+host-store path available for the whole engagement.
 
 Every model request, route, allocation, retry, and telemetry operation securely reopens that live store. Changing a pinned key to `revoked`, removing it, or replacing its identity blocks the next sensitive operation immediately. No engagement restart is required merely to detect revocation; cleanup should follow the fail-closed result.
 
@@ -160,7 +296,8 @@ Install the generated TOML files globally by symlink:
 
 ```bash
 mkdir -p ~/.codex/agents
-for dir in "$HOME/Desktop/GenAI/my_agents/hephaestus/codex" "$HOME/Desktop/GenAI/my_agents/argus/codex"; do
+REPO=/path/to/holak-teams
+for dir in "$REPO/hephaestus/codex" "$REPO/argus/codex"; do
   for file in "$dir"/*.toml; do
     ln -sfn "$file" ~/.codex/agents/"$(basename "$file")"
   done
@@ -176,7 +313,7 @@ cp hephaestus/codex/*.toml argus/codex/*.toml ~/.codex/agents/
 
 Only `*.toml` files are runtime configurations. Matching Hephaestus Markdown is a readable companion; Argus Markdown is provenance only.
 
-The Argus Codex roster preserves the reviewed mapping (`sol`/`xhigh` for frontier roles and `terra`/`medium` for standard roles), but full Argus dispatch is intentionally unavailable today. The installed Codex CLI can bind model and reasoning effort but exposes no native hard turn cap. Argus therefore reports `CAPABILITY_DRIFT`; a signed claim or approximate wrapper counter cannot unlock it. The TOMLs remain configuration-parity artifacts for a future native runtime capability.
+The Argus Codex roster preserves the reviewed mapping (`sol`/`xhigh` for frontier roles, which today are all 27, and `terra`/`medium` for any standard role), but full Argus dispatch is intentionally unavailable today. The installed Codex CLI can bind model and reasoning effort but exposes no native hard turn cap. Argus therefore reports `CAPABILITY_DRIFT`; a signed claim or approximate wrapper counter cannot unlock it. The TOMLs remain configuration-parity artifacts for a future native runtime capability.
 
 Verify the expected global count:
 
@@ -192,8 +329,8 @@ Use a project-local Codex home when global names would collide:
 ```bash
 export CODEX_HOME="$PWD/.codex-home"
 mkdir -p "$CODEX_HOME/agents"
-cp /path/to/my_agents/hephaestus/codex/*.toml "$CODEX_HOME/agents/"
-cp /path/to/my_agents/argus/codex/*.toml "$CODEX_HOME/agents/"
+cp /path/to/holak-teams/hephaestus/codex/*.toml "$CODEX_HOME/agents/"
+cp /path/to/holak-teams/argus/codex/*.toml "$CODEX_HOME/agents/"
 ```
 
 ## Uninstall

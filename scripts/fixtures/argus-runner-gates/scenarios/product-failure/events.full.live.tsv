@@ -1,0 +1,3 @@
+api.health	product	fail	false	n/a	-	assertion-failed
+ui.login	product	pass	false	n/a	-	passed
+api.widget-regression	product	pass	false	fixed	BUG-0001	regression-green

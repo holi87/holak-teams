@@ -5,20 +5,42 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schemaVersion", "engagementId", "revision", "currentPhase", "completedPhases",
-    "dispatchableAgents", "allocations", "barriers", "exclusiveLocks", "nextIds", "idKeys", "checkpoints", "fragments", "merges"
+    "schemaVersion", "engagementId", "revision", "currentPhase", "completedPhases", "skippedPhases",
+    "dispatchableAgents", "conditionalAgents", "gateResolution", "abandonedLanes", "allocations", "barriers", "exclusiveLocks", "nextIds", "idKeys",
+    "checkpoints", "fragments", "merges", "ledgerSnapshots"
   ],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 2 },
+    "schemaVersion": { "const": 3 },
     "engagementId": { "type": "string", "minLength": 1 },
     "revision": { "type": "integer", "minimum": 0 },
-    "currentPhase": { "enum": ["preflight", "discovery", "hunting", "automation", "verification", "reporting", "complete"] },
-    "completedPhases": { "type": "array", "uniqueItems": true, "items": { "enum": ["preflight", "discovery", "hunting", "automation", "verification", "reporting", "complete"] } },
+    "currentPhase": { "$ref": "#/$defs/phaseId" },
+    "completedPhases": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/phaseId" } },
+    "skippedPhases": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/phaseId" },
+      "additionalProperties": { "$ref": "#/$defs/phaseSkip" }
+    },
     "dispatchableAgents": {
       "type": ["array", "null"],
       "uniqueItems": true,
       "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+    },
+    "conditionalAgents": {
+      "description": "Null until the dispatchable projection is bound; then the sealed map of conditional lanes to the sorted target or browser gates each still waits on.",
+      "type": ["object", "null"],
+      "propertyNames": { "$ref": "#/$defs/conditionalLane" },
+      "additionalProperties": { "$ref": "#/$defs/capabilityIds" }
+    },
+    "gateResolution": {
+      "description": "Null until the controller's one-shot discovery gate resolution; immutable afterwards.",
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/gateResolution" }]
+    },
+    "abandonedLanes": {
+      "description": "Worker lanes the controller abandoned after their failure or interrupted cleanup, or never allocated before a controller-budget stop; barriers no longer wait for them and the final summary names each as lane-abandoned:<lane>.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/abandonableLane" },
+      "additionalProperties": { "$ref": "#/$defs/laneAbandonment" }
     },
     "allocations": { "type": "object", "additionalProperties": { "$ref": "#/$defs/allocation" } },
     "barriers": { "type": "object", "additionalProperties": { "type": "array", "uniqueItems": true, "items": { "type": "string" } } },
@@ -27,9 +49,86 @@
     "idKeys": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^[A-Z][A-Z0-9-]*[0-9]{4}$" } } },
     "checkpoints": { "type": "object", "additionalProperties": { "$ref": "#/$defs/checkpoint" } },
     "fragments": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "object" } } },
-    "merges": { "type": "object", "additionalProperties": { "type": "object" } }
+    "merges": { "type": "object", "additionalProperties": { "type": "object" } },
+    "ledgerSnapshots": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/phaseId" },
+      "additionalProperties": { "$ref": "#/$defs/ledgerSnapshot" }
+    }
   },
   "$defs": {
+    "phaseId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "capabilityId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "capabilityIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/capabilityId" } },
+    "conditionalLane": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "not": { "enum": ["odysseus", "kalchas"] } },
+    "abandonableLane": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "not": { "enum": ["odysseus", "kalchas", "minos"] } },
+    "laneAbandonment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "phase", "abandonedAt"],
+      "properties": {
+        "reason": { "enum": ["continuation-exhausted", "worker-failure", "controller-budget"] },
+        "phase": { "$ref": "#/$defs/phaseId" },
+        "abandonedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "gateResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolvedAt", "evidenceSha256", "capabilities", "lanes"],
+      "properties": {
+        "resolvedAt": { "type": "string", "format": "date-time" },
+        "evidenceSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "capabilities": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/capabilityId" },
+          "additionalProperties": { "$ref": "#/$defs/gateVerdict" }
+        },
+        "lanes": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/conditionalLane" },
+          "additionalProperties": { "enum": ["released", "gate-unmet"] }
+        }
+      }
+    },
+    "gateVerdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "basis", "reason"],
+      "properties": {
+        "status": { "enum": ["proven", "unmet"] },
+        "basis": { "type": "string", "pattern": "^[a-z][a-z0-9+-]{0,63}$" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 240 }
+      }
+    },
+    "bugIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "phaseSkip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "skippedAt", "basis"],
+      "properties": {
+        "reason": { "enum": ["converged", "controller-budget"] },
+        "skippedAt": { "type": "string", "format": "date-time" },
+        "basis": { "oneOf": [{ "$ref": "#/$defs/phaseId" }, { "type": "null" }] }
+      }
+    },
+    "ledgerSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fragmentIds", "confirmed", "suspected", "needsOracle", "bounced", "quarantined", "newConfirmed", "mergedAt"],
+      "properties": {
+        "fragmentIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "confirmed": { "$ref": "#/$defs/bugIds" },
+        "suspected": { "$ref": "#/$defs/bugIds" },
+        "needsOracle": { "$ref": "#/$defs/bugIds" },
+        "bounced": { "$ref": "#/$defs/bugIds" },
+        "quarantined": { "$ref": "#/$defs/bugIds" },
+        "newConfirmed": { "$ref": "#/$defs/bugIds" },
+        "mergedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "allocation": {
       "type": "object",
       "additionalProperties": false,
@@ -102,7 +201,7 @@
       "additionalProperties": false,
       "required": ["phase", "sequence", "dispatchId", "attempt", "allocationId", "bindingOrigin", "path", "sha256", "recordedAt"],
       "properties": {
-        "phase": { "enum": ["preflight", "discovery", "hunting", "automation", "verification", "reporting", "complete"] },
+        "phase": { "$ref": "#/$defs/phaseId" },
         "sequence": { "type": "integer", "minimum": 0 },
         "dispatchId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
         "attempt": { "type": "integer", "minimum": 1 },

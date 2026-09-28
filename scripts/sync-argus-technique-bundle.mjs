@@ -5,12 +5,17 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateTechniqueCatalogSet } from '../argus/runtime/technique-catalogs.mjs';
+import { validateTechniqueCatalogContracts, validateTechniqueCatalogSet } from '../argus/runtime/technique-catalogs.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CATALOG_ROOT = join(ROOT, 'argus', 'technique-catalogs');
 const OUTPUT = join(ROOT, 'argus', 'technique-catalogs.bundle.b64');
-const ROLES = ['atalanta', 'ariadne', 'proteus', 'metis'];
+const MATRIX_PATH = join(ROOT, 'argus', 'capabilities', 'capability-matrix.json');
+// The capability matrix is the only catalog registry: every declared role is bundled.
+const contracts = JSON.parse(readFileSync(MATRIX_PATH, 'utf8')).techniqueCatalogs;
+const contractErrors = validateTechniqueCatalogContracts(contracts);
+if (contractErrors.length) fail(`capability matrix technique catalog registry is invalid: ${contractErrors.join('; ')}`);
+const ROLES = Object.keys(contracts);
 const mode = process.argv[2] ?? '--check';
 if (!['--write', '--check'].includes(mode)) fail('usage: scripts/sync-argus-technique-bundle.mjs [--write|--check]');
 
@@ -25,7 +30,7 @@ for (const role of ROLES) {
     source,
   };
 }
-const errors = validateTechniqueCatalogSet(documents);
+const errors = validateTechniqueCatalogSet(documents, contracts);
 if (errors.length) fail(`canonical technique catalogs are invalid: ${errors.join('; ')}`);
 
 const payload = JSON.stringify({

@@ -1,0 +1,43 @@
+{
+  "$schema": "argus/counterfactual-fixture@1",
+  "schemaVersion": 1,
+  "bugId": "BUG-0001",
+  "oracle": {
+    "kind": "contract",
+    "sourceRef": "counterfactual-openapi.json#/paths/~1widgets~1{id}/get"
+  },
+  "contract": {
+    "operationId": "getWidget",
+    "status": 200
+  },
+  "exchanges": [
+    {
+      "id": "get-widget",
+      "request": { "method": "GET", "path": "/widgets/1" },
+      "response": {
+        "status": 200,
+        "headers": { "content-type": "application/json" },
+        "body": { "id": 1, "name": "widget" }
+      }
+    }
+  ],
+  "subject": "get-widget",
+  "tampers": [
+    {
+      "id": "observed-defect",
+      "response": {
+        "status": 500,
+        "headers": { "content-type": "application/json" },
+        "body": { "error": "boom" }
+      }
+    },
+    {
+      "id": "missing-field",
+      "response": {
+        "status": 200,
+        "headers": { "content-type": "application/json" },
+        "body": { "id": 1 }
+      }
+    }
+  ]
+}

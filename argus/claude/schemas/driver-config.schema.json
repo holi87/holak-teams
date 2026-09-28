@@ -17,9 +17,15 @@
       "required": ["login", "me"],
       "properties": {
         "login": { "type": "string", "minLength": 1 },
-        "me": { "type": "string", "minLength": 1 }
+        "me": { "type": "string", "minLength": 1 },
+        "refresh": { "type": "string", "minLength": 1 }
       }
     },
+    "bodyCaptureExclude": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "maxCapturedBodyBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576 },
     "accessTokenPath": { "type": "string", "minLength": 1 },
     "refreshTokenPath": { "type": "string", "minLength": 1 },
     "accounts": {

@@ -21,20 +21,12 @@
       "const": 1
     },
     "catalogId": {
-      "enum": [
-        "argus/technique-catalog/atalanta@1",
-        "argus/technique-catalog/ariadne@1",
-        "argus/technique-catalog/proteus@1",
-        "argus/technique-catalog/metis@1"
-      ]
+      "type": "string",
+      "pattern": "^argus/technique-catalog/[a-z][a-z0-9-]*@1$"
     },
     "role": {
-      "enum": [
-        "atalanta",
-        "ariadne",
-        "proteus",
-        "metis"
-      ]
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
     },
     "catalogType": {
       "enum": [
@@ -53,6 +45,8 @@
     },
     "entries": {
       "type": "array",
+      "minItems": 1,
+      "maxItems": 99,
       "items": {
         "$ref": "#/$defs/hunterEntry"
       }
@@ -139,73 +133,6 @@
           "archetypes": {}
         }
       }
-    },
-    {
-      "if": {
-        "properties": {
-          "role": {
-            "const": "atalanta"
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "catalogId": {
-            "const": "argus/technique-catalog/atalanta@1"
-          },
-          "catalogType": {
-            "const": "hunter"
-          },
-          "entries": {
-            "type": "array",
-            "minItems": 22,
-            "maxItems": 22
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "role": {
-            "const": "proteus"
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "catalogId": {
-            "const": "argus/technique-catalog/proteus@1"
-          },
-          "catalogType": {
-            "const": "hunter"
-          },
-          "entries": {
-            "type": "array",
-            "minItems": 15,
-            "maxItems": 15
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "role": {
-            "const": "metis"
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "catalogId": {
-            "const": "argus/technique-catalog/metis@1"
-          },
-          "catalogType": {
-            "const": "strategy"
-          }
-        }
-      }
     }
   ],
   "$defs": {
@@ -229,6 +156,7 @@
         "performance",
         "resilience",
         "data",
+        "data-direct",
         "accessibility",
         "journey",
         "contract",
@@ -251,7 +179,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^(ATA|ARI|PRO)-T(0[1-9]|1[0-9]|2[0-2])$"
+          "pattern": "^[A-Z]{3}-T[0-9]{2}$"
         },
         "title": {
           "$ref": "#/$defs/nonEmptyString"

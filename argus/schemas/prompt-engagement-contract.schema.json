@@ -54,6 +54,19 @@
           }
         }
       }
+    },
+    "forbiddenPromptPatterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "pattern"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "pattern": { "type": "string", "minLength": 1 },
+          "flags": { "enum": ["", "i"] }
+        }
+      }
     }
   }
 }

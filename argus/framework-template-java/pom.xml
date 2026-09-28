@@ -17,8 +17,9 @@
 
     <!-- Dependency versions, one place. -->
     <junit.version>5.10.2</junit.version>
-    <jackson.version>2.17.1</jackson.version>
+    <jackson.version>2.18.3</jackson.version>
     <restassured.version>5.4.0</restassured.version>
+    <jsonschema.version>1.5.9</jsonschema.version>
     <playwright.version>1.44.0</playwright.version>
     <awaitility.version>4.2.1</awaitility.version>
 
@@ -27,8 +28,9 @@
     <compiler.plugin.version>3.13.0</compiler.plugin.version>
     <exec.plugin.version>3.1.1</exec.plugin.version>
 
-    <!-- Lane selection (@Tag). Empty by default → ALL lanes run. Override on the CLI
-         (-Dgroups=api) or activate a -P<lane> profile below. -->
+    <!-- Lane selection (@Tag). run-tests.sh sets both from solution/test-lanes.tsv and the
+         runner mode. A plain `mvn test` leaves them empty, so every tag runs; narrow it
+         with -Dgroups=api or a -P<lane> profile below. -->
     <groups></groups>
     <excludedGroups></excludedGroups>
   </properties>
@@ -43,7 +45,7 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
-      <!-- Aligned Jackson (used by REST Assured + by SchemaOracle). -->
+      <!-- Aligned Jackson (REST Assured, the OpenAPI oracles and the schema validator). -->
       <dependency>
         <groupId>com.fasterxml.jackson</groupId>
         <artifactId>jackson-bom</artifactId>
@@ -76,14 +78,15 @@
       <version>${restassured.version}</version>
       <scope>test</scope>
     </dependency>
-    <!-- OpenAPI / JSON-schema as an executable oracle (SchemaOracle). -->
+    <!-- OpenAPI / JSON Schema draft 2020-12 as an executable oracle (qa.support.oracles).
+         Draft 2020-12 is required for strict use-site unevaluatedProperties. -->
     <dependency>
-      <groupId>io.rest-assured</groupId>
+      <groupId>com.networknt</groupId>
       <artifactId>json-schema-validator</artifactId>
-      <version>${restassured.version}</version>
+      <version>${jsonschema.version}</version>
       <scope>test</scope>
     </dependency>
-    <!-- Explicit so SchemaOracle parses/rewrites the OpenAPI tree against a pinned version. -->
+    <!-- Explicit so the oracles parse/rewrite the OpenAPI tree against a pinned version. -->
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
@@ -139,8 +142,9 @@
           <trimStackTrace>false</trimStackTrace>
           <!-- Lane selection by @Tag. Bound to the ${groups}/${excludedGroups}
                properties so an unset build runs every lane and -Dgroups=api (or a
-               -P<lane> profile) narrows it. Gated lanes still self-skip via
-               @EnabledIfEnvironmentVariable regardless of selection. -->
+               -P<lane> profile) narrows it. Lanes never self-skip: a disabled lane is
+               left out of the selection by solution/test-lanes.tsv, and an enabled lane
+               whose prerequisite is missing fails as ArgusPrerequisiteError. -->
           <groups>${groups}</groups>
           <excludedGroups>${excludedGroups}</excludedGroups>
           <!-- XML aggregated report lands in target/surefire-reports/ (default). -->
@@ -156,10 +160,11 @@
     <profile><id>perf</id><properties><groups>perf</groups></properties></profile>
     <profile><id>security</id><properties><groups>security</groups></properties></profile>
     <profile><id>db</id><properties><groups>db</groups></properties></profile>
+    <profile><id>resilience</id><properties><groups>resilience</groups></properties></profile>
     <profile><id>regression</id><properties><groups>regression</groups></properties></profile>
 
     <!-- Add your app's JDBC driver here to enable the @db lane's real read-only
-         check (otherwise it self-skips with a "no driver" message). Example:
+         check (otherwise it fails as a missing prerequisite, never a skip). Example:
     <profile>
       <id>postgres</id>
       <dependencies>

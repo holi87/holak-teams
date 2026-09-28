@@ -1,0 +1,86 @@
+{
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
+  "engagementId": "fixture-1",
+  "bugs": [
+    {
+      "id": "BUG-0001",
+      "origin": [
+        "ATA-001"
+      ],
+      "title": "Order endpoint returns another account's order",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-001",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0001",
+      "evidenceIds": [
+        "EVD-0001"
+      ],
+      "verification": {
+        "build": "synthetic-fixture",
+        "disputedOracle": false,
+        "oracle": {
+          "kind": "requirement",
+          "sourceRef": "Synthetic requirement 1",
+          "evidenceId": "EVD-0001",
+          "applicability": "Synthetic authorized test accounts",
+          "exceptions": []
+        },
+        "reproduction": {
+          "initialState": "Fresh synthetic fixture",
+          "steps": [
+            "Execute the synthetic reproduction request."
+          ],
+          "attempts": 2,
+          "occurrences": 2,
+          "evidenceIds": [
+            "EVD-0001"
+          ]
+        },
+        "independent": {
+          "status": "not-required",
+          "executor": null,
+          "evidenceIds": [],
+          "reason": "Synthetic example; no independent runtime executor was run."
+        }
+      }
+    },
+    {
+      "id": "BUG-0004",
+      "origin": [
+        "TAL-004"
+      ],
+      "title": "Conformance test reads another account's order",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "talos",
+      "oracleId": "ORC-API-001",
+      "status": "duplicate",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": [
+        "EVD-0002"
+      ],
+      "merge": {
+        "rationale": "The conformance failure is the same missing ownership check as BUG-0001.",
+        "causalEvidence": [
+          {
+            "ref": "TAL-004",
+            "evidenceIds": [
+              "EVD-0002"
+            ]
+          },
+          {
+            "ref": "BUG-0001",
+            "evidenceIds": [
+              "EVD-0001"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

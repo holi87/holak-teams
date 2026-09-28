@@ -1,138 +1,107 @@
 #!/usr/bin/env bash
 # Argus QA one-command test runner — Playwright + TS (API + UI).
-# Produces framework reports plus reports/argus-runner-result.json. Exit codes follow
-# RUNNER-CONTRACT.md (0, 10-15), not framework-native codes.
+# scripts/runner-lib.sh owns the run (RUNNER-CONTRACT.md "Runner library and gates"): mode
+# parsing, template selection, the lane plan (solution/test-lanes.tsv), readiness, the
+# environment baseline (solution/environment.tsv), the collect-only inventory, quarantine,
+# the inventory and evidence gates, the evidence passes, and reports/argus-runner-result.json.
+# This file supplies only the Playwright hooks. Exit codes follow RUNNER-CONTRACT.md
+# (0, 10-15), never Playwright's own.
+#   ./run-tests.sh --mode baseline|defect-evidence|candidate-regression|full-suite [-- <playwright args>]
 set -euo pipefail
 cd "$(dirname "$0")"
 
-MODE=full-suite
-if [ "${1:-}" = --mode ]; then MODE="${2:-}"; shift 2; fi
-if [ "${1:-}" = -- ]; then shift; fi
-case "$MODE" in baseline|defect-evidence|candidate-regression|full-suite) ;; *) echo "INVALID RUNNER MODE: $MODE" >&2; exit 14 ;; esac
-EVENTS="${ARGUS_OUTCOME_FILE:-reports/outcomes.raw.tsv}"
-RESULT="reports/argus-runner-result.json"
-# An approved skip must exist in the quarantine register, and every confirmed defect the
-# ledger names must show up as an event. Both files are optional inputs: when they are
-# absent the contract still refuses to invent a pass, it simply has less to check against.
-QUARANTINE="${ARGUS_QUARANTINE:-solution/quarantine.tsv}"
-EXPECTED_BUGS="${ARGUS_EXPECTED_BUGS:-reports/expected-bugs.txt}"
-[ -f "$QUARANTINE" ] || QUARANTINE=""
-[ -f "$EXPECTED_BUGS" ] || EXPECTED_BUGS=""
+ARGUS_RUNTIME=typescript
+ARGUS_PACKAGE_MANAGER=npm
 TEST_ROOT="${ARGUS_TEST_ROOT:-tests}"
-mkdir -p reports reports/evidence
-rm -f "$EVENTS"
 
-emit_event() { printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >>"$EVENTS"; }
-finish_contract() {
-  set +e
-  scripts/runner-contract.sh --mode "$MODE" --events "$EVENTS" --output "$RESULT" --runner-exit "$1" \
-    ${QUARANTINE:+--quarantine "$QUARANTINE"} ${EXPECTED_BUGS:+--expected-bugs "$EXPECTED_BUGS"}
-  contract_code=$?
-  set -e
-  echo "Argus contract: mode=$MODE result=$RESULT exit=$contract_code"
-  exit "$contract_code"
-}
-unexpected_error() {
-  trap - ERR
-  emit_event wrapper infrastructure fail false n/a - wrapper-command-failed
-  finish_contract 1
-}
-trap unexpected_error ERR
-
-SELECTION="ai_agents_internal/template-selection.json"
-if [ ! -f "$SELECTION" ] || ! grep -Fq '"runtime": "typescript"' "$SELECTION" || ! grep -Fq '"packageManager": "npm"' "$SELECTION" || ! grep -Fq '"choiceSource": "explicit-user"' "$SELECTION"; then
-  emit_event template-selection policy denied false n/a - template-selection-missing-or-incompatible
-  finish_contract 1
-fi
-
-MODE_ARGS=()
-case "$MODE" in
-  baseline) MODE_ARGS=(--grep-invert '@regression|@quarantine') ;;
-  defect-evidence|candidate-regression) MODE_ARGS=(--grep '@regression' --grep-invert '@quarantine') ;;
-  full-suite) MODE_ARGS=(--grep-invert '@quarantine') ;;
-esac
-
-tagged_count="$({ grep -Roh '@quarantine' "$TEST_ROOT" --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' || true; } | wc -l | tr -d ' ')"
-if ! scripts/quarantine-contract.sh --events "$EVENTS" --tagged-count "$tagged_count"; then finish_contract 1; fi
-
-: "${API_URL:=http://localhost:3001}"
-: "${UI_URL:=http://localhost:3000}"
-export API_URL UI_URL
-
-echo "Argus QA tests → API_URL=$API_URL UI_URL=$UI_URL"
-
-# Install deps once (idempotent). For the newest: npm i -D @playwright/test@latest
-# Determinism: `npm ci` installs EXACTLY package-lock.json. We never silently fall back
-# to `npm install` (which can mutate the lockfile and drift versions under our feet).
-# A drifting install is an explicit, LOGGED decision via ALLOW_NPM_INSTALL=1.
-if [ ! -d node_modules ]; then
-  if npm ci; then
-    :
-  elif [ "${ALLOW_NPM_INSTALL:-0}" = "1" ]; then
-    echo "WARNING: npm ci failed; ALLOW_NPM_INSTALL=1 set → falling back to 'npm install' (may update package-lock.json — NON-DETERMINISTIC)." >&2
-    npm install
-  else
-    echo "INSTALL FAILED: 'npm ci' did not succeed and node_modules is absent." >&2
-    echo "Fix package-lock.json (commit it / run 'npm install' locally and commit the lock), or re-run with ALLOW_NPM_INSTALL=1 to accept a non-deterministic 'npm install'." >&2
-    emit_event install infrastructure fail false n/a - npm-ci-failed
-    finish_contract 1
+# Install once, then typecheck. Determinism: `npm ci` installs EXACTLY package-lock.json. We
+# never silently fall back to `npm install` (which can mutate the lockfile and drift versions
+# under our feet). A drifting install is an explicit, LOGGED decision via ALLOW_NPM_INSTALL=1.
+argus_native_prepare() {
+  echo "Argus QA tests → API_URL=${API_URL:-<unset>} UI_URL=${UI_URL:-<unset>}"
+  if [ ! -d node_modules ]; then
+    if npm ci; then
+      :
+    elif [ "${ALLOW_NPM_INSTALL:-0}" = "1" ]; then
+      echo "WARNING: npm ci failed; ALLOW_NPM_INSTALL=1 set → falling back to 'npm install' (may update package-lock.json — NON-DETERMINISTIC)." >&2
+      if ! npm install; then
+        argus_emit install infrastructure fail false n/a - npm-install-failed
+        return 1
+      fi
+    else
+      echo "INSTALL FAILED: 'npm ci' did not succeed and node_modules is absent." >&2
+      echo "Fix package-lock.json (commit it / run 'npm install' locally and commit the lock), or re-run with ALLOW_NPM_INSTALL=1 to accept a non-deterministic 'npm install'." >&2
+      argus_emit install infrastructure fail false n/a - npm-ci-failed
+      return 1
+    fi
+    if [ "${PLAYWRIGHT_INSTALL:-1}" = "1" ] && ! npx playwright install --with-deps chromium; then
+      argus_emit install infrastructure fail false n/a - playwright-install-failed
+      return 1
+    fi
   fi
-  if [ "${PLAYWRIGHT_INSTALL:-1}" = "1" ]; then npx playwright install --with-deps chromium; fi
-fi
+  # Typecheck gate — Playwright strips types without checking them; a suite that doesn't
+  # typecheck doesn't run (catches hallucinated/wrong-typed APIs early).
+  echo "Typecheck (tsc --noEmit)…"
+  if ! npx tsc --noEmit; then
+    argus_emit typecheck automation fail false n/a - typescript-compile-failed
+    return 1
+  fi
+  return 0
+}
 
-# Environment readiness — fail fast with a distinct message instead of a wall of misleading red.
-for url in $([ "${ARGUS_CONTRACT_SMOKE:-0}" = "1" ] && printf '' || printf '%s %s' "$API_URL" "$UI_URL"); do
-  ok=""
-  for _ in $(seq 1 10); do
-    if curl -sf --max-time 3 -o /dev/null "$url"; then ok=1; break; fi
-    sleep 1
+# Collect-only pass over every project: the outcome adapter writes reports/test-inventory.tsv,
+# reports/test-case-ids.tsv (the ids every executed pass reuses), reports/expected-bugs.txt,
+# and reports/counterfactual-plan.tsv.
+argus_native_inventory() {
+  npx playwright test --list --reporter=./scripts/argus-playwright-reporter.mjs
+}
+
+# argus_native_run <baseline|full|regression> <lanes-csv> <pass> [passthrough...]
+# Every Playwright project of each enabled lane: the lane's own project plus its
+# `<lane>-<variant>` browser/device projects (for example `ui-firefox`), which the outcome
+# adapter inventories in that lane. The ui lane pulls in `setup` through its dependencies.
+# Quarantined tests are never selected; framework arguments come last.
+argus_native_run() {
+  local selection="$1" lanes="$2" lane
+  local lane_list=() args=()
+  shift 3
+  IFS=, read -r -a lane_list <<<"$lanes"
+  for lane in ${lane_list[@]+"${lane_list[@]}"}; do
+    args+=("--project=$lane")
+    case "$lane" in api|ui|perf|security|db|resilience) args+=("--project=$lane-*") ;; esac
   done
-  if [ -z "$ok" ]; then
-    echo "ENVIRONMENT NOT READY: $url is not responding — start the stack first (docker compose up -d?)." >&2
-    emit_event readiness infrastructure fail false n/a - target-not-ready
-    finish_contract 1
+  case "$selection" in
+    baseline) args+=(--grep-invert '@regression|@quarantine') ;;
+    regression) args+=(--grep '@regression' --grep-invert '@quarantine') ;;
+    full) args+=(--grep-invert '@quarantine') ;;
+    *) echo "argus_native_run: unknown selection $selection" >&2; return 2 ;;
+  esac
+  # A stale report must never be collected as this pass's evidence. Playwright empties its
+  # outputDir itself; the managed browser-artifact directory is never removed here.
+  rm -rf reports/html reports/results.json
+  if [ -z "${ARGUS_BROWSER_ARTIFACTS:-}" ]; then rm -rf test-results; fi
+  npx playwright test "${args[@]}" "$@"
+}
+
+# Native reports and Playwright's outputDir (traces, screenshots, videos) for one pass.
+argus_native_collect() {
+  local destination="reports/evidence/passes/$1" output="${ARGUS_BROWSER_ARTIFACTS:-test-results}"
+  if [ -d reports/html ]; then cp -R reports/html "$destination/html" || return 1; fi
+  if [ -f reports/results.json ]; then cp reports/results.json "$destination/results.json" || return 1; fi
+  if [ -d "$output" ]; then cp -R "$output" "$destination/test-results" || return 1; fi
+  return 0
+}
+
+# Surface coverage of the delivery modes; a contract smoke proves the scaffold, not a target.
+argus_native_post() {
+  case "$1" in baseline|full-suite) ;; *) return 0 ;; esac
+  [ "${ARGUS_CONTRACT_SMOKE:-0}" != 1 ] || return 0
+  if ! node scripts/baseline-coverage.mjs; then
+    argus_emit baseline-coverage automation fail false n/a - baseline-coverage-gate-failed
+    return 1
   fi
-done
+  return 0
+}
 
-# Typecheck gate — Playwright strips types without checking them; a suite that
-# doesn't typecheck doesn't run (catches hallucinated/wrong-typed APIs early).
-echo "Typecheck (tsc --noEmit)…"
-if ! npx tsc --noEmit; then
-  emit_event typecheck automation fail false n/a - typescript-compile-failed
-  finish_contract 1
-fi
-
-# Run all projects (setup + api + regression + ui). Args pass through, e.g. ./run-tests.sh --project=api
-if npx playwright test "${MODE_ARGS[@]}" "$@"; then
-  pw_code=0
-else
-  pw_code=$?
-fi
-
-bug_gate_code=0
-if [ "${ARGUS_CONTRACT_SMOKE:-0}" != "1" ] && [ "$MODE" != baseline ]; then
-  if node scripts/bug-coverage.mjs; then
-    bug_gate_code=0
-  else
-    bug_gate_code=$?
-    emit_event bug-coverage automation fail false n/a - bug-coverage-gate-failed
-  fi
-fi
-
-baseline_gate_code=0
-if [ "${ARGUS_CONTRACT_SMOKE:-0}" != "1" ] && { [ "$MODE" = baseline ] || [ "$MODE" = full-suite ]; }; then
-  if node scripts/baseline-coverage.mjs; then
-    baseline_gate_code=0
-  else
-    baseline_gate_code=$?
-    emit_event baseline-coverage automation fail false n/a - baseline-coverage-gate-failed
-  fi
-fi
-
-echo ""
-echo "Reports: reports/html/index.html (npm run report)  |  reports/results.json"
-echo "Summary: reports/summary.json"
-
-native_code=0
-if [ "$pw_code" -ne 0 ] || [ "$bug_gate_code" -ne 0 ] || [ "$baseline_gate_code" -ne 0 ]; then native_code=1; fi
-finish_contract "$native_code"
+source scripts/runner-lib.sh
+argus_main "$@"

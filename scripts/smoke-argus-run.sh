@@ -48,6 +48,31 @@ require_text 'Do not read the Odysseus agent as a second policy source.' "$SKILL
 require_text 'ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED' "$SKILL" "run skill does not reject missing authenticated launch coordinates"
 require_text '--engagement-id <engagement-id> --launch-authorization' "$SKILL" "run skill does not bind preflight to the signed engagement and authorization"
 require_text '--launch-receipt <launch-receipt> --trust-store <trust-store>' "$SKILL" "run skill does not bind preflight to the verified receipt and trust store"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'appending `--feature <id>` per optional unsigned `features` entry.' "$SKILL" "run skill does not forward operator-declared launcher features to preflight"
+# An unattested launch sends prose coordinates, not authenticatedLaunch JSON. The run skill must
+# name the launcher's exact form (derived here from the packaged launcher, so the two cannot
+# drift) and route it to preflight --unattested-launch instead of rejecting it.
+LAUNCHER="$PLUGIN/bin/argus-launch"
+unattested_form="$(sed -n 's|^  prompt="/argus:run \(target=[^"]* unattestedLaunch=true [^"]*\)"$|\1|p' "$LAUNCHER")"
+[ -n "$unattested_form" ] || fail "packaged launcher no longer builds the unattested prompt"
+unattested_form="${unattested_form//\$artifact_root/<artifact-root>}"
+unattested_form="${unattested_form//\$engagement_id/<engagement-id>}"
+unattested_form="${unattested_form//\$target/<target>}"
+unattested_form="${unattested_form//\$mode/<mode>}"
+require_text "\`$unattested_form\`" "$SKILL" "run skill does not accept the launcher's exact unattested form: $unattested_form"
+# shellcheck disable=SC2016 # The marker quotes the launcher's literal shell source.
+grep -Fq 'prompt="$prompt features=$launch_features_csv"' "$LAUNCHER" || fail "packaged launcher no longer appends unattested features"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'optional `features=<csv>`' "$SKILL" "run skill does not accept unattested launcher features"
+require_text '--engagement-id <engagement-id> --unattested-launch`' "$SKILL" "run skill does not run preflight --unattested-launch for an unattested launch"
+require_text 'ARGUS_LAUNCH_UNATTESTED=1' "$SKILL" "run skill does not name the runtime's unattested launcher signal"
+require_text 'Attested preflight pins the signed' "$SKILL" "run skill does not scope preflight trust pinning to attested launches"
+require_text 'Skip trust pinning and its preflight rerun' "$CORE" "orchestration core pins trust for an unattested launch"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'Launcher `features`' "$CORE" "orchestration core does not treat launcher features as operator-declared evidence"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'pass each verbatim as `--feature`; never add, drop, or' "$CORE" "orchestration core can alter operator-declared launcher features"
 require_text 'name: orchestration-core' "$CORE" "orchestration core has no stable name"
 require_text 'user-invocable: false' "$CORE" "orchestration core must not be user-invoked directly"
 require_text '## Sources of authority' "$CORE" "orchestration core does not define authoritative sources"
@@ -80,10 +105,37 @@ require_controller_text 'start a new thread' "controller can resume a thread und
 require_controller_text 'argus-assets template detect' "controller does not detect template capabilities"
 require_controller_text 'template select' "controller does not require explicit template selection"
 require_controller_text 'dispatchAllowed=true' "controller does not gate dispatch from the preflight report"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'selected `ready`/`degraded`/`conditional` agent with `dispatchAllowed=true`.' "$SKILL" "run skill does not seal conditional lanes with their attempt-1 decisions"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'Dispatch persisted `ready`/`degraded` roles, and `conditional` roles only after' "$SKILL" "run skill can dispatch a conditional lane before gate resolution"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text '`argus-assets engagement resolve-gates` once' "$CORE" "orchestration core does not resolve conditional gates once after Kalchas arrives"
+require_text 'Never rerun preflight after the first' "$CORE" "orchestration core can rerun preflight after the seal"
+if grep -Fq 'Rerun after provisioning' "$CORE"; then
+  fail "orchestration core still reruns preflight after provisioning instead of resolving gates"
+fi
 require_controller_text 'Advance W0–W4' "controller does not own wave and barrier advancement"
 require_controller_text 'Collect every RESULT' "controller does not collect and validate worker results"
+require_controller_text 'argus-assets engagement lane-outcomes' "controller does not record the count-only per-lane outcome report"
+# shellcheck disable=SC2016 # The marker quotes a literal Markdown code span.
+require_text 'Odysseus included, then run `argus-assets engagement lane-outcomes`' "$SKILL" "run skill runs lane-outcomes before the closeout telemetry batch"
 require_controller_text 'selected-dispatchable-predecessors' "controller does not define dependency barrier semantics"
 require_controller_text 'independent automation blocklist' "controller does not preserve independent automation review"
+require_controller_text 'model route --agents dispatchable' "controller does not route the initial sealed set in one batch"
+require_controller_text 'engagement allocate --lanes' "controller does not allocate a wave's lanes in one batch"
+require_controller_text 'model telemetry --json' "controller does not record telemetry in one batch"
+require_controller_text 'engagement cleanup --json' "controller does not release lanes in one batch"
+require_controller_text 'closeoutReserveTurns' "controller does not reserve closeout turns from its turn cap"
+require_controller_text 'AUTO_CONTINUE_SELECTED' "controller does not follow automatic frontier continuation"
+require_controller_text 'no-artifact' "controller does not route controller-observed no-artifact outcomes"
+require_controller_text 'zero-candidates' "controller does not route controller-observed zero-candidates outcomes"
+require_controller_text 'start-attempt --wait true' "controller does not wait out a backoff retry before rebinding"
+# shellcheck disable=SC2016 # The marker quotes a literal Markdown code span.
+require_controller_text '`(continuation.backoffSeconds + 60) * 1000` ms' "controller runs a backoff wait under the 120 s default Bash timeout"
+require_controller_text 'never write tokens or batch input to a file' "controller can persist tokens or batch input to a file"
+require_controller_text 'engagement barrier skip' "controller cannot skip converged deep-hunt passes through the runtime"
+require_controller_text 'at most one thread per lane' "controller can run concurrent threads on one lane lease"
 require_text 'ARGUS_SMOKE_OK: argus:kleio,argus:theseus' "$SKILL" "missing deterministic smoke result"
 require_text 'tools: Read, Grep, Glob, Bash, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, Agent' "$ODYSSEUS" "Odysseus does not expose current orchestration tools"
 require_text 'skills:' "$ODYSSEUS" "Odysseus does not preload its controller contracts"

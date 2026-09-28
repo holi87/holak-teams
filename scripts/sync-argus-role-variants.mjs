@@ -20,6 +20,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   validateTechniqueCatalog,
+  validateTechniqueCatalogContracts,
   validateTechniqueCatalogSet,
 } from '../argus/runtime/technique-catalogs.mjs';
 
@@ -63,6 +64,7 @@ const ROUTE_SURFACES = Object.freeze({
   performance: 'performance',
   resilience: 'resilience',
   data: 'data-public-api',
+  'data-direct': 'data-direct',
   accessibility: 'accessibility',
   journey: 'journey-api',
   contract: 'event-protocol',
@@ -288,6 +290,9 @@ function loadDoctrineProfiles(definitions) {
 
 function loadTechniqueCatalogs(definitions, ownership) {
   assert(definitions && typeof definitions === 'object', 'capability matrix techniqueCatalogs are missing');
+  // The matrix declarations are the catalog contracts (type, id prefix, entry count).
+  const contractErrors = validateTechniqueCatalogContracts(definitions);
+  assert(contractErrors.length === 0, `capability matrix technique catalog registry is invalid: ${contractErrors.join('; ')}`);
   const schema = readSourceJson(
     join(SCHEMAS_ROOT, 'technique-catalog.schema.json'),
     'technique catalog schema',
@@ -301,14 +306,14 @@ function loadTechniqueCatalogs(definitions, ownership) {
     const raw = readSourceFile(path, `${id}: technique catalog`, TECHNIQUE_CATALOGS_ROOT);
     const document = JSON.parse(raw.toString('utf8'));
     assert(validateSchema(document), `${id}: technique catalog JSON Schema failed: ${JSON.stringify(validateSchema.errors)}`);
-    const semanticErrors = validateTechniqueCatalog(document);
+    const semanticErrors = validateTechniqueCatalog(document, definitions);
     assert(semanticErrors.length === 0, `${id}: technique catalog semantic validation failed: ${semanticErrors.join('; ')}`);
     assert(document.catalogId === definition.catalogId, `${id}: capability catalogId drift`);
     assert(sha256(raw) === definition.sha256, `${id}: reviewed technique catalog digest drift`);
     validateCatalogRoutes(document, ownership);
     result.set(id, { document, sha256: definition.sha256 });
   }
-  const setErrors = validateTechniqueCatalogSet([...result.values()].map((entry) => entry.document));
+  const setErrors = validateTechniqueCatalogSet([...result.values()].map((entry) => entry.document), definitions);
   assert(setErrors.length === 0, `technique catalog set is invalid: ${setErrors.join('; ')}`);
   return result;
 }
@@ -340,12 +345,16 @@ function renderTechniqueCatalogs(ids) {
 
 function renderModelEscalationBlock(role) {
   const signals = modelPolicy.escalationProfiles[role.escalationProfile].join(', ');
-  return `<!-- MODEL_ESCALATION_START -->\n## Execution and escalation binding\n\n- Mode/strategy is immutable: \`A=FULL_AUDIT\`, \`B=BUG_HUNT\`, \`C=GREENFIELD\`, \`D=BROWNFIELD\`; evidence never switches it.\n- Authorization state follows only the manifest; an explicit deny never becomes allow.\n- Structured results include every funded surface, including passing observations.\n- Agent binding: \`${role.slug}\`. Maximum turns: \`${role.maxTurns}\`. Declared signals: ${signals}.\n- On a declared signal, use the exact shared \`MODEL_ESCALATION_REQUEST\` envelope with \`agent\` set to \`${role.slug}\`; checkpoint, return it, and stop as required by qa-core.\n<!-- MODEL_ESCALATION_END -->`;
+  return `<!-- MODEL_ESCALATION_START -->\n## Execution and escalation binding\n\n- Mode/strategy is immutable: \`A=FULL_AUDIT\`, \`B=BUG_HUNT\`, \`C=GREENFIELD\`, \`D=BROWNFIELD\`; evidence never switches it.\n- Authorization state follows only the manifest; an explicit deny never becomes allow.\n- Structured results include every funded surface, including passing observations.\n- Agent binding: \`${role.slug}\`. Maximum turns: \`${role.maxTurns}\`. Declared signals: ${signals}.\n- On a declared signal, use the exact shared \`MODEL_ESCALATION_REQUEST\` envelope with \`agent\` set to \`${role.slug}\`; checkpoint, return it, and stop as required by qa-core.\n- Checkpoint after each completed work unit; an automatic continuation resumes only from your latest checkpoint, in a new thread.\n<!-- MODEL_ESCALATION_END -->`;
 }
 
 function renderModelControllerBlock(role) {
   const signals = modelPolicy.escalationProfiles[role.escalationProfile].join(', ');
-  return `<!-- MODEL_CONTROLLER_START -->\n## Model-control ownership\n\n- Mode/strategy is immutable: \`A=FULL_AUDIT\`, \`B=BUG_HUNT\`, \`C=GREENFIELD\`, \`D=BROWNFIELD\`; evidence never switches it.\n- Turn cap: \`${role.maxTurns}\`. Signals: ${signals}.\n- Validate envelopes with \`argus-assets schema validate --kind model-escalation-request --input <request-file|->\`; reject any mismatch.\n- Persist through \`argus-assets model request ... --token <lane-token>\`; route centrally with \`argus-assets model route --manifest <manifest> --request <request-id> --controller-token <controller-token> --attempt <next-attempt>\`. Running-worker escalation requires its checkpoint; pre-spawn \`model-unavailable\` uses the availability binding and may have none.\n- A blocked decision stops. \`operatorEscalation=true\` requires an external signed \`argus/model-operator-decision@1\`.\n- Before rebind or cleanup, emit one \`argus-assets model telemetry --manifest <manifest> --decision <current-decision> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <bool>\`; reject worker-authored values.\n- Retry with \`argus-assets engagement start-attempt ... --decision <next-decision> --token <lane-token> --controller-token <controller-token>\`. Replace the consumed token, then start a new thread from checkpoint or availability binding; never resume under another model. The stale token is revoked.\n<!-- MODEL_CONTROLLER_END -->`;
+  const budget = modelPolicy.controllerBudget;
+  assert(budget?.agent === role.slug, `model policy controllerBudget must name ${role.slug}`);
+  assert(Number.isInteger(budget.closeoutReserveTurns) && budget.closeoutReserveTurns > 0 && budget.closeoutReserveTurns < role.maxTurns,
+    `${role.slug}: controllerBudget.closeoutReserveTurns must be a positive integer below maxTurns`);
+  return `<!-- MODEL_CONTROLLER_START -->\n## Model-control ownership\n\n- Mode/strategy is immutable: \`A=FULL_AUDIT\`, \`B=BUG_HUNT\`, \`C=GREENFIELD\`, \`D=BROWNFIELD\`; evidence never switches it.\n- Turn cap: \`${role.maxTurns}\`; closeout reserve: \`${budget.closeoutReserveTurns}\`. Signals: ${signals}.\n- Validate envelopes with \`argus-assets schema validate --kind model-escalation-request --input <request-file>\`; reject any mismatch.\n- Persist through \`argus-assets model request ... --token <lane-token>\`; route centrally with \`argus-assets model route --manifest <manifest> --agent <slug> --runtime <runtime> --signal <signal> --dispatch-id <dispatch-id> --attempt <next-attempt> --request <model-escalation-request.json> --controller-token <controller-token>\`. Running-worker escalation requires its checkpoint; pre-spawn \`model-unavailable\` uses the availability binding and may have none.\n- Automatic continuation follows \`autoContinue\`; a blocked decision stops, and \`operatorEscalation=true\` requires an external signed \`argus/model-operator-decision@1\`.\n- Before rebind or cleanup, emit one \`argus-assets model telemetry --manifest <manifest> --decision <current-decision> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <bool>\`; reject worker-authored values.\n- Retry with \`argus-assets engagement start-attempt ... --decision <next-decision> --token <lane-token> --controller-token <controller-token>\`. Replace the consumed token, then start a new thread from checkpoint or availability binding; never resume under another model. The stale token is revoked.\n<!-- MODEL_CONTROLLER_END -->`;
 }
 
 function renderRaciBlock(agent) {

@@ -6,13 +6,15 @@
 - **Severity:** Blocker | Critical | Major | Minor | Trivial   <!-- impact (consequence) -->
 - **Priority:** P1 | P2 | P3 | P4   <!-- fix-order; first-pass draft, Minos sets authoritative at triage. Never a P-token in Severity. -->
 - **Status:** Confirmed | Suspected
+- **Reproducibility:** <occurrences>/<attempts> from <initial state> — deterministic | intermittent | single-attempt (reason)
 - **Canonical-ID:** <BUG-NNNN — Minos assigns at final triage; leave blank when filing>
+- **Triage status:** <Minos: confirmed | suspected | needs-oracle | duplicate of BUG-NNNN | rejected (reason)>   <!-- set from solution/bug-ledger.json; bounced and quarantined are interim proof-repair states; leave blank when filing -->
 - **Lane:** ui | api | perf | security | a11y | db   <!-- metadata; not the filename prefix -->
 - **Detected by:** automated suite (spec path / @tag) | agent exploratory/manual (charter or probe) | recon
 - **Divergence side:** implementation | documentation | undecidable   <!-- required whenever two sources disagree; `undecidable` states both hypotheses in Expected -->
 - **Component / Endpoint:** <path or screen>
 - **Environment:** <build/commit, browser if UI, date>
-- **Oracle-id:** <ORC-### from solution/ORACLES.md — the source of truth this violates; required for ACCEPTED. If none exists yet, request it from Metis, do not invent the rule.>
+- **Oracle-id:** <ORC-### from solution/ORACLES.md — the source of truth this violates, or a consistency-class ORC for a Suspected divergence (both observations cited); required for ACCEPTED. If none exists yet, request it from Metis, do not invent the rule.>
 - **Links:** test native `regression` marker + `@bug:<canonical-or-origin>` provenance · REQ-### · RISK-###
 
 ## Preconditions
@@ -32,7 +34,12 @@
 <what happened — status code, response body, error>
 
 ## Evidence
-<response snippet / screenshot / report link>
+Allocate every EVD ID with `argus-assets engagement id --kind evidence --identity <lane>:<source>` on your active lease. Replay the identity for the same capture; each evidence-reference fragment lists only new references.
+
+One line per registered evidence ID from `solution/evidence-reference.json`:
+- <EVD-NNNN> — <kind: http | har | screenshot | video | dom-snapshot | trace | log | metric | runner-result | text> — <what it shows>
+
+Binary kinds (screenshot, video, trace archive) appear only after their second-agent masking review is registered.
 
 ## Notes
-<repeatability (x/y), business impact, workaround>
+<business impact, workaround>

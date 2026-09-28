@@ -1,0 +1,120 @@
+{
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
+  "engagementId": "java-runtime-adapter-smoke",
+  "bugs": [
+    {
+      "id": "BUG-0001",
+      "origin": ["ATA-001"],
+      "title": "Synthetic deterministic defect joined through an origin alias",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-001",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0001",
+      "evidenceIds": ["EVD-0001"],
+      "verification": {
+        "build": "synthetic-fixture",
+        "disputedOracle": false,
+        "oracle": {
+          "kind": "requirement",
+          "sourceRef": "Synthetic requirement 1",
+          "evidenceId": "EVD-0001",
+          "applicability": "Synthetic fixture",
+          "exceptions": []
+        },
+        "reproduction": {
+          "initialState": "Fresh synthetic fixture",
+          "steps": ["Run the synthetic regression."],
+          "attempts": 3,
+          "occurrences": 3,
+          "evidenceIds": ["EVD-0001"]
+        },
+        "independent": {
+          "status": "unavailable",
+          "executor": null,
+          "evidenceIds": [],
+          "reason": "Synthetic fixture; no independent executor."
+        }
+      }
+    },
+    {
+      "id": "BUG-0002",
+      "origin": ["ATA-002"],
+      "title": "Synthetic defect that still needs an oracle",
+      "severity": "Minor",
+      "priority": "P3",
+      "lane": "atalanta",
+      "oracleId": null,
+      "status": "needs-oracle",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    },
+    {
+      "id": "BUG-0003",
+      "origin": ["ATA-003"],
+      "title": "Synthetic intermittent defect reproduced in half of the attempts",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-003",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0003",
+      "evidenceIds": ["EVD-0003"],
+      "verification": {
+        "build": "synthetic-fixture",
+        "disputedOracle": false,
+        "oracle": {
+          "kind": "requirement",
+          "sourceRef": "Synthetic requirement 3",
+          "evidenceId": "EVD-0003",
+          "applicability": "Synthetic fixture",
+          "exceptions": []
+        },
+        "reproduction": {
+          "initialState": "Fresh synthetic fixture",
+          "steps": ["Run the synthetic regression."],
+          "attempts": 10,
+          "occurrences": 5,
+          "evidenceIds": ["EVD-0003"]
+        },
+        "independent": {
+          "status": "unavailable",
+          "executor": null,
+          "evidenceIds": [],
+          "reason": "Synthetic fixture; no independent executor."
+        }
+      }
+    },
+    {
+      "id": "BUG-0004",
+      "origin": ["PER-004"],
+      "title": "Synthetic deterministic defect without a reproduction record",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "perseus",
+      "oracleId": "ORC-SEC-004",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0004",
+      "evidenceIds": ["EVD-0004"]
+    },
+    {
+      "id": "BUG-0005",
+      "origin": ["ARI-005"],
+      "title": "Synthetic suspected defect",
+      "severity": "Minor",
+      "priority": "P3",
+      "lane": "ariadne",
+      "oracleId": "ORC-API-005",
+      "status": "suspected",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    }
+  ]
+}

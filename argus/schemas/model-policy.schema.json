@@ -3,14 +3,65 @@
   "$id": "https://holak-teams.local/argus/model-policy.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "policyId", "baseline", "tiers", "fallbackPolicies", "escalationProfiles", "mechanicalDowngrade", "routing", "telemetry", "roles"],
+  "required": ["schemaVersion", "policyId", "baseline", "tiers", "fallbackPolicies", "escalationProfiles", "mechanicalDowngrade", "routing", "telemetry", "controllerBudget", "roles"],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
-    "policyId": { "const": "argus/model-policy@1" },
-    "baseline": { "type": "object" },
+    "schemaVersion": { "const": 2 },
+    "policyId": { "const": "argus/model-policy@2" },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "frontierRoles", "standardRoles", "mechanicalFullRoles", "benchmark", "standardAllowlist"],
+      "properties": {
+        "decision": { "type": "string", "pattern": "^adopt-[0-9]+-frontier-[0-9]+-standard$" },
+        "frontierRoles": { "type": "integer", "minimum": 0, "maximum": 27 },
+        "standardRoles": { "type": "integer", "minimum": 0, "maximum": 27 },
+        "mechanicalFullRoles": { "const": 0 },
+        "benchmark": { "const": "model-policy.benchmark.json" },
+        "standardAllowlist": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["slug", "justification"],
+            "properties": {
+              "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              "justification": { "type": "string", "minLength": 20 }
+            }
+          }
+        }
+      }
+    },
     "tiers": { "type": "object", "required": ["frontier", "standard", "mechanical"] },
-    "fallbackPolicies": { "type": "object", "required": ["frontier-fail-closed", "upward-only"] },
+    "fallbackPolicies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frontier-fail-closed", "upward-only"],
+      "properties": {
+        "frontier-fail-closed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["modelUnavailable", "turnLimit", "allowWeakerModel", "autoContinue"],
+          "properties": {
+            "modelUnavailable": { "const": "backoff-retry-frontier-then-escalate-operator" },
+            "turnLimit": { "const": "auto-continue-frontier-then-escalate-operator" },
+            "allowWeakerModel": { "const": false },
+            "autoContinue": { "$ref": "#/$defs/autoContinue" }
+          }
+        },
+        "upward-only": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["modelUnavailable", "turnLimit", "allowWeakerModel"],
+          "properties": {
+            "modelUnavailable": { "const": "escalate-to-frontier" },
+            "turnLimit": { "const": "escalate-to-frontier" },
+            "allowWeakerModel": { "const": false }
+          }
+        }
+      }
+    },
     "escalationProfiles": { "type": "object" },
     "mechanicalDowngrade": { "type": "object" },
     "routing": {
@@ -19,7 +70,7 @@
       "required": ["decisionDirectory", "decisionSchema", "requiredEnforcements"],
       "properties": {
         "decisionDirectory": { "const": "ai_agents_internal/model-decisions" },
-        "decisionSchema": { "const": "argus/model-decision@2" },
+        "decisionSchema": { "const": "argus/model-decision@3" },
         "requiredEnforcements": {
           "type": "array",
           "minItems": 3,
@@ -29,6 +80,15 @@
       }
     },
     "telemetry": { "type": "object" },
+    "controllerBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "closeoutReserveTurns"],
+      "properties": {
+        "agent": { "const": "odysseus" },
+        "closeoutReserveTurns": { "type": "integer", "minimum": 10, "maximum": 100 }
+      }
+    },
     "roles": {
       "type": "array",
       "minItems": 27,
@@ -40,11 +100,54 @@
         "properties": {
           "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
           "tier": { "enum": ["frontier", "standard"] },
-          "maxTurns": { "type": "integer", "minimum": 1, "maximum": 200 },
+          "maxTurns": { "type": "integer", "minimum": 1, "maximum": 500 },
           "escalationProfile": { "type": "string" },
           "fallbackPolicy": { "enum": ["frontier-fail-closed", "upward-only"] },
           "mechanicalDowngrade": { "const": false }
         }
+      }
+    }
+  },
+  "$defs": {
+    "autoContinueSignal": {
+      "enum": [
+        "ambiguity", "safety", "cross-lane", "conflicting-evidence", "oracle-ambiguity",
+        "schema-validation-failure", "repeated-failure", "turn-limit", "no-artifact", "zero-candidates"
+      ]
+    },
+    "autoContinueSignals": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/autoContinueSignal" }
+    },
+    "roleSlugs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+    },
+    "autoContinue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled", "workerSignals", "outcomeSignals", "checkpointlessSignals", "zeroCandidatesRoles",
+        "maxAutoContinuations", "maxCheckpointlessRetries", "unavailableBackoffSeconds", "excludedAgents"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "workerSignals": { "$ref": "#/$defs/autoContinueSignals" },
+        "outcomeSignals": { "$ref": "#/$defs/autoContinueSignals" },
+        "checkpointlessSignals": { "$ref": "#/$defs/autoContinueSignals" },
+        "zeroCandidatesRoles": { "$ref": "#/$defs/roleSlugs" },
+        "maxAutoContinuations": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "maxCheckpointlessRetries": { "type": "integer", "minimum": 0, "maximum": 2 },
+        "unavailableBackoffSeconds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 1, "maximum": 300 }
+        },
+        "excludedAgents": { "$ref": "#/$defs/roleSlugs" }
       }
     }
   }

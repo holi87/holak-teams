@@ -3,7 +3,7 @@
 **49 Claude Code sub-agents** in two themed teams, plus Codex-format variants for both teams:
 
 - **Hephaestus** (`hephaestus/`) — **22 agents**, software delivery, **Roman names**. Entry point: **Marcus** (Team Leader). Available in both Claude Code and Codex formats.
-- **Argus** (`argus/`) — **27 agents**, permanent QA team, **Greek names**. Claude entry point: **`/argus:run`** (Odysseus policy); Codex entry point: **Odysseus**. Available in both formats.
+- **Argus** (`argus/`) — **27 agents**, permanent QA team, **Greek names**. Claude entry point: the packaged **`argus-launch`** launcher, which starts the `/argus:run` main thread under the Odysseus policy; Codex entry point: **Odysseus** (dispatch currently fails closed). Available in both formats.
 
 > **This repo is a Claude Code plugin marketplace** (`holak-teams`). Install the teams as plugins:
 > ```
@@ -11,11 +11,12 @@
 > /plugin install hephaestus@holak-teams
 > /plugin install argus@holak-teams
 > ```
-> Start Argus from the current main thread with
-> `/argus:run <target and QA scope>`.
+> Start Argus from a terminal with the packaged launcher:
+> `argus-launch doctor --browser`, then `argus-launch claude --target … --artifact-root … --mode <A|B|C|D> --engagement-id …`
+> (full sequence in **[INSTALL.md](INSTALL.md)** → "Start Argus"). A direct `/argus:run` session fails preflight.
 > Canonical repo + marketplace doc: **[AGENTS.md](AGENTS.md)** (mirrored as `CLAUDE.md`). Manual / Codex install: **[INSTALL.md](INSTALL.md)**. Release gate: **[RELEASE.md](RELEASE.md)**.
 
-You tell **Marcus** what you want — he picks people from the roster, names them, splits up the work, merges results. For a direct QA / testing / bug-hunt engagement, `/argus:run` keeps orchestration in the current main Claude Code conversation, applies **Odysseus** as the policy, dispatches the Argus lanes, and collects their results. Claude Code agent defs live under each team's `claude/agents/` (the plugin root is `claude/`); Codex-compatible variants live under each team's `codex/` with the same names and slugs.
+You tell **Marcus** what you want — he picks people from the roster, names them, splits up the work, merges results. For a QA / testing / bug-hunt engagement, `argus-launch` starts `/argus:run` as the sandboxed main Claude Code thread, which applies **Odysseus** as the policy, dispatches the Argus lanes, and collects their results. Claude Code agent defs live under each team's `claude/agents/` (the plugin root is `claude/`); Codex-compatible variants live under each team's `codex/` with the same names and slugs.
 
 ## Team graphs
 
@@ -41,7 +42,7 @@ USER → Marcus (Team Leader) → picks agents → names them → dispatch → m
 ## Repo structure
 
 ```
-my_agents/                       # this git repo == the marketplace (holak-teams)
+holak-teams/                     # this git repo == the marketplace
 ├── .claude-plugin/
 │   └── marketplace.json         # catalog — source: ./hephaestus/claude, ./argus/claude
 ├── .claude/settings.json        # auto-register marketplace + enable both plugins
@@ -61,6 +62,7 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   │   ├── skills/qa-*/         # capability-selected QA profiles
 │   │   ├── skills/orchestration-core/ # complete controller contract
 │   │   ├── skills/competition-profile/ # explicit opt-in profile
+│   │   ├── bin/argus-launch     # supported entry point (signed launch + OS sandbox)
 │   │   ├── bin/argus-assets     # verify/copy packaged assets
 │   │   ├── hooks/hooks.json     # packaged target-immutability guard
 │   │   ├── capabilities/        # 27-role runtime capability + fallback matrix
@@ -72,6 +74,7 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   ├── framework-template/      # prepped Playwright+TS framework (shared reference)
 │   ├── framework-template-java/   # RestAssured + JUnit5 + Playwright-Java (shared reference)
 │   ├── framework-template-python/ # pytest + Playwright + httpx (shared reference)
+│   ├── framework-template-common/ # shared runner kit, synced into each template
 │   ├── AUTHORIZATION-POLICY.md   # canonical authorization and redaction contract
 │   ├── ENGAGEMENT-POLICY.md      # canonical concurrency and ownership contract
 │   ├── MODEL-POLICY.md           # generated model/effort/turn/escalation table
@@ -81,7 +84,7 @@ my_agents/                       # this git repo == the marketplace (holak-teams
 │   ├── shared-skills/           # canonical capability-scoped skill sources
 │   ├── prompt-*.json            # prompt budgets + engagement regression contract
 │   ├── team-graph.html + .png   # visual team graph (embedded in README)
-│   └── README.md                # how to start (entry: odysseus)
+│   └── README.md                # how to start (entry: argus-launch)
 ├── agents-roster.html           # visual roster (both teams)
 └── README.md / INSTALL.md
 ```
@@ -140,7 +143,7 @@ Example pools (Marcus extends freely, keep the team's theme):
 - **Sonnet + escalation to Opus** (12): Varro, Fabricius, Maximus, Lucius, Tiberius, Fabius, Boethius, Mercury, Cato, Appius, Janus, Cicero — daily work; flag hard/risky decisions for review by Marcus.
 - **Haiku** (3): Numa, Regulus, Tacitus — fast, narrow, cheap tasks.
 
-The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 12 frontier / 15 standard policy from `argus/model-policy.json`.
+The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 27 frontier / 0 standard policy from `argus/model-policy.json`.
 
 **Codex runtime mapping for both teams:** Claude `opus` source roles run on `sol` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles run on `terra` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles run on `luna` with `model_reasoning_effort = "medium"`.
 
@@ -193,31 +196,31 @@ Every agent runs on an **Anthropic** model under Claude Code and on a **mapped O
 | Kalchas | `kalchas` | System Analyst (recon) | opus | sol · xhigh |
 | Metis | `metis` | Test Strategist | opus | sol · xhigh |
 | Minos | `minos` | Bug Triage / QA Lead | opus | sol · xhigh |
-| Kleio | `kleio` | QA Reporter | sonnet | terra · medium |
-| Theseus | `theseus` | API test-path analyst | sonnet | terra · medium |
-| Penelope | `penelope` | UI test-path analyst | sonnet | terra · medium |
-| Pistis | `pistis` | Consumer-driven contract analyst (Pact) | sonnet | terra · medium |
+| Kleio | `kleio` | QA Reporter | opus | sol · xhigh |
+| Theseus | `theseus` | API test-path analyst | opus | sol · xhigh |
+| Penelope | `penelope` | UI test-path analyst | opus | sol · xhigh |
+| Pistis | `pistis` | Consumer-driven contract analyst (Pact) | opus | sol · xhigh |
 | Atalanta | `atalanta` | API / data-integrity hunter | opus | sol · xhigh |
-| Proteus | `proteus` | Multi-protocol API hunter (GraphQL/gRPC/WS/async) | sonnet | terra · medium |
+| Proteus | `proteus` | Multi-protocol API hunter (GraphQL/gRPC/WS/async) | opus | sol · xhigh |
 | Orion | `orion` | UI functional hunter | opus | sol · xhigh |
-| Lynceus | `lynceus` | UI presentation / i18n hunter | sonnet | terra · medium |
+| Lynceus | `lynceus` | UI presentation / i18n hunter | opus | sol · xhigh |
 | Ariadne | `ariadne` | Deep-journey / business-rule hunter | opus | sol · xhigh |
-| Hermes | `hermes` | Performance hunter (structural oracles) | sonnet | terra · medium |
+| Hermes | `hermes` | Performance hunter (structural oracles) | opus | sol · xhigh |
 | Tyche | `tyche` | Resilience / chaos hunter (fault injection) | opus | sol · xhigh |
 | Perseus | `perseus` | Security hunter (STRIDE/OWASP) | opus | sol · xhigh |
-| Antigone | `antigone` | Accessibility hunter (WCAG 2.2 AA) | sonnet | terra · medium |
-| Charon | `charon` | Database hunter *(gated: DB access)* | sonnet | terra · medium |
+| Antigone | `antigone` | Accessibility hunter (WCAG 2.2 AA) | opus | sol · xhigh |
+| Charon | `charon` | Database hunter *(gated: DB access)* | opus | sol · xhigh |
 | Tiresias | `tiresias` | White-box source analyst *(gated: source)* | opus | sol · xhigh |
 | Atlas | `atlas` | Automation Architect (harness, run-tests.sh) | opus | sol · xhigh |
 | Aristarchus | `aristarchus` | Automation code reviewer (runs LAST) | opus | sol · xhigh |
-| Asklepios | `asklepios` | Test-suite sanitation / deflaking (brownfield) | sonnet | terra · medium |
-| Talos | `talos` | API regression automation | sonnet | terra · medium |
-| Daidalos | `daidalos` | UI E2E + a11y automation | sonnet | terra · medium |
-| Aegis | `aegis` | Security regression automation | sonnet | terra · medium |
-| Nike | `nike` | Perf regression automation | sonnet | terra · medium |
-| Mnemosyne | `mnemosyne` | DB invariants automation *(gated)* | sonnet | terra · medium |
+| Asklepios | `asklepios` | Test-suite sanitation / deflaking (brownfield) | opus | sol · xhigh |
+| Talos | `talos` | API regression automation | opus | sol · xhigh |
+| Daidalos | `daidalos` | UI E2E + a11y automation | opus | sol · xhigh |
+| Aegis | `aegis` | Security regression automation | opus | sol · xhigh |
+| Nike | `nike` | Perf regression automation | opus | sol · xhigh |
+| Mnemosyne | `mnemosyne` | DB invariants automation *(gated)* | opus | sol · xhigh |
 
-**Tiers:** 12 opus · 15 sonnet · 0 haiku full roles.
+**Tiers:** 27 opus · 0 sonnet · 0 haiku full roles.
 
 ## Preflight and escalation to Codex
 
@@ -250,7 +253,7 @@ Three assignments are judgment calls — if they don't suit you, changing them =
 
 ## Argus QA team
 
-A second, **separate**, **permanent** QA team (**27 agents**) you point at any target — a live site, an API, a docker stack, a repo with or without tests. Run `/argus:run <target and QA scope>` so the current main thread applies **Odysseus's** orchestration policy, picks the **engagement mode**, dispatches the specialists, and collects their results: **A** full QA audit · **B** deep bug-hunt · **C** build a test suite from scratch · **D** add/extend tests in an existing repo (adopt-or-build). To start a dedicated main session instead, use `claude --agent argus:odysseus`. Files in `argus/claude/agents/`, slugs = bare first names (`odysseus`, `orion`, `lynceus`, `ariadne`, …). The crew is reused across engagements.
+A second, **separate**, **permanent** QA team (**27 agents**) you point at any target — a live site, an API, a docker stack, a repo with or without tests. Run `argus-launch claude … --mode <A|B|C|D>` from a terminal; it starts the `/argus:run` main thread, which applies **Odysseus's** orchestration policy, dispatches the specialists, and collects their results: **A** full QA audit · **B** deep bug-hunt · **C** build a test suite from scratch · **D** add/extend tests in an existing repo (adopt-or-build). A direct `/argus:run` or `claude --agent argus:odysseus` session fails preflight. Files in `argus/claude/agents/`, slugs = bare first names (`odysseus`, `orion`, `lynceus`, `ariadne`, …). The crew is reused across engagements.
 
 **v2 architecture = parallel `surface × mode` lanes.** Odysseus fires the lanes IN PARALLEL (UI / API / Performance / Database / CyberSecurity / Accessibility / deep journeys); each lane = a hunter (manual/exploratory) + an automation engineer + (UI/API) a path-analyst (baseline) where applicable. The 8→27 restructuring driver: a single generalist caught ~60% of API bugs but only ~14% of UI ones — dedicated lanes fix that. **Doctrine: `argus/BROWSER-ISOLATION.md` for isolated UI driving and the per-agent hardening blocks embedded in the Argus QA defs.** Colors by role type: `argus/COLOR-SCHEME.md`.
 
@@ -259,7 +262,7 @@ A second, **separate**, **permanent** QA team (**27 agents**) you point at any t
 | Name | Role | Slug | Deliverable / function |
 |------|------|------|------|
 | Odysseus | Argus QA Team Lead & Orchestrator | `odysseus` | picks the engagement mode, fires the lanes IN PARALLEL, mode-scoped deliverable contract, no-modify-app, heartbeat board; full authority over the roster during the engagement |
-| Kalchas | System Analyst (recon) | `kalchas` | system map (OpenAPI + docs + roles/data) + **DB-access / source-access** flags (gating) + an inventory of mutating actions |
+| Kalchas | System Analyst (recon) | `kalchas` | system map (OpenAPI + docs + roles/data) + `solution/discovery/capability-evidence.json` (source-access / existing-suite / non-rest-surface proof that releases conditional lanes; DB access comes only from an operator `--feature`) + an inventory of mutating actions |
 | Metis | Test Strategist | `metis` | `solution/TEST-STRATEGY.md` — an ISO 25010 × ISTQB coverage grid, lane assignment, BVA/credential/idempotency as required targets |
 | Minos | Bug Triage / QA Lead | `minos` | dedup ACROSS lanes, severity/priority, ranking; assigns the canonical **`BUG-NNNN`** (lane-prefix → origin) |
 | Kleio | QA Reporter | `kleio` | README + `IMPLEMENTATION-REPORT.md`, the found-vs-surface completeness gate (required rows = NOT-GO when empty) |
@@ -278,7 +281,7 @@ A second, **separate**, **permanent** QA team (**27 agents**) you point at any t
 
 **Cross-cutting / deep journey (5):** **Ariadne** — deep lifecycle & business-rule journey hunter · **Atlas** — Automation Architect, owner of the SINGLE aggregating `run-tests.sh` + the shared oracle helpers · **Aristarchus** — Code Reviewer of the automation, runs **LAST** (determinism, oracle-honesty, blocklist) · **Tiresias** — White-box Source Analyst *(gated: source access)*, code→surface leads to the lanes · **Asklepios** — Test-Suite Sanitation / deflaking, heals a sick existing suite (brownfield Mode D), fixes flakiness at the source.
 
-Current Argus QA policy: **12 opus / 15 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.
+Current Argus QA policy: **27 opus / 0 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.
 
 **Separation:** a separate lead (Odysseus = the Argus QA hub), baked-in QA doctrine (modes/deliverables/paths/rules), a separate `argus/` directory. **Collaboration:** the crew resolves within its own lanes (it has dedicated UI/API/Perf/DB/Sec/a11y) — the main team is pulled in only for a real gap and only via Odysseus→Marcus (e.g. Cassius=deep security, Maximus/Fabricius=wiring in the framework, Seneca=strategy sanity). **The hard rule baked into everyone:** NEVER modify the application under test.
 
@@ -286,11 +289,12 @@ Current Argus QA policy: **12 opus / 15 sonnet / 0 haiku full roles**. The gener
 
 **Other-stack templates:** the same doctrine ships in two sibling skeletons — `argus/framework-template-java/` (RestAssured + JUnit5 + Playwright-Java) and `argus/framework-template-python/` (pytest + Playwright + httpx). Both are **no-Selenium**, share the same result/evidence/quarantine contract, and relocate their test/harness roots from the explicit selection. Maven and pip are shipped build adapters; Gradle, uv, Poetry, and other detected tools are declared extension requirements rather than silently replaced.
 
-**Starting an engagement:**
+**Starting an engagement** (from a terminal, not from inside a Claude Code session):
 ```
-> Marcus, run Argus QA on <target — a URL, a running stack, or a repo path> — <what you want: audit / find bugs / build the suite / add tests>
+argus-launch claude --target <URL or absolute repo path> --artifact-root <absolute path> \
+  --mode <A|B|C|D> --engagement-id <id> <signer flags or --unattested>
 ```
-Marcus → Odysseus → Odysseus picks the mode → recon → strategy/oracles → automation ∥ bug hunt → finalization. Watch live progress: `tail -f ai_agents_internal/heartbeat/*.log`.
+`argus-launch` → `/argus:run` under the Odysseus policy → preflight → recon and gate resolution → strategy/oracles → bug hunt and proof loop → automation → finalization. Watch live progress: `tail -f <artifact-root>/ai_agents_internal/heartbeat/*.log`.
 
 ## Invocation
 

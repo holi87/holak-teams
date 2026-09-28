@@ -1,0 +1,142 @@
+{
+  "$schema": "argus/technique-catalog@1",
+  "schemaVersion": 1,
+  "catalogId": "argus/technique-catalog/orion@1",
+  "role": "orion",
+  "catalogType": "hunter",
+  "valuePolicy": "discover-never-assume",
+  "executionRule": "each-applicable-entry-covered-or-gap",
+  "absentSurfaceDisposition": "not-applicable-with-evidence",
+  "entries": [
+    {
+      "id": "ORI-T01",
+      "title": "CTA enablement matrix per form",
+      "scope": ["forms", "client-validation"],
+      "techniques": ["decision table", "equivalence partitioning"],
+      "appliesWhen": "surface-present",
+      "construct": ["For every form drive {empty, each required field missing alone, one invalid value per field, all valid} against every mutating CTA on it and record enabled or disabled state plus the click outcome"],
+      "oracles": ["Enablement and click outcome match the cited client-validation requirement; a divergence from a sibling form's behaviour is a consistency oracle: file it as Suspected per qa-core, and it never confirms; a server rejecting invalid input with 4xx is not itself a UI defect"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "ORI-T02",
+      "title": "Modal interaction and handler correctness",
+      "scope": ["modals", "event-handlers"],
+      "techniques": ["state transition", "decision table"],
+      "appliesWhen": "surface-present",
+      "construct": ["For every modal and confirm dialog trigger Cancel, Close, ESC, and a backdrop click, then the primary action, snapshotting the governed state before and after each"],
+      "oracles": ["Cancel, Close, and ESC never perform the primary or destructive action, so a shared handler that deletes on Cancel is a critical escape; ESC closes and the backdrop follows the spec; a broken focus trap or return is noted for Antigone and only the handler side is asserted here"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "ORI-T03",
+      "title": "Double-submit on every mutating CTA",
+      "scope": ["mutating-actions", "idempotency"],
+      "techniques": ["state verification", "error guessing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Activate every mutating CTA in Kalchas's mutating-action inventory twice in rapid succession (Save, Pay, Enroll, Submit), then re-read the resulting server state"],
+      "oracles": ["The effect count equals what the cited action contract allows; exactly one effect is required only under a single-submit, idempotency, or business-uniqueness guarantee, and a second order, charge, or row under such a guarantee is a defect"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "ORI-T04",
+      "title": "Button-action correctness and target",
+      "scope": ["event-handlers", "crud-actions"],
+      "techniques": ["decision table", "state verification"],
+      "appliesWhen": "always",
+      "construct": ["On every screen activate each OK, Confirm, Cancel, Close, Add, Delete, Remove, Save, Apply, and Edit control against a before and after snapshot of the data it governs, deleting from a list that holds several rows"],
+      "oracles": ["Each control performs exactly its labelled action on the intended target and nothing else: Cancel and Close mutate nothing, Delete removes the chosen row and no sibling, Add adds one, Save persists the edit, and Apply applies the input"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "ORI-T05",
+      "title": "Error-message content bound to the violated field",
+      "scope": ["forms", "error-messages"],
+      "techniques": ["decision table", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Build {violated field} x {expected message} from each field's documented rule or its label and aria-describedby, violate one field at a time and then two together, and snapshot state before and after each submit"],
+      "oracles": ["Each inline error is bound to the field that actually failed at its aria-describedby or adjacent node, not a distant banner, and its text names the violated rule; a two-field violation shows both messages on both fields, and submit stays blocked with no partial mutation behind the message"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "ORI-T06",
+      "title": "Server-side boundary enforcement through and past the widget",
+      "scope": ["forms", "input-boundaries", "server-trust-boundary"],
+      "techniques": ["boundary value analysis", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["From recon read each field's documented boundary (min, max, maxlength, step, pattern, quota, date floor), construct the exact-boundary state, and drive B-1, B, and B+1 at both edges through the widget", "Bypass each stripped, disabled, or clamped control once, via --eval or a single replay of that widget's own submit with an out-of-range body, then re-read persisted state"],
+      "oracles": ["Accept and reject decisions match the documented inclusivity at the exact boundary; past the widget the server refuses with a correct error and persisted state stays unchanged, so a server that accepts because the browser hid the control is a validation escape", "A widget step or type that contradicts the documented data type is a form-validation defect; endpoint enumeration, other verbs, and auth, quota, or price tampering route beyond this lane to Atalanta or Perseus"],
+      "routes": ["ui", "api"]
+    },
+    {
+      "id": "ORI-T07",
+      "title": "Client-state consistency after mutation and optimistic rollback",
+      "scope": ["mutating-actions", "client-state"],
+      "techniques": ["state transition", "fault injection"],
+      "appliesWhen": "surface-present",
+      "construct": ["After each mutation re-read the server truth and compare every view that shows the entity (list, detail, counter, badge), then force the same mutation to fail with failNext or abortNext and watch the optimistic update"],
+      "oracles": ["The UI reflects server state after every mutation with no stale row, wrong row acted on, or lost form data; an optimistic update the server rejected rolls back visibly with an error, and a phantom success the server never persisted is a data-losing defect"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "ORI-T08",
+      "title": "Async race mechanics: cancellation and sequencing",
+      "scope": ["async-requests", "client-state"],
+      "techniques": ["state transition", "fault injection"],
+      "appliesWhen": "surface-present",
+      "construct": ["With delayNext or a deterministic async-race driver issue rapid successive requests (a, then ab, then abc; fast filter toggles; navigation away mid-request) and release the older response after the newer one resolves"],
+      "oracles": ["The client cancels or sequences in-flight requests so a superseded response never overwrites newer state or fires a late side effect; the rendered symptom from real input belongs to Lynceus, and the mechanism defect is filed here"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "ORI-T09",
+      "title": "Charset acceptance and round trip on text inputs",
+      "scope": ["text-inputs", "internationalization"],
+      "techniques": ["equivalence partitioning", "boundary value analysis"],
+      "appliesWhen": "surface-present",
+      "construct": ["Drive one value from each partition (ASCII, target-locale diacritics discovered from recon, multi-byte and emoji with combining marks, ZWJ, and surrogate pairs, RTL or zero-width where the locale uses them) into every free-text field and follow it through persistence to list, detail, credential, and email views", "Derive counter boundary inputs in the documented length unit"],
+      "oracles": ["Valid native characters and emoji are accepted and round-trip with no mojibake, replacement character, silent trim, or mid-glyph truncation; the counter uses the documented length unit (bytes, code units, code points, or grapheme clusters), and an unspecified unit is recorded as an ambiguity, not a defect"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "ORI-T10",
+      "title": "Credential and identity input matrix",
+      "scope": ["identity", "authentication-forms"],
+      "techniques": ["equivalence partitioning", "decision table"],
+      "appliesWhen": "surface-present",
+      "construct": ["Register a username and a password that carry a trailing space and log in with the exact same value; register a target-locale diacritic name, an 8-character diacritic password, special characters, and markup in the name", "Drive a valid email and the invalid classes (a@, @b, a b@c, no @, no dot, double @) plus case variants of email and password across register, login, profile edit, and change password"],
+      "oracles": ["The exact registered value always logs in, so register-trims-but-login-does-not is a lockout; diacritic and special input is accepted and rendered identically end to end with markup shown as text; a valid email is accepted and each invalid class gets a correct inline error", "Email case follows the cited identity contract, password case is sensitive, and every attempt yields a clear inline result, never a white screen or stuck form"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "ORI-T11",
+      "title": "Upload restriction enforcement and rejection messaging",
+      "scope": ["file-upload"],
+      "techniques": ["boundary value analysis", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["Through every upload control submit files at, under, and over the documented size cap, a disallowed type or extension, a file whose content disagrees with its extension, and filenames with special characters, extreme length, diacritics, a double extension, path traversal, or no name"],
+      "oracles": ["Every documented restriction is enforced with a clear rejection message, so a silent no-op on an over-limit file is a defect, and at-or-under-cap files are accepted; adversarial filenames are sanitised or rejected, and a content-sniffing bypass the server accepts is routed to Perseus rather than filed here"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "ORI-T12",
+      "title": "Privileged and admin panel sweep from the first pass",
+      "scope": ["privileged-screens"],
+      "techniques": ["state transition", "equivalence partitioning"],
+      "appliesWhen": "surface-present",
+      "construct": ["From Kalchas's route and screen-action inventory drive every privileged, admin, or operator route with its own role account across the state matrix and the 375px viewport during the first sweep, applying the same behaviour entries as user screens"],
+      "oracles": ["Privileged screens meet the same handler, validation, double-submit, and client-state oracles as user screens; a privileged panel left to a late add-on or unswept is a coverage gap, and a privileged route reachable from a lower role is noted for Perseus"],
+      "routes": ["ui"]
+    },
+    {
+      "id": "ORI-T13",
+      "title": "Degraded-connectivity messaging",
+      "scope": ["connectivity", "error-states"],
+      "techniques": ["fault injection", "error guessing"],
+      "appliesWhen": "always",
+      "construct": ["Abort or fail the data and mutation requests behind each primary screen with abortNext, failNext, or the driver's network control, then observe the rendered state and retry path"],
+      "oracles": ["The UI states both the limitation and its reason and keeps entered data; a silent no-op, an endless bare spinner, or a generic error naming no cause is a defect"],
+      "routes": ["ui"]
+    }
+  ]
+}

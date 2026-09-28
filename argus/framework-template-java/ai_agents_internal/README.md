@@ -12,15 +12,16 @@ Walk this top to bottom before the engagement starts:
       that the local `~/.m2` cache makes runs offline-capable.
 - [ ] **Playwright Chromium** pre-installed (`./run-tests.sh` does this, or run the
       `exec:java … install chromium` goal once). On Linux CI add OS deps.
-- [ ] Target stack reachable on **`API_URL`** (default `http://localhost:3001`) and
-      **`UI_URL`** (default `http://localhost:3000`) — the runner fail-fasts otherwise.
+- [ ] Target stack reachable on **`API_URL`** and **`UI_URL`**, both set explicitly for
+      `run-tests.sh` — the runner fail-fasts otherwise.
 - [ ] Real seeded **accounts/roles** wired into `Config` (env: `ADMIN_USER`/`ADMIN_PASS`,
       `USER_USER`/`USER_PASS`).
-- [ ] **OpenAPI doc** saved (default `./openapi.json` or `OPENAPI_PATH`) so the schema oracle
-      runs instead of self-skipping.
-- [ ] Decide which **gated lanes** to enable: `PERF_BUDGET_MS` (a STATED budget),
-      `SECURITY_ENABLED=1` (target cleared for security checks), `DB_URL` (+ a JDBC driver
-      added to `pom.xml`).
+- [ ] **OpenAPI doc** saved and `OPENAPI_PATH` set, so the schema oracle runs instead of
+      failing as a missing prerequisite.
+- [ ] Every lane decided in `solution/test-lanes.tsv`, with its prerequisite set when
+      enabled: `PERF_BUDGET_MS` (a STATED budget), `SECURITY_ENABLED=1` (target cleared for
+      security checks), `DB_URL` (+ a JDBC driver added to `pom.xml`); `resilience` needs
+      `ARGUS_FAULT_INJECTION=authorized` only for server-side faults.
 - [ ] Argus agents + skill installed; free ports / docker confirmed.
 
 ## What lives here (internal)

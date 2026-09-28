@@ -36,23 +36,49 @@
     "requirements": [
       { "id": "preflight-and-dispatch", "source": "odysseus", "markers": ["preflight", "machine orchestration plan", "solution/lane-plan.json"] },
       { "id": "surface-discovery", "source": "kalchas", "markers": ["solution/surface-inventory.json", "role × operation matrix", "DB-access verdict"] },
+      { "id": "authenticated-recon-and-gates", "source": "kalchas", "markers": ["capability-evidence.json", "hunt-driver.mjs --agent kalchas --role"] },
       { "id": "risk-strategy", "source": "metis", "markers": ["solution/TEST-STRATEGY.md", "solution/ORACLES.md", "risk register"] },
       { "id": "shared-runner", "source": "atlas", "markers": ["run-tests.sh", "reports/results.json", "solution/ARCHITECTURE.md"] },
-      { "id": "ui-hunt", "source": "orion", "markers": ["bugs/ORI-", "screenshot", "--console", "--net"] },
+      { "id": "automation-coverage-deferral", "source": "atlas", "markers": ["never preview coverage inside the engagement", "`solution/evidence-reference.json` only in `reporting`", "never a coverage-tooling blocker"] },
+      { "id": "ui-hunt", "source": "orion", "markers": ["bugs/ORI-", "screenshot", "--console", "--net", "--fail-next"] },
       { "id": "api-hunt", "source": "atalanta", "markers": ["bugs/ATA-", "OpenAPI", "mass-assignment"] },
       { "id": "ui-automation", "source": "daidalos", "markers": ["tests/ui/", "RED", "a11y"] },
-      { "id": "api-automation", "source": "talos", "markers": ["tests/api/", "expectMatchesSchema", "@e2e"] },
+      { "id": "api-automation", "source": "talos", "markers": ["tests/api/", "assertSchema", "@e2e"] },
       { "id": "canonical-triage", "source": "minos", "markers": ["solution/BUG-LEDGER.md", "BUG-NNNN", "dedup"] },
       { "id": "final-report", "source": "kleio", "markers": ["solution/IMPLEMENTATION-REPORT.md", "coverage-result.json", "go/no-go"] },
+      { "id": "coverage-result-publication", "source": "kleio", "markers": ["argus-assets coverage calculate", "--output <allocated outputDirectory>/coverage-result.json", "--lane kleio --token <lane-token> --canonical solution/coverage-result.json", "--owner kleio --token <lane-token> --canonical solution/coverage-result.json", "before `engagement report-facts`"] },
+      { "id": "registered-runner-verification", "source": "kleio", "markers": ["never run `./run-tests.sh` yourself", "verify Atlas's registered final run", "the `runner` block of `argus-assets engagement report-facts"] },
       { "id": "target-immutability", "source": "qa-core", "markers": ["Never modify target application source", "write guard", "untrusted data"] },
       { "id": "browser-isolation", "source": "qa-browser", "markers": ["leased browser profile", "managed hunt driver", "shared public"] },
+      { "id": "driver-techniques", "source": "qa-browser", "markers": ["--fail-next", "--capture-bodies", "--actor", "--race-fire", "--clock", "--tz"] },
+      { "id": "locale-time-hunt", "source": "lynceus", "markers": ["--tz", "--clock", "--locale"] },
       { "id": "oracle-honesty", "source": "qa-framework-runner", "markers": ["RED on the faulty target", "Never green-encode", "truthful exit"] },
       { "id": "artifact-language", "source": "qa-core", "markers": ["Every durable artifact", "commit message", "English"] },
       { "id": "event-progress", "source": "qa-core", "markers": ["event-driven", "timer-based chatter", "blockers"] },
       { "id": "immutable-mode", "source": "qa-core", "markers": ["controller-selected primary mode", "Copy it exactly", "A=FULL_AUDIT", "B=BUG_HUNT", "Never infer, substitute, broaden", "protocol error"] },
       { "id": "first-attempt-schema", "source": "qa-core", "markers": ["exact key names", "value types", "repair within the same attempt", "never rely on a retry"] },
       { "id": "capability-template-selection", "source": "qa-framework-runner", "markers": ["Detect the target language", "Adapt a healthy existing suite", "Scaffold only"] },
-      { "id": "shared-template-semantics", "source": "qa-framework-runner", "markers": ["defect-evidence", "candidate-regression", "owner, reason, evidence, expiry"] }
+      { "id": "shared-template-semantics", "source": "qa-framework-runner", "markers": ["defect-evidence", "candidate-regression", "owner, reason, evidence, expiry", "solution/quarantine.tsv", "expires_on"] },
+      { "id": "one-run-per-harness-root", "source": "qa-framework-runner", "markers": ["One `run-tests.sh` run at a time per harness root", "ARGUS RUNNER BUSY (runner-busy)", "never cite, archive, or register it", "ARGUS_RUN_LOCK_WAIT_SECONDS", "Atlas reruns `full-suite` and registers that run"] },
+      { "id": "registered-runner-last", "source": "atlas", "markers": ["the delivered result must be the last run in the root", "rerun `--mode full-suite` and archive and register that run, never the replacing one"] },
+      { "id": "runner-after-review", "source": "atlas", "markers": ["After APPROVED and Minos's verification merge", "rerun `full-suite`, archive and register that run before Kleio reports", "automation-review.<latest reviewId>", "runner-predates-automation-review"] },
+      { "id": "controller-runner-after-review", "source": "orchestration-core", "markers": ["After APPROVED and Minos's verification merge", "re-dispatch Atlas on reporting standby", "before Kleio reports", "runner-predates-automation-review"] },
+      { "id": "unregistered-runner-rerun", "source": "kleio", "markers": ["route to Atlas to rerun `full-suite` and register that run, never the unregistered one"] },
+      { "id": "suite-quarantine-ledger", "source": "asklepios", "markers": ["solution/quarantine.tsv", "reports/test-inventory.tsv", "expires_on"] },
+      { "id": "confirmation-ratio", "source": "qa-core", "markers": ["captured occurrence", "occurrences/attempts ratio", "second success is never fabricated"] },
+      { "id": "exploration-loop", "source": "qa-core", "markers": ["Seeded variation", "Differential oracle", "Search around each hit", "consecutive distinct probes", "consistency divergence"] },
+      { "id": "coverage-observation-fragments", "source": "qa-core", "markers": ["solution/coverage-observations.json", "in every mode", "<lane>:<surfaceId>", "argus-assets path coverage-contract", "argus-assets engagement fragment"] },
+      { "id": "canonical-fragment-only", "source": "qa-core", "markers": ["Every canonical, including your own", "published by its owner's `argus-assets engagement merge`", "the guard denies every direct canonical write"] },
+      { "id": "artifact-root-paths", "source": "qa-core", "markers": ["relative to the artifact root, never to your working directory", "for a path target is the target root", "`<artifact-root>`-absolute path"] }
     ]
-  }
+  },
+  "forbiddenPromptPatterns": [
+    { "id": "no-double-reproduction-gate", "pattern": "reproduced[^.]{0,40}(at least twice|≥\\s*2×)|second reproduction", "flags": "i" },
+    { "id": "no-direct-canonical-write", "pattern": "\\b(?:Write|Produce) `(?:solution/[A-Z][A-Za-z_-]*\\.md|README\\.md|run-tests\\.sh)`|unless canonically accountable", "flags": "" },
+    { "id": "no-working-directory-artifact-input", "pattern": "--(?:input|inventory|observations|evidence|ledger|automation-status|selection|root|destination) (?:solution|reports|bugs|tests|ai_agents_internal)/", "flags": "" },
+    { "id": "no-vendored-hunt-driver", "pattern": "(?:node |`)scripts/hunt-driver\\.mjs|provisions it into the target repo", "flags": "" },
+    { "id": "no-unmerged-coverage-preview", "pattern": "[Pp]review with `argus-assets coverage|`argus-assets coverage calculate[^`]*--output -`", "flags": "" },
+    { "id": "no-reporter-runner-rerun", "pattern": "execute `\\./run-tests\\.sh` from the repo root|from YOUR run", "flags": "" },
+    { "id": "no-registering-a-replacing-runner-result", "pattern": "route to Atlas to archive and register it", "flags": "" }
+  ]
 }

@@ -1,0 +1,216 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Argus oracle self-test",
+    "version": "1.0.0",
+    "description": "Synthetic contract for oracles-contract.selftest.spec.ts. It describes no real service."
+  },
+  "paths": {
+    "/widgets": {
+      "get": {
+        "operationId": "listWidgets",
+        "responses": {
+          "200": {
+            "description": "An array of objects",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WidgetList" } } }
+          }
+        }
+      }
+    },
+    "/widgets/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }],
+      "get": {
+        "operationId": "getWidget",
+        "responses": {
+          "200": {
+            "description": "The only documented status",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Widget" } } }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteWidget",
+        "responses": { "204": { "description": "Deleted; no content" } }
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "operationId": "getUser",
+        "responses": {
+          "200": {
+            "description": "The user",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/pets/{id}": {
+      "get": {
+        "operationId": "getPet",
+        "responses": {
+          "200": {
+            "description": "A cat or a dog",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } }
+          }
+        }
+      }
+    },
+    "/counters": {
+      "get": {
+        "operationId": "getCounters",
+        "responses": {
+          "200": {
+            "description": "A documented map",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Counters" } } }
+          }
+        }
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "operationId": "getOrder",
+        "responses": {
+          "200": {
+            "description": "An order with a nested inline object",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } }
+          }
+        }
+      }
+    },
+    "/gadgets/{id}": {
+      "get": {
+        "operationId": "getGadget",
+        "responses": {
+          "200": {
+            "description": "The gadget",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Base" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "4XX": {
+            "description": "Any other client error: a range key",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          },
+          "default": {
+            "description": "Every other status",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Base": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "integer", "minimum": 1 },
+          "name": { "type": "string", "example": "widget" }
+        }
+      },
+      "Ext": {
+        "type": "object",
+        "properties": {
+          "color": { "type": "string", "enum": ["red", "blue"], "nullable": true },
+          "weight": { "type": "number", "minimum": 0, "exclusiveMinimum": true }
+        }
+      },
+      "Widget": {
+        "allOf": [{ "$ref": "#/components/schemas/Base" }, { "$ref": "#/components/schemas/Ext" }]
+      },
+      "WidgetList": {
+        "type": "array",
+        "items": { "$ref": "#/components/schemas/Base" }
+      },
+      "Cat": {
+        "type": "object",
+        "required": ["kind", "meows"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["cat"] },
+          "meows": { "type": "boolean" }
+        }
+      },
+      "Dog": {
+        "type": "object",
+        "required": ["kind", "barks"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["dog"] },
+          "barks": { "type": "boolean" }
+        }
+      },
+      "Pet": {
+        "oneOf": [{ "$ref": "#/components/schemas/Cat" }, { "$ref": "#/components/schemas/Dog" }]
+      },
+      "Circle": {
+        "type": "object",
+        "properties": { "radius": { "type": "number" } }
+      },
+      "Square": {
+        "type": "object",
+        "properties": { "side": { "type": "number" } }
+      },
+      "Shape": {
+        "oneOf": [{ "$ref": "#/components/schemas/Circle" }, { "$ref": "#/components/schemas/Square" }]
+      },
+      "Labels": {
+        "type": "object",
+        "properties": { "name": { "type": "string" } },
+        "patternProperties": { "^x-": { "type": "string" } }
+      },
+      "User": {
+        "type": "object",
+        "required": ["id", "email", "password"],
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "writeOnly": true, "minLength": 8 },
+          "nickname": { "type": "string", "nullable": true },
+          "manager": { "$ref": "#/components/schemas/Base", "nullable": true }
+        }
+      },
+      "Counters": {
+        "type": "object",
+        "additionalProperties": { "type": "integer" }
+      },
+      "Order": {
+        "type": "object",
+        "required": ["id", "shipping"],
+        "properties": {
+          "id": { "type": "integer" },
+          "shipping": {
+            "type": "object",
+            "required": ["city"],
+            "properties": {
+              "city": { "type": "string" },
+              "zip": { "type": "string", "deprecated": true }
+            }
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "required": ["error", "fields"],
+        "properties": {
+          "error": { "type": "string" },
+          "fields": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": { "error": { "type": "string" } }
+      }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "Not found",
+        "content": {
+          "application/json": {
+            "schema": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" } } }
+          }
+        }
+      }
+    }
+  }
+}

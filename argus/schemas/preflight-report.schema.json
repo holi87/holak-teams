@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/holi87/holak-teams/argus/schemas/preflight-report.schema.json",
-  "title": "Argus runtime preflight report v2",
+  "title": "Argus runtime preflight report v3",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "generatedAt", "mode", "modelRuntime", "status", "target", "artifactRoot", "authorization", "engagement", "orchestration", "checks", "capabilities", "agents", "summary"],
+  "required": ["$schema", "schemaVersion", "generatedAt", "mode", "modelRuntime", "status", "target", "artifactRoot", "authorization", "engagement", "orchestration", "browserRuntime", "checks", "capabilities", "agents", "summary", "residualRisks"],
   "properties": {
     "$schema": { "const": "https://raw.githubusercontent.com/holi87/holak-teams/master/argus/schemas/preflight-report.schema.json" },
-    "schemaVersion": { "const": 2 },
+    "schemaVersion": { "const": 3 },
     "generatedAt": { "type": "string", "format": "date-time" },
     "mode": { "enum": ["A", "B", "C", "D"] },
     "modelRuntime": { "enum": ["claude", "codex"] },
@@ -78,6 +78,7 @@
         "specialists": { "type": "integer", "minimum": 0, "maximum": 26 }
       }
     },
+    "browserRuntime": { "$ref": "#/$defs/browserRuntime" },
     "checks": {
       "type": "array",
       "items": { "$ref": "#/$defs/check" }
@@ -102,20 +103,23 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slug", "lane", "selected", "status", "dispatchAllowed", "model", "missingTools", "missingCapabilities", "actions", "artifactPaths", "authorization"],
+        "required": ["slug", "lane", "selected", "status", "dispatchAllowed", "stopsEngagement", "pendingGates", "model", "missingTools", "missingCapabilities", "actions", "artifactPaths", "authorization"],
         "properties": {
           "slug": { "type": "string", "minLength": 1 },
           "lane": { "type": "string", "minLength": 1 },
           "selected": { "type": "boolean" },
-          "status": { "enum": ["not-selected", "ready", "degraded", "deferred", "skipped", "blocked"] },
+          "status": { "enum": ["not-selected", "ready", "degraded", "deferred", "skipped", "conditional", "blocked"] },
           "dispatchAllowed": { "type": "boolean" },
+          "stopsEngagement": { "type": "boolean" },
+          "pendingGates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } },
+          "downgradedFrom": { "enum": ["blocked"] },
           "model": {
             "type": "object",
             "additionalProperties": false,
             "required": ["schema", "policyId", "agent", "runtime", "status", "baselineConfig", "requiredOverrides", "requiredEnforcements", "adapterId", "adapterSnapshotSha256", "missingCapabilities", "reason"],
             "properties": {
               "schema": { "const": "argus/model-routing-preview@1" },
-              "policyId": { "const": "argus/model-policy@1" },
+              "policyId": { "const": "argus/model-policy@2" },
               "agent": { "type": "string" },
               "runtime": { "enum": ["claude", "codex"] },
               "status": { "enum": ["ready", "blocked"] },
@@ -156,21 +160,64 @@
               }
             }
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": { "required": ["stopsEngagement"], "properties": { "stopsEngagement": { "const": true } } },
+            "then": { "properties": { "status": { "const": "blocked" } } }
+          },
+          {
+            "if": { "required": ["downgradedFrom"] },
+            "then": { "properties": { "status": { "const": "deferred" }, "dispatchAllowed": { "const": false }, "stopsEngagement": { "const": false } } }
+          },
+          {
+            "if": { "required": ["status"], "properties": { "status": { "const": "conditional" } } },
+            "then": { "properties": { "pendingGates": { "minItems": 1 }, "dispatchAllowed": { "const": true }, "stopsEngagement": { "const": false } } }
+          },
+          {
+            "if": { "required": ["status"], "properties": { "status": { "enum": ["not-selected", "ready", "degraded", "deferred", "skipped", "blocked"] } } },
+            "then": { "properties": { "pendingGates": { "maxItems": 0 } } }
+          }
+        ]
       }
     },
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["selected", "ready", "degraded", "deferred", "skipped", "blocked", "dispatchable"],
+      "required": ["selected", "ready", "degraded", "deferred", "skipped", "conditional", "blocked", "downgraded", "dispatchable"],
       "properties": {
         "selected": { "type": "integer", "minimum": 0 },
         "ready": { "type": "integer", "minimum": 0 },
         "degraded": { "type": "integer", "minimum": 0 },
         "deferred": { "type": "integer", "minimum": 0 },
         "skipped": { "type": "integer", "minimum": 0 },
+        "conditional": { "type": "integer", "minimum": 0 },
         "blocked": { "type": "integer", "minimum": 0 },
+        "downgraded": { "type": "integer", "minimum": 0 },
         "dispatchable": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "residualRisks": {
+      "type": "array",
+      "maxItems": 27,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slug", "status", "missingTools", "missingCapabilities", "reason"],
+        "properties": {
+          "slug": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["deferred", "skipped", "conditional", "blocked"] },
+          "downgradedFrom": { "enum": ["blocked"] },
+          "missingTools": { "$ref": "#/$defs/stringList" },
+          "missingCapabilities": { "$ref": "#/$defs/stringList" },
+          "reason": { "type": "string", "minLength": 1 }
+        },
+        "allOf": [
+          {
+            "if": { "required": ["downgradedFrom"] },
+            "then": { "properties": { "status": { "const": "deferred" } } }
+          }
+        ]
       }
     }
   },
@@ -187,6 +234,75 @@
         "id": { "type": "string", "minLength": 1 },
         "mandatory": { "type": "boolean" },
         "status": { "enum": ["pass", "fail", "degraded"] },
+        "evidence": { "type": "string", "minLength": 1 }
+      }
+    },
+    "browserRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "source", "modulePath", "moduleVersion", "packageJsonSha256", "moduleTreeSha256", "moduleTreeRoots", "executablePath", "probedAt", "evidence", "candidates"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable", "not-probed"] },
+        "source": { "enum": ["profile", "host-provisioned", "target", "workspace", "npm-global", "system-global", "npx-cache", null] },
+        "modulePath": { "type": ["string", "null"], "pattern": "^/" },
+        "moduleVersion": { "type": ["string", "null"], "minLength": 1 },
+        "packageJsonSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "moduleTreeSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "moduleTreeRoots": { "type": "array", "maxItems": 16, "uniqueItems": true, "items": { "type": "string", "pattern": "^/" } },
+        "executablePath": { "type": ["string", "null"], "minLength": 1 },
+        "probedAt": { "type": ["string", "null"], "format": "date-time" },
+        "evidence": { "type": "string", "minLength": 1 },
+        "candidates": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/browserRuntimeCandidate" } }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["status"], "properties": { "status": { "const": "available" } } },
+          "then": {
+            "properties": {
+              "source": { "type": "string" },
+              "modulePath": { "type": "string" },
+              "moduleVersion": { "type": "string" },
+              "packageJsonSha256": { "type": "string" },
+              "moduleTreeSha256": { "type": "string" },
+              "moduleTreeRoots": { "minItems": 1 },
+              "executablePath": { "type": "string" },
+              "probedAt": { "type": "string" },
+              "candidates": { "minItems": 1 }
+            }
+          }
+        },
+        {
+          "if": { "required": ["status"], "properties": { "status": { "enum": ["unavailable", "not-probed"] } } },
+          "then": {
+            "properties": {
+              "source": { "const": null },
+              "modulePath": { "const": null },
+              "moduleVersion": { "const": null },
+              "packageJsonSha256": { "const": null },
+              "moduleTreeSha256": { "const": null },
+              "moduleTreeRoots": { "maxItems": 0 },
+              "executablePath": { "const": null }
+            }
+          }
+        },
+        {
+          "if": { "required": ["status"], "properties": { "status": { "const": "unavailable" } } },
+          "then": { "properties": { "probedAt": { "type": "string" } } }
+        },
+        {
+          "if": { "required": ["status"], "properties": { "status": { "const": "not-probed" } } },
+          "then": { "properties": { "probedAt": { "const": null }, "candidates": { "maxItems": 0 } } }
+        }
+      ]
+    },
+    "browserRuntimeCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "modulePath", "result", "evidence"],
+      "properties": {
+        "source": { "enum": ["profile", "host-provisioned", "target", "workspace", "npm-global", "system-global", "npx-cache"] },
+        "modulePath": { "type": "string", "pattern": "^/" },
+        "result": { "enum": ["launched", "failed", "invalid", "not-attempted"] },
         "evidence": { "type": "string", "minLength": 1 }
       }
     }

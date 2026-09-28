@@ -43,7 +43,7 @@
     "id": "incorrect-mode-count",
     "operation": "set-plan-field",
     "field": "modeCounts",
-    "value": { "A": 27, "B": 15, "C": 14, "D": 14 },
+    "value": { "A": 27, "B": 15, "C": 15, "D": 15 },
     "expects": "modeCounts.B"
   },
   {
@@ -85,5 +85,106 @@
     "field": "undeclaredField",
     "value": true,
     "expects": "additional property undeclaredField"
+  },
+  {
+    "id": "proof-extra-participant",
+    "operation": "set-phase-field",
+    "phase": "proof",
+    "field": "participants",
+    "value": ["minos", "metis"],
+    "expects": "proof: proof phase must have exactly the validator minos as participant"
+  },
+  {
+    "id": "deep-hunt-partial-roster",
+    "operation": "set-phase-field",
+    "phase": "deep-hunt-2",
+    "field": "participants",
+    "value": ["atalanta"],
+    "expects": "deep-hunt-2: participants differ from deepHunt.roles"
+  },
+  {
+    "id": "later-pass-not-skippable",
+    "operation": "set-phase-field",
+    "phase": "deep-hunt-2",
+    "field": "skippable",
+    "value": false,
+    "expects": "deep-hunt-2: passes after the first must be skippable"
+  },
+  {
+    "id": "first-pass-skippable",
+    "operation": "set-phase-field",
+    "phase": "deep-hunt-1",
+    "field": "skippable",
+    "value": true,
+    "expects": "deep-hunt-1: the first pass must not be skippable"
+  },
+  {
+    "id": "phase-wave-regression",
+    "operation": "set-phase-field",
+    "phase": "automation",
+    "field": "wave",
+    "value": "W1",
+    "expects": "automation: phase order regresses wave W1"
+  },
+  {
+    "id": "role-wave-differs-from-first-phase",
+    "operation": "set-role-field",
+    "slug": "minos",
+    "field": "wave",
+    "value": "W2",
+    "expects": "minos: wave W2 differs from its first phase proof (W1)"
+  },
+  {
+    "id": "proof-standby-missing-oracle-desk",
+    "operation": "set-phase-field",
+    "phase": "proof",
+    "field": "standby",
+    "value": [],
+    "expects": "proof: standby must include metis"
+  },
+  {
+    "id": "hunting-standby-missing-recon",
+    "operation": "set-phase-field",
+    "phase": "hunting",
+    "field": "standby",
+    "value": [],
+    "expects": "hunting: standby must include kalchas"
+  },
+  {
+    "id": "deep-hunt-standby-missing-recon",
+    "operation": "set-phase-field",
+    "phase": "deep-hunt-2",
+    "field": "standby",
+    "value": [],
+    "expects": "deep-hunt-2: standby must include kalchas"
+  },
+  {
+    "id": "proof-cluster-coverage-gap",
+    "operation": "set-plan-path",
+    "path": ["proofLoop", "validatorPasses", "clusters", 0, "lanes"],
+    "value": ["atalanta", "pistis", "proteus", "talos", "theseus"],
+    "expects": "proofLoop clusters must cover charon"
+  },
+  {
+    "id": "deep-hunt-pass-bound",
+    "operation": "set-plan-path",
+    "path": ["deepHunt", "maxPasses"],
+    "value": 4,
+    "expects": "/deepHunt/maxPasses must be <= 3 [maximum]"
+  },
+  {
+    "id": "dependency-starts-in-later-phase",
+    "operation": "set-role-field",
+    "slug": "atalanta",
+    "field": "dependsOn",
+    "value": ["minos"],
+    "expects": "atalanta: dependency minos starts in a later phase"
+  },
+  {
+    "id": "deep-hunt-role-not-mandatory",
+    "operation": "set-plan-path",
+    "path": ["mandatoryLanes", "roles"],
+    "value": ["antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus", "orion", "perseus", "tiresias", "tyche"],
+    "expects": "mandatoryLanes.roles: deep-hunt role proteus must also be mandatory"
   }
 ]

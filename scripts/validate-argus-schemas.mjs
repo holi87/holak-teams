@@ -94,26 +94,61 @@ for (const [kind, field, key] of [
   ['lane-plan', 'lanes', 'lane'],
   ['evidence-reference', 'references', 'id'],
   ['automation-status', 'tests', 'testId'],
+  ['coverage-observations', 'observations', 'observationId'],
 ]) {
   const document = readJson(join(fixtures, 'valid', `${kind}.json`));
   const fragments = [...document[field]].reverse().map((record) => ({ ...document, [field]: [record] }));
   const merged = mergeCanonicalDocuments(kind, fragments);
   assert(merged[field].every((record, index) => index === 0 || merged[field][index - 1][key] < record[key]), `${kind}: merge output is not deterministic by ${key}`);
-  let duplicateRejected = false;
-  try { mergeCanonicalDocuments(kind, [fragments[0], fragments[0]]); }
-  catch { duplicateRejected = true; }
-  assert(duplicateRejected, `${kind}: merge accepted duplicate ${key} values across fragments`);
+  if (kind === 'evidence-reference') {
+    const replay = mergeCanonicalDocuments(kind, [fragments[0], fragments[0]]);
+    assert(JSON.stringify(replay[field]) === JSON.stringify(fragments[0][field]), 'evidence-reference: identical record replay was not de-duplicated');
+  } else {
+    let duplicateRejected = false;
+    try { mergeCanonicalDocuments(kind, [fragments[0], fragments[0]]); }
+    catch { duplicateRejected = true; }
+    assert(duplicateRejected, `${kind}: merge accepted duplicate ${key} values across fragments`);
+  }
 
+  // Each collection reads only its current version; the immediately retired one fails closed.
   const policy = compatibility.contracts?.[kind];
-  assert(policy?.current === 2 && JSON.stringify(policy.readCompatible) === '[2]' && !Object.hasOwn(policy, 'migration'), `${kind}: retired compatibility policy still accepts v1`);
-  const retired = { ...document, $schema: `argus/${kind}@1`, schemaVersion: 1 };
-  assert(validateCanonicalDocument(kind, retired).length > 0, `${kind}: runtime reader still accepts retired v1 input`);
+  const current = policy?.current;
+  assert(Number.isInteger(current) && current >= 2 && document.schemaVersion === current && document.$schema === schemaId(kind, current), `${kind}: valid fixture is not the current policy version`);
+  assert(JSON.stringify(policy.readCompatible) === `[${current}]` && !Object.hasOwn(policy, 'migration'), `${kind}: compatibility policy still accepts a retired version`);
+  const retired = { ...document, $schema: `argus/${kind}@${current - 1}`, schemaVersion: current - 1 };
+  assert(validateCanonicalDocument(kind, retired).length > 0, `${kind}: runtime reader still accepts retired v${current - 1} input`);
 }
-const preflightV2Schema = schemas.get('preflight-report.schema.json');
-assert(preflightV2Schema?.properties?.schemaVersion?.const === 2, 'current preflight-report validator does not require schemaVersion 2');
-assert(preflightV2Schema.required.includes('$schema') && preflightV2Schema.required.includes('modelRuntime') && preflightV2Schema.required.includes('orchestration'), 'preflight-report v2 validator does not require its identity and new fields');
+// Owned collection records are superseded by write sequence, never by fragment order; a record
+// belongs to its lane (or is written by the canonical owner), and a key never changes owner.
+{
+  const document = readJson(join(fixtures, 'valid', 'coverage-observations.json'));
+  const record = document.observations[0];
+  const first = { ...document, observations: [record] };
+  const later = { ...document, observations: [{ ...record, evidenceIds: ['EVD-0002', 'EVD-0003'] }] };
+  const owners = { 'coverage-observations': 'kleio', 'automation-status': 'atlas', 'evidence-reference': 'kleio' };
+  const merge = (docs, writers, kind = 'coverage-observations') => mergeCanonicalDocuments(kind, docs, { writers, canonicalOwner: owners[kind] });
+  const superseded = merge([later, first], [{ lane: record.lane, sequence: 7 }, { lane: record.lane, sequence: 3 }]);
+  assert(superseded.observations.length === 1 && superseded.observations[0].evidenceIds.length === 2, 'owned collection merge did not keep the record with the highest write sequence');
+  assert(merge([first], [{ lane: 'kleio', sequence: 1 }]).observations.length === 1, 'the canonical owner could not write an owned collection record');
+  const refusal = (fn) => { try { fn(); return ''; } catch (error) { return error.message; } };
+  assert(refusal(() => merge([first], [{ lane: 'talos', sequence: 1 }])).includes('talos may write only its own records'), 'a foreign lane wrote an owned collection record');
+  assert(refusal(() => merge([first, later], [{ lane: record.lane, sequence: 2 }, { lane: record.lane, sequence: 2 }])).includes('appears twice at write sequence 2'), 'an owned collection merge accepted two records at one write sequence');
+  const tests = readJson(join(fixtures, 'valid', 'automation-status.json'));
+  const row = tests.tests[0];
+  const reassigned = { ...tests, tests: [{ ...row, owner: 'daidalos' }] };
+  assert(refusal(() => merge([{ ...tests, tests: [row] }, reassigned], [{ lane: row.owner, sequence: 1 }, { lane: 'atlas', sequence: 2 }], 'automation-status')).includes(`belongs to ${row.owner}, not daidalos`), 'an owned collection key changed owner');
+  const evidence = readJson(join(fixtures, 'valid', 'evidence-reference.json'));
+  const single = { ...evidence, references: [evidence.references[0]] };
+  const changed = { ...single, references: [{ ...single.references[0], source: 'reports/changed-capture.txt' }] };
+  assert(refusal(() => merge([single, changed], [{ lane: 'atalanta', sequence: 1 }, { lane: 'atalanta', sequence: 2 }], 'evidence-reference')).includes('duplicate'), 'an immutable collection record was superseded');
+}
+const preflightV3Schema = schemas.get('preflight-report.schema.json');
+assert(preflightV3Schema?.properties?.schemaVersion?.const === 3, 'current preflight-report validator does not require schemaVersion 3');
+assert(['$schema', 'modelRuntime', 'orchestration', 'residualRisks'].every((field) => preflightV3Schema.required.includes(field))
+  && preflightV3Schema.properties.summary.required.includes('downgraded')
+  && preflightV3Schema.properties.agents.items.required.includes('stopsEngagement'), 'preflight-report v3 validator does not require its identity, residual risks, and essential-lane fields');
 const preflightPolicy = compatibility.contracts?.['preflight-report'];
-assert(preflightPolicy?.current === 2 && JSON.stringify(preflightPolicy.readCompatible) === '[2]' && !Object.hasOwn(preflightPolicy, 'migration'), 'preflight-report still declares a v1 reader');
+assert(preflightPolicy?.current === 3 && JSON.stringify(preflightPolicy.readCompatible) === '[3]' && !Object.hasOwn(preflightPolicy, 'migration'), 'preflight-report still declares a retired reader');
 const validateDateTime = compileJsonSchema({ type: 'string', format: 'date-time' });
 for (const value of ['2026-01-01T23:59:59Z', '1990-12-31T15:59:60-08:00']) assert(validateDateTime(value).length === 0, `valid RFC3339 date-time rejected: ${value}`);
 for (const value of ['2026-01-01T24:59:59+01:00', '2026-01-01T23:60:59+00:01', '2026-01-01T12:00:60Z']) assert(validateDateTime(value).length > 0, `invalid RFC3339 date-time accepted: ${value}`);
@@ -127,7 +162,7 @@ leapSecondLane.lanes = [{
   ],
 }];
 assert(validateCanonicalDocument('lane-plan', leapSecondLane).length === 0, 'lane-plan rejected a strictly increasing sequence across an RFC3339 leap second');
-console.log(`PASS  Canonical JSON Schemas: ${schemaFiles.length} compiled, ${differentialFixtures} differential + ${semanticFixtures} current semantic-only fixtures, retired v1 readers rejected, ${validatedDocuments} source documents validated across ${coveredSchemas.size} schemas`);
+console.log(`PASS  Canonical JSON Schemas: ${schemaFiles.length} compiled, ${differentialFixtures} differential + ${semanticFixtures} current semantic-only fixtures, retired collection readers rejected, ${validatedDocuments} source documents validated across ${coveredSchemas.size} schemas`);
 
 function declaredSchemaName(value) {
   if (value === 'https://json-schema.org/draft/2020-12/schema') return null;

@@ -1,6 +1,6 @@
 {
-  "$schema": "argus/bug-ledger@1",
-  "schemaVersion": 1,
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
   "engagementId": "replace-with-engagement-id",
   "bugs": [
     {
@@ -62,7 +62,190 @@
       "status": "suspected",
       "wired": false,
       "testId": null,
-      "evidenceIds": []
+      "evidenceIds": [
+        "EVD-0002",
+        "EVD-0003"
+      ],
+      "merge": {
+        "rationale": "Both filings trace the same unvalidated quantity field in the cart handler.",
+        "causalEvidence": [
+          {
+            "ref": "ATA-002",
+            "evidenceIds": [
+              "EVD-0002"
+            ]
+          },
+          {
+            "ref": "ARI-004",
+            "evidenceIds": [
+              "EVD-0003"
+            ]
+          }
+        ]
+      },
+      "missingProof": {
+        "elements": [
+          "independent-reproduction"
+        ],
+        "detail": "An independent reproduction from fresh synthetic accounts would confirm it.",
+        "owner": "minos"
+      }
+    },
+    {
+      "id": "BUG-0003",
+      "origin": [
+        "ORI-003"
+      ],
+      "title": "Checkout button stays disabled after a corrected card number",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "orion",
+      "oracleId": "ORC-UI-001",
+      "status": "bounced",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": [],
+      "repair": {
+        "round": 1,
+        "missing": [
+          "reproduction"
+        ],
+        "assignedTo": "orion",
+        "note": "Record the initial state and the ordered steps from a fresh session."
+      }
+    },
+    {
+      "id": "BUG-0004",
+      "origin": [
+        "LYN-004"
+      ],
+      "title": "Order dates render in the server time zone",
+      "severity": "Minor",
+      "priority": "P3",
+      "lane": "lynceus",
+      "oracleId": null,
+      "status": "needs-oracle",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": [
+        "EVD-0004"
+      ],
+      "missingProof": {
+        "elements": [
+          "oracle"
+        ],
+        "detail": "A cited requirement for the display time zone would decide whether this is a defect.",
+        "owner": "metis"
+      }
+    },
+    {
+      "id": "BUG-0005",
+      "origin": [
+        "ATA-005"
+      ],
+      "title": "Order lookup by id ignores the caller's ownership",
+      "severity": "Critical",
+      "priority": "P1",
+      "lane": "atalanta",
+      "oracleId": "ORC-SEC-001",
+      "status": "duplicate",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": [
+        "EVD-0005"
+      ],
+      "duplicateOf": "BUG-0001",
+      "merge": {
+        "rationale": "The same missing ownership check as BUG-0001, reached through the same handler.",
+        "causalEvidence": [
+          {
+            "ref": "ATA-005",
+            "evidenceIds": [
+              "EVD-0005"
+            ]
+          },
+          {
+            "ref": "BUG-0001",
+            "evidenceIds": [
+              "EVD-0001"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "BUG-0006",
+      "origin": [
+        "ANG-006"
+      ],
+      "title": "Decorative banner image has an empty alt attribute",
+      "severity": "Trivial",
+      "priority": "P4",
+      "lane": "antigone",
+      "oracleId": "ORC-A11Y-001",
+      "status": "rejected",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": [
+        "EVD-0006"
+      ],
+      "rejection": {
+        "reason": "expected-behavior",
+        "rationale": "WCAG 2.2 requires an empty alt attribute for purely decorative images.",
+        "evidenceIds": [
+          "EVD-0006"
+        ]
+      }
+    },
+    {
+      "id": "BUG-0007",
+      "origin": [
+        "PRO-007"
+      ],
+      "title": "Order-created event is published twice for one order",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "proteus",
+      "oracleId": "ORC-EVT-001",
+      "status": "quarantined",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": [
+        "EVD-0007"
+      ],
+      "verification": {
+        "build": "synthetic-fixture",
+        "disputedOracle": false,
+        "oracle": {
+          "kind": "contract",
+          "sourceRef": "Synthetic event contract 1",
+          "evidenceId": "EVD-0007",
+          "applicability": "Synthetic authorized test accounts",
+          "exceptions": []
+        },
+        "reproduction": {
+          "initialState": "Fresh synthetic fixture",
+          "steps": [
+            "Create one synthetic order and read the event stream."
+          ],
+          "attempts": 2,
+          "occurrences": 2,
+          "evidenceIds": [
+            "EVD-0007"
+          ]
+        },
+        "independent": {
+          "status": "unavailable",
+          "executor": null,
+          "evidenceIds": [],
+          "reason": "Synthetic example; no independent runtime executor was run."
+        }
+      },
+      "quarantine": {
+        "reasons": [
+          "evidence digest drift EVD-0007"
+        ]
+      }
     }
   ]
 }

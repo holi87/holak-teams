@@ -1,0 +1,11 @@
+POST /api/orders HTTP/1.1
+Host: shop.test
+Content-Type: application/json
+
+{"sku":"SKU-1","quantity":2}
+
+HTTP/1.1 201 Created
+Content-Type: application/json
+Location: /api/orders/ORD-1001
+
+{"id":"ORD-1001","sku":"SKU-1","quantity":2,"total":"24.00","currency":"EUR"}

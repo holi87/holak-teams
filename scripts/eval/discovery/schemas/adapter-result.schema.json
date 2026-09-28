@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/scripts/eval/discovery/schemas/adapter-result.schema.json",
+  "title": "Argus discovery evaluation host adapter result v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "launcherExitCode", "usage", "subject", "reason"],
+  "properties": {
+    "schema": { "const": "argus-eval/adapter-result@2" },
+    "status": { "enum": ["completed", "launcher-refused", "launcher-failed", "revision-mismatch"] },
+    "launcherExitCode": { "type": ["integer", "null"] },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens", "totalTokens", "costUsd", "numTurns", "controllerTurnCapHit"],
+      "properties": {
+        "source": { "enum": ["claude-cli-result-json", "unavailable"] },
+        "inputTokens": { "$ref": "#/$defs/count" },
+        "outputTokens": { "$ref": "#/$defs/count" },
+        "cacheReadTokens": { "$ref": "#/$defs/count" },
+        "cacheCreationTokens": { "$ref": "#/$defs/count" },
+        "totalTokens": { "$ref": "#/$defs/count" },
+        "costUsd": { "type": ["number", "null"], "minimum": 0 },
+        "numTurns": { "$ref": "#/$defs/count" },
+        "controllerTurnCapHit": { "type": ["boolean", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "source": { "const": "unavailable" } } },
+          "then": {
+            "properties": {
+              "inputTokens": { "type": "null" },
+              "outputTokens": { "type": "null" },
+              "cacheReadTokens": { "type": "null" },
+              "cacheCreationTokens": { "type": "null" },
+              "totalTokens": { "type": "null" },
+              "costUsd": { "type": "null" },
+              "numTurns": { "type": "null" }
+            }
+          }
+        }
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pluginVersion", "pluginDigest"],
+      "properties": {
+        "pluginVersion": { "type": ["string", "null"], "minLength": 1 },
+        "pluginDigest": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "reason": { "type": ["string", "null"], "minLength": 1 },
+    "launchAssurance": { "enum": ["attested", "unattested"] }
+  },
+  "$defs": {
+    "count": { "type": ["integer", "null"], "minimum": 0 }
+  }
+}

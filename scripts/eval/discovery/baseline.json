@@ -1,0 +1,11 @@
+{
+  "schema": "argus-eval/discovery-baseline@1",
+  "status": "not-recorded",
+  "reason": "No adjudicated Argus engagement has been recorded against argus-eval-corpus@2; the model-quality gate is inactive until record-baseline.mjs writes a recorded baseline.",
+  "thresholds": {
+    "maxMeanDetectedSeedDrop": 1,
+    "maxPrecisionDrop": 0.05,
+    "maxRegressionFailToPassDrop": 0.05
+  },
+  "waivers": []
+}

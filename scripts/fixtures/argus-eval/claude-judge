@@ -1,0 +1,147 @@
+#!/usr/bin/env node
+// Stub Claude Code CLI for scripts/eval/discovery/smoke-judge.mjs. It never calls a model.
+//
+// The judge forwards only PATH, HOME and ANTHROPIC_API_KEY and runs every invocation in an
+// empty temporary directory, so the stub keeps its state under $HOME:
+//   $HOME/calls/<n>.json  one record per invocation: argv, cwd, environment names, stdin, the
+//                         parsed --json-schema, the answer, and every protocol violation seen
+//   $HOME/seen/<sha256>   calls per packet (every pass of a finding receives the same packet)
+//   $HOME/fail            failure injection: "invalid <n>" makes the next n calls answer with
+//                         output that violates the judge schema; "auth-error" makes every call
+//                         fail like the real CLI with a rejected API key (is_error, status 401)
+//
+// The answer is chosen by keywords in the finding title:
+//   [stub:real:<seedId>]  real, crediting <seedId> when the schema enum allows it (as
+//                         constrained decoding would), otherwise real with seedId null
+//   [stub:unseeded]       real with seedId null
+//   [stub:false-positive] false-positive (also the default)
+//   [stub:duplicate]      duplicate of the first prior finding
+//   [stub:disagree]       real crediting the first listed seed on a packet's first call,
+//                         false-positive on later calls
+//   [stub:invalid]        schema-invalid output on every call
+//   [stub:invent]         credits a seed that is not in the schema enum
+//   [stub:result-only]    omits structured_output; the answer is JSON text in .result
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
+
+const argv = process.argv.slice(2);
+const home = process.env.HOME;
+if (!home) {
+  process.stderr.write('claude-judge stub: HOME is required\n');
+  process.exit(4);
+}
+const violations = [];
+const allowedEnv = new Set(['PATH', 'HOME', 'ANTHROPIC_API_KEY']);
+// macOS CoreFoundation adds this to the stub's own environment at process start.
+const OS_ADDED = new Set(['__CF_USER_TEXT_ENCODING']);
+const envNames = Object.keys(process.env).filter(name => !OS_ADDED.has(name)).sort();
+for (const name of envNames) if (!allowedEnv.has(name)) violations.push(`unexpected environment variable ${name}`);
+if (!process.env.ANTHROPIC_API_KEY) violations.push('ANTHROPIC_API_KEY is missing');
+const cwd = process.cwd();
+if (realpathSync(cwd) !== cwd) violations.push('the working directory is not physical');
+if (readdirSync(cwd).length) violations.push('the working directory is not empty');
+
+function record(entry) {
+  const dir = join(home, 'calls');
+  mkdirSync(dir, { recursive: true });
+  for (let index = 1; ; index += 1) {
+    try {
+      writeFileSync(join(dir, `${String(index).padStart(4, '0')}.json`), JSON.stringify({ argv, cwd, envNames, violations, ...entry }, null, 2), { flag: 'wx' });
+      return;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+  }
+}
+
+function finish(code, message) {
+  if (message) process.stderr.write(`claude-judge stub: ${message}\n`);
+  process.exit(code);
+}
+
+if (argv.length === 1 && argv[0] === '--version') {
+  record({ kind: 'version' });
+  if (violations.length) finish(3, violations.join('; '));
+  process.stdout.write('2.1.283 (Claude Code)\n');
+  process.exit(0);
+}
+
+const valueAfter = flag => {
+  const index = argv.indexOf(flag);
+  return index === -1 ? undefined : argv[index + 1];
+};
+for (const flag of ['-p', '--bare', '--no-session-persistence', '--strict-mcp-config', '--disable-slash-commands']) {
+  if (!argv.includes(flag)) violations.push(`missing ${flag}`);
+}
+for (const [flag, expected] of [['--tools', ''], ['--model', 'opus'], ['--effort', 'max'], ['--output-format', 'json']]) {
+  if (valueAfter(flag) !== expected) violations.push(`${flag} must be followed by ${JSON.stringify(expected)}`);
+}
+let schema = null;
+try {
+  schema = JSON.parse(valueAfter('--json-schema'));
+} catch {
+  violations.push('--json-schema must be followed by a JSON schema');
+}
+const promptFile = valueAfter('--system-prompt-file');
+if (!promptFile || !isAbsolute(promptFile) || !existsSync(promptFile)) violations.push('--system-prompt-file must name an existing absolute file');
+
+const stdin = readFileSync(0, 'utf8');
+const OPEN = '<untrusted-finding>\n';
+const CLOSE = '\n</untrusted-finding>\n';
+let packet = null;
+if (!stdin.startsWith(OPEN) || !stdin.endsWith(CLOSE)) violations.push('stdin is not framed by <untrusted-finding> delimiters');
+else if (stdin.split('<untrusted-finding>').length !== 2 || stdin.split('</untrusted-finding>').length !== 2) violations.push('stdin contains more than one delimiter');
+else {
+  try {
+    packet = JSON.parse(stdin.slice(OPEN.length, -CLOSE.length));
+  } catch {
+    violations.push('the framed packet is not JSON');
+  }
+}
+if (violations.length || !packet || !schema) {
+  record({ kind: 'judge', stdin, schema, answer: null });
+  finish(3, violations.join('; ') || 'unusable input');
+}
+
+const sha = createHash('sha256').update(stdin).digest('hex');
+mkdirSync(join(home, 'seen'), { recursive: true });
+const seenPath = join(home, 'seen', sha);
+const call = (existsSync(seenPath) ? Number(readFileSync(seenPath, 'utf8')) : 0) + 1;
+writeFileSync(seenPath, String(call));
+
+let injected = false;
+const failPath = join(home, 'fail');
+const failMode = existsSync(failPath) ? readFileSync(failPath, 'utf8').trim() : '';
+if (failMode === 'auth-error') {
+  record({ kind: 'judge', stdin, schema, call, injected: true, answer: null });
+  process.stdout.write(`${JSON.stringify({ type: 'result', subtype: 'success', is_error: true, api_error_status: 401, terminal_reason: 'api_error',
+    result: 'Failed to authenticate. API Error: 401 API key is invalid.', num_turns: 1, total_cost_usd: 0, modelUsage: {} })}\n`);
+  process.exit(1);
+}
+const match = /^invalid (\d+)$/.exec(failMode);
+if (match && Number(match[1]) > 0) {
+  injected = true;
+  writeFileSync(failPath, `invalid ${Number(match[1]) - 1}\n`);
+}
+
+const title = packet.finding?.title ?? '';
+const allowedSeeds = schema.properties?.seedId?.enum ?? [null];
+const answer = (outcome, fields = {}) => ({ outcome, seedId: null, duplicateOf: null, confidence: 'high',
+  criterionEvidence: `Stub evidence for ${packet.finding.id}.`, reason: `Stub ${outcome} verdict for ${packet.finding.id}.`, ...fields });
+let output;
+const credited = /\[stub:real:([a-z0-9-]+)\]/.exec(title);
+if (injected || title.includes('[stub:invalid]')) output = answer('maybe');
+else if (title.includes('[stub:invent]')) output = answer('real', { seedId: 'invented-seed' });
+else if (title.includes('[stub:disagree]')) output = call === 1 ? answer('real', { seedId: packet.seeds[0]?.id ?? null }) : answer('false-positive', { confidence: 'medium' });
+else if (title.includes('[stub:duplicate]')) output = answer('duplicate', { duplicateOf: packet.priorFindings[0]?.findingId ?? null });
+else if (credited) output = answer('real', { seedId: allowedSeeds.includes(credited[1]) ? credited[1] : null });
+else if (title.includes('[stub:unseeded]')) output = answer('real', { confidence: 'medium' });
+else output = answer('false-positive');
+
+record({ kind: 'judge', stdin, schema, call, injected, answer: output });
+const envelope = { type: 'result', subtype: 'success', is_error: false, duration_ms: 1, num_turns: 1, session_id: 'stub',
+  total_cost_usd: 0.25, modelUsage: { 'claude-opus-stub': { inputTokens: 10, outputTokens: 5, costUSD: 0.25 } } };
+if (title.includes('[stub:result-only]')) envelope.result = `\`\`\`json\n${JSON.stringify(output)}\n\`\`\``;
+else Object.assign(envelope, { result: 'Verdict recorded.', structured_output: output });
+process.stdout.write(`${JSON.stringify(envelope)}\n`);

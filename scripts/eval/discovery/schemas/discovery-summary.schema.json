@@ -1,0 +1,438 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/holi87/holak-teams/scripts/eval/discovery/schemas/discovery-summary.schema.json",
+  "title": "Argus discovery evaluation summary v1 (adjudicated per-run results and per-variant, per-mode aggregates; IDs and counts only)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "reasons", "createdAt", "corpus", "protocol", "variants", "runs", "excludedRuns", "isolation", "sources"],
+  "properties": {
+    "schema": { "const": "argus-eval/discovery-summary@1" },
+    "status": { "enum": ["scored", "scored-provisional", "UNSCORED"] },
+    "reasons": { "type": "array", "items": { "$ref": "#/$defs/reason" } },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "digest"],
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "digest": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "protocol": { "$ref": "#/$defs/protocol" },
+    "variants": { "type": "array", "minItems": 1, "maxItems": 2, "items": { "$ref": "#/$defs/variant" } },
+    "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } },
+    "excludedRuns": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/runId" } },
+    "isolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["declared"],
+      "properties": {
+        "declared": { "enum": ["same-user", "separate-user", null] }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runsSha256", "verdictsSha256", "judgeSha256", "sheetSha256"],
+      "properties": {
+        "runsSha256": { "$ref": "#/$defs/sha256" },
+        "verdictsSha256": { "$ref": "#/$defs/sha256" },
+        "judgeSha256": { "$ref": "#/$defs/sha256" },
+        "sheetSha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "UNSCORED" } } },
+      "then": { "properties": { "variants": { "items": { "properties": { "perMode": { "type": "null" } } } } } }
+    },
+    {
+      "if": { "properties": { "status": { "enum": ["scored", "scored-provisional"] } } },
+      "then": { "properties": { "variants": { "items": { "properties": { "perMode": { "type": "object" } } } } } }
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "measuredCount": { "type": ["integer", "null"], "minimum": 0 },
+    "rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "mean": { "type": ["number", "null"], "minimum": 0 },
+    "runId": { "type": "string", "pattern": "^r[0-9]{1,2}-[AB]-(?:faulty|corrected)-[a-z][a-z0-9-]{0,31}$" },
+    "variantName": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+    "seedId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "bugId": { "type": "string", "pattern": "^BUG-[0-9]{4}$" },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "variant", "runId", "findingIds"],
+      "properties": {
+        "code": { "enum": ["invalid-run", "contaminated-run", "missing-verdict", "mixed-plugin-digest", "provisional-verdicts"] },
+        "variant": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+        "runId": { "type": ["string", "null"], "pattern": "^r[0-9]{1,2}-[AB]-(?:faulty|corrected)-[a-z][a-z0-9-]{0,31}$" },
+        "findingIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/bugId" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "code": { "enum": ["invalid-run", "contaminated-run", "missing-verdict"] } } },
+          "then": { "properties": { "variant": { "type": "string" }, "runId": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "code": { "const": "missing-verdict" } } },
+          "then": { "properties": { "findingIds": { "minItems": 1 } } }
+        },
+        {
+          "if": { "properties": { "code": { "const": "mixed-plugin-digest" } } },
+          "then": { "properties": { "variant": { "type": "string" }, "runId": { "type": "null" } } }
+        }
+      ]
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modes", "builds", "repeats", "seeds", "secondsByMode", "tokens", "replay", "testMode", "judge", "spotCheck"],
+      "properties": {
+        "modes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["A", "B"] } },
+        "builds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["faulty", "corrected"] } },
+        "repeats": { "type": "integer", "minimum": 2, "maximum": 20 },
+        "seeds": { "type": "array", "minItems": 2, "maxItems": 20, "items": { "type": "integer", "minimum": 1, "maximum": 999999 } },
+        "secondsByMode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["A", "B"],
+          "properties": {
+            "A": { "type": "integer", "minimum": 1, "maximum": 86400 },
+            "B": { "type": "integer", "minimum": 1, "maximum": 86400 }
+          }
+        },
+        "tokens": { "type": ["integer", "null"], "minimum": 1 },
+        "replay": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "repeats": { "type": "integer", "minimum": 1, "maximum": 5 },
+            "perSeedMatrix": { "type": "boolean" },
+            "secondsPerRunner": { "type": "integer", "minimum": 1, "maximum": 7200 }
+          }
+        },
+        "testMode": { "type": "boolean" },
+        "judge": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["model", "effort", "passes", "systemPromptSha256", "claudeVersion", "includeSuspected"],
+          "properties": {
+            "model": { "const": "opus" },
+            "effort": { "const": "max" },
+            "passes": { "type": "integer", "minimum": 1, "maximum": 5 },
+            "systemPromptSha256": { "$ref": "#/$defs/sha256" },
+            "claudeVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$" },
+            "includeSuspected": { "type": "boolean" }
+          }
+        },
+        "spotCheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all", "rate", "minimum", "items", "reviewed", "pending"],
+          "properties": {
+            "all": { "type": "boolean" },
+            "rate": { "type": ["number", "null"], "minimum": 0.000001, "maximum": 1 },
+            "minimum": { "type": ["integer", "null"], "minimum": 0, "maximum": 999999 },
+            "items": { "$ref": "#/$defs/count" },
+            "reviewed": { "$ref": "#/$defs/count" },
+            "pending": { "$ref": "#/$defs/count" }
+          }
+        }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "revision", "subject", "perMode"],
+      "properties": {
+        "name": { "$ref": "#/$defs/variantName" },
+        "revision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "subject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pluginVersion", "pluginDigest"],
+          "properties": {
+            "pluginVersion": { "type": ["string", "null"], "minLength": 1 },
+            "pluginDigest": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+          }
+        },
+        "perMode": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "A": { "$ref": "#/$defs/aggregate" },
+            "B": { "$ref": "#/$defs/aggregate" }
+          }
+        }
+      }
+    },
+    "surfaceCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seeded", "detected"],
+      "properties": {
+        "seeded": { "$ref": "#/$defs/count" },
+        "detected": { "$ref": "#/$defs/count" }
+      }
+    },
+    "laneCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reported", "real", "falsePositive", "duplicate", "seedsDetected", "turnLimit", "totalTokens"],
+      "properties": {
+        "reported": { "$ref": "#/$defs/count" },
+        "real": { "$ref": "#/$defs/count" },
+        "falsePositive": { "$ref": "#/$defs/count" },
+        "duplicate": { "$ref": "#/$defs/count" },
+        "seedsDetected": { "$ref": "#/$defs/count" },
+        "turnLimit": { "$ref": "#/$defs/measuredCount" },
+        "totalTokens": { "$ref": "#/$defs/mean" }
+      }
+    },
+    "runMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seeded", "detectedSeeds", "detectedSeedIds", "recall", "criticalSeeded", "criticalRecall", "perSurface", "reported", "real", "realUnseeded", "falsePositive", "duplicate", "precision", "suspected", "suspectedSeedHits", "perLane", "reproduction", "independentReproduction", "deliveryDefects", "usage", "regression"],
+      "properties": {
+        "seeded": { "$ref": "#/$defs/count" },
+        "detectedSeeds": { "$ref": "#/$defs/count" },
+        "detectedSeedIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/seedId" } },
+        "recall": { "$ref": "#/$defs/rate" },
+        "criticalSeeded": { "$ref": "#/$defs/count" },
+        "criticalRecall": { "$ref": "#/$defs/rate" },
+        "perSurface": { "type": "object", "additionalProperties": { "$ref": "#/$defs/surfaceCounts" } },
+        "reported": { "$ref": "#/$defs/count" },
+        "real": { "$ref": "#/$defs/count" },
+        "realUnseeded": { "$ref": "#/$defs/count" },
+        "falsePositive": { "$ref": "#/$defs/count" },
+        "duplicate": { "$ref": "#/$defs/count" },
+        "precision": { "$ref": "#/$defs/rate" },
+        "suspected": { "$ref": "#/$defs/count" },
+        "suspectedSeedHits": { "$ref": "#/$defs/count" },
+        "perLane": { "type": "object", "additionalProperties": { "$ref": "#/$defs/laneCounts" } },
+        "reproduction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["human", "replay", "none", "byFinding"],
+          "properties": {
+            "human": { "$ref": "#/$defs/count" },
+            "replay": { "$ref": "#/$defs/count" },
+            "none": { "$ref": "#/$defs/count" },
+            "byFinding": { "type": "object", "additionalProperties": { "enum": ["human", "replay", "none"] } }
+          }
+        },
+        "independentReproduction": { "$ref": "#/$defs/rate" },
+        "deliveryDefects": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ledger", "unledgeredReports"],
+          "properties": {
+            "ledger": { "enum": ["present", "missing", "invalid"] },
+            "unledgeredReports": { "$ref": "#/$defs/count" }
+          }
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tokens", "cost", "numTurns", "controllerTurnCapHit", "elapsedMs", "timedOut", "overBudget"],
+          "properties": {
+            "tokens": { "type": ["integer", "null"], "minimum": 0 },
+            "cost": { "type": ["number", "null"], "minimum": 0 },
+            "numTurns": { "type": ["integer", "null"], "minimum": 0 },
+            "controllerTurnCapHit": { "type": ["boolean", "null"] },
+            "elapsedMs": { "$ref": "#/$defs/count" },
+            "timedOut": { "type": "boolean" },
+            "overBudget": { "type": "boolean" }
+          }
+        },
+        "regression": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["replayStatus", "seeds", "falseAlarms", "baselineGreenOnFix"],
+          "properties": {
+            "replayStatus": { "enum": ["completed", "partial", "unavailable"] },
+            "seeds": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["bugs", "hasWiredRegression", "failToPass", "specific", "flaky"],
+                "properties": {
+                  "bugs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/bugId" } },
+                  "hasWiredRegression": { "type": "boolean" },
+                  "failToPass": { "type": "boolean" },
+                  "specific": { "type": "boolean" },
+                  "flaky": { "type": "boolean" }
+                }
+              }
+            },
+            "falseAlarms": { "$ref": "#/$defs/count" },
+            "baselineGreenOnFix": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "variant", "revision", "repeat", "seed", "mode", "build", "status", "pluginDigest", "scoring", "metrics"],
+      "properties": {
+        "runId": { "$ref": "#/$defs/runId" },
+        "variant": { "$ref": "#/$defs/variantName" },
+        "revision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "repeat": { "type": "integer", "minimum": 0, "maximum": 19 },
+        "seed": { "type": "integer", "minimum": 1, "maximum": 999999 },
+        "mode": { "enum": ["A", "B"] },
+        "build": { "enum": ["faulty", "corrected"] },
+        "status": { "enum": ["awaiting-adjudication", "timed-out", "invalid-run", "contaminated"] },
+        "pluginDigest": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "scoring": { "enum": ["scored", "unscored", "excluded"] },
+        "metrics": { "type": ["object", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "scoring": { "const": "scored" } } },
+          "then": { "properties": { "metrics": { "$ref": "#/$defs/runMetrics" } } }
+        },
+        {
+          "if": { "properties": { "scoring": { "enum": ["unscored", "excluded"] } } },
+          "then": { "properties": { "metrics": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["invalid-run", "contaminated"] } } },
+          "then": { "properties": { "scoring": { "const": "excluded" } } }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["awaiting-adjudication", "timed-out"] } } },
+          "then": { "properties": { "scoring": { "enum": ["scored", "unscored"] } } }
+        }
+      ]
+    },
+    "usageMeasure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runs", "total", "mean"],
+      "properties": {
+        "runs": { "$ref": "#/$defs/count" },
+        "total": { "$ref": "#/$defs/mean" },
+        "mean": { "$ref": "#/$defs/mean" }
+      }
+    },
+    "aggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runs", "faultyRuns", "correctedRuns", "seedsPerFaultyRun", "meanDetectedSeeds", "meanRecall", "meanCriticalRecall", "perSurfaceRecall", "reported", "real", "pooledPrecision", "falsePositivesOnCorrected", "meanRealUnseeded", "suspectedSeedHits", "independentReproduction", "regression", "perLane", "deliveryDefects", "usage", "timedOutRuns", "overBudgetRuns", "controllerTurnCapHits", "invalidRuns", "contaminatedRuns", "judgeReliability"],
+      "properties": {
+        "runs": { "$ref": "#/$defs/count" },
+        "faultyRuns": { "$ref": "#/$defs/count" },
+        "correctedRuns": { "$ref": "#/$defs/count" },
+        "seedsPerFaultyRun": { "$ref": "#/$defs/mean" },
+        "meanDetectedSeeds": { "$ref": "#/$defs/mean" },
+        "meanRecall": { "$ref": "#/$defs/rate" },
+        "meanCriticalRecall": { "$ref": "#/$defs/rate" },
+        "perSurfaceRecall": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["seeded", "detected", "recall"],
+            "properties": {
+              "seeded": { "$ref": "#/$defs/count" },
+              "detected": { "$ref": "#/$defs/count" },
+              "recall": { "$ref": "#/$defs/rate" }
+            }
+          }
+        },
+        "reported": { "$ref": "#/$defs/count" },
+        "real": { "$ref": "#/$defs/count" },
+        "pooledPrecision": { "$ref": "#/$defs/rate" },
+        "falsePositivesOnCorrected": { "$ref": "#/$defs/count" },
+        "meanRealUnseeded": { "$ref": "#/$defs/mean" },
+        "suspectedSeedHits": { "$ref": "#/$defs/count" },
+        "independentReproduction": { "$ref": "#/$defs/rate" },
+        "regression": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["faultyRuns", "replayedRuns", "detectedSeeds", "withWiredRegression", "failToPass", "specific", "flaky", "failToPassRate", "specificRate", "flakyRate", "falseAlarms", "baselineGreenOnFixRate"],
+          "properties": {
+            "faultyRuns": { "$ref": "#/$defs/count" },
+            "replayedRuns": { "$ref": "#/$defs/count" },
+            "detectedSeeds": { "$ref": "#/$defs/count" },
+            "withWiredRegression": { "$ref": "#/$defs/count" },
+            "failToPass": { "$ref": "#/$defs/count" },
+            "specific": { "$ref": "#/$defs/count" },
+            "flaky": { "$ref": "#/$defs/count" },
+            "failToPassRate": { "$ref": "#/$defs/rate" },
+            "specificRate": { "$ref": "#/$defs/rate" },
+            "flakyRate": { "$ref": "#/$defs/rate" },
+            "falseAlarms": { "$ref": "#/$defs/count" },
+            "baselineGreenOnFixRate": { "$ref": "#/$defs/rate" }
+          }
+        },
+        "perLane": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reported", "real", "falsePositive", "duplicate", "seedsDetected", "turnLimit", "totalTokens", "precision"],
+            "properties": {
+              "reported": { "$ref": "#/$defs/count" },
+              "real": { "$ref": "#/$defs/count" },
+              "falsePositive": { "$ref": "#/$defs/count" },
+              "duplicate": { "$ref": "#/$defs/count" },
+              "seedsDetected": { "$ref": "#/$defs/count" },
+              "turnLimit": { "$ref": "#/$defs/measuredCount" },
+              "totalTokens": { "$ref": "#/$defs/mean" },
+              "precision": { "$ref": "#/$defs/rate" }
+            }
+          }
+        },
+        "deliveryDefects": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ledgerMissing", "ledgerInvalid", "unledgeredReports"],
+          "properties": {
+            "ledgerMissing": { "$ref": "#/$defs/count" },
+            "ledgerInvalid": { "$ref": "#/$defs/count" },
+            "unledgeredReports": { "$ref": "#/$defs/count" }
+          }
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tokens", "cost", "numTurns", "elapsedMs"],
+          "properties": {
+            "tokens": { "$ref": "#/$defs/usageMeasure" },
+            "cost": { "$ref": "#/$defs/usageMeasure" },
+            "numTurns": { "$ref": "#/$defs/usageMeasure" },
+            "elapsedMs": { "$ref": "#/$defs/usageMeasure" }
+          }
+        },
+        "timedOutRuns": { "$ref": "#/$defs/count" },
+        "overBudgetRuns": { "$ref": "#/$defs/count" },
+        "controllerTurnCapHits": { "$ref": "#/$defs/count" },
+        "invalidRuns": { "$ref": "#/$defs/count" },
+        "contaminatedRuns": { "$ref": "#/$defs/count" },
+        "judgeReliability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["randomSampled", "randomReviewed", "randomOverturned", "overturnRate", "maxOverturnRate"],
+          "properties": {
+            "randomSampled": { "$ref": "#/$defs/count" },
+            "randomReviewed": { "$ref": "#/$defs/count" },
+            "randomOverturned": { "$ref": "#/$defs/count" },
+            "overturnRate": { "$ref": "#/$defs/rate" },
+            "maxOverturnRate": { "const": 0.1 }
+          }
+        }
+      }
+    }
+  }
+}

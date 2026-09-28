@@ -36,10 +36,13 @@ pythonpath = ["src"]
 markers = [
   "api: API / contract lane (httpx + OpenAPI schema oracle)",
   "ui: UI lane (pytest-playwright, role/label locators)",
-  "perf: performance-budget lane — gated on PERF_BUDGET_MS (self-skips if unset)",
-  "security: access-control lane — gated on SECURITY_ENABLED=1 (self-skips if unset)",
-  "db: direct-DB integrity lane — gated on DB_URL, read-only (self-skips if unset)",
+  "perf: performance-budget lane — requires a stated PERF_BUDGET_MS (never self-skips)",
+  "security: access-control lane — requires SECURITY_ENABLED=1 (never self-skips)",
+  "db: direct-DB integrity lane — requires DB_URL, read-only (never self-skips)",
+  "resilience: resilience lane — injected faults with a verified restore (fault_injector)",
   "regression: bug-linked RED tests (red = evidence the suite catches the defect)",
+  "bug(id): canonical BUG-NNNN or origin alias provenance",
+  "repetition(n): declared repetition of an intermittent defect's reproduction (1..200, absent means 1)",
   "quarantine: temporarily excluded test with a valid solution/quarantine.tsv entry",
   "contract_smoke: target-independent clean-room scaffold contract",
 ]
@@ -58,7 +61,7 @@ addopts = """
   --junitxml=reports/junit.xml
 """
 
-# Treat unexpected warnings as visible (not errors — gated lanes emit skips, not warnings).
+# Treat unexpected warnings as visible (not errors — a missing prerequisite raises, never warns).
 filterwarnings = [
   "default",
 ]

@@ -1,0 +1,2 @@
+contract.template	contract-smoke	false	false	-	-	-	tests/contract/template.spec.ts:4
+perf.budget-regression	perf	true	false	BUG-0001	-	-	tests/perf/budget.spec.ts:4

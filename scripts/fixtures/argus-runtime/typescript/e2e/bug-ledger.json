@@ -1,0 +1,44 @@
+{
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
+  "engagementId": "typescript-runner-e2e",
+  "bugs": [
+    {
+      "id": "BUG-0001",
+      "origin": ["ATA-001"],
+      "title": "Widget read answers 500 instead of the specified widget",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-001",
+      "status": "confirmed",
+      "wired": true,
+      "testId": "REG-0001",
+      "evidenceIds": ["EVD-0901"],
+      "verification": {
+        "build": "faulty-target-buggy",
+        "disputedOracle": false,
+        "oracle": {
+          "kind": "requirement",
+          "sourceRef": "Synthetic widget API: a read returns the specified widget",
+          "evidenceId": "EVD-0901",
+          "applicability": "Local synthetic faulty target",
+          "exceptions": []
+        },
+        "reproduction": {
+          "initialState": "Faulty target started in buggy mode",
+          "steps": ["Read the specified widget."],
+          "attempts": 2,
+          "occurrences": 2,
+          "evidenceIds": ["EVD-0901"]
+        },
+        "independent": {
+          "status": "not-required",
+          "executor": null,
+          "evidenceIds": [],
+          "reason": "Deterministic synthetic target; no independent executor was run."
+        }
+      }
+    }
+  ]
+}

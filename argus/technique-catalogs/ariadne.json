@@ -299,6 +299,103 @@
         "A stale cached aggregate disagreeing with the live value is a defect, not a rendering delay, unless the documentation defines a staleness window"
       ],
       "routes": ["journey", "ui", "api"]
+    },
+    {
+      "id": "ARI-T17",
+      "title": "A notifying state event notifies each recipient exactly once",
+      "scope": ["side-effect-channel", "notification-channel", "state-transition"],
+      "techniques": ["state-transition", "decision-table"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "List every state event the documentation says must notify, by email, in-app message, push, SMS or outbound webhook, with its documented recipients, the events that must stay silent, and the channel on which Kalchas's recon says the notification is observable",
+        "Record every recipient's notification count on that channel, drive the notifying event once through the legitimate path, and record the counts again",
+        "Reach the same event through every path that produces it, then drive the repeating and reversing transitions and a rejected attempt that must not notify",
+        "Count delivered notifications per recipient per event and read the entity and state each one names, rather than trusting the response of the triggering call"
+      ],
+      "oracles": [
+        "Every notifying event delivers exactly one notification per documented recipient: zero is a missed notification and two is a duplicate, and each is a defect whatever the status code was",
+        "A rejected, repeated or reversed transition the documentation does not name as notifying delivers nothing, and no notification reaches an actor outside the documented recipients",
+        "The notification names the entity and the state the event produced, never a stale value or another entity's value",
+        "A channel that exists but cannot be observed from any reachable surface is a gap naming the channel, never executed on the strength of a success response"
+      ],
+      "routes": ["journey", "api"]
+    },
+    {
+      "id": "ARI-T18",
+      "title": "Every recorded action writes its audit record with the real actor",
+      "scope": ["side-effect-channel", "audit-trail", "data-integrity"],
+      "techniques": ["decision-table", "state-transition"],
+      "appliesWhen": "documented-control",
+      "construct": [
+        "List every mutating and decision action that the documentation, a stated compliance requirement or the product's own audit, history or activity surface says is recorded, and the fields each record must carry: actor, action, target, time, before and after values, reason",
+        "Read the entity before the action, drive the action once as a known actor, and read the entity again, so the expected record is derived from observed state rather than from the record itself",
+        "Include a rejected attempt, an action on an entity another actor owns, and an action performed on another principal's behalf wherever the product supports delegation or impersonation",
+        "Read the record through every surface that exposes it, as each role the documentation lets read it, and offer every edit or delete path any role is shown"
+      ],
+      "oracles": [
+        "Each recorded action writes exactly one audit record naming the real actor, the target and before and after values that match the state read around the action",
+        "A delegated or impersonated action records both the acting and the represented principal where the documentation requires it, and a rejected attempt is recorded or omitted as documented but never recorded as a success",
+        "A missing, duplicated, misattributed or afterwards editable audit record is a defect; an audit read or tamper path open to the wrong role also routes to Perseus via Odysseus"
+      ],
+      "routes": ["journey", "api", "data"]
+    },
+    {
+      "id": "ARI-T19",
+      "title": "Exports and reports contain exactly the rows the current state permits",
+      "scope": ["side-effect-channel", "export-generation", "data-exposure", "data-integrity"],
+      "techniques": ["decision-table", "equivalence-partitioning"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "List every export, CSV or spreadsheet download, generated report and scheduled report, with the roles, filters and date ranges the documentation says bound its rows and columns",
+        "Compute the expected row set from the state you arranged before generating anything: entities in every lifecycle state, one just inside and one just outside each filter, and another role's or tenant's entity",
+        "Generate the export as each permitted role and compare it row by row with the computed set and with the list view for the same filter",
+        "Mutate, delete and terminate entities, generate the export again, and compare counts, totals and money columns at the smallest unit"
+      ],
+      "oracles": [
+        "The export holds exactly the permitted rows: a missing row is an incompleteness defect, and a deleted, terminal-excluded, stale or out-of-scope row is a leak, whatever the list view shows",
+        "Every exported value equals the current application value at the smallest unit; a stale snapshot is a defect unless the documentation declares its time and the file states it",
+        "Another principal's rows in your own export stay a journey finding with the per-object authorization root routed to Perseus, and formula or CSV injection through exported cells is the security half that routes to Perseus via Odysseus"
+      ],
+      "routes": ["journey", "api"]
+    },
+    {
+      "id": "ARI-T20",
+      "title": "A queued or scheduled job produces its documented effect",
+      "scope": ["side-effect-channel", "scheduled-job", "background-job", "state-transition"],
+      "techniques": ["state-transition", "use-case"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "List every effect the documentation assigns to a queued, deferred or scheduled job, such as a reminder, expiry, auto-close, recurring charge, digest, generated report or cleanup, with its trigger, its documented schedule or latency, and the observable edge where the effect lands",
+        "Arrange one entity that qualifies for the job and one control entity that does not, then trigger the job through a legitimate path: the user action that enqueues it, the documented schedule, or a run-now control the product exposes to an authorised role",
+        "Poll the observable edge with bounded waits across the documented window rather than one fixed sleep, and record when the effect lands",
+        "Trigger the job a second time, and let a second scheduled window pass where the product allows it, so a double run or an effect on the control entity becomes visible"
+      ],
+      "oracles": [
+        "The documented effect lands on every qualifying entity within the documented window and on no control entity",
+        "The job runs exactly once per trigger: a skipped run, a second run or an effect that never lands is a defect",
+        "Where the documentation gives no window, the elapsed time is evidence and a missing effect after a bounded wait is filed as suspected with the confirmer named",
+        "Changing the clock, editing the database or altering scheduler configuration is never an arrangement; a job that cannot be triggered or awaited legitimately is a gap naming the job"
+      ],
+      "routes": ["journey", "api", "data"]
+    },
+    {
+      "id": "ARI-T21",
+      "title": "A failed job is visible and never silently dropped",
+      "scope": ["side-effect-channel", "background-job", "scheduled-job", "state-transition"],
+      "techniques": ["state-transition", "decision-table"],
+      "appliesWhen": "surface-present",
+      "construct": [
+        "For every job listed under ARI-T20, find a legitimate input that makes it fail: its target entity is deleted, cancelled or moved to a terminal state before it runs, a referenced record or recipient becomes invalid, or a documented limit is exceeded",
+        "Arrange that input, trigger the job, and read the entity status, any job or task status surface, the user-facing message, the operator view and the audit record wherever each exists",
+        "Where the documentation declares retries, count the attempts and read the final state after the last one",
+        "Leave failures that need injected faults, killed workers or broker outages to Tyche, and message-protocol poison handling to Proteus, and route any you observe via Odysseus"
+      ],
+      "oracles": [
+        "A failed job leaves a visible failed state, error, retry marker or alert on a surface the documentation names; a failure visible nowhere is a silently dropped job and a defect",
+        "A failed job applies no partial effect, or flags the partial effect as recoverable the way the documentation says, and never shows the entity as completed",
+        "Documented retries stop at their bound, and a job the documentation says is retried is never abandoned after its first failure"
+      ],
+      "routes": ["journey", "api", "data"]
     }
   ]
 }

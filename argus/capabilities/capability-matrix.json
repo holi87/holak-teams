@@ -63,6 +63,9 @@
   "techniqueCatalogs": {
     "atalanta": {
       "catalogId": "argus/technique-catalog/atalanta@1",
+      "catalogType": "hunter",
+      "idPrefix": "ATA",
+      "entryCount": 22,
       "sha256": "605ccbde04dd96b38d96d61641498a6b480711f752eb41e14ce2252f31fe6f37",
       "delivery": "lazy",
       "requiredAsset": "technique-catalogs-bundle",
@@ -71,7 +74,32 @@
     },
     "ariadne": {
       "catalogId": "argus/technique-catalog/ariadne@1",
-      "sha256": "625b77d94624f04636401603bc6b89a7679894e1649a695c106715d2c6ed0f21",
+      "catalogType": "hunter",
+      "idPrefix": "ARI",
+      "entryCount": 21,
+      "sha256": "76756807d2b6c9e8af8911823b4f9dfc289508ec936c6fa747adfe27ca928650",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    },
+    "antigone": {
+      "catalogId": "argus/technique-catalog/antigone@1",
+      "catalogType": "hunter",
+      "idPrefix": "ANG",
+      "entryCount": 23,
+      "sha256": "7444ebe61ef432015f28690d14243fef87f916e4ee6d4b53e780aad90073bd82",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    },
+    "charon": {
+      "catalogId": "argus/technique-catalog/charon@1",
+      "catalogType": "hunter",
+      "idPrefix": "CHA",
+      "entryCount": 12,
+      "sha256": "72789c6d8347148ae7b4394a2397ce53a4af0934fc09fc9e6b1275fa180acd89",
       "delivery": "lazy",
       "requiredAsset": "technique-catalogs-bundle",
       "selectionInput": "argus/surface-inventory@1",
@@ -79,7 +107,21 @@
     },
     "proteus": {
       "catalogId": "argus/technique-catalog/proteus@1",
+      "catalogType": "hunter",
+      "idPrefix": "PRO",
+      "entryCount": 15,
       "sha256": "f81ec23ffad2d618e49663a615bd6a72720190e648ed2e833eb4415d4f8d1184",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    },
+    "lynceus": {
+      "catalogId": "argus/technique-catalog/lynceus@1",
+      "catalogType": "hunter",
+      "idPrefix": "LYN",
+      "entryCount": 10,
+      "sha256": "4dd2d412b873e7a126269169756310c6eccd9bafab9915c07ed68cf082629f82",
       "delivery": "lazy",
       "requiredAsset": "technique-catalogs-bundle",
       "selectionInput": "argus/surface-inventory@1",
@@ -87,7 +129,30 @@
     },
     "metis": {
       "catalogId": "argus/technique-catalog/metis@1",
+      "catalogType": "strategy",
       "sha256": "7b52916db7332ca20ef1578971a11ef2bb00b7551385981e0d3108c1b70e9001",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    },
+    "perseus": {
+      "catalogId": "argus/technique-catalog/perseus@1",
+      "catalogType": "hunter",
+      "idPrefix": "PER",
+      "entryCount": 23,
+      "sha256": "69bbf81caaa4e052ad83eed1e7dba645abe54ab73c6c1cfec71808d0e58eb032",
+      "delivery": "lazy",
+      "requiredAsset": "technique-catalogs-bundle",
+      "selectionInput": "argus/surface-inventory@1",
+      "fallback": "full-catalog"
+    },
+    "orion": {
+      "catalogId": "argus/technique-catalog/orion@1",
+      "catalogType": "hunter",
+      "idPrefix": "ORI",
+      "entryCount": 13,
+      "sha256": "ed3ec5e334b1a411840a98b87a148d5ae28060adf34436a9439417a261b4b4c9",
       "delivery": "lazy",
       "requiredAsset": "technique-catalogs-bundle",
       "selectionInput": "argus/surface-inventory@1",
@@ -120,6 +185,7 @@
     "artifactPaths": [
       "ai_agents_internal/authorization.json",
       "ai_agents_internal/authorization-audit.jsonl",
+      "ai_agents_internal/browser-runtime.json",
       "ai_agents_internal/engagement.json",
       "ai_agents_internal/engagement-state.json",
       "ai_agents_internal/immutability-audit.jsonl",
@@ -135,7 +201,7 @@
     "browser-runtime": {
       "kind": "browser",
       "missingDisposition": "deferred",
-      "fallback": "Atlas must provision the packaged isolated driver and a Playwright browser, then rerun preflight before any browser lane is dispatched."
+      "fallback": "Provision Playwright and Chromium on the host before launch (argus-launch --provision-browser); preflight functionally probes the runtime inside the sandbox. Never use the shared MCP browser for authenticated or multi-step flows."
     },
     "context7": {
       "kind": "mcp",
@@ -232,7 +298,9 @@
         "qa-core",
         "qa-browser"
       ],
-      "techniqueCatalogs": [],
+      "techniqueCatalogs": [
+        "antigone"
+      ],
       "requiredTools": [
         "Read",
         "Grep",
@@ -311,7 +379,9 @@
         "Glob",
         "Bash"
       ],
-      "artifactPaths": []
+      "artifactPaths": [
+        "solution/automation-review.json"
+      ]
     },
     {
       "slug": "asklepios",
@@ -343,7 +413,8 @@
         "context7"
       ],
       "artifactPaths": [
-        "solution/TEST-HEALTH.md"
+        "solution/TEST-HEALTH.md",
+        "solution/quarantine.tsv"
       ]
     },
     {
@@ -408,7 +479,11 @@
       "artifactPaths": [
         "run-tests.sh",
         "solution/ARCHITECTURE.md",
-        "solution/automation-status.json"
+        "solution/automation-status.json",
+        "solution/test-lanes.tsv",
+        "solution/environment.tsv",
+        "solution/quarantine.tsv",
+        "solution/counterfactual/"
       ]
     },
     {
@@ -424,7 +499,9 @@
       "doctrineProfiles": [
         "qa-core"
       ],
-      "techniqueCatalogs": [],
+      "techniqueCatalogs": [
+        "charon"
+      ],
       "requiredTools": [
         "Read",
         "Grep",
@@ -548,6 +625,7 @@
       ],
       "artifactPaths": [
         "ai_agents_internal/recon/",
+        "solution/discovery/capability-evidence.json",
         "solution/discovery/contract-drift.json",
         "solution/surface-inventory.json"
       ]
@@ -600,7 +678,9 @@
         "qa-core",
         "qa-browser"
       ],
-      "techniqueCatalogs": [],
+      "techniqueCatalogs": [
+        "lynceus"
+      ],
       "requiredTools": [
         "Read",
         "Grep",
@@ -656,7 +736,9 @@
       "lane": "triage",
       "modes": [
         "A",
-        "B"
+        "B",
+        "C",
+        "D"
       ],
       "toolProfiles": [],
       "doctrineProfiles": [
@@ -803,7 +885,9 @@
         "qa-core",
         "qa-browser"
       ],
-      "techniqueCatalogs": [],
+      "techniqueCatalogs": [
+        "orion"
+      ],
       "requiredTools": [
         "Read",
         "Grep",
@@ -870,7 +954,9 @@
         "qa-core",
         "qa-browser"
       ],
-      "techniqueCatalogs": [],
+      "techniqueCatalogs": [
+        "perseus"
+      ],
       "requiredTools": [
         "Read",
         "Grep",

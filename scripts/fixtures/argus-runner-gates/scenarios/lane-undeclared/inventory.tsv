@@ -1,0 +1,6 @@
+api.health	api	false	false	-	-	-	tests/api/health.spec.ts:3
+ui.login	ui	false	false	-	-	-	tests/ui/login.spec.ts:5
+api.widget-regression	api	true	false	BUG-0001	-	-	tests/api/widget.spec.ts:8
+misc.orphan	-	false	false	-	-	-	tests/misc/orphan.spec.ts:2
+misc.shared	ambiguous	false	false	-	-	-	tests/misc/shared.spec.ts:2
+mobile.swipe	mobile	false	false	-	-	-	tests/mobile/swipe.spec.ts:2

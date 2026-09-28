@@ -1,0 +1,10 @@
+{
+  "$schema": "argus/evidence-reference@3", "schemaVersion": 3, "engagementId": "coverage-fixture",
+  "references": [
+    {"id":"EVD-0001","kind":"text","mediaType":"text/plain","source":"reports/evidence/discovery-crawl.txt","collectedBy":"kalchas","capturedAt":"2026-07-10T09:00:00.000Z","redaction":"synthetic","sha256":"78bde79599840736a039a347896c15c7d05c8873acdf1a63b8a3760361417a9f","relatedBugIds":[],"relatedSurfaceIds":["SRF-API-ORDERS-POST","SRF-DATA-AUDIT","SRF-EVENT-ORDER-CREATED","SRF-UI-CHECKOUT"]},
+    {"id":"EVD-0101","kind":"dom-snapshot","mediaType":"text/html","source":"reports/evidence/ui-checkout.dom.html","collectedBy":"orion","capturedAt":"2026-07-10T09:30:00.000Z","redaction":"synthetic","sha256":"cf6f0dc00ec44d94475e79c906963bad60ed9c4b5da8104a994dff4d77571527","relatedBugIds":["BUG-0002"],"relatedSurfaceIds":["SRF-UI-CHECKOUT"]},
+    {"id":"EVD-0102","kind":"http","mediaType":"text/plain","source":"reports/evidence/api-orders-post.http.txt","collectedBy":"atalanta","capturedAt":"2026-07-10T09:40:00.000Z","redaction":"synthetic","sha256":"6b926aa7961aa93bb631f3e5e252c7c1927453789e0f0b9fb2731108ab37d1d5","relatedBugIds":["BUG-0001"],"relatedSurfaceIds":["SRF-API-ORDERS-POST"]},
+    {"id":"EVD-0103","kind":"log","mediaType":"text/plain","source":"reports/evidence/control-wrong-total.log","collectedBy":"atalanta","capturedAt":"2026-07-10T09:45:00.000Z","redaction":"synthetic","sha256":"aa2e88e2455d68b7f56fb72adededadb0ff53a1f8899b1d00a4a339721dfe3a7","relatedBugIds":[],"relatedSurfaceIds":[]},
+    {"id":"EVD-0104","kind":"runner-result","mediaType":"application/json","source":"reports/evidence/runner-full-suite.json","collectedBy":"atlas","capturedAt":"2026-07-10T10:05:30.000Z","redaction":"synthetic","sha256":"cffbaf2cebcea8ce36befb707542299c47da872af9ea014d9d5ba5573b6b2320","relatedBugIds":["BUG-0004"],"relatedSurfaceIds":["SRF-API-ORDERS-POST"]}
+  ]
+}

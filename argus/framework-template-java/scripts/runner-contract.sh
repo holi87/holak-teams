@@ -2,7 +2,7 @@
 # Portable Argus runner-mode contract evaluator shared by every runtime template.
 set -euo pipefail
 
-mode="" events="" output="" runner_exit="0" quarantine="" expected_bugs=""
+mode="" events="" output="" runner_exit="0" quarantine="" expected_bugs="" contract_smoke=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --mode) mode="${2:-}"; shift 2 ;;
@@ -11,6 +11,7 @@ while [ "$#" -gt 0 ]; do
     --runner-exit) runner_exit="${2:-}"; shift 2 ;;
     --quarantine) quarantine="${2:-}"; shift 2 ;;
     --expected-bugs) expected_bugs="${2:-}"; shift 2 ;;
+    --contract-smoke) contract_smoke=1; shift ;;
     *) printf 'runner-contract: unknown option %s\n' "$1" >&2; exit 14 ;;
   esac
 done
@@ -30,7 +31,7 @@ temporary=""
 empty_selection=0
 if [ ! -s "$events" ]; then
   if [ "$runner_exit" -ne 0 ]; then
-    temporary="$(mktemp)"
+    temporary="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
     events="$temporary"
     printf 'runner\tinfrastructure\tfail\tfalse\tn/a\t-\tunclassified-runner-failure\n' >"$events"
   elif [ "$mode" = candidate-regression ]; then
@@ -45,7 +46,7 @@ fi
 product=0 automation=0 infrastructure=0 skip=0 policy=0 expected_red=0
 product_violation=0 automation_violation=0 infrastructure_violation=0 skip_violation=0 policy_violation=0
 event_count=0 missing_expected=0
-seen_bugs="$(mktemp)"
+seen_bugs="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
 trap 'rm -f "$seen_bugs"' EXIT
 
 if [ "$contract_error" -eq 0 ]; then
@@ -101,10 +102,11 @@ if [ "$event_count" -eq 0 ] && [ "$empty_selection" -eq 0 ]; then contract_error
 if [ "$empty_selection" -ne 0 ]; then skip_violation=1; fi
 
 # A selector that quietly drops half the regression suite used to look identical to a suite
-# that ran it. When the caller names the confirmed defects, every one of them must appear as
-# an event: absence is a gate failure, not a smaller run.
-if [ -n "$expected_bugs" ] && [ "$mode" != baseline ]; then
-  if [ ! -f "$expected_bugs" ]; then
+# that ran it. Outside baseline the caller must name the confirmed defects, so omitting the
+# list is a contract error rather than a way around the check, and every listed defect must
+# appear as an event: absence is a gate failure, not a smaller run.
+if [ "$mode" != baseline ]; then
+  if [ -z "$expected_bugs" ] || [ ! -f "$expected_bugs" ]; then
     contract_error=1
   else
     while IFS= read -r wanted; do
@@ -137,9 +139,10 @@ tmp_output="${output}.$$.$RANDOM.tmp"
   printf '  "mode": "%s",\n  "status": "%s",\n  "exitCode": %s,\n' "$mode" "$([ "$exit_code" -eq 0 ] && printf pass || printf fail)" "$exit_code"
   # Provenance so a reader holding only this file can tell what it is evidence of. Without
   # it, a defect-evidence result overwriting a delivery gate result is indistinguishable
-  # from the delivery gate passing.
+  # from the delivery gate passing. A contract smoke proves the scaffold, never the target,
+  # so it is not a delivery gate even in full-suite mode.
   printf '  "generatedAt": "%s",\n  "deliveryGate": %s,\n  "missingExpectedBugs": %s,\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$([ "$mode" = full-suite ] && printf true || printf false)" "$missing_expected"
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$([ "$mode" = full-suite ] && [ "$contract_smoke" -eq 0 ] && printf true || printf false)" "$missing_expected"
   printf '  "categories": {"product": %s, "automation": %s, "infrastructure": %s, "skip": %s, "policy": %s},\n' "$product" "$automation" "$infrastructure" "$skip" "$policy"
   printf '  "events": ['
   comma=""

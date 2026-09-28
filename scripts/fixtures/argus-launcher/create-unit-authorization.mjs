@@ -16,7 +16,7 @@ import {
 const [
   targetKind, target, workspace, artifactRoot, mode, engagementId, launcher, launcherPidRaw,
   claudeExecutable, runtimeKeyId, trustStore, privateKeyPath, authorizationPath, receiptPath, capabilitySha256,
-  sandboxProbePath,
+  sandboxProbePath, operatorKeyId,
 ] = process.argv.slice(2);
 if (!sandboxProbePath) throw new Error('unit authorization fixture arguments are incomplete');
 
@@ -40,7 +40,7 @@ const authorization = {
   runtime: 'claude',
   model: 'opus',
   effort: 'max',
-  maxTurns: 96,
+  maxTurns: 400,
   mode,
   targetKind,
   target,
@@ -51,13 +51,15 @@ const authorization = {
   claudeExecutable,
   claudeExecutableSha256: sha256File(claudeExecutable),
   claudeVersion: execFileSync(claudeExecutable, ['--version'], { encoding: 'utf8' }).trim(),
-  sandboxPolicy: 'os-native-target-readonly@2',
+  sandboxPolicy: 'os-native-target-readonly@3',
   sandboxProbePath,
   sandboxProbeDevice: sandboxProbe.dev,
   sandboxProbeInode: sandboxProbe.ino,
   sandboxProbeUid: sandboxProbe.uid,
   sandboxProbeMode: sandboxProbe.mode & 0o777,
   environmentPolicy: 'argus-launch-allowlist@1',
+  // Optional 17th argument: the signed operator-approval anchor argus-launch always sets.
+  ...(operatorKeyId ? { operatorKeyId } : {}),
   issuedBy: record.subjectId,
   issuedAt: issuedAt.toISOString(),
   expiresAt: new Date(issuedAt.getTime() + 300_000).toISOString(),
@@ -97,7 +99,7 @@ const receipt = {
   runtime: 'claude',
   model: 'opus',
   effort: 'max',
-  maxTurns: 96,
+  maxTurns: 400,
   launcherExecutable: launcher,
   launcherSha256: authorization.launcherSha256,
   claudeExecutable,

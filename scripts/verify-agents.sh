@@ -245,6 +245,12 @@ else
   fail "[argus] (j2) accessibility and managed browser-session policy"
 fi
 
+if "$ROOT/scripts/smoke-argus-browser-runtime.sh"; then
+  pass "[argus] (j3) host-only browser provisioning, engagement guard denial, and digest-verified managed driver runtime"
+else
+  fail "[argus] (j3) host browser provisioning and managed driver runtime"
+fi
+
 if "$ROOT/scripts/smoke-argus-schemas.sh"; then
   pass "[argus] (k) canonical schemas, fixtures, fragment compatibility, and source-versioned summary"
 else
@@ -257,10 +263,34 @@ else
   fail "[argus] (l) runner outcome contract"
 fi
 
+if "$ROOT/scripts/smoke-argus-runner-gates.sh"; then
+  pass "[argus] (l1) runner library, lane plan, environment baseline, inventory quarantine, and engagement opt-in gates"
+else
+  fail "[argus] (l1) portable runner-library gates"
+fi
+
 if "$ROOT/scripts/smoke-argus-templates.sh"; then
   pass "[argus] (l2) capability detection, explicit selection, path adapters, shared semantics, and clean-room templates"
 else
   fail "[argus] (l2) capability-based template contract"
+fi
+
+if "$ROOT/scripts/smoke-argus-runtime-typescript.sh"; then
+  pass "[argus] (l3) TypeScript runtime adapter: collection inventory, ledger join, SD-5 classification, and SD-6 pass mapping"
+else
+  fail "[argus] (l3) TypeScript runtime adapter"
+fi
+
+if "$ROOT/scripts/smoke-argus-runtime-java.sh"; then
+  pass "[argus] (l4) Java runtime adapter: JUnit outcome listener, Launcher-discovery inventory, and ledger join"
+else
+  fail "[argus] (l4) Java runtime adapter"
+fi
+
+if "$ROOT/scripts/smoke-argus-runtime-python.sh"; then
+  pass "[argus] (l5) Python runtime adapter: collect-only inventory, ledger join, classified outcome events, and xdist parity"
+else
+  fail "[argus] (l5) Python runtime adapter contract"
 fi
 
 if "$ROOT/scripts/smoke-argus-coverage.sh"; then
@@ -282,9 +312,21 @@ else
 fi
 
 if "$ROOT/scripts/smoke-argus-model-policy.sh" && node "$ROOT/scripts/benchmark-argus-model-policy.mjs" --check; then
-  pass "[argus] (p) 12/15 model tiers, effort/turns, escalation/fallback, sanitized telemetry, and benchmark"
+  pass "[argus] (p) policy-derived model tiers, effort/turns, escalation/fallback, sanitized telemetry, and benchmark"
 else
   fail "[argus] (p) runtime model policy contract"
+fi
+
+if "$ROOT/scripts/smoke-argus-continuation.sh"; then
+  pass "[argus] (p2) automatic continuation: outcome-bound restarts, checkpoint resume, enforced backoff, and token rotation"
+else
+  fail "[argus] (p2) automatic frontier continuation contract"
+fi
+
+if "$ROOT/scripts/smoke-argus-controller-batch.sh"; then
+  pass "[argus] (p3) controller batch verbs: one-call initial routing and sealed per-wave allocation with no persisted token"
+else
+  fail "[argus] (p3) controller batch routing and allocation contract"
 fi
 
 if node "$ROOT/scripts/verify-agent-runtime-parity.mjs"; then

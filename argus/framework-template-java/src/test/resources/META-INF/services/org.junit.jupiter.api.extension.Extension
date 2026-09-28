@@ -1,0 +1,2 @@
+# Argus counterfactual evidence — inert unless ARGUS_EVIDENCE_PASS is cf-correct or cf-tamper-<k>.
+qa.support.argus.ArgusCounterfactualExtension

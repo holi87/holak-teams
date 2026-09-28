@@ -235,6 +235,9 @@ cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-t
   "$INSTALLED_PLUGIN/bin/argus-assets" coverage validate \
     --inventory "$ROOT/scripts/fixtures/argus-coverage/surface-inventory.json" \
     --observations "$ROOT/scripts/fixtures/argus-coverage/coverage-observations.json" \
+    --evidence "$ROOT/scripts/fixtures/argus-coverage/evidence-reference.json" \
+    --ledger "$ROOT/scripts/fixtures/argus-coverage/bug-ledger.json" \
+    --root "$ROOT/scripts/fixtures/argus-coverage" \
     >/dev/null
   test "$("$INSTALLED_PLUGIN/bin/argus-assets" raci route --surface api-rest --activity discover | jq -r .accountable)" = atalanta
   test "$("$INSTALLED_PLUGIN/bin/argus-assets" raci route --activity persist | jq -r .accountable)" = minos
@@ -263,11 +266,15 @@ cp "$ROOT/scripts/fixtures/argus-authorization/full.json" "$WORK_DIR/preflight-t
   if printf '%s\n' '{"tool_name":"Write","cwd":"'"$WORK_DIR"'/typescript","tool_input":{"file_path":"app/source.ts"}}' | node typescript/scripts/app-source-guard.mjs >/dev/null 2>&1; then
     fail "packaged app-source guard allowed an application-source write"
   fi
-  SMOKE=1 node typescript/scripts/bug-coverage.mjs >/dev/null 2>&1
-  cp "$ROOT/scripts/fixtures/argus-coverage/surface-inventory.json" typescript/solution/surface-inventory.json
-  cp "$ROOT/scripts/fixtures/argus-coverage/coverage-observations.json" typescript/solution/coverage-observations.json
+  for input in surface-inventory coverage-observations evidence-reference bug-ledger; do
+    cp "$ROOT/scripts/fixtures/argus-coverage/$input.json" "typescript/solution/$input.json"
+  done
+  mkdir -p typescript/reports/evidence
+  cp "$ROOT/scripts/fixtures/argus-coverage/reports/evidence/"* typescript/reports/evidence/
   ARGUS_ASSETS="$INSTALLED_PLUGIN/bin/argus-assets" node typescript/scripts/baseline-coverage.mjs >/dev/null
-  jq -e '."$schema" == "argus/coverage-result@1" and .defectOutcomes.scoreContribution == 0' typescript/solution/coverage-result.json >/dev/null
+  jq -e '."$schema" == "argus/coverage-result@2" and (.sourceSchemas | length) == 4 and .overall.automatedExecution == 0.5
+    and .criticalUnexecuted == ["SRF-EVENT-ORDER-CREATED"] and .defectOutcomes.headline == 2 and .defectOutcomes.scoreContribution == 0' \
+    typescript/solution/coverage-result.json >/dev/null
   bash -n typescript/run-tests.sh java/run-tests.sh python/run-tests.sh
   for template in typescript java python; do
     test -x "$template/scripts/runner-contract.sh" || fail "$template template omitted runner contract evaluator"

@@ -1,0 +1,22 @@
+{
+  "$schema": "argus/bug-ledger@2",
+  "schemaVersion": 2,
+  "engagementId": "fixture-1",
+  "bugs": [
+    {
+      "id": "BUG-0006",
+      "origin": [
+        "ATA-006"
+      ],
+      "title": "Coupon applies twice after a retried checkout",
+      "severity": "Major",
+      "priority": "P2",
+      "lane": "atalanta",
+      "oracleId": "ORC-API-004",
+      "status": "fixed",
+      "wired": false,
+      "testId": null,
+      "evidenceIds": []
+    }
+  ]
+}

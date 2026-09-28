@@ -17,14 +17,40 @@ if [ ! -x "$RUNTIME_ROOT/bin/argus-assets" ] && [ -x "$PLUGIN_ROOT/claude/bin/ar
   RUNTIME_ROOT="$PLUGIN_ROOT/claude"
 fi
 ASSETS="$RUNTIME_ROOT/bin/argus-assets"
+# Native controller turn cap. It must equal the Odysseus maxTurns in model-policy.json
+# (the controllerBudget agent), the maxTurns const in native-launch-authorization and
+# native-launch-receipt schemas, and the cap argus-assets signs into launch requests;
+# scripts/smoke-argus-launcher.sh fails on any drift between these sites.
+readonly CONTROLLER_MAX_TURNS=400
+# Headless permission posture. Claude runs with --permission-mode dontAsk and grants exactly
+# these tools without a prompt: the union of the tools the packaged agents declare, which
+# scripts/smoke-argus-launcher.sh recomputes from agents/*.md and fails on any drift. Every
+# other tool is denied. Permissions are never bypassed (no bypass mode, no skip flag): the
+# packaged PreToolUse write guard still denies each granted call it rejects, and the OS sandbox
+# confines every write to the artifact root. The signed launcherSha256 binds this posture.
+readonly CLAUDE_ALLOWED_TOOLS='Agent,Bash,Edit,Glob,Grep,Read,TaskCreate,TaskGet,TaskList,TaskUpdate,WebFetch,WebSearch,Write,mcp__plugin_context7_context7__query-docs,mcp__plugin_context7_context7__resolve-library-id,mcp__plugin_playwright_playwright__browser_navigate,mcp__plugin_playwright_playwright__browser_snapshot'
+# Host variables the sandboxed controller inherits, each only when set. Its fresh
+# CLAUDE_CONFIG_DIR holds no stored, keychain, or claude.ai subscription login, so Claude can
+# authenticate only through a credential variable here: ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN
+# (from `claude setup-token`), or ANTHROPIC_AUTH_TOKEN for an ANTHROPIC_BASE_URL gateway. No
+# credential file is ever copied into the artifact root, which every worker can read.
+readonly CHILD_PASSTHROUGH_ENVIRONMENT=(USER LOGNAME SHELL LANG LC_ALL LC_CTYPE TERM NO_COLOR FORCE_COLOR
+  ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL
+  HTTPS_PROXY HTTP_PROXY NO_PROXY SSL_CERT_FILE SSL_CERT_DIR)
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 2; }
 
 capability_file=''
 sandbox_probe_dir=''
+browser_probe_work=''
+usage_tmp=''
+login_probe_dir=''
 cleanup_launch_files() {
   if [ -n "$capability_file" ] && [ -e "$capability_file" ]; then rm -f "$capability_file"; fi
+  if [ -n "$login_probe_dir" ] && [ -d "$login_probe_dir" ]; then rm -rf "$login_probe_dir"; fi
   if [ -n "$sandbox_probe_dir" ] && [ -d "$sandbox_probe_dir" ]; then rmdir "$sandbox_probe_dir" 2>/dev/null || true; fi
+  if [ -n "$browser_probe_work" ] && [ -d "$browser_probe_work" ]; then rm -rf "$browser_probe_work"; fi
+  if [ -n "$usage_tmp" ] && [ -e "$usage_tmp" ]; then rm -f "$usage_tmp"; fi
 }
 trap cleanup_launch_files EXIT
 
@@ -40,19 +66,26 @@ require_host_commands() {
 usage() {
   cat <<'EOF'
 Usage:
-  argus-launch doctor
+  argus-launch doctor [--browser]
+  argus-launch probe-browser [--module <absolute-dir>]
   argus-launch claude --target <url-or-absolute-path> --artifact-root <absolute-path> \
     --mode <A|B|C|D> --engagement-id <id> --trust-store <absolute-path> \
-    --runtime-key-id <id> --request-output <absolute-path> \
+    --runtime-key-id <id> --operator-key-id <id> --request-output <absolute-path> \
     --launch-authorization <absolute-path> [--workspace <absolute-path>] \
-    [--wait-seconds <30..300>] [--dry-run]
+    [--wait-seconds <30..300>] [--feature <capability-id>]... [--provision-browser] \
+    [--authorization <absolute-path>] [--environment <local|test|staging|production>] \
+    [--template-selection <absolute-path>] [--usage-json <absolute-path>] [--dry-run]
   argus-launch claude --target <url-or-absolute-path> --artifact-root <absolute-path> \
-    --mode <A|B|C|D> --engagement-id <id> --unattested [--workspace <absolute-path>] [--dry-run]
+    --mode <A|B|C|D> --engagement-id <id> --unattested [--workspace <absolute-path>] \
+    [--feature <capability-id>]... [--provision-browser] \
+    [--authorization <absolute-path>] [--environment <local|test|staging|production>] \
+    [--template-selection <absolute-path>] [--usage-json <absolute-path>] [--dry-run]
 
 The launcher writes an unsigned, process-bound request to --request-output, then waits for
 the isolated runtime-attestation signer to create --launch-authorization. The signer must
 sign the exact canonical payload emitted by `argus-assets model payload --document REQUEST`.
 Neither a private key nor a signing service may be available to this process or its agents.
+The request also signs --operator-key-id, the store's operator-approval key; preflight pins both.
 
 --unattested is an explicit, opt-in alternative to the trust-store/launch-authorization
 handshake above, for operators who cannot provision or use Ed25519 signing keys (e.g. no
@@ -61,6 +94,93 @@ attestation; the OS-level sandbox (target/artifact-root immutability) still runs
 The resulting engagement is reported as UNATTESTED — a named residual risk with no
 cryptographic proof of sandbox/turn-cap/model-dispatch integrity — in every downstream
 report, never silently. Default behavior (no --unattested) is unchanged and stays fail-closed.
+Its child gets ARGUS_LAUNCH_ARTIFACT_ROOT in place of the receipt, so the write guard binds
+the engagement even from a workspace outside the artifact root (a path target by default).
+
+probe-browser needs no Claude CLI. It resolves a host Playwright package in preflight's host
+order (--module, else the newest runtimes --provision-browser installed under
+~/.cache/argus/browser-runtime, then `npm root -g`, then the Homebrew and system global
+node_modules), runs its headless Chromium shell inside the launch sandbox with the launch
+HOME/PATH/TMPDIR, and takes one screenshot. Exit 0 is PASS, 2 is FAIL, 3 is SKIP (no
+Playwright module). doctor --browser runs it after the sandbox probes: a SKIP only warns, a
+FAIL fails doctor.
+
+--provision-browser prepares the host before the sandbox starts, for attested and unattested
+launches alike: `argus-assets browser provision` reuses a host Playwright of the pinned
+release (the TypeScript template lockfile) that already launches headless Chromium, or
+installs that release into
+~/.cache/argus/browser-runtime/<x.y.z> (outside the artifact root, read-only to the sandbox)
+and Chromium into Playwright's host default cache. It is host preparation, not part of the
+signed launch request: preflight functionally re-probes the runtime inside the sandbox. A
+provisioning failure stops the launch; --dry-run only reports browserProvisioning=requested.
+
+--feature <capability-id> is repeatable and forwards operator-declared capability evidence
+(for example db-access, source-access, non-rest-surface, or multi-service, which the sandbox's
+cleared environment cannot reveal) to preflight as --feature. Each id must be a key of the
+packaged capabilities/capability-matrix.json whose kind is target; browser-runtime and the MCP
+capabilities are refused because preflight proves them with its own probes. Ids are
+deduplicated and sorted. Features only
+widen which lanes preflight marks available: every action remains governed by the
+authorization manifest. They are not part of the signed launch request: an attested launch
+carries them in the unsigned launch payload, an unattested launch in its prompt, and --dry-run
+reports features=<csv|none>.
+
+--authorization <absolute-path> supplies the operator's authorization manifest, for attested and
+unattested launches alike. It must be a physical regular file (no symbolic link) outside the
+target and artifact roots, satisfy the packaged authorization-manifest schema, carry this
+--engagement-id, and allow the read preflight evaluates against this --target. Before the
+sandbox starts, the launcher copies it to <artifact-root>/ai_agents_internal/authorization.json
+(mode 0600) and refuses when a different manifest is already there. --environment
+<local|test|staging|production> without --authorization installs the packaged default-deny
+manifest for that environment instead (local is the manifest environment development); with
+--authorization, the manifest's target.environment must equal it. Without either flag,
+preflight creates the default-deny manifest (environment unknown) as before. Neither flag is
+part of the signed launch request, and neither widens anything the authorization evaluator
+denies: every high-risk action still needs its explicit grant, and staging, production, and
+production-signal targets stay read-only without a production override. An attested launch
+records the choice as unsigned operatorAuthorization data in its launch payload, an unattested
+launch in its prompt, and --dry-run (which verifies but installs nothing) reports
+authorizationSource=<operator|environment|preflight> targetEnvironment=<environment|none>.
+
+--template-selection <absolute-path> supplies the operator's explicit framework choice: the
+output of `argus-assets template select` run on the host against the --target path or the
+artifact root. It must be a physical regular file (no symbolic link) outside the target and
+artifact roots, satisfy the packaged template-selection schema and contract, name the target
+or artifact root as its targetRoot, and still match that tree's detected capabilities. Before
+the sandbox starts, the launcher copies it to
+<artifact-root>/ai_agents_internal/template-selection.json (mode 0600), where no agent can
+write, and refuses when a different record is already there or the engagement has already
+started. That record alone grants the selected test root to every lane and the selected harness
+root to its manifest owners, each only when it passes the write policy. It is not part of the
+signed launch request; --dry-run verifies it and installs nothing.
+
+--usage-json <absolute-path> writes Claude's final JSON result (usage, total_cost_usd,
+num_turns, subtype such as error_max_turns) to a new file outside the artifact root; it
+changes no turn cap, model, effort, or signed binding. For attested and unattested launches
+alike, Claude runs with --output-format json and the unsandboxed launcher captures its stdout
+in a private temporary file beside the report, moves it into place once Claude exits
+(successfully or not), prints only the result text, and exits with Claude's status. The path
+is one-shot (it may not exist yet), its parent must be a physical directory owned by the
+current user and not group/world writable, and it must be physically disjoint from the
+artifact root and a path target and differ from --request-output and --launch-authorization.
+It is not part of the signed launch request; --dry-run validates it and reports
+usageReport=json.
+
+Sandbox policy os-native-target-readonly@3 adds to @2 only org.chromium-scoped mach names and
+the RootDomainUserClient IOKit user client; file writes stay confined to the artifact root.
+
+Claude runs headless with --permission-mode dontAsk and an explicit --allowedTools list: the
+tools the packaged agents declare, so the controller and its workers can write and run
+commands without a prompt, and every other tool is denied. Permissions are never bypassed: the
+packaged PreToolUse write guard still denies each granted call it rejects, and the sandbox
+confines every write to the artifact root.
+
+Claude authenticates only through the environment: its CLAUDE_CONFIG_DIR is a fresh directory
+inside the artifact root, which no keychain or claude.ai subscription login reaches. Export
+ANTHROPIC_API_KEY, or run `claude setup-token` and export CLAUDE_CODE_OAUTH_TOKEN (a gateway
+may use ANTHROPIC_AUTH_TOKEN with ANTHROPIC_BASE_URL); the launcher passes each through only
+when set and never copies a credential file. doctor and every launch, dry runs included, run
+`claude auth status` in that isolated shape first and stop when it reports no login.
 
 Codex execution remains unavailable until its CLI exposes a native hard turn cap.
 EOF
@@ -139,6 +259,138 @@ verify_artifact_tree() {
   [ -z "$alias" ] || fail "artifact root contains a hard-link alias: $alias"
 }
 
+# Prints why the default host trust store path holds operator key material, or nothing. It
+# applies argus-assets hostAttestationMaterial() semantics, which preflight enforces inside the
+# sandbox: the passwd home directory's ~/.config/argus/model-trust.json is checked with lstat,
+# so a dangling symbolic link counts as present and any probe error other than ENOENT (an
+# unreadable parent directory, for example) is never mistaken for absence. $HOME is checked too.
+default_trust_store_material() {
+  node -e '
+const { lstatSync } = require("node:fs");
+const { join } = require("node:path");
+const { userInfo } = require("node:os");
+const homes = [process.argv[1], userInfo().homedir].filter((home) => home.startsWith("/"));
+for (const home of new Set(homes)) {
+  const path = join(home, ".config", "argus", "model-trust.json");
+  try {
+    lstatSync(path);
+    process.stdout.write(`a host model trust store exists at ${path}`);
+    break;
+  } catch (error) {
+    if (error.code === "ENOENT") continue;
+    process.stdout.write(`the host model trust store path ${path} is not provably absent (${error.code ?? error.message})`);
+    break;
+  }
+}' "${HOME:-}"
+}
+
+# Adds one operator-declared preflight feature to the sorted, deduplicated JSON array in
+# launch_features_json. The id must be a target-kind key of the packaged capability matrix,
+# the same set preflight --feature accepts: browser and MCP capabilities are proven only by
+# preflight's own probes, so a declaration can never stand in for them. Features only widen
+# which lanes preflight marks available; the authorization manifest still governs every action.
+add_launch_feature() {
+  local feature="$1" matrix="$RUNTIME_ROOT/capabilities/capability-matrix.json" kind status=0
+  [[ "$feature" =~ ^[a-z][a-z0-9-]*$ ]] || fail "unknown capability feature: $feature"
+  [ -f "$matrix" ] || fail 'packaged capability matrix is unavailable'
+  kind="$(jq -er --arg feature "$feature" \
+    'if (.capabilities | type) == "object" and (.capabilities | has($feature)) then .capabilities[$feature].kind | tostring else false end' \
+    "$matrix" 2>/dev/null)" || status=$?
+  [ "$status" -ne 1 ] || fail "unknown capability feature: $feature"
+  [ "$status" -eq 0 ] || fail 'packaged capability matrix is unreadable'
+  [ "$kind" = target ] || \
+    fail "capability feature $feature is not operator-declarable: preflight proves $kind capabilities with its own probes; --feature takes only target capabilities"
+  launch_features_json="$(jq -cn --arg feature "$feature" --argjson features "$launch_features_json" '$features + [$feature] | unique')"
+}
+
+# Binds the operator's --authorization manifest, or the default-deny manifest for
+# --environment, to this engagement id and target through argus-assets. `verify` is read-only
+# and runs before the artifact root is created; `install` places the manifest at
+# ai_agents_internal/authorization.json just before the sandbox starts. Both record the bound
+# manifest environment and digest for the unsigned launch data.
+operator_authorization_step() {
+  local operation="$1" root="$2" report
+  local arguments=(authorization "$operation" --artifact-root "$root" --engagement-id "$engagement_id" --target "$target")
+  [ -z "$operator_authorization" ] || arguments+=(--manifest "$operator_authorization")
+  [ -z "$authorization_environment" ] || arguments+=(--environment "$authorization_environment")
+  [ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
+  report="$("$ASSETS" "${arguments[@]}")" || fail "operator authorization $operation was refused"
+  printf '%s\n' "$report" >&2
+  authorization_manifest_environment="$(printf '%s\n' "$report" | \
+    sed -n 's/^AUTHORIZATION  [a-z]* source=[a-z]* environment=\([a-z]*\) sha256=[0-9a-f]* manifest=.*$/\1/p')"
+  authorization_sha256="$(printf '%s\n' "$report" | \
+    sed -n 's/^AUTHORIZATION  [a-z]* source=[a-z]* environment=[a-z]* sha256=\([0-9a-f]\{64\}\) manifest=.*$/\1/p')"
+  [ -n "$authorization_manifest_environment" ] && [ -n "$authorization_sha256" ] || \
+    fail "argus-assets authorization $operation reported no manifest binding"
+}
+
+# Binds the operator's --template-selection record (their own host-side `template select`
+# output) to this target and artifact root through argus-assets. `verify` is read-only and runs
+# before the artifact root is created; `install` places the exact record at
+# ai_agents_internal/template-selection.json just before the sandbox starts, where no agent can
+# write it.
+template_selection_step() {
+  local operation="$1" root="$2"
+  [ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
+  "$ASSETS" template "$operation" --selection "$template_selection" --artifact-root "$root" --target "$target" >&2 || \
+    fail "operator template selection $operation was refused"
+}
+
+# Validates the one-shot --usage-json report path against an artifact root: the physical
+# candidate before the root exists, then the physical root. The unsandboxed launcher writes
+# the report from Claude's stdout, so it stays outside everything the sandboxed controller can
+# write, never replaces existing content, and never collides with an operator handshake file.
+validate_usage_report_path() {
+  local root="$1" parent
+  absolute_normalized "$usage_json" 'usage report'
+  [ ! -e "$usage_json" ] && [ ! -L "$usage_json" ] || fail 'usage report already exists; usage reports are one-shot'
+  parent="$(physical_directory "$(dirname "$usage_json")" 'usage report directory')"
+  [ "$parent" = "$(dirname "$usage_json")" ] || fail 'usage report directory must be physical'
+  secure_owned_directory "$parent" 'usage report directory'
+  assert_disjoint "$root" "$usage_json" 'artifact root and usage report'
+  if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$usage_json" 'target and usage report'; fi
+  if ! $unattested; then
+    [ "$usage_json" != "$request_output" ] && [ "$usage_json" != "$launch_authorization" ] || \
+      fail 'usage report must differ from the request and authorization paths'
+  fi
+}
+
+# Prints the result text of a Claude JSON result document (an object, or the last result
+# entry of an array), or warns when the report is not one. It never changes the launcher's
+# exit status, which stays Claude's own.
+print_usage_report_result() {
+  jq -r 'if type == "array" then map(select(type == "object" and .type == "result")) | last else . end
+    | if type == "object" then .result // empty else empty end' "$1" 2>/dev/null || \
+    printf 'WARN  usage report %s is not a Claude JSON result document\n' "$1" >&2
+}
+
+# Runs the prepared controller command inside the sandbox and returns its status. With
+# --usage-json, the unsandboxed launcher redirects Claude's stdout (its final JSON result) to a
+# private temporary file beside the report and moves it into place once Claude exits,
+# successfully or not. A report path that appeared meanwhile is never replaced.
+run_controller() {
+  local status=0 kept
+  if [ -z "$usage_json" ]; then
+    sandbox_exec "$artifact_root" "$workspace" env -i "${child_env[@]}" "${command[@]}" || status=$?
+    return "$status"
+  fi
+  usage_tmp="$(mktemp "$(dirname "$usage_json")/.argus-usage.XXXXXX")" || fail 'cannot create the usage report temporary file'
+  chmod 600 "$usage_tmp" || fail 'cannot restrict the usage report temporary file'
+  sandbox_exec "$artifact_root" "$workspace" env -i "${child_env[@]}" "${command[@]}" >"$usage_tmp" || status=$?
+  kept="$usage_tmp"
+  if [ -e "$usage_json" ] || [ -L "$usage_json" ]; then
+    usage_tmp=''
+    fail "usage report $usage_json appeared during the launch; Claude exited with status $status and its result stays in $kept"
+  fi
+  if ! mv "$kept" "$usage_json"; then
+    usage_tmp=''
+    fail "cannot move the usage report into place; Claude exited with status $status and its result stays in $kept"
+  fi
+  usage_tmp=''
+  print_usage_report_result "$usage_json"
+  return "$status"
+}
+
 claude_supports_native_turn_cap() {
   local executable="$1" identity version major minor
   identity="$($executable --version 2>/dev/null || true)"
@@ -174,6 +426,12 @@ sandbox_exec() {
       local profile escaped_artifact
       profile="$(mktemp "$artifact_root/ai_agents_internal/tmp/argus-sandbox.XXXXXX")"
       escaped_artifact="$(escape_sandbox_value "$artifact_root")"
+      # os-native-target-readonly@3 = @2 plus the minimum headless Chromium needs, found by
+      # probe-browser under sandbox denial reporting: one IOKit user-client class (the
+      # RootDomainUserClient power-management client; without it Chromium dies with
+      # SEGV_ACCERR) and the org.chromium mach namespace for its MachPortRendezvousServer.
+      # The GPU-process IOSurfaceRootUserClient and AGXDeviceUserClient denials are non-fatal
+      # (software compositing) and stay denied. File writes remain confined to the artifact root.
       printf '%s\n' \
         '(version 1)' \
         '(deny default)' \
@@ -185,13 +443,17 @@ sandbox_exec() {
         '(allow network*)' \
         '(allow sysctl-read)' \
         '(allow file-read*)' \
-        "(allow file-write* (subpath \"$escaped_artifact\"))" >"$profile"
+        "(allow file-write* (subpath \"$escaped_artifact\"))" \
+        '(allow iokit-open (iokit-user-client-class "RootDomainUserClient"))' \
+        '(allow mach-register (global-name-regex #"^org\.chromium\."))' \
+        '(allow mach-lookup (global-name-regex #"^org\.chromium\."))' >"$profile"
       (cd "$workspace" && sandbox-exec -f "$profile" "$@")
       local result=$?
       rm -f "$profile"
       return "$result"
       ;;
     Linux)
+      # Headless Chromium under this bwrap policy is unverified; probe-browser reports it.
       command -v bwrap >/dev/null 2>&1 || fail 'bubblewrap is unavailable'
       bwrap --die-with-parent --new-session --unshare-all --share-net \
         --ro-bind / / --bind "$artifact_root" "$artifact_root" --dev /dev --proc /proc \
@@ -269,8 +531,199 @@ sandbox_probe() {
   rm -rf "$work"
 }
 
+# Stops a process, then its descendants depth-first, then kills them all. The stop freezes the
+# tree so nothing forks away between listing and killing (Chromium runs in its own session).
+kill_process_tree() {
+  local parent="$1" child
+  kill -STOP "$parent" 2>/dev/null || true
+  for child in $(ps -A -o pid= -o ppid= 2>/dev/null | awk -v parent="$parent" '$2 == parent { print $1 }'); do
+    kill_process_tree "$child"
+  done
+  kill -KILL "$parent" 2>/dev/null || true
+}
+
+# Runs "$@" in the background and kills its whole process tree after $1 seconds, because
+# coreutils timeout may be absent. Returns the command status, or 124 at the deadline.
+run_with_deadline() {
+  local deadline=$((SECONDS + $1)) pid status=0
+  shift
+  "$@" </dev/null &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      kill_process_tree "$pid"
+      wait "$pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 0.2
+  done
+  wait "$pid" || status=$?
+  return "$status"
+}
+
+# Refuses unless Claude reports a login in the controller's own environment shape: env -i with
+# the pass-through allowlist and a fresh private CLAUDE_CONFIG_DIR. An operator's keychain or
+# claude.ai subscription login lives in their own config and never reaches the launch, which
+# would otherwise stop at once with "Not logged in". `claude auth status` is local: it calls no
+# API, and it writes only into the throwaway config, which is removed before this returns.
+require_isolated_claude_login() {
+  local executable="$1" name report=''
+  local probe_environment=()
+  login_probe_dir="$(mktemp -d)" || fail 'cannot create the Claude login probe directory'
+  mkdir -p "$login_probe_dir/config" "$login_probe_dir/tmp" || fail 'cannot prepare the Claude login probe directory'
+  probe_environment=("HOME=${HOME:-}" "PATH=${PATH:-/usr/bin:/bin}" "TMPDIR=$login_probe_dir/tmp" "CLAUDE_CONFIG_DIR=$login_probe_dir/config")
+  for name in "${CHILD_PASSTHROUGH_ENVIRONMENT[@]}"; do
+    if [ -n "${!name:-}" ]; then probe_environment+=("$name=${!name}"); fi
+  done
+  # The CLI exits non-zero when not logged in but still prints its report.
+  report="$(run_with_deadline 30 env -i "${probe_environment[@]}" "$executable" auth status --json 2>/dev/null)" || true
+  rm -rf "$login_probe_dir"
+  login_probe_dir=''
+  # shellcheck disable=SC2016 # The message names a literal command.
+  printf '%s' "$report" | jq -e 'type == "object" and (.loggedIn | type) == "boolean"' >/dev/null 2>&1 || \
+    fail 'this Claude Code CLI gave no `claude auth status --json` login report for the isolated launch config; update Claude Code within the reviewed 2.x family'
+  # shellcheck disable=SC2016 # The remedy names a literal command.
+  printf '%s' "$report" | jq -e '.loggedIn == true' >/dev/null 2>&1 || \
+    fail 'Claude reports no login for the isolated launch CLAUDE_CONFIG_DIR (claude auth status), which no keychain or claude.ai subscription login reaches; export ANTHROPIC_API_KEY, or run `claude setup-token` and export CLAUDE_CODE_OAUTH_TOKEN, then retry'
+}
+
+# Prints the package version when $1 is a Playwright package root with an ESM entry point.
+playwright_module_version() {
+  local directory="$1"
+  [ -d "$directory" ] && [ -f "$directory/package.json" ] && [ -f "$directory/index.mjs" ] || return 1
+  jq -er 'select(.name == "playwright") | (.version // "unknown") | tostring' "$directory/package.json" 2>/dev/null
+}
+
+# Follows preflight's host candidate order (browserRuntimeCandidateLocations in argus-assets):
+# the five newest x.y.z runtimes that --provision-browser installs under
+# ~/.cache/argus/browser-runtime come first, then the npm, Homebrew, and system global modules.
+resolve_playwright_module() {
+  local npm_root='' candidate version provisioned_root="${HOME:-}/.cache/argus/browser-runtime"
+  local provisioned=()
+  if [ -n "${HOME:-}" ] && [ -d "$provisioned_root" ]; then
+    while IFS= read -r version; do
+      provisioned+=("$provisioned_root/$version/node_modules/playwright")
+    done < <(ls -1 "$provisioned_root" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
+      sort -t . -k 1,1nr -k 2,2nr -k 3,3nr | head -n 5)
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    npm_root="$(run_with_deadline 10 npm root -g 2>/dev/null)" || npm_root=''
+    case "$npm_root" in /*) ;; *) npm_root='' ;; esac
+    case "$npm_root" in *$'\n'*) npm_root='' ;; esac
+  fi
+  for candidate in ${provisioned[@]+"${provisioned[@]}"} ${npm_root:+"$npm_root/playwright"} \
+    /opt/homebrew/lib/node_modules/playwright /usr/local/lib/node_modules/playwright /usr/lib/node_modules/playwright; do
+    if playwright_module_version "$candidate" >/dev/null; then
+      (cd "$candidate" && pwd -P)
+      return
+    fi
+  done
+  return 1
+}
+
+# The probe runs as an ES module through `node -e`, so its arguments start at argv[1].
+# Its own watchdog fires before the launcher's 60 s tree kill to report a readable reason.
+# Some Chromium builds ignore a graceful close until Playwright force-kills them 30 s later;
+# the screenshot already decided the outcome, so the close is bounded and Playwright's exit
+# handler kills the browser process group when the probe exits.
+BROWSER_PROBE_SCRIPT='import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+const [moduleDir, profileDir, screenshotPath] = process.argv.slice(1);
+const watchdog = setTimeout(() => {
+  process.stderr.write("browser probe watchdog expired after 50 s inside the sandbox\n");
+  process.exit(1);
+}, 50000);
+let context;
+try {
+  const version = String(JSON.parse(readFileSync(join(moduleDir, "package.json"), "utf8")).version ?? "unknown");
+  const { chromium } = await import(pathToFileURL(join(moduleDir, "index.mjs")).href);
+  context = await chromium.launchPersistentContext(profileDir, { headless: true });
+  const page = context.pages()[0] ?? await context.newPage();
+  await page.setContent("<p>argus</p>");
+  const image = await page.screenshot({ path: screenshotPath });
+  if (image.length < 8 || image.readUInt32BE(0) !== 0x89504e47) throw new Error("screenshot is not a PNG image");
+  process.stdout.write(`ARGUS_BROWSER_PROBE_OK ${version}\n`);
+} catch (error) {
+  process.stderr.write(`${error?.message ?? error}\n`);
+  process.exitCode = 1;
+}
+if (context) await Promise.race([context.close().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 5000))]);
+clearTimeout(watchdog);
+process.exit(process.exitCode ?? 0);'
+
+browser_probe_job() {
+  local work="$1" module="$2"
+  set +e
+  sandbox_exec "$work/artifact" "$work/artifact" env -i HOME="${HOME:-}" PATH="${PATH:-/usr/bin:/bin}" \
+    TMPDIR="$work/artifact/ai_agents_internal/tmp" \
+    node --input-type=module -e "$BROWSER_PROBE_SCRIPT" "$module" "$work/artifact/profile" "$work/artifact/probe.png" \
+    >"$work/artifact/probe.stdout" 2>"$work/artifact/probe.stderr"
+}
+
+# Returns 0 (PASS), 2 (FAIL) or 3 (SKIP: no Playwright module). Callers must not rely on
+# errexit inside it: every failure path is explicit.
+probe_browser() {
+  local module="$1" work status=0 probe_version reason
+  if [ -n "$module" ]; then
+    module="$(physical_directory "$module" 'Playwright module')" || exit 2
+    playwright_module_version "$module" >/dev/null || \
+      fail "Playwright module needs a package.json named playwright and an index.mjs: $module"
+  else
+    module="$(resolve_playwright_module)" || {
+      printf 'SKIP  no Playwright module resolvable on this host\n'
+      return 3
+    }
+  fi
+  browser_probe_work="$(mktemp -d)" || fail 'cannot create the browser probe directory'
+  browser_probe_work="$(cd "$browser_probe_work" && pwd -P)" || fail 'cannot resolve the browser probe directory'
+  work="$browser_probe_work"
+  mkdir -p "$work/artifact/ai_agents_internal/tmp" || fail 'cannot create the browser probe artifact root'
+  run_with_deadline 60 browser_probe_job "$work" "$module" || status=$?
+  probe_version="$(sed -n 's/^ARGUS_BROWSER_PROBE_OK \(.*\)$/\1/p' "$work/artifact/probe.stdout" 2>/dev/null | head -n 1)" || probe_version=''
+  if [ "$status" -eq 0 ] && [ -n "$probe_version" ] && [ -s "$work/artifact/probe.png" ]; then
+    printf 'PASS  headless Chromium runs inside os-native-target-readonly@3 (module=%s version=%s)\n' "$module" "$probe_version"
+    rm -rf "$work"
+    browser_probe_work=''
+    return 0
+  fi
+  case "$status" in
+    0) reason='exited without the probe marker or a screenshot' ;;
+    124) reason='was killed after 60 s' ;;
+    *) reason="exited with status $status" ;;
+  esac
+  printf 'FAIL  headless Chromium %s inside os-native-target-readonly@3 (module=%s); sandbox denials are in the system log\n' \
+    "$reason" "$module" >&2
+  head -n 5 "$work/artifact/probe.stderr" >&2 2>/dev/null || true
+  rm -rf "$work"
+  browser_probe_work=''
+  return 2
+}
+
 case "${1:-}" in
+  probe-browser)
+    shift
+    probe_module=''
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --module) [ "$#" -ge 2 ] || fail '--module requires a path'; probe_module="$2"; shift 2 ;;
+        *) usage; fail "unknown probe-browser option: $1" ;;
+      esac
+    done
+    require_host_commands
+    probe_status=0
+    probe_browser "$probe_module" || probe_status=$?
+    exit "$probe_status"
+    ;;
   doctor)
+    shift
+    doctor_browser=false
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --browser) doctor_browser=true; shift ;;
+        *) usage; fail "unknown doctor option: $1" ;;
+      esac
+    done
     require_host_commands
     command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
     claude_executable="$(command -v claude)"
@@ -281,9 +734,20 @@ case "${1:-}" in
     claude_executable="$(cd "$(dirname "$claude_executable")" && pwd -P)/$(basename "$claude_executable")"
     claude_executable="$(physical_file "$claude_executable" 'Claude Code CLI')"
     claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
+    require_isolated_claude_login "$claude_executable"
     [ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
     sandbox_probe
-    printf 'PASS  Claude matches the reviewed native max-turns/error_max_turns contract and the OS sandbox passed behavior probes; signed launch authorization is still required for enforcement\n'
+    if $doctor_browser; then
+      # A separate process keeps probe-browser's own exits (fail, SKIP) out of doctor's flow.
+      browser_status=0
+      "$LAUNCHER_PATH" probe-browser || browser_status=$?
+      case "$browser_status" in
+        0) ;;
+        3) printf 'WARN  no Playwright module is resolvable on this host; launch with --provision-browser, or browser lanes may be unavailable\n' ;;
+        *) fail 'headless Chromium does not run inside the launch sandbox (see the probe-browser output above)' ;;
+      esac
+    fi
+    printf 'PASS  Claude matches the reviewed native max-turns/error_max_turns contract, reports a login for the isolated launch config, and the OS sandbox passed behavior probes; signed launch authorization is still required for enforcement\n'
     exit 0
     ;;
   claude) shift ;;
@@ -301,11 +765,18 @@ mode=''
 engagement_id=''
 trust_store=''
 runtime_key_id=''
+operator_key_id=''
 request_output=''
 launch_authorization=''
 wait_seconds=300
 dry_run=false
 unattested=false
+provision_browser=false
+launch_features_json='[]'
+operator_authorization=''
+operator_environment=''
+template_selection=''
+usage_json=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --target) [ "$#" -ge 2 ] || fail '--target requires a value'; target="$2"; shift 2 ;;
@@ -315,14 +786,41 @@ while [ "$#" -gt 0 ]; do
     --engagement-id) [ "$#" -ge 2 ] || fail '--engagement-id requires a value'; engagement_id="$2"; shift 2 ;;
     --trust-store) [ "$#" -ge 2 ] || fail '--trust-store requires a path'; trust_store="$2"; shift 2 ;;
     --runtime-key-id) [ "$#" -ge 2 ] || fail '--runtime-key-id requires a value'; runtime_key_id="$2"; shift 2 ;;
+    --operator-key-id) [ "$#" -ge 2 ] || fail '--operator-key-id requires a value'; operator_key_id="$2"; shift 2 ;;
     --request-output) [ "$#" -ge 2 ] || fail '--request-output requires a path'; request_output="$2"; shift 2 ;;
     --launch-authorization) [ "$#" -ge 2 ] || fail '--launch-authorization requires a path'; launch_authorization="$2"; shift 2 ;;
     --wait-seconds) [ "$#" -ge 2 ] || fail '--wait-seconds requires a value'; wait_seconds="$2"; shift 2 ;;
     --unattested) unattested=true; shift ;;
+    --feature) [ "$#" -ge 2 ] || fail '--feature requires a capability id'; add_launch_feature "$2"; shift 2 ;;
+    --provision-browser) provision_browser=true; shift ;;
+    --authorization) [ "$#" -ge 2 ] || fail '--authorization requires a path'; operator_authorization="$2"; shift 2 ;;
+    --environment) [ "$#" -ge 2 ] || fail '--environment requires a value'; operator_environment="$2"; shift 2 ;;
+    --template-selection) [ "$#" -ge 2 ] || fail '--template-selection requires a path'; template_selection="$2"; shift 2 ;;
+    --usage-json) [ "$#" -ge 2 ] || fail '--usage-json requires a path'; usage_json="$2"; shift 2 ;;
     --dry-run) dry_run=true; shift ;;
     *) fail "unknown option: $1" ;;
   esac
 done
+# Operator-declared features are forwarded unsigned: attested launches carry the JSON array in
+# the launch payload, unattested launches a comma-separated list in the prompt.
+launch_features_csv="$(printf '%s' "$launch_features_json" | jq -r 'join(",")')"
+# The operator's authorization choice is unsigned launch data as well. The manifest schema has
+# no `local` environment; local maps to its non-production-like `development`.
+authorization_environment=''
+case "$operator_environment" in
+  '') ;;
+  local) authorization_environment=development ;;
+  test|staging|production) authorization_environment="$operator_environment" ;;
+  *) fail '--environment must be local, test, staging, or production' ;;
+esac
+authorization_source=preflight
+if [ -n "$operator_authorization" ]; then
+  authorization_source=operator
+elif [ -n "$authorization_environment" ]; then
+  authorization_source=environment
+fi
+authorization_manifest_environment=''
+authorization_sha256=''
 
 [ -n "$target" ] || fail '--target is required'
 [ -n "$artifact_root" ] || fail '--artifact-root is required'
@@ -330,19 +828,20 @@ done
 [[ "$engagement_id" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$ ]] || fail '--engagement-id must be a stable identifier'
 absolute_normalized "$artifact_root" 'artifact root'
 if $unattested; then
-  [ -z "$trust_store" ] && [ -z "$runtime_key_id" ] && [ -z "$request_output" ] && [ -z "$launch_authorization" ] || \
-    fail '--unattested cannot be combined with --trust-store/--runtime-key-id/--request-output/--launch-authorization'
+  [ -z "$trust_store" ] && [ -z "$runtime_key_id" ] && [ -z "$operator_key_id" ] && [ -z "$request_output" ] && [ -z "$launch_authorization" ] || \
+    fail '--unattested cannot be combined with --trust-store/--runtime-key-id/--operator-key-id/--request-output/--launch-authorization'
   # Keyless mode exists only for a host that has no operator key material at all. If any
   # is resolvable, refuse here rather than letting the dispatched controller discover it:
   # argus-assets preflight --unattested-launch enforces the same precondition, and the
   # host trust store is the operator's kill switch for an in-flight unattested engagement.
   [ -z "${ARGUS_MODEL_TRUST_STORE:-}" ] || \
     fail 'ARGUS_MODEL_TRUST_STORE is set; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id'
-  default_trust_store="${HOME:-}/.config/argus/model-trust.json"
-  [ ! -e "$default_trust_store" ] || \
-    fail "a host model trust store exists at $default_trust_store; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id"
+  trust_store_material="$(default_trust_store_material)" || fail 'cannot check the default host model trust store path'
+  [ -z "$trust_store_material" ] || \
+    fail "$trust_store_material; --unattested is for hosts with no key material — run attested with --trust-store/--runtime-key-id"
 else
   [ -n "$runtime_key_id" ] || fail '--runtime-key-id is required (or pass --unattested to skip signed attestation)'
+  [ -n "$operator_key_id" ] || fail '--operator-key-id is required'
   [[ "$wait_seconds" =~ ^[0-9]+$ ]] && [ "$wait_seconds" -ge 30 ] && [ "$wait_seconds" -le 300 ] || fail '--wait-seconds must be between 30 and 300'
   absolute_normalized "$trust_store" 'trust store'
   absolute_normalized "$request_output" 'request output'
@@ -366,6 +865,42 @@ fi
 
 artifact_candidate="$(physical_candidate "$artifact_root")"
 if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$artifact_candidate" 'target and artifact root'; fi
+if [ -n "$operator_authorization" ]; then
+  operator_authorization="$(physical_file "$operator_authorization" 'authorization manifest')"
+  assert_disjoint "$artifact_candidate" "$operator_authorization" 'artifact root and authorization manifest'
+  if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$operator_authorization" 'target and authorization manifest'; fi
+fi
+if [ -n "$template_selection" ]; then
+  template_selection="$(physical_file "$template_selection" 'template selection')"
+  assert_disjoint "$artifact_candidate" "$template_selection" 'artifact root and template selection'
+  if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$template_selection" 'target and template selection'; fi
+fi
+# --usage-json only switches Claude's stdout to its JSON result document and names where the
+# unsandboxed launcher stores it; the turn cap, model, effort, and signed bindings are unchanged.
+output_format_arguments=()
+usage_report_suffix=''
+if [ -n "$usage_json" ]; then
+  validate_usage_report_path "$artifact_candidate"
+  output_format_arguments=(--output-format json)
+  usage_report_suffix=' usageReport=json'
+fi
+# Refuse an unbound or conflicting manifest before the artifact root exists.
+if [ "$authorization_source" != preflight ]; then operator_authorization_step verify "$artifact_candidate"; fi
+if [ -n "$template_selection" ]; then template_selection_step verify "$artifact_candidate"; fi
+
+command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
+claude_executable="$(command -v claude)"
+while [ -L "$claude_executable" ]; do
+  link="$(readlink "$claude_executable")"
+  case "$link" in /*) claude_executable="$link" ;; *) claude_executable="$(dirname "$claude_executable")/$link" ;; esac
+done
+claude_executable="$(cd "$(dirname "$claude_executable")" && pwd -P)/$(basename "$claude_executable")"
+claude_executable="$(physical_file "$claude_executable" 'Claude Code CLI')"
+claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
+[ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
+# Before the artifact root, browser provisioning, a request, or a manifest exists (dry runs too).
+require_isolated_claude_login "$claude_executable"
+
 artifact_existed=false
 [ -e "$artifact_root" ] && artifact_existed=true
 mkdir -p "$artifact_root"
@@ -373,6 +908,15 @@ artifact_root="$(physical_directory "$artifact_root" 'artifact root')"
 if ! $artifact_existed; then chmod 700 "$artifact_root"; fi
 secure_owned_directory "$artifact_root" 'artifact root'
 if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$artifact_root" 'target and artifact root'; fi
+browser_provisioning=none
+if $provision_browser; then
+  browser_provisioning=requested
+  # Host preparation outside the sandbox and outside the signed request; preflight re-probes.
+  if ! $dry_run; then
+    [ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
+    "$ASSETS" browser provision --artifact-root "$artifact_root" || fail 'browser provisioning failed'
+  fi
+fi
 verify_artifact_tree "$artifact_root"
 
 if [ -z "$workspace" ]; then
@@ -393,20 +937,13 @@ if ! $unattested; then
     if [ "$target_kind" = path ]; then assert_disjoint "$target_path" "$operator_path" 'target and operator authorization path'; fi
   done
 fi
-
-command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
-claude_executable="$(command -v claude)"
-while [ -L "$claude_executable" ]; do
-  link="$(readlink "$claude_executable")"
-  case "$link" in /*) claude_executable="$link" ;; *) claude_executable="$(dirname "$claude_executable")/$link" ;; esac
-done
-claude_executable="$(cd "$(dirname "$claude_executable")" && pwd -P)/$(basename "$claude_executable")"
-claude_executable="$(physical_file "$claude_executable" 'Claude Code CLI')"
-claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
-[ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
+if [ -n "$usage_json" ]; then validate_usage_report_path "$artifact_root"; fi
 
 mkdir -p "$artifact_root/ai_agents_internal/tmp" "$artifact_root/ai_agents_internal/claude-config"
 chmod 700 "$artifact_root/ai_agents_internal" "$artifact_root/ai_agents_internal/tmp" "$artifact_root/ai_agents_internal/claude-config"
+# Preflight loads the installed manifest from its default path; a dry run installs nothing.
+if [ "$authorization_source" != preflight ] && ! $dry_run; then operator_authorization_step install "$artifact_root"; fi
+if [ -n "$template_selection" ] && ! $dry_run; then template_selection_step install "$artifact_root"; fi
 
 if $unattested; then
   # No trust store, no signed launch-authorization handshake: the operator explicitly
@@ -415,10 +952,15 @@ if $unattested; then
   # attestation is skipped. argus-assets preflight reports this as a named,
   # non-mandatory residual risk (see --unattested-launch / native-host-execution check).
   prompt="/argus:run target=$target artifact-root=$artifact_root mode=$mode unattestedLaunch=true engagementId=$engagement_id"
-  command=("$claude_executable" -p --no-session-persistence --max-turns 96 --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+  [ -z "$launch_features_csv" ] || prompt="$prompt features=$launch_features_csv"
+  if [ "$authorization_source" != preflight ]; then
+    prompt="$prompt authorizationSource=$authorization_source targetEnvironment=$authorization_manifest_environment authorizationSha256=$authorization_sha256"
+  fi
+  command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS" --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
   if $dry_run; then
-    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=96 agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@2 environment=argus-launch-unattested@1 attestation=UNATTESTED\n' \
-      "$mode" "$target_kind" "$target" "$workspace" "$artifact_root"
+    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@3 environment=argus-launch-unattested@1 attestation=UNATTESTED browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s%s\n' \
+      "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$browser_provisioning" \
+      "$authorization_source" "${authorization_manifest_environment:-none}" "${launch_features_csv:-none}" "$usage_report_suffix"
     exit 0
   fi
   child_env=(
@@ -427,12 +969,14 @@ if $unattested; then
     "TMPDIR=$artifact_root/ai_agents_internal/tmp"
     "CLAUDE_CONFIG_DIR=$artifact_root/ai_agents_internal/claude-config"
     "ARGUS_LAUNCH_UNATTESTED=1"
+    # With no receipt, this names the engagement to the write guard from any workspace.
+    "ARGUS_LAUNCH_ARTIFACT_ROOT=$artifact_root"
   )
-  for name in USER LOGNAME SHELL LANG LC_ALL LC_CTYPE TERM NO_COLOR FORCE_COLOR ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL HTTPS_PROXY HTTP_PROXY NO_PROXY SSL_CERT_FILE SSL_CERT_DIR; do
+  for name in "${CHILD_PASSTHROUGH_ENVIRONMENT[@]}"; do
     if [ -n "${!name:-}" ]; then child_env+=("$name=${!name}"); fi
   done
   sandbox_status=0
-  sandbox_exec "$artifact_root" "$workspace" env -i "${child_env[@]}" "${command[@]}" || sandbox_status=$?
+  run_controller || sandbox_status=$?
   exit "$sandbox_status"
 fi
 
@@ -452,6 +996,7 @@ fi
 "$ASSETS" launch request --target "$target" --workspace "$workspace" --artifact-root "$artifact_root" \
   --mode "$mode" --engagement-id "$engagement_id" --launcher "$LAUNCHER_PATH" --launcher-pid "$$" \
   --claude-executable "$claude_executable" --runtime-key-id "$runtime_key_id" --trust-store "$trust_store" \
+  --operator-key-id "$operator_key_id" \
   --output "$request_output" --ttl-seconds "$wait_seconds" --capability-sha256 "$capability_sha256" \
   --sandbox-probe-path "$sandbox_probe_dir"
 
@@ -466,22 +1011,30 @@ launch_authorization="$(physical_file "$launch_authorization" 'launch authorizat
 verify_artifact_tree "$artifact_root"
 "$ASSETS" launch verify --request "$request_output" --authorization "$launch_authorization" \
   --receipt "$receipt" --trust-store "$trust_store"
+signed_max_turns="$(jq -er '.maxTurns' "$launch_authorization")" || fail 'signed launch authorization has no turn cap'
+[ "$signed_max_turns" = "$CONTROLLER_MAX_TURNS" ] || \
+  fail 'signed launch authorization turn cap differs from the launcher controller cap'
 
+operator_authorization_json="$(jq -cn --arg source "$authorization_source" \
+  --arg environment "$authorization_manifest_environment" --arg sha256 "$authorization_sha256" \
+  '{source:$source,environment:(if $environment == "" then null else $environment end),sha256:(if $sha256 == "" then null else $sha256 end)}')"
 launch_payload="$(jq -cn \
   --arg target "$target" --arg artifactRoot "$artifact_root" --arg mode "$mode" \
   --arg engagementId "$engagement_id" --arg launchAuthorization "$launch_authorization" \
-  --arg launchReceipt "$receipt" --arg trustStore "$trust_store" \
-  '{target:$target,"artifact-root":$artifactRoot,mode:$mode,"engagement-id":$engagementId,"launch-authorization":$launchAuthorization,"launch-receipt":$launchReceipt,"trust-store":$trustStore}')"
+  --arg launchReceipt "$receipt" --arg trustStore "$trust_store" --argjson features "$launch_features_json" \
+  --argjson operatorAuthorization "$operator_authorization_json" \
+  '{target:$target,"artifact-root":$artifactRoot,mode:$mode,"engagement-id":$engagementId,"launch-authorization":$launchAuthorization,"launch-receipt":$launchReceipt,"trust-store":$trustStore,features:$features,operatorAuthorization:$operatorAuthorization}')"
 prompt="/argus:run authenticatedLaunch=$launch_payload"
-command=("$claude_executable" -p --no-session-persistence --max-turns 96 --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS" --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
 
 if $dry_run; then
   rm -f "$capability_file"
   capability_file=''
   rmdir "$sandbox_probe_dir"
   sandbox_probe_dir=''
-  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=96 agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@2 environment=argus-launch-allowlist@1\n' \
-    "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$(jq -r .launchId "$receipt")"
+  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist@1 browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s%s\n' \
+    "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$(jq -r .launchId "$receipt")" "$browser_provisioning" \
+    "$authorization_source" "${authorization_manifest_environment:-none}" "${launch_features_csv:-none}" "$usage_report_suffix"
   exit 0
 fi
 
@@ -499,12 +1052,12 @@ child_env=(
   "ARGUS_NATIVE_LAUNCH_RECEIPT=$receipt"
   "ARGUS_NATIVE_LAUNCH_CAPABILITY=$capability"
 )
-for name in USER LOGNAME SHELL LANG LC_ALL LC_CTYPE TERM NO_COLOR FORCE_COLOR ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL HTTPS_PROXY HTTP_PROXY NO_PROXY SSL_CERT_FILE SSL_CERT_DIR; do
+for name in "${CHILD_PASSTHROUGH_ENVIRONMENT[@]}"; do
   if [ -n "${!name:-}" ]; then child_env+=("$name=${!name}"); fi
 done
 
 sandbox_status=0
-sandbox_exec "$artifact_root" "$workspace" env -i "${child_env[@]}" "${command[@]}" || sandbox_status=$?
+run_controller || sandbox_status=$?
 rmdir "$sandbox_probe_dir"
 sandbox_probe_dir=''
 exit "$sandbox_status"

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/holi87/holak-teams/argus/schemas/final-summary.schema.json",
-  "title": "Argus final engagement summary v1",
+  "title": "Argus final engagement summary v2",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -10,18 +10,23 @@
     "engagementId",
     "owner",
     "status",
+    "statusReasons",
     "counts",
+    "unproven",
+    "residuals",
+    "automationReview",
     "runner",
+    "coverage",
     "sourceSchemas",
     "summary",
     "generatedAt"
   ],
   "properties": {
     "$schema": {
-      "const": "argus/final-summary@1"
+      "const": "argus/final-summary@2"
     },
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "engagementId": {
       "type": "string",
@@ -37,26 +42,305 @@
         "degraded"
       ]
     },
+    "statusReasons": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9:-]+$"
+      }
+    },
     "counts": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "bugs",
+        "regression",
         "automated",
         "evidence"
       ],
       "properties": {
         "bugs": {
-          "type": "integer",
-          "minimum": 0
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "confirmed",
+            "suspected",
+            "needsOracle",
+            "bounced",
+            "quarantined",
+            "duplicate",
+            "rejected",
+            "headline"
+          ],
+          "properties": {
+            "confirmed": {
+              "$ref": "#/$defs/count"
+            },
+            "suspected": {
+              "$ref": "#/$defs/count"
+            },
+            "needsOracle": {
+              "$ref": "#/$defs/count"
+            },
+            "bounced": {
+              "$ref": "#/$defs/count"
+            },
+            "quarantined": {
+              "$ref": "#/$defs/count"
+            },
+            "duplicate": {
+              "$ref": "#/$defs/count"
+            },
+            "rejected": {
+              "$ref": "#/$defs/count"
+            },
+            "headline": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "regression": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "wired",
+            "uncovered"
+          ],
+          "properties": {
+            "wired": {
+              "$ref": "#/$defs/count"
+            },
+            "uncovered": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/bugId"
+              }
+            }
+          }
         },
         "automated": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/count"
         },
         "evidence": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "unproven": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "severity",
+          "status",
+          "missing",
+          "detail"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/bugId"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "Blocker",
+              "Critical",
+              "Major",
+              "Minor",
+              "Trivial"
+            ]
+          },
+          "status": {
+            "enum": [
+              "suspected",
+              "needs-oracle"
+            ]
+          },
+          "missing": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "oracle",
+                "reproduction",
+                "independent-reproduction",
+                "evidence",
+                "environment-access",
+                "authorization"
+              ]
+            }
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "residuals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "severity",
+          "status",
+          "repairRound",
+          "missing",
+          "reasons"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/bugId"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "Blocker",
+              "Critical",
+              "Major",
+              "Minor",
+              "Trivial"
+            ]
+          },
+          "status": {
+            "enum": [
+              "bounced",
+              "quarantined"
+            ]
+          },
+          "repairRound": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 3
+          },
+          "missing": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "oracle-citation",
+                "reproduction",
+                "evidence",
+                "honest-status",
+                "independent-reproduction",
+                "arranged-precondition",
+                "layer-attribution",
+                "evidence-integrity"
+              ]
+            }
+          },
+          "reasons": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "bounced"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "repairRound": {
+                  "type": "integer"
+                },
+                "missing": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "quarantined"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "reasons": {
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "automationReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reviewId",
+        "round",
+        "blockers",
+        "warnings"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "approved",
+            "blocked",
+            "stale",
+            "absent",
+            "not-applicable"
+          ]
+        },
+        "reviewId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^REV-[0-9]{2}$"
+        },
+        "round": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 99
+        },
+        "blockers": {
+          "$ref": "#/$defs/count"
+        },
+        "warnings": {
+          "$ref": "#/$defs/count"
         }
       }
     },
@@ -71,7 +355,9 @@
         "status",
         "exitCode",
         "resultPath",
-        "categories"
+        "evidenceId",
+        "categories",
+        "deliveryGate"
       ],
       "properties": {
         "mode": {
@@ -100,8 +386,11 @@
           ]
         },
         "resultPath": {
+          "const": "reports/argus-runner-result.json"
+        },
+        "evidenceId": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^EVD-[0-9]{4}$"
         },
         "categories": {
           "type": "object",
@@ -115,26 +404,24 @@
           ],
           "properties": {
             "product": {
-              "type": "integer",
-              "minimum": 0
+              "$ref": "#/$defs/count"
             },
             "automation": {
-              "type": "integer",
-              "minimum": 0
+              "$ref": "#/$defs/count"
             },
             "infrastructure": {
-              "type": "integer",
-              "minimum": 0
+              "$ref": "#/$defs/count"
             },
             "skip": {
-              "type": "integer",
-              "minimum": 0
+              "$ref": "#/$defs/count"
             },
             "policy": {
-              "type": "integer",
-              "minimum": 0
+              "$ref": "#/$defs/count"
             }
           }
+        },
+        "deliveryGate": {
+          "type": "boolean"
         }
       }
     },
@@ -147,72 +434,55 @@
         "executionCoverage",
         "assertionQuality",
         "evidenceQuality",
-        "scopedOutcomes"
+        "automatedExecution",
+        "scopedOutcomes",
+        "criticalUnexecuted"
       ],
       "properties": {
         "resultPath": {
-          "type": "string",
-          "minLength": 1
+          "const": "solution/coverage-result.json"
         },
         "discoveryCompleteness": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "minimum": 0,
-          "maximum": 1
+          "$ref": "#/$defs/ratio"
         },
         "executionCoverage": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "minimum": 0,
-          "maximum": 1
+          "$ref": "#/$defs/ratio"
         },
         "assertionQuality": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "minimum": 0,
-          "maximum": 1
+          "$ref": "#/$defs/ratio"
         },
         "evidenceQuality": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "minimum": 0,
-          "maximum": 1
+          "$ref": "#/$defs/ratio"
+        },
+        "automatedExecution": {
+          "$ref": "#/$defs/ratio"
         },
         "scopedOutcomes": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/count"
+        },
+        "criticalUnexecuted": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^SRF-[A-Z0-9][A-Z0-9-]*$"
+          }
         },
         "caseDepth": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "plannedWeight": {
-              "type": "integer",
-              "minimum": 0
+              "$ref": "#/$defs/count"
             },
             "executedWeight": {
-              "type": "integer",
-              "minimum": 0
+              "$ref": "#/$defs/count"
             },
             "verifiedWeight": {
-              "type": "integer",
-              "minimum": 0
+              "$ref": "#/$defs/count"
             },
             "coverage": {
-              "type": [
-                "number",
-                "null"
-              ],
-              "minimum": 0,
-              "maximum": 1
+              "$ref": "#/$defs/ratio"
             },
             "unplannedSurfaces": {
               "type": "array",
@@ -269,6 +539,24 @@
     "generatedAt": {
       "type": "string",
       "format": "date-time"
+    }
+  },
+  "$defs": {
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ratio": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "bugId": {
+      "type": "string",
+      "pattern": "^BUG-[0-9]{4}$"
     }
   }
 }

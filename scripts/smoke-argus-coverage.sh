@@ -3,54 +3,329 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FIXTURES="$ROOT/scripts/fixtures/argus-coverage"
+CLI="$ROOT/argus/claude/bin/argus-assets"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-for schema in surface-inventory coverage-observations coverage-result; do
+fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
+
+for schema in surface-inventory coverage-observations coverage-result automation-status; do
   jq empty "$ROOT/argus/schemas/$schema.schema.json"
 done
 
 node --input-type=module - "$ROOT" "$FIXTURES" "$TMP" <<'NODE'
+import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const [root, fixtures, tmp] = process.argv.slice(2);
-const { calculateCoverage, validateCoverageObservations, validateSurfaceInventory } = await import(pathToFileURL(`${root}/argus/runtime/coverage.mjs`));
-const inventory = JSON.parse(readFileSync(`${fixtures}/surface-inventory.json`, 'utf8'));
-const observations = JSON.parse(readFileSync(`${fixtures}/coverage-observations.json`, 'utf8'));
-if (validateSurfaceInventory(inventory).length) throw new Error('valid UI/API/event/data inventory rejected');
-if (validateCoverageObservations(observations, inventory).length) throw new Error('valid observations rejected');
-const result = calculateCoverage(inventory, observations);
-if (result.overall.executionCoverage !== 0.7143) throw new Error(`unexpected risk-weighted execution coverage: ${result.overall.executionCoverage}`);
-if (result.overall.assertionQuality !== 1 || result.overall.evidenceQuality !== 1) throw new Error('quality dimensions were not calculated independently');
-if (result.scopedOutcomes.length !== 1 || result.scopedOutcomes[0].surfaceId !== 'SRF-DATA-AUDIT') throw new Error('inaccessible data surface was hidden');
-if (result.defectOutcomes.scoreContribution !== 0 || result.defectOutcomes.uniqueConfirmed !== 1) throw new Error('defects changed score or were not deduplicated');
+const { calculateCoverage, resolveCoverage, validateCoverageObservations, validateCoverageResult, validateSurfaceInventory } = await import(pathToFileURL(`${root}/argus/runtime/coverage.mjs`));
+const { reconcileCoverageEvidence } = await import(pathToFileURL(`${root}/argus/runtime/finding-quality.mjs`));
+const { validateCanonicalDocument } = await import(pathToFileURL(`${root}/argus/runtime/contracts.mjs`));
+const read = (name) => JSON.parse(readFileSync(join(fixtures, name), 'utf8'));
+const copy = (value) => structuredClone(value);
+const inventory = read('surface-inventory.json');
+const observations = read('coverage-observations.json');
+const evidence = read('evidence-reference.json');
+const ledger = read('bug-ledger.json');
+const automationStatus = read('automation-status.json');
+const readArtifact = (source) => readFileSync(join(fixtures, source));
+const context = { evidence, ledger, automationStatus, readArtifact };
+const errorsOf = (inv, obs, ctx = context) => resolveCoverage(inv, obs, ctx).errors;
+const expectError = (errors, pattern, label) => assert(errors.some((error) => pattern.test(error)), `${label}: expected ${pattern} in ${JSON.stringify(errors)}`);
+const row = (obs, id) => obs.observations.find((item) => item.observationId === id);
+const surfaceOf = (result, id) => result.surfaces.find((item) => item.surfaceId === id);
 
-const withoutDefects = structuredClone(observations);
-withoutDefects.observations.forEach((item) => { item.defects = []; });
-const noDefectResult = calculateCoverage(inventory, withoutDefects);
-for (const metric of ['executionCoverage', 'assertionQuality', 'evidenceQuality']) {
-  if (result.overall[metric] !== noDefectResult.overall[metric]) throw new Error(`defects changed ${metric}`);
+// The fixtures are canonical and fully reconciled against the retained evidence bytes.
+for (const [kind, document] of [['surface-inventory', inventory], ['coverage-observations', observations], ['evidence-reference', evidence], ['bug-ledger', ledger], ['automation-status', automationStatus]]) {
+  assert.deepEqual(validateCanonicalDocument(kind, document), [], `${kind} fixture is not canonical`);
 }
+assert.deepEqual(validateSurfaceInventory(inventory), [], 'valid UI/API/event/data inventory rejected');
+assert.deepEqual(validateCoverageObservations(observations, inventory), [], 'valid observations rejected');
+assert.deepEqual(reconcileCoverageEvidence(inventory, observations, evidence, readArtifact), [], 'fixture evidence did not reconcile');
+assert.deepEqual(errorsOf(inventory, observations), [], 'fixture observations did not resolve');
 
-const small = structuredClone(inventory);
-small.items = small.items.slice(0, 1); small.discovery = { candidates: 1, characterized: 1 };
-const smallObservations = structuredClone(observations); smallObservations.observations = smallObservations.observations.slice(0, 1);
-if (calculateCoverage(small, smallObservations).overall.executionCoverage !== 1) throw new Error('small target did not scale to its own denominator');
-const large = structuredClone(inventory);
-for (let i = 0; i < 20; i += 1) large.items.push({ ...large.items[2], id: `SRF-EVENT-EXTRA-${i}` });
-large.discovery = { candidates: 25, characterized: 24 };
-if (calculateCoverage(large, observations).overall.executionCoverage >= result.overall.executionCoverage) throw new Error('large uncovered surface did not expand the denominator');
-
-const invalid = structuredClone(inventory); invalid.items.push({ ...invalid.items[0] });
-if (!validateSurfaceInventory(invalid).some((error) => error.includes('duplicate surface id'))) throw new Error('duplicate surface accepted');
+const result = calculateCoverage(inventory, observations, context);
+assert.deepEqual(validateCanonicalDocument('coverage-result', result), [], 'calculated result is not a canonical coverage-result@2');
+assert.equal(result.$schema, 'argus/coverage-result@2');
+assert.deepEqual(result.sourceSchemas, ['argus/surface-inventory@1', 'argus/coverage-observations@2', 'argus/evidence-reference@3', 'argus/bug-ledger@2']);
+assert.equal(result.overall.executionCoverage, 0.7143, 'unexpected risk-weighted execution coverage');
+assert.equal(result.overall.assertionQuality, 1);
+assert.equal(result.overall.evidenceQuality, 1);
+assert.equal(result.overall.automatedExecution, 0.5, 'automated execution is not automated weight over executed weight');
+assert.deepEqual(result.overall.riskWeight, { denominator: 14, executed: 10, asserted: 10, evidenced: 10, automated: 5 });
+assert.equal(result.lanes.api.automatedExecution, 1);
+assert.equal(result.lanes.ui.automatedExecution, 0);
+assert.equal(result.lanes.events.executionCoverage, 0);
+assert.equal(result.lanes.api.caseDepth.coverage, 1, 'the runner-backed API case did not count');
+assert.deepEqual(result.criticalUnexecuted, ['SRF-EVENT-ORDER-CREATED'], 'the unexecuted critical surface was not listed');
+assert.deepEqual(result.surfaces.map((item) => item.surfaceId), ['SRF-API-ORDERS-POST', 'SRF-DATA-AUDIT', 'SRF-EVENT-ORDER-CREATED', 'SRF-UI-CHECKOUT']);
+assert.deepEqual(surfaceOf(result, 'SRF-API-ORDERS-POST'), { surfaceId: 'SRF-API-ORDERS-POST', lane: 'api', risk: 'critical', riskWeight: 5, accessibility: 'testable', executed: true, asserted: true, evidenced: true, automated: true, defectIds: ['BUG-0001'] });
+assert.deepEqual(surfaceOf(result, 'SRF-UI-CHECKOUT'), { surfaceId: 'SRF-UI-CHECKOUT', lane: 'ui', risk: 'critical', riskWeight: 5, accessibility: 'testable', executed: true, asserted: true, evidenced: true, automated: false, defectIds: [] });
+assert.equal(surfaceOf(result, 'SRF-EVENT-ORDER-CREATED').executed, false, 'an observation without executions counted as executed');
+assert.deepEqual(result.scopedOutcomes.map((item) => item.surfaceId), ['SRF-DATA-AUDIT'], 'inaccessible data surface was hidden');
+assert.deepEqual(result.defectOutcomes, { confirmed: 1, suspected: 1, needsOracle: 1, duplicate: 1, rejected: 1, headline: 2, linked: 1, unlinked: ['BUG-0002'], scoreContribution: 0 }, 'defect outcomes do not follow the ledger statuses');
+assert.equal(result.runnerCaseMapping, 'verified', 'a runner case mapped by automation-status was not verified');
 writeFileSync(`${tmp}/result.json`, `${JSON.stringify(result, null, 2)}\n`);
+
+// With an automation status, a runner case is credited only to a surface that one of its
+// implemented, passed, or failed tests maps it to; without one the mapping is unverified.
+const mapping = (mutate) => { const next = copy(automationStatus); mutate(next.tests.find((test) => test.testId === 'TST-0001')); return next; };
+const withMapping = (automation) => ({ ...context, automationStatus: automation });
+const unmappedRun = /atlas:SRF-API-ORDERS-POST: execution EVD-0104: runner case api:orders\.spec\.ts:creates-a-charged-order is not mapped to SRF-API-ORDERS-POST by automation-status/;
+const unmapped = mapping((test) => { delete test.caseIds; delete test.surfaceIds; });
+assert.deepEqual(validateCanonicalDocument('automation-status', unmapped), [], 'an automation test without caseIds and surfaceIds is not canonical');
+expectError(errorsOf(inventory, observations, withMapping(unmapped)), unmappedRun, 'deleted runner-case mapping');
+assert.throws(() => calculateCoverage(inventory, observations, withMapping(unmapped)), /is not mapped to SRF-API-ORDERS-POST by automation-status/, 'an unmapped runner case was credited');
+expectError(errorsOf(inventory, observations, withMapping(mapping((test) => { test.surfaceIds = ['SRF-UI-CHECKOUT']; }))), unmappedRun, 'runner case mapped to another surface');
+expectError(errorsOf(inventory, observations, withMapping(mapping((test) => { test.caseIds = ['api:orders.spec.ts:lists-orders']; }))), unmappedRun, 'surface mapped to another runner case');
+for (const status of ['planned', 'skipped']) {
+  expectError(errorsOf(inventory, observations, withMapping(mapping((test) => { test.status = status; }))), unmappedRun, `${status} automation test`);
+}
+for (const status of ['implemented', 'failed']) {
+  assert.deepEqual(errorsOf(inventory, observations, withMapping(mapping((test) => { test.status = status; }))), [], `an ${status} automation test did not map its runner case`);
+}
+const caseRun = copy(observations); row(caseRun, 'atlas:SRF-API-ORDERS-POST').executions = [];
+assert.equal(calculateCoverage(inventory, caseRun, context).runnerCaseMapping, 'verified', 'a mapped case-level runner execution was not verified');
+expectError(errorsOf(inventory, caseRun, withMapping(unmapped)),
+  /atlas:SRF-API-ORDERS-POST: case CASE-API-ORDER-CREATE execution EVD-0104: runner case api:orders\.spec\.ts:creates-a-charged-order is not mapped to SRF-API-ORDERS-POST by automation-status/, 'unmapped case execution');
+const unverified = calculateCoverage(inventory, observations, withMapping(null));
+assert.equal(unverified.runnerCaseMapping, 'unverified', 'a runner case without an automation status was reported as verified');
+assert.deepEqual([unverified.overall, unverified.surfaces], [result.overall, result.surfaces], 'the automation status changed a coverage metric');
+writeFileSync(`${tmp}/unverified-result.json`, `${JSON.stringify(unverified, null, 2)}\n`);
+const runnerless = copy(observations);
+runnerless.observations = runnerless.observations.filter((item) => item.observationId !== 'atlas:SRF-API-ORDERS-POST');
+for (const automation of [automationStatus, null]) {
+  assert.equal(calculateCoverage(inventory, runnerless, withMapping(automation)).runnerCaseMapping, 'not-applicable', 'observations without runner-result executions need no mapping');
+}
+const foreignAutomation = copy(automationStatus); foreignAutomation.engagementId = 'other-engagement';
+expectError(errorsOf(inventory, observations, withMapping(foreignAutomation)), /automation status engagementId does not match/, 'foreign automation status');
+
+// Execution and assertion quality cannot be self-declared.
+const declared = copy(observations);
+Object.assign(declared.observations[3], { executed: true, assertions: [{ id: 'AST-EVT', oracleId: 'ORC-EVT', meaningful: true }] });
+assert(validateCanonicalDocument('coverage-observations', declared).length > 0, 'self-declared executed/meaningful flags were accepted');
+const mismatch = copy(observations); row(mismatch, 'orion:SRF-UI-CHECKOUT').lane = 'perseus';
+expectError(validateCoverageObservations(mismatch, inventory), /orion:SRF-UI-CHECKOUT: observationId must equal <lane>:<surfaceId>/, 'observationId mismatch');
+const overlap = copy(observations); row(overlap, 'orion:SRF-UI-CHECKOUT').assertions[0].controlEvidenceIds = ['EVD-0101'];
+expectError(validateCoverageObservations(overlap, inventory), /control evidence must be distinct/, 'shared assertion and control evidence');
+const repeatedCase = copy(observations); row(repeatedCase, 'atalanta:SRF-API-ORDERS-POST').cases = [row(repeatedCase, 'atlas:SRF-API-ORDERS-POST').cases[0]];
+expectError(validateCoverageObservations(repeatedCase, inventory), /duplicate case observation: CASE-API-ORDER-CREATE/, 'an obligation observed twice');
+
+// Every execution must resolve to registered evidence that proves this surface ran.
+const withExecution = (execution, id = 'orion:SRF-UI-CHECKOUT') => { const next = copy(observations); row(next, id).executions = [execution]; return next; };
+expectError(errorsOf(inventory, withExecution({ evidenceId: 'EVD-0999' })), /orion:SRF-UI-CHECKOUT: execution EVD-0999 is not in the evidence registry/, 'unregistered evidence');
+expectError(errorsOf(inventory, withExecution({ evidenceId: 'EVD-0001' })), /EVD-0001 is text evidence, which never proves execution/, 'text-kind execution');
+expectError(errorsOf(inventory, withExecution({ evidenceId: 'EVD-0104', caseId: 'ui:checkout.spec.ts:webkit-checkout' })), /EVD-0104 has no executed product or automation case ui:checkout\.spec\.ts:webkit-checkout/, 'skipped runner case');
+expectError(errorsOf(inventory, withExecution({ evidenceId: 'EVD-0104' })), /EVD-0104 is a runner result and requires a caseId/, 'runner result without caseId');
+expectError(errorsOf(inventory, withExecution({ evidenceId: 'EVD-0101', caseId: 'ui:checkout' })), /EVD-0101 is dom-snapshot evidence and must not carry a caseId/, 'caseId on a capture');
+const unnamed = copy(evidence); unnamed.references.find((ref) => ref.id === 'EVD-0101').relatedSurfaceIds = [];
+expectError(errorsOf(inventory, observations, { ...context, evidence: unnamed }), /EVD-0101 does not name SRF-UI-CHECKOUT in relatedSurfaceIds/, 'missing relatedSurfaceIds');
+const discovered = copy(inventory); discovered.items[0].discoveryEvidenceIds = ['EVD-0001', 'EVD-0101'];
+expectError(errorsOf(discovered, observations), /EVD-0101 is discovery evidence for SRF-UI-CHECKOUT/, 'discovery evidence as execution');
+expectError(errorsOf(inventory, observations, { ...context, evidence: null }), /^coverage evidence registry required$/, 'citations without a registry');
+expectError(errorsOf(inventory, observations, { ...context, readArtifact: null }), /runner-result evidence requires an artifact reader/, 'runner result without a reader');
+assert.throws(() => calculateCoverage(inventory, withExecution({ evidenceId: 'EVD-0001' }), context), /never proves execution/, 'calculateCoverage did not fail closed');
+const foreign = copy(evidence); foreign.engagementId = 'other-engagement';
+expectError(errorsOf(inventory, observations, { ...context, evidence: foreign }), /evidence engagementId does not match/, 'foreign evidence registry');
+
+// Assertion quality needs distinct control evidence; automation needs the delivery gate.
+const uncontrolled = copy(observations); row(uncontrolled, 'orion:SRF-UI-CHECKOUT').assertions[0].controlEvidenceIds = [];
+const uncontrolledResult = calculateCoverage(inventory, uncontrolled, context);
+assert.equal(uncontrolledResult.overall.assertionQuality, 0.5, 'an assertion without control evidence kept assertion quality');
+assert.equal(surfaceOf(uncontrolledResult, 'SRF-UI-CHECKOUT').asserted, false);
+assert.equal(uncontrolledResult.overall.executionCoverage, result.overall.executionCoverage, 'assertion quality changed execution coverage');
+const nonGate = (source) => {
+  const bytes = readArtifact(source);
+  return source.endsWith('runner-full-suite.json') ? Buffer.from(JSON.stringify({ ...JSON.parse(bytes), deliveryGate: false })) : bytes;
+};
+const runnerOnly = copy(observations);
+runnerOnly.observations = runnerOnly.observations.filter((item) => item.observationId !== 'atalanta:SRF-API-ORDERS-POST');
+assert.equal(surfaceOf(calculateCoverage(inventory, runnerOnly, context), 'SRF-API-ORDERS-POST').automated, true, 'a delivery-gate runner case did not count as automated');
+const nonGateResult = calculateCoverage(inventory, runnerOnly, { ...context, readArtifact: nonGate });
+assert.equal(nonGateResult.overall.automatedExecution, 0, 'a non-delivery-gate runner result counted as automated execution');
+assert.equal(surfaceOf(nonGateResult, 'SRF-API-ORDERS-POST').executed, true, 'a non-delivery-gate runner case stopped proving execution');
+
+// The critical list follows derived execution, not a declaration.
+const eventRegistry = copy(evidence);
+eventRegistry.references.push({ ...eventRegistry.references.find((ref) => ref.id === 'EVD-0103'), id: 'EVD-0105', relatedSurfaceIds: ['SRF-EVENT-ORDER-CREATED'] });
+const eventRun = withExecution({ evidenceId: 'EVD-0105' }, 'proteus:SRF-EVENT-ORDER-CREATED');
+const eventResult = calculateCoverage(inventory, eventRun, { ...context, evidence: eventRegistry });
+assert.deepEqual(eventResult.criticalUnexecuted, [], 'an executed critical surface stayed listed');
+assert.equal(eventResult.overall.executionCoverage, 1);
+const highEvent = copy(inventory); highEvent.items[2].risk = 'high';
+assert.deepEqual(calculateCoverage(highEvent, observations, context).criticalUnexecuted, [], 'a non-critical unexecuted surface was listed as critical');
+const scopedCritical = copy(inventory); scopedCritical.items[3].risk = 'critical';
+assert.deepEqual(calculateCoverage(scopedCritical, observations, context).criticalUnexecuted, ['SRF-EVENT-ORDER-CREATED'], 'a scoped critical surface was listed as unexecuted');
+
+// Cases run only on executed surfaces, and a cited runner case must agree with the outcome.
+const failedCase = copy(observations); row(failedCase, 'atlas:SRF-API-ORDERS-POST').cases[0].outcome = 'failed';
+expectError(errorsOf(inventory, failedCase), /runner outcome pass does not match case outcome failed/, 'runner outcome mismatch');
+const orphanCase = copy(observations);
+orphanCase.observations = orphanCase.observations.filter((item) => item.observationId !== 'atalanta:SRF-API-ORDERS-POST');
+row(orphanCase, 'atlas:SRF-API-ORDERS-POST').executions = [];
+delete row(orphanCase, 'atlas:SRF-API-ORDERS-POST').cases[0].execution;
+expectError(errorsOf(inventory, orphanCase), /CASE-API-ORDER-CREATE: executed case on an unexecuted surface/, 'passed case on an unexecuted surface');
+const blockedCase = copy(orphanCase);
+Object.assign(row(blockedCase, 'atlas:SRF-API-ORDERS-POST').cases[0], { outcome: 'blocked', reason: 'Payment sandbox unavailable' });
+const blockedDepth = calculateCoverage(inventory, blockedCase, context).lanes.api.caseDepth;
+assert.deepEqual([blockedDepth.executedWeight, blockedDepth.gaps], [0, [{ obligationId: 'CASE-API-ORDER-CREATE', reason: 'Payment sandbox unavailable' }]]);
+
+// Defect outcomes come only from the ledger and never move a coverage metric.
+const metrics = (value) => ['executionCoverage', 'assertionQuality', 'evidenceQuality', 'automatedExecution'].map((metric) => value.overall[metric]);
+const refless = copy(observations); refless.observations.forEach((item) => { item.defectRefs = []; });
+const noLedger = calculateCoverage(inventory, refless, { ...context, ledger: null });
+assert.deepEqual(metrics(noLedger), metrics(result), 'the ledger changed coverage metrics');
+assert.deepEqual(noLedger.defectOutcomes, { confirmed: 0, suspected: 0, needsOracle: 0, duplicate: 0, rejected: 0, headline: 0, linked: 0, unlinked: [], scoreContribution: 0 });
+assert.deepEqual(noLedger.sourceSchemas, ['argus/surface-inventory@1', 'argus/coverage-observations@2', 'argus/evidence-reference@3']);
+const retriaged = copy(ledger);
+retriaged.bugs[1] = { ...retriaged.bugs[1], status: 'rejected', rejection: { reason: 'out-of-scope', rationale: 'Retriaged', evidenceIds: [] } };
+delete retriaged.bugs[1].missingProof;
+const retriagedResult = calculateCoverage(inventory, observations, { ...context, ledger: retriaged });
+assert.deepEqual(metrics(retriagedResult), metrics(result), 'a ledger status change moved coverage metrics');
+assert.deepEqual([retriagedResult.defectOutcomes.suspected, retriagedResult.defectOutcomes.rejected, retriagedResult.defectOutcomes.headline, retriagedResult.defectOutcomes.unlinked], [0, 2, 1, []]);
+expectError(errorsOf(inventory, observations, { ...context, ledger: null }), /atalanta:SRF-API-ORDERS-POST: defect reference ATA-001 requires the canonical bug ledger/, 'defect references without a ledger');
+const unknownRef = copy(observations); row(unknownRef, 'orion:SRF-UI-CHECKOUT').defectRefs = ['ORI-999'];
+expectError(errorsOf(inventory, unknownRef), /orion:SRF-UI-CHECKOUT: unknown defect reference ORI-999/, 'unknown defect reference');
+const linkedRefs = copy(observations); row(linkedRefs, 'orion:SRF-UI-CHECKOUT').defectRefs = ['ORI-002'];
+const linkedResult = calculateCoverage(inventory, linkedRefs, context);
+assert.deepEqual([surfaceOf(linkedResult, 'SRF-UI-CHECKOUT').defectIds, linkedResult.defectOutcomes.linked, linkedResult.defectOutcomes.unlinked], [['BUG-0002'], 2, []], 'an origin alias did not resolve to its ledger row');
+
+// Denominators scale with the target's own inventory.
+const small = copy(inventory);
+small.items = small.items.slice(0, 1); small.discovery = { candidates: 1, characterized: 1 };
+const smallObservations = copy(observations); smallObservations.observations = [row(smallObservations, 'orion:SRF-UI-CHECKOUT')];
+assert.equal(calculateCoverage(small, smallObservations, context).overall.executionCoverage, 1, 'small target did not scale to its own denominator');
+const large = copy(inventory);
+for (let i = 0; i < 20; i += 1) large.items.push({ ...large.items[2], id: `SRF-EVENT-EXTRA-${i}`, risk: 'high' });
+large.discovery = { candidates: 25, characterized: 24 };
+assert(calculateCoverage(large, observations, context).overall.executionCoverage < result.overall.executionCoverage, 'large uncovered surface did not expand the denominator');
+const invalid = copy(inventory); invalid.items.push({ ...invalid.items[0] });
+assert(validateSurfaceInventory(invalid).some((error) => error.includes('duplicate surface id')), 'duplicate surface accepted');
+
+// Retained bytes are integrity-checked at reconciliation, and a result cannot be hand-tuned.
+const drifted = (source) => (source.endsWith('discovery-crawl.txt') ? Buffer.from('changed') : readArtifact(source));
+expectError(reconcileCoverageEvidence(inventory, observations, evidence, drifted), /SRF-UI-CHECKOUT: discovery evidence: evidence digest drift EVD-0001/, 'discovery evidence drift');
+expectError(reconcileCoverageEvidence(inventory, withExecution({ evidenceId: 'EVD-0999' }), evidence, readArtifact), /orion:SRF-UI-CHECKOUT: execution: unresolved evidence EVD-0999/, 'unresolved execution evidence');
+const tuned = copy(result); tuned.criticalUnexecuted = []; tuned.defectOutcomes.headline = 3; tuned.runnerCaseMapping = 'not-applicable';
+expectError(validateCoverageResult(tuned), /criticalUnexecuted must list exactly/, 'hidden critical surface');
+expectError(validateCoverageResult(tuned), /headline must equal confirmed \+ suspected/, 'inflated headline');
+expectError(validateCoverageResult(tuned), /runnerCaseMapping cannot be not-applicable when a surface has automated execution/, 'hidden runner-case mapping');
 NODE
 
 node "$ROOT/scripts/sync-argus-runtime-assets.mjs" --write >/dev/null
-"$ROOT/argus/claude/bin/argus-assets" coverage validate --inventory "$FIXTURES/surface-inventory.json" --observations "$FIXTURES/coverage-observations.json"
-"$ROOT/argus/claude/bin/argus-assets" coverage calculate --inventory "$FIXTURES/surface-inventory.json" --observations "$FIXTURES/coverage-observations.json" --output "$TMP/cli-result.json"
-jq -S 'del(.generatedAt)' "$TMP/result.json" >"$TMP/runtime-normalized.json"
-jq -S 'del(.generatedAt)' "$TMP/cli-result.json" >"$TMP/cli-normalized.json"
-cmp "$TMP/runtime-normalized.json" "$TMP/cli-normalized.json" >/dev/null || { echo 'FAIL  runtime and CLI coverage results differ' >&2; exit 1; }
-printf 'PASS  surface-derived UI/API/event/data coverage, scoped outcomes, proportional denominators, and defect-neutral scoring\n'
+COVERAGE_ARGS=(--inventory "$FIXTURES/surface-inventory.json" --observations "$FIXTURES/coverage-observations.json"
+  --evidence "$FIXTURES/evidence-reference.json" --ledger "$FIXTURES/bug-ledger.json" --root "$FIXTURES")
+MAPPING_ARGS=(--automation-status "$FIXTURES/automation-status.json")
+"$CLI" coverage validate "${COVERAGE_ARGS[@]}" "${MAPPING_ARGS[@]}" >"$TMP/validate.out"
+grep -Fq 'runner-case-mapping=verified' "$TMP/validate.out" || fail "coverage validate did not verify the runner-case mapping: $(<"$TMP/validate.out")"
+"$CLI" coverage calculate "${COVERAGE_ARGS[@]}" "${MAPPING_ARGS[@]}" --output "$TMP/cli-result.json" >/dev/null
+"$CLI" coverage calculate "${COVERAGE_ARGS[@]}" --output "$TMP/cli-unverified-result.json" >/dev/null
+for result in result unverified-result; do
+  jq -S 'del(.generatedAt)' "$TMP/$result.json" >"$TMP/runtime-normalized.json"
+  jq -S 'del(.generatedAt)' "$TMP/cli-$result.json" >"$TMP/cli-normalized.json"
+  cmp "$TMP/runtime-normalized.json" "$TMP/cli-normalized.json" >/dev/null || fail "runtime and CLI coverage results differ ($result)"
+done
+jq -e '.runnerCaseMapping == "verified"' "$TMP/cli-result.json" >/dev/null || fail 'the CLI did not verify the mapped runner case'
+jq -e '.runnerCaseMapping == "unverified"' "$TMP/cli-unverified-result.json" >/dev/null || fail 'the CLI verified a runner case without an automation status'
+
+# A deleted mapping or a non-canonical automation status fails the CLI.
+jq '(.tests[] | select(.testId == "TST-0001")) |= del(.caseIds, .surfaceIds)' "$FIXTURES/automation-status.json" >"$TMP/unmapped-automation.json"
+if "$CLI" coverage validate "${COVERAGE_ARGS[@]}" --automation-status "$TMP/unmapped-automation.json" >/dev/null 2>"$TMP/unmapped.err"; then
+  fail 'coverage validate credited a runner case that automation-status does not map'
+fi
+grep -Fq 'runner case api:orders.spec.ts:creates-a-charged-order is not mapped to SRF-API-ORDERS-POST by automation-status' "$TMP/unmapped.err" || fail "unmapped runner case failed for another reason: $(<"$TMP/unmapped.err")"
+jq '.schemaVersion = 1' "$FIXTURES/automation-status.json" >"$TMP/retired-automation.json"
+if "$CLI" coverage calculate "${COVERAGE_ARGS[@]}" --automation-status "$TMP/retired-automation.json" >/dev/null 2>"$TMP/retired-automation.err"; then
+  fail 'coverage calculate accepted a non-canonical automation status'
+fi
+grep -Fq 'automation-status: ' "$TMP/retired-automation.err" || fail "non-canonical automation status failed for another reason: $(<"$TMP/retired-automation.err")"
+
+# The template's surface-coverage gate passes the automation status whenever the project has one.
+PROJECT="$TMP/project"
+mkdir -p "$PROJECT/scripts" "$PROJECT/solution" "$PROJECT/reports"
+cp "$ROOT/argus/claude/templates/typescript/scripts/baseline-coverage.mjs" "$PROJECT/scripts/"
+# Outside an engagement it is the delivered CI's gate: a missing canonical input fails it.
+cp "$FIXTURES/surface-inventory.json" "$PROJECT/solution/surface-inventory.json"
+if ARGUS_ASSETS="$CLI" node "$PROJECT/scripts/baseline-coverage.mjs" >"$TMP/baseline-missing.out" 2>"$TMP/baseline-missing.err"; then
+  fail 'baseline coverage passed outside an engagement without coverage observations'
+fi
+grep -Fq 'surface-coverage: missing solution/coverage-observations.json' "$TMP/baseline-missing.err" \
+  || fail "missing coverage observations failed for another reason: $(<"$TMP/baseline-missing.err")"
+if grep -Fq deferred "$TMP/baseline-missing.out"; then fail 'baseline coverage deferred outside an engagement'; fi
+test ! -e "$PROJECT/solution/coverage-result.json" || fail 'baseline coverage without observations wrote a coverage result'
+for input in surface-inventory coverage-observations evidence-reference bug-ledger; do
+  cp "$FIXTURES/$input.json" "$PROJECT/solution/$input.json"
+done
+cp -R "$FIXTURES/reports/evidence" "$PROJECT/reports/evidence"
+ARGUS_ASSETS="$CLI" node "$PROJECT/scripts/baseline-coverage.mjs" >"$TMP/baseline-unverified.out"
+jq -e '.runnerCaseMapping == "unverified"' "$PROJECT/solution/coverage-result.json" >/dev/null || fail 'baseline coverage without an automation status was not unverified'
+grep -Fq 'runner-cases=unverified' "$TMP/baseline-unverified.out" || fail "baseline coverage summary omitted the runner-case mapping: $(<"$TMP/baseline-unverified.out")"
+cp "$FIXTURES/automation-status.json" "$PROJECT/solution/automation-status.json"
+ARGUS_ASSETS="$CLI" node "$PROJECT/scripts/baseline-coverage.mjs" >/dev/null
+jq -e '.runnerCaseMapping == "verified"' "$PROJECT/solution/coverage-result.json" >/dev/null || fail 'baseline coverage did not pass the project automation status'
+cp "$TMP/unmapped-automation.json" "$PROJECT/solution/automation-status.json"
+if ARGUS_ASSETS="$CLI" node "$PROJECT/scripts/baseline-coverage.mjs" >/dev/null 2>"$TMP/baseline-unmapped.err"; then
+  fail 'baseline coverage credited a runner case that the project automation status does not map'
+fi
+grep -Fq 'is not mapped to SRF-API-ORDERS-POST by automation-status' "$TMP/baseline-unmapped.err" || fail "baseline coverage failed for another reason: $(<"$TMP/baseline-unmapped.err")"
+
+# Inside an engagement the canonical coverage-result is Kleio's single-writer merge. She merges
+# the coverage observations only in reporting, after the automation phase's runs, so until then
+# the gate defers: it succeeds without a result, a summary block, or an event.
+ENGAGED="$TMP/engaged"
+mkdir -p "$ENGAGED"
+"$CLI" engagement init --target "$ENGAGED" --artifact-root "$ENGAGED" --mode A --engagement-id coverage-gate-smoke >/dev/null
+mkdir -p "$ENGAGED/scripts" "$ENGAGED/solution" "$ENGAGED/reports"
+cp "$PROJECT/scripts/baseline-coverage.mjs" "$ENGAGED/scripts/"
+for input in surface-inventory evidence-reference bug-ledger automation-status; do
+  cp "$FIXTURES/$input.json" "$ENGAGED/solution/$input.json"
+done
+cp -R "$FIXTURES/reports/evidence" "$ENGAGED/reports/evidence"
+(cd "$ENGAGED" && ARGUS_ASSETS="$CLI" node scripts/baseline-coverage.mjs >"$TMP/baseline-deferred.out" 2>&1) \
+  || fail "baseline coverage failed inside an engagement before Kleio merged the coverage observations: $(<"$TMP/baseline-deferred.out")"
+grep -Fq 'COVERAGE  deferred reason=canonical-input-unmerged missing=solution/coverage-observations.json' "$TMP/baseline-deferred.out" \
+  || fail "engaged baseline coverage did not report its deferral: $(<"$TMP/baseline-deferred.out")"
+test ! -e "$ENGAGED/reports/coverage-result.json" && test ! -e "$ENGAGED/solution/coverage-result.json" && test ! -e "$ENGAGED/reports/summary.json" \
+  || fail 'deferred baseline coverage wrote a coverage result or summary'
+# Once Kleio merged the observations, the gate writes its calculation to reports/ and succeeds,
+# from the project root or any other directory.
+cp "$FIXTURES/coverage-observations.json" "$ENGAGED/solution/coverage-observations.json"
+(cd "$ENGAGED" && ARGUS_ASSETS="$CLI" node scripts/baseline-coverage.mjs >"$TMP/baseline-engaged.out" 2>&1) \
+  || fail "baseline coverage failed inside an engagement: $(<"$TMP/baseline-engaged.out")"
+jq -e '.runnerCaseMapping == "verified" and (.overall | type) == "object"' "$ENGAGED/reports/coverage-result.json" >/dev/null \
+  || fail 'baseline coverage inside an engagement did not write reports/coverage-result.json'
+test ! -e "$ENGAGED/solution/coverage-result.json" || fail 'baseline coverage wrote the canonical coverage-result inside an engagement'
+grep -Fq 'runner-cases=verified' "$TMP/baseline-engaged.out" || fail "engaged baseline coverage summary omitted the runner-case mapping: $(<"$TMP/baseline-engaged.out")"
+jq -e '.surface_coverage.runnerCaseMapping == "verified"' "$ENGAGED/reports/summary.json" >/dev/null || fail 'engaged baseline coverage did not update reports/summary.json'
+rm "$ENGAGED/reports/coverage-result.json"
+(cd "$TMP" && ARGUS_ASSETS="$CLI" node "$ENGAGED/scripts/baseline-coverage.mjs" >/dev/null 2>"$TMP/baseline-engaged-outside.err") \
+  || fail "baseline coverage run from outside the engaged tree failed: $(<"$TMP/baseline-engaged-outside.err")"
+test -f "$ENGAGED/reports/coverage-result.json" && test ! -e "$ENGAGED/solution/coverage-result.json" \
+  || fail 'baseline coverage run from outside the engaged tree did not detect its engagement'
+
+# Without a registry the CLI refuses to credit any cited execution.
+if "$CLI" coverage validate --inventory "$FIXTURES/surface-inventory.json" --observations "$FIXTURES/coverage-observations.json" \
+  --ledger "$FIXTURES/bug-ledger.json" --root "$FIXTURES" >/dev/null 2>"$TMP/no-registry.err"; then
+  fail 'coverage validate accepted cited evidence without a registry'
+fi
+grep -Fq 'coverage evidence registry required' "$TMP/no-registry.err" || fail "missing registry failed for another reason: $(<"$TMP/no-registry.err")"
+
+# Evidence sources stay inside --root: no absolute path, no '..', and no symbolic-link escape.
+cp -R "$FIXTURES" "$TMP/root"
+printf 'outside\n' >"$TMP/outside.json"
+rm "$TMP/root/reports/evidence/runner-full-suite.json"
+ln -s "$TMP/outside.json" "$TMP/root/reports/evidence/runner-full-suite.json"
+if "$CLI" coverage calculate "${COVERAGE_ARGS[@]:0:8}" --root "$TMP/root" >/dev/null 2>"$TMP/escape.err"; then
+  fail 'coverage calculate followed a symbolic link out of --root'
+fi
+grep -Fq 'escapes --root through a symbolic link' "$TMP/escape.err" || fail "symbolic-link escape failed for another reason: $(<"$TMP/escape.err")"
+jq '(.references[] | select(.id == "EVD-0103") | .source) = "reports/../reports/evidence/control-wrong-total.log"' "$FIXTURES/evidence-reference.json" >"$TMP/dotdot-registry.json"
+if "$CLI" coverage validate --inventory "$FIXTURES/surface-inventory.json" --observations "$FIXTURES/coverage-observations.json" \
+  --evidence "$TMP/dotdot-registry.json" --ledger "$FIXTURES/bug-ledger.json" --root "$FIXTURES" >/dev/null 2>"$TMP/dotdot.err"; then
+  fail "coverage validate read an evidence source with a '..' segment"
+fi
+grep -Fq 'missing or unsafe evidence EVD-0103' "$TMP/dotdot.err" || fail "'..' evidence source failed for another reason: $(<"$TMP/dotdot.err")"
+
+printf 'PASS  evidence-derived UI/API/event/data coverage: resolved executions, automation-status runner-case mapping, controlled assertions, delivery-gate automation, critical unexecuted surfaces, ledger-derived defect outcomes, proportional denominators, and CLI parity\n'
