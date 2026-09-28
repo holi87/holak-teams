@@ -68,6 +68,7 @@
   "forbiddenPromptPatterns": [
     { "id": "no-double-reproduction-gate", "pattern": "reproduced[^.]{0,40}(at least twice|≥\\s*2×)|second reproduction", "flags": "i" },
     { "id": "no-direct-canonical-write", "pattern": "\\b(?:Write|Produce) `(?:solution/[A-Z][A-Za-z_-]*\\.md|README\\.md|run-tests\\.sh)`|unless canonically accountable", "flags": "" },
-    { "id": "no-working-directory-artifact-input", "pattern": "--(?:input|inventory|observations|evidence|ledger|automation-status|selection|root|destination) (?:solution|reports|bugs|tests|ai_agents_internal)/", "flags": "" }
+    { "id": "no-working-directory-artifact-input", "pattern": "--(?:input|inventory|observations|evidence|ledger|automation-status|selection|root|destination) (?:solution|reports|bugs|tests|ai_agents_internal)/", "flags": "" },
+    { "id": "no-vendored-hunt-driver", "pattern": "(?:node |`)scripts/hunt-driver\\.mjs|provisions it into the target repo", "flags": "" }
   ]
 }

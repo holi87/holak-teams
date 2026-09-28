@@ -152,12 +152,14 @@ Hunt-driver-only capabilities (no `browser_*` equivalent):
 | Dry run | `--plan` (print the parsed actions and authorization checks as one JSON line; no config load, no browser) |
 | Version | `--version` (print the driver version) |
 
-Example — sweep a screen at mobile width as a student, capture evidence:
+Example — sweep a screen at mobile width as a student, capture evidence (managed engagement,
+`<printed-path>` from `argus-assets path typescript-template`):
 
 ```
+ARGUS_ENGAGEMENT_MANIFEST=<artifact-root>/ai_agents_internal/engagement.json \
 ARGUS_BROWSER_PROFILE=<allocated-browserProfile> \
 ARGUS_BROWSER_ARTIFACTS=<allocated-browserArtifactsDirectory> \
-node scripts/hunt-driver.mjs --agent orion --role argus-orion \
+node <printed-path>/scripts/hunt-driver.mjs --agent orion --role argus-orion \
   --viewport 375x812 --goto /moje-kursy \
   --shot <allocated-browserArtifactsDirectory>/screenshots/mycourses-375.png \
   --snapshot --console --net

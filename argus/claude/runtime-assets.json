@@ -38,8 +38,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 18116,
-      "sha256": "c8b7c48efb1f5446db6519028e63fd6dff02ad2433e4c692daa6ee7f7b5ff6df"
+      "bytes": 18294,
+      "sha256": "450c56a31a18625beee7d582b90b406bb4c580c103f5db80b3b77de6611a9f97"
     },
     {
       "id": "authorization-policy",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 64051,
-    "sha256": "2ec39d15ce080dc44ef46218baa435214077560241ef1c4a8f92cf4eed0d4759"
+    "bytes": 65077,
+    "sha256": "8c05226fb522a65b3bac8e2cd26c078599b7c3eb63cd893c86ec709c6dd41acb"
   }
 }
