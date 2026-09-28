@@ -3,8 +3,9 @@
 # interface from recorded scenario files instead of a framework, so every gate in
 # scripts/runner-lib.sh runs without a target. ARGUS_FAKE_SCENARIO names the scenario
 # directory; every hook call is recorded in reports/fake-calls.log. A pass replays
-# events.<selection>.<pass>.tsv and returns exit.<selection>.<pass> (default 0); the
-# inventory pass publishes inventory.tsv, expected-bugs.txt, and counterfactual-plan.tsv.
+# events.<selection>.<pass>.tsv and returns exit.<selection>.<pass> (default 0), after
+# waiting for the smoke when hold.<selection>.<pass> exists; the inventory pass publishes
+# inventory.tsv, expected-bugs.txt, and counterfactual-plan.tsv.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -51,6 +52,16 @@ argus_native_run() {
   fake_record "env mode=${ARGUS_RUNNER_MODE:-} pass=${ARGUS_EVIDENCE_PASS:-} outcome=${ARGUS_OUTCOME_FILE:-} fault=${ARGUS_FAULT_INJECTION:-} grant=${ARGUS_FAULT_INJECTION_GRANT:-}"
   # A misbehaving hook that exits instead of returning; the library must still write a result.
   if [ -f "$SCENARIO/run-exit" ]; then exit 0; fi
+  # A held pass marks that it is running (held.<selection>.<pass>) and waits, mid-run with the
+  # run lock held, until the smoke creates release.<selection>.<pass>; after 60 s it fails.
+  if [ -f "$SCENARIO/hold.$selection.$pass" ]; then
+    : >"$SCENARIO/held.$selection.$pass"
+    for _ in $(seq 1 600); do
+      [ ! -f "$SCENARIO/release.$selection.$pass" ] || break
+      sleep 0.1
+    done
+    [ -f "$SCENARIO/release.$selection.$pass" ] || return 1
+  fi
   replay="$SCENARIO/events.$selection.$pass.tsv"
   if [ -f "$replay" ]; then
     while IFS=$'\t' read -r case_id category status expected lifecycle bug_id reason; do

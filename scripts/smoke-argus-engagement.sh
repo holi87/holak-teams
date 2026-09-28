@@ -668,6 +668,10 @@ guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=autho
 guard_as argus:nike Bash 'ARGUS_FAULT_INJECTION_GRANT=nike .venv/bin/python -m pytest -m resilience' GUARD-ENGAGEMENT-OPT-IN
 guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized ./run-tests.sh' GUARD-ENGAGEMENT-OPT-IN
 guard_as argus:nike Bash './run-tests.sh --mode full-suite' allow
+# A lane waits for the per-root run lock the way qa-framework-runner documents, with or without
+# an opt-in.
+guard_as argus:daidalos Bash 'ARGUS_RUN_LOCK_WAIT_SECONDS=300 ./run-tests.sh --mode baseline' allow
+guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized ARGUS_RUN_LOCK_WAIT_SECONDS=300 ./run-tests.sh --mode candidate-regression' allow
 guard_shell "argus-assets template detect --target $TARGET" allow
 guard_shell "argus-assets template select --target $TARGET --runtime typescript --package-manager npm --test-root tests --harness-root qa-support --output ai_agents_internal/reports/template-selection.json" allow
 guard_shell "argus-assets template scaffold --selection ai_agents_internal/reports/template-selection.json --destination $atlas_tmp/scaffold" allow

@@ -59,6 +59,9 @@
       { "id": "first-attempt-schema", "source": "qa-core", "markers": ["exact key names", "value types", "repair within the same attempt", "never rely on a retry"] },
       { "id": "capability-template-selection", "source": "qa-framework-runner", "markers": ["Detect the target language", "Adapt a healthy existing suite", "Scaffold only"] },
       { "id": "shared-template-semantics", "source": "qa-framework-runner", "markers": ["defect-evidence", "candidate-regression", "owner, reason, evidence, expiry", "solution/quarantine.tsv", "expires_on"] },
+      { "id": "one-run-per-harness-root", "source": "qa-framework-runner", "markers": ["One `run-tests.sh` run at a time per harness root", "ARGUS RUNNER BUSY (runner-busy)", "never cite, archive, or register it", "ARGUS_RUN_LOCK_WAIT_SECONDS", "Atlas reruns `full-suite` and registers that run"] },
+      { "id": "registered-runner-last", "source": "atlas", "markers": ["the delivered result must be the last run in the root", "rerun `--mode full-suite` and archive and register that run, never the replacing one"] },
+      { "id": "unregistered-runner-rerun", "source": "kleio", "markers": ["route to Atlas to rerun `full-suite` and register that run, never the unregistered one"] },
       { "id": "suite-quarantine-ledger", "source": "asklepios", "markers": ["solution/quarantine.tsv", "reports/test-inventory.tsv", "expires_on"] },
       { "id": "confirmation-ratio", "source": "qa-core", "markers": ["captured occurrence", "occurrences/attempts ratio", "second success is never fabricated"] },
       { "id": "exploration-loop", "source": "qa-core", "markers": ["Seeded variation", "Differential oracle", "Search around each hit", "consecutive distinct probes", "consistency divergence"] },
@@ -73,6 +76,7 @@
     { "id": "no-working-directory-artifact-input", "pattern": "--(?:input|inventory|observations|evidence|ledger|automation-status|selection|root|destination) (?:solution|reports|bugs|tests|ai_agents_internal)/", "flags": "" },
     { "id": "no-vendored-hunt-driver", "pattern": "(?:node |`)scripts/hunt-driver\\.mjs|provisions it into the target repo", "flags": "" },
     { "id": "no-unmerged-coverage-preview", "pattern": "[Pp]review with `argus-assets coverage|`argus-assets coverage calculate[^`]*--output -`", "flags": "" },
-    { "id": "no-reporter-runner-rerun", "pattern": "execute `\\./run-tests\\.sh` from the repo root|from YOUR run", "flags": "" }
+    { "id": "no-reporter-runner-rerun", "pattern": "execute `\\./run-tests\\.sh` from the repo root|from YOUR run", "flags": "" },
+    { "id": "no-registering-a-replacing-runner-result", "pattern": "route to Atlas to archive and register it", "flags": "" }
   ]
 }

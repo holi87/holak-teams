@@ -516,6 +516,9 @@ jq -c . "$FIXTURES/valid/runner-result.json" >"$TARGET/reports/argus-runner-resu
 if "$CLI" engagement report-facts --manifest "$MANIFEST" >"$WORK/report-facts-unregistered.out" 2>&1; then fail 'report-facts accepted an unregistered runner result'; fi
 grep -Fq 'reports/argus-runner-result.json (sha256 ' "$WORK/report-facts-unregistered.out" && grep -Fq 'is not registered runner-result evidence' "$WORK/report-facts-unregistered.out" || \
   fail "an unregistered runner result failed for another reason: $(<"$WORK/report-facts-unregistered.out")"
+# The refusal asks for a fresh full-suite run, never for registering whatever a later run left.
+grep -Fq 'the run-tests.sh owner reruns full-suite and archives and registers that run, never this one' "$WORK/report-facts-unregistered.out" ||
+  fail "the unregistered runner result refusal does not ask for a fresh full-suite run: $(<"$WORK/report-facts-unregistered.out")"
 cp "$FIXTURES/valid/runner-result.json" "$TARGET/reports/argus-runner-result.json"
 cmp -s "$WORK/report-facts.json" "$TARGET/reports/report-facts.json" || fail 'report-facts --output wrote different facts than stdout'
 # Fragment validation needs the complete document, so Kleio's prompt carries the recipe used

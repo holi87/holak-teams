@@ -117,6 +117,13 @@ The complete installed framework contract is
   stay inert until the library exports `ARGUS_RUNNER_MODE`, and only they emit events,
   through `scripts/outcome-event.sh`. A test, fixture, or hook never writes an event, and no
   event carries a title, message, URL, or body.
+- One `run-tests.sh` run at a time per harness root: every run rewrites the one
+  `reports/argus-runner-result.json`, event file, inventory, and pass evidence, so the
+  library holds a run lock. Exit 12 with `ARGUS RUNNER BUSY (runner-busy)` means your run
+  never started and the result file is the holder's; never cite, archive, or register it.
+  Rerun after the holder ends, or set `ARGUS_RUN_LOCK_WAIT_SECONDS=<n>` to wait. The delivered
+  result is Atlas's registered `full-suite` run, so it must be the last run in the root: after
+  any later run, Atlas reruns `full-suite` and registers that run, never the later one.
 - Every run collects the full, unfiltered inventory (`reports/test-inventory.tsv`) before
   any test body runs. Every test resolves to exactly one lane; a regression carries exactly
   one provenance token (TypeScript `@bug:<id>`, Java `@Tag("bug:<id>")`, Python

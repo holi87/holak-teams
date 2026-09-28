@@ -291,9 +291,19 @@ argus-launch points into the artifact root, the only writable root of its sandbo
 
 The steps run in this order; a denial finishes the run through `scripts/runner-contract.sh`.
 
-1. Mode parsing (an invalid mode exits 14 without a result), removal of stale events,
-   inventory, expected-bugs, counterfactual-plan, and adapter-status files, and an absolute
-   `ARGUS_OUTCOME_FILE`.
+1. Mode parsing (an invalid mode exits 14 without a result), the run lock, removal of stale
+   events, inventory, expected-bugs, counterfactual-plan, and adapter-status files, and an
+   absolute `ARGUS_OUTCOME_FILE`. One run at a time per harness root: every run rewrites the
+   same result, event file, inventory, and pass evidence, so the library first creates
+   `reports/.argus-run.lock` atomically (`mkdir`) with an owner record (pid, process start
+   time, `ARGUS_ENGAGEMENT_LANE`, mode, UTC start) and removes it after the result is written.
+   A run that finds the lock held waits up to `ARGUS_RUN_LOCK_WAIT_SECONDS` (0-3600, default
+   0; any other value exits 14) and then exits 12 without a result, printing `ARGUS RUNNER
+   BUSY (runner-busy)` with the holder; it changes no file, and the result file present then
+   belongs to the holder. A lock is reclaimed when its recorded process is gone (the pid is
+   not running, or runs with another start time where `ps` can tell), its owner record is
+   malformed, or it has had no owner record for over a minute, and only under the reclaim
+   guard `reports/.argus-run.lock.reclaim`, so two runs never delete each other's fresh lock.
 2. Template selection, before any other event: `template-selection-missing-or-incompatible`.
 3. `full-suite` with framework selectors: `runner-selection` `full-suite-narrowing-forbidden`.
 4. The lane plan (SD-8) through `scripts/lane-plan.sh validate`: `lane-plan-invalid`,

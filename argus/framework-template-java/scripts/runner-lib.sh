@@ -34,8 +34,9 @@ ARGUS_LANE_PLAN="solution/test-lanes.tsv"
 ARGUS_ENVIRONMENT_PLAN="solution/environment.tsv"
 ARGUS_QUARANTINE_LEDGER="solution/quarantine.tsv"
 ARGUS_AUTOMATION_REVIEW="solution/automation-review.json"
+ARGUS_RUN_LOCK="reports/.argus-run.lock"
 ARGUS_ROOT="" ARGUS_MODE="" ARGUS_EVENTS="" ARGUS_LANES=""
-ARGUS_NATIVE_MAX=0 ARGUS_CALL_STATUS=0 ARGUS_FINISHING=0
+ARGUS_NATIVE_MAX=0 ARGUS_CALL_STATUS=0 ARGUS_FINISHING=0 ARGUS_RUN_LOCK_HELD=0
 ARGUS_PASSTHROUGH=()
 
 argus_emit() {
@@ -77,6 +78,7 @@ argus_finish() {
   bash "$ARGUS_ROOT/scripts/runner-contract.sh" "${args[@]}"
   code=$?
   [ -z "$no_expected_bugs" ] || rm -f "$no_expected_bugs"
+  argus_run_lock_release
   echo "Argus contract: mode=$ARGUS_MODE result=$ARGUS_RESULT exit=$code"
   exit "$code"
 }
@@ -92,6 +94,104 @@ argus_unexpected_error() {
   argus_emit wrapper infrastructure fail false n/a - wrapper-command-failed ||
     printf 'wrapper\tinfrastructure\tfail\tfalse\tn/a\t-\twrapper-command-failed\n' >>"$ARGUS_EVENTS"
   argus_finish 1
+}
+
+# One run at a time per harness root. Every run rewrites the same result, event file,
+# inventory, expected-bugs list, and pass evidence, so a second run in the same root would
+# delete and splice the files of the first. The run lock is the directory
+# reports/.argus-run.lock, created atomically by mkdir; its owner file records
+# `<pid>\t<start>\t<lane>\t<mode>\t<since>` and is renamed into place, so it is never partial.
+# A run that cannot take the lock exits 12 (runner-busy) before it changes any file.
+
+# The start time of process $1 as `ps -o lstart=` reads it in the C locale and UTC, so every
+# caller reads the same text, or - when ps cannot tell. With the pid it names one process, so
+# a reused pid never keeps a dead run's lock alive.
+argus_process_start() {
+  local start=""
+  if command -v ps >/dev/null 2>&1; then
+    start="$(LC_ALL=C TZ=UTC ps -o lstart= -p "$1" 2>/dev/null | awk 'NF { $1 = $1; gsub(/ /, "_"); print; exit }')" || start=""
+  fi
+  printf '%s\n' "${start:--}"
+}
+
+# Succeeds when the run lock is stale: its owner record is malformed or names this process,
+# or the recorded process is gone (no such pid, or a pid that now runs with another start
+# time). A lock without an owner record is being created, unless it has had none for over a
+# minute: that run died between creating the lock and recording itself.
+argus_run_lock_stale() {
+  local record="" pid="" start="" rest="" now
+  local pid_shape='^[1-9][0-9]*$'
+  if [ -f "$ARGUS_RUN_LOCK/owner" ]; then
+    { IFS= read -r record <"$ARGUS_RUN_LOCK/owner"; } 2>/dev/null || true
+    IFS=$'\t' read -r pid start rest <<<"$record" || true
+    if [[ ! "$pid" =~ $pid_shape ]] || [ -z "$start" ] || [ -z "$rest" ] || [ "$pid" = "$$" ]; then return 0; fi
+    now="$(argus_process_start "$pid")"
+    if [ "$start" != - ] && [ "$now" != - ]; then
+      [ "$now" != "$start" ]
+      return
+    fi
+    ! kill -0 "$pid" 2>/dev/null
+    return
+  fi
+  [ -d "$ARGUS_RUN_LOCK" ] && [ -n "$(find "$ARGUS_RUN_LOCK" -maxdepth 0 -mmin +1 2>/dev/null)" ]
+}
+
+# Removes a stale lock under the reclaim guard reports/.argus-run.lock.reclaim. Only the guard
+# holder removes a lock, and it checks the lock again first, so two runs that find the same
+# stale lock never delete a fresh one either of them took. The guard is held for moments; one
+# older than a minute was left by a run that died while reclaiming and is replaced. Fails
+# while another run holds the guard.
+argus_run_lock_reclaim() {
+  local guard="$ARGUS_RUN_LOCK.reclaim"
+  if ! mkdir "$guard" 2>/dev/null; then
+    [ -n "$(find "$guard" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$guard" 2>/dev/null &&
+      mkdir "$guard" 2>/dev/null || return 1
+  fi
+  if argus_run_lock_stale; then rm -rf "$ARGUS_RUN_LOCK"; fi
+  rmdir "$guard" 2>/dev/null || true
+}
+
+argus_run_lock_busy() {
+  local record="" pid="" start="" lane="" mode="" since=""
+  local pid_shape='^[1-9][0-9]*$' lane_shape='^([a-z][a-z0-9-]*|-)$' since_shape='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+  { IFS= read -r record <"$ARGUS_RUN_LOCK/owner"; } 2>/dev/null || true
+  IFS=$'\t' read -r pid start lane mode since <<<"$record" || true
+  [[ "$pid" =~ $pid_shape ]] || pid='?'
+  [[ "$lane" =~ $lane_shape ]] || lane='?'
+  case "$mode" in baseline|defect-evidence|candidate-regression|full-suite) ;; *) mode='?' ;; esac
+  [[ "$since" =~ $since_shape ]] || since='?'
+  echo "ARGUS RUNNER BUSY (runner-busy): another run-tests.sh run holds $ARGUS_ROOT/$ARGUS_RUN_LOCK (pid $pid, lane $lane, mode $mode, since $since). This $ARGUS_MODE run started nothing and changed no file, and reports/argus-runner-result.json is not its result. Run it again after that run has ended, or wait for it with ARGUS_RUN_LOCK_WAIT_SECONDS." >&2
+  exit 12
+}
+
+# Takes the run lock, waiting up to $1 seconds (ARGUS_RUN_LOCK_WAIT_SECONDS) for a holder to
+# end, or exits 12 without changing anything.
+argus_run_lock_acquire() {
+  local deadline=$((SECONDS + $1)) lane="${ARGUS_ENGAGEMENT_LANE:-}" lane_shape='^[a-z][a-z0-9-]*$'
+  until mkdir "$ARGUS_RUN_LOCK" 2>/dev/null ||
+    { argus_run_lock_stale && argus_run_lock_reclaim && mkdir "$ARGUS_RUN_LOCK" 2>/dev/null; }; do
+    [ "$SECONDS" -lt "$deadline" ] || argus_run_lock_busy
+    sleep 1
+  done
+  ARGUS_RUN_LOCK_HELD=1
+  [[ "$lane" =~ $lane_shape ]] || lane=-
+  if ! { printf '%s\t%s\t%s\t%s\t%s\n' "$$" "$(argus_process_start "$$")" "$lane" "$ARGUS_MODE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    >"$ARGUS_RUN_LOCK/owner.tmp" && mv -f "$ARGUS_RUN_LOCK/owner.tmp" "$ARGUS_RUN_LOCK/owner"; }; then
+    rm -rf "$ARGUS_RUN_LOCK"
+    echo "ARGUS RUNNER: cannot record the owner of $ARGUS_ROOT/$ARGUS_RUN_LOCK; this $ARGUS_MODE run started nothing" >&2
+    exit 12
+  fi
+}
+
+# argus_finish releases the lock once the result is in place, and only while this run's owner
+# record still holds it.
+argus_run_lock_release() {
+  local record="" tab=$'\t'
+  [ "$ARGUS_RUN_LOCK_HELD" -eq 1 ] || return 0
+  ARGUS_RUN_LOCK_HELD=0
+  { IFS= read -r record <"$ARGUS_ROOT/$ARGUS_RUN_LOCK/owner"; } 2>/dev/null || true
+  [ "${record%%"$tab"*}" = "$$" ] || return 0
+  rm -rf "${ARGUS_ROOT:?}/$ARGUS_RUN_LOCK"
 }
 
 argus_lane_enabled() {
@@ -520,6 +620,11 @@ argus_main() {
   fi
   if [ "${1:-}" = -- ]; then shift; fi
   case "$ARGUS_MODE" in baseline|defect-evidence|candidate-regression|full-suite) ;; *) echo "INVALID RUNNER MODE: $ARGUS_MODE" >&2; exit 14 ;; esac
+  local lock_wait="${ARGUS_RUN_LOCK_WAIT_SECONDS:-0}" lock_wait_shape='^(0|[1-9][0-9]{0,3})$'
+  if [[ ! "$lock_wait" =~ $lock_wait_shape ]] || [ "$lock_wait" -gt 3600 ]; then
+    echo "INVALID RUNNER LOCK WAIT: ARGUS_RUN_LOCK_WAIT_SECONDS must be a whole number of seconds from 0 to 3600" >&2
+    exit 14
+  fi
   ARGUS_PASSTHROUGH=("$@")
 
   export ARGUS_RUNNER_MODE="$ARGUS_MODE"
@@ -528,8 +633,12 @@ argus_main() {
   ARGUS_EVENTS="${ARGUS_OUTCOME_FILE:-$ARGUS_ROOT/reports/outcomes.raw.tsv}"
   case "$ARGUS_EVENTS" in /*) ;; *) ARGUS_EVENTS="$ARGUS_ROOT/$ARGUS_EVENTS" ;; esac
   export ARGUS_OUTCOME_FILE="$ARGUS_EVENTS"
-  mkdir -p reports "$ARGUS_PASS_ARTIFACTS" "$(dirname "$ARGUS_EVENTS")"
+  mkdir -p reports
+  argus_run_lock_acquire "$lock_wait"
+  mkdir -p "$ARGUS_PASS_ARTIFACTS" "$(dirname "$ARGUS_EVENTS")"
   rm -f "$ARGUS_EVENTS" "$ARGUS_INVENTORY" "$ARGUS_EXPECTED_BUGS" "$ARGUS_COUNTERFACTUAL_PLAN" "$ARGUS_ADAPTER_STATUS"
+  # This run alone holds the harness root, so an event lock still present was left by a run
+  # that was killed while it appended an event.
   rmdir "$ARGUS_EVENTS.lock" 2>/dev/null || true
   trap argus_unexpected_error ERR EXIT
 
