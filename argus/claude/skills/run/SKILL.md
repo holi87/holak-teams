@@ -18,8 +18,8 @@ or prose coordinates, except the unattested form below. Stay the sole controller
 spawn `argus:odysseus`. Execute `${CLAUDE_PLUGIN_ROOT}/skills/orchestration-core/SKILL.md`
 as the only controller policy. Do not read the Odysseus agent as a second policy source.
 
-Reject empty input with `ARGUS_PREFLIGHT_ERROR: TARGET_REQUIRED`. Require the launcher's
-exact `target`, `artifact-root`, `mode`, `engagement-id`, `launch-authorization`,
+Reject empty input with `ARGUS_PREFLIGHT_ERROR: TARGET_REQUIRED`. For `authenticatedLaunch`,
+require the launcher's exact `target`, `artifact-root`, `mode`, `engagement-id`, `launch-authorization`,
 `launch-receipt`, and `trust-store` arguments; missing coordinates return
 `ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED`. Confirm `Agent` and two required
 specialists, then run `argus-assets preflight --target <target> --mode <A|B|C|D>
