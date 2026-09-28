@@ -119,7 +119,7 @@
         "antigone", "ariadne", "asklepios", "atalanta", "charon", "daidalos", "hermes", "lynceus",
         "orion", "penelope", "perseus", "pistis", "proteus", "talos", "theseus", "tyche"
       ],
-      "standby": []
+      "standby": ["kalchas"]
     },
     {
       "id": "proof",
@@ -145,7 +145,7 @@
         "antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus",
         "orion", "perseus", "proteus", "tiresias", "tyche"
       ],
-      "standby": []
+      "standby": ["kalchas"]
     },
     {
       "id": "deep-proof-1",
@@ -171,7 +171,7 @@
         "antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus",
         "orion", "perseus", "proteus", "tiresias", "tyche"
       ],
-      "standby": []
+      "standby": ["kalchas"]
     },
     {
       "id": "deep-proof-2",
@@ -197,7 +197,7 @@
         "antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus",
         "orion", "perseus", "proteus", "tiresias", "tyche"
       ],
-      "standby": []
+      "standby": ["kalchas"]
     },
     {
       "id": "deep-proof-3",
@@ -219,7 +219,7 @@
       "modes": ["A", "C", "D"],
       "skippable": false,
       "participants": ["aegis", "atlas", "daidalos", "mnemosyne", "nike", "talos"],
-      "standby": []
+      "standby": ["tyche"]
     },
     {
       "id": "verification",

@@ -19,6 +19,9 @@ const ROUTED_STATUSES = Object.freeze(['bounced', 'needs-oracle', 'quarantined',
 // Kalchas recon feeds every lane and Minos's ledger merge gates every proof phase, so no mode
 // may treat either as optional.
 const ALWAYS_ESSENTIAL = Object.freeze(['kalchas', 'minos']);
+// A hunter's unknown gets a second Kalchas recon, a phase-scoped re-dispatch on his active
+// lease, so he stays reachable (standby) through hunting and every deep-hunt pass.
+const RECON_LANE = 'kalchas';
 
 export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
   const errors = validateSchema(plan).map(formatSchemaError);
@@ -399,6 +402,10 @@ function validatePhases(plan, phases, planBySlug, proofCandidates, errors) {
       for (const slug of new Set(required)) {
         if (!standby.includes(slug) && !participants.includes(slug)) errors.push(`${id}: standby must include ${slug}`);
       }
+    }
+    if ((id === 'hunting' || phase.kind === 'deep-hunt') && planBySlug.get(RECON_LANE)?.dispatch === true &&
+        !participants.includes(RECON_LANE) && !standby.includes(RECON_LANE)) {
+      errors.push(`${id}: standby must include ${RECON_LANE}`);
     }
   }
 

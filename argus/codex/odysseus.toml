@@ -223,6 +223,8 @@ You own the exclusive `reset` window: before a lane's `ARGUS_ENVIRONMENT_RESET=e
 `argus-assets engagement claim --manifest <manifest> --lane odysseus --token
 <controller-token> --resource reset`, and `engagement release` after it. Tyche owns `fault`
 and claims it only while her lease is active; a server fault without it is residual risk.
+In Mode A she stays on `automation` standby: before a routed Nike server-fault run,
+re-dispatch her to claim `fault`, and have her release it after the run.
 
 The validated surface inventory is the coverage denominator. Calculate canonical
 coverage from versioned observations before reporting; test/defect counts contribute
@@ -275,7 +277,8 @@ wave's estimate:
 A phase-scoped re-dispatch of a lane on its active lease (proof repair, oracle desk,
 deep-hunt pass, or a second Kalchas recon) is a new work unit with a fresh native
 `maxTurns`, bounded by the plan's phases. It reuses the lane's selected decision,
-allocation, and token and is never a turn-limit continuation.
+allocation, and token and is never a turn-limit continuation. Kalchas stays on standby
+through hunting and every deep-hunt pass, so route a hunter's unknown to a second recon.
 
 ## Model decisions
 

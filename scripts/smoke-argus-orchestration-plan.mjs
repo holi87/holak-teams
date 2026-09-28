@@ -11,6 +11,7 @@ const matrix = readJson('argus/capabilities/capability-matrix.json');
 const raci = readJson('argus/raci.json');
 const modelPolicy = readJson('argus/model-policy.json');
 const fixtures = readJson('scripts/fixtures/argus-orchestration/invalid-mutations.json');
+const faultWindowOwner = readJson('argus/policies/engagement.template.json').resourcePolicy.exclusiveOperations.fault;
 const controllerSkill = readFileSync(join(ROOT, 'argus/shared-skills/orchestration-core/SKILL.md'), 'utf8');
 const controllerContract = controllerSkill.replace(/\s+/gu, ' ');
 const expectedWaves = {
@@ -193,6 +194,20 @@ for (const [mode, expectedCount] of Object.entries(expectedModeCounts)) {
   assertPhasePlanShape(mode, phasePlan);
   const proof = phasePlan.find((phase) => phase.id === 'proof');
   assert(sameSet(proof.participants, ['minos']) && proof.standby.includes('metis'), `mode ${mode}: proof must run Minos with Metis on standby`);
+  // A second Kalchas recon for a hunter's unknown is a phase-scoped re-dispatch on his active
+  // lease, so he stays on standby through hunting and every deep-hunt pass.
+  for (const phase of phasePlan.filter((candidate) => candidate.id === 'hunting' || candidate.kind === 'deep-hunt')) {
+    assert(phase.standby.includes('kalchas'), `mode ${mode}/${phase.id}: kalchas must stay on standby for a second recon`);
+  }
+  // Only the fault window's manifest owner can claim it for a Nike server-fault run, so where
+  // both run the owner holds a lease through every phase Nike works in; elsewhere the server
+  // fault is a named residual.
+  if (plan.roles.find((role) => role.slug === faultWindowOwner)?.modes.includes(mode)) {
+    for (const phase of phasePlan.filter((candidate) => candidate.participants.includes('nike'))) {
+      assert([...phase.participants, ...phase.standby].includes(faultWindowOwner),
+        `mode ${mode}/${phase.id}: fault window owner ${faultWindowOwner} must stay reachable while nike runs`);
+    }
+  }
 
   const loop = projected.proofLoop;
   assert(loop.validator === 'minos' && loop.validatorSelected && loop.oracleDesk === 'metis' && loop.oracleDeskSelected
