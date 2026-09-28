@@ -42,6 +42,7 @@
     "sandboxProbeUid": { "type": "integer", "minimum": 0 },
     "sandboxProbeMode": { "const": 448 },
     "environmentPolicy": { "const": "argus-launch-allowlist@1" },
+    "operatorKeyId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
     "issuedBy": { "type": "string", "minLength": 1 },
     "issuedAt": { "type": "string", "format": "date-time" },
     "expiresAt": { "type": "string", "format": "date-time" },

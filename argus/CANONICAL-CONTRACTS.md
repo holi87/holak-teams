@@ -68,6 +68,7 @@ launcher request and authorization. `argus/native-launch-receipt@1` is the verif
 receipt under `ai_agents_internal/`. Both bind the engagement, target kind and identity,
 workspace, artifact root, runtime/model/effort/turn cap, launcher and Claude hashes,
 sandbox and environment policy, runtime trust key, and inherited launch-capability digest.
+Its `operatorKeyId` names the operator anchor preflight pins with the runtime key.
 The signed sandbox probe also binds its physical device, inode, owner, and `0700` mode;
 preflight requires that exact empty directory to become non-writable while the artifact root
 remains writable.

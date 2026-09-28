@@ -193,9 +193,9 @@ through hunting and every deep-hunt pass, so route a hunter's unknown to a secon
 
 ## Model decisions
 
-Pin distinct public Ed25519 `runtime-attestation` and `operator-approval` anchors; private
-keys never enter the engagement. Rerun preflight after pinning. Revocation requires abort,
-cleanup, and a new engagement.
+Preflight pins the signed, distinct public Ed25519 `runtime-attestation` and
+`operator-approval` anchors; never run `model trust`. Private keys never enter the
+engagement. Revocation requires abort, cleanup, and a new engagement.
 
 Before allocation, the controller uses `argus-assets model route` to persist one normal
 attempt-1 decision for Odysseus and the exact `ready`/`degraded`/`conditional`,

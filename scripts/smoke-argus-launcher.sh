@@ -80,15 +80,22 @@ for launcher_copy in "$ROOT/argus/bin/argus-launch" "$ROOT/argus/claude/bin/argu
   [ "$(count_fixed 'os-native-target-readonly@2' "$launcher_copy")" -eq 0 ] || fail "$launcher_copy still names sandbox policy @2"
 done
 
+# Every store also lists the public operator-approval anchor <key-id>-operator, which each
+# attested launch names with --operator-key-id; its private key is never needed here.
 prepare_signer() {
   local root="$1" key_id="$2"
   mkdir -p "$root"
   chmod 700 "$root"
   openssl genpkey -algorithm ED25519 -out "$root/runtime-private.pem" >/dev/null 2>&1
   openssl pkey -in "$root/runtime-private.pem" -pubout -out "$root/runtime-public.pem" >/dev/null 2>&1
-  jq -n --arg keyId "$key_id" --rawfile publicKey "$root/runtime-public.pem" \
+  openssl genpkey -algorithm ED25519 -out "$root/operator-private.pem" >/dev/null 2>&1
+  openssl pkey -in "$root/operator-private.pem" -pubout -out "$root/operator-public.pem" >/dev/null 2>&1
+  rm -f "$root/operator-private.pem"
+  jq -n --arg keyId "$key_id" --arg operatorKeyId "$key_id-operator" \
+    --rawfile publicKey "$root/runtime-public.pem" --rawfile operatorPublicKey "$root/operator-public.pem" \
     '{schema:"argus/model-trust-store@1",schemaVersion:1,keys:[
-      {keyId:$keyId,purpose:"runtime-attestation",subjectId:"argus-launcher-smoke-signer",algorithm:"Ed25519",publicKeyPem:$publicKey,status:"active"}
+      {keyId:$keyId,purpose:"runtime-attestation",subjectId:"argus-launcher-smoke-signer",algorithm:"Ed25519",publicKeyPem:$publicKey,status:"active"},
+      {keyId:$operatorKeyId,purpose:"operator-approval",subjectId:"argus-launcher-smoke-operator",algorithm:"Ed25519",publicKeyPem:$operatorPublicKey,status:"active"}
     ]}' >"$root/model-trust.json"
   chmod 600 "$root"/*.pem "$root/model-trust.json"
 }
@@ -129,6 +136,7 @@ run_authenticated_launch() {
   error="$WORK/$name.stderr"
   command=("$LAUNCHER" claude --target "$target" --artifact-root "$artifact" --mode B \
     --engagement-id "launcher-$name" --trust-store "$trust" --runtime-key-id "$key_id" \
+    --operator-key-id "$key_id-operator" \
     --request-output "$request" --launch-authorization "$authorization" --wait-seconds 30)
   [ -z "$workspace" ] || command+=(--workspace "$workspace")
   if [ "$#" -gt 4 ]; then
@@ -190,6 +198,31 @@ run_authenticated_launch() {
   grep -Fxq '400' "$artifact/ai_agents_internal/fixture-claude-arguments.txt" || fail "$name Claude argv omitted the exact 400-turn cap"
   jq -e '.requestedTurns == 401 and .completedTurns == 400 and .outcome == "error_max_turns" and .supervisorObserved == true' \
     "$artifact/ai_agents_internal/fixture-turn-cap-behavior.json" >/dev/null || fail "$name did not observe exact native turn-cap termination behavior"
+
+  # The single launch preflight pins the signed runtime and operator anchors while it creates
+  # the engagement, so its report already binds the final manifest digest: the session needs no
+  # `model trust` (the guard denies it) and no second preflight inside the launch window.
+  jq -e --arg operator "$key_id-operator" '.operatorKeyId == $operator' "$authorization" >/dev/null || \
+    fail "$name signed authorization omitted the operator-approval anchor"
+  jq -e --arg runtime "$key_id" --arg operator "$key_id-operator" \
+    --slurpfile receipt "$artifact/ai_agents_internal/native-launch-receipt.json" \
+    '.modelTrust.source == "host-trust-store" and .modelTrust.trustStorePath == $receipt[0].trustStorePath
+      and .modelTrust.trustStoreSha256 == $receipt[0].trustStoreSha256
+      and .modelTrust.keys.runtimeAttestation.keyId == $runtime and .modelTrust.keys.operatorApproval.keyId == $operator' \
+    "$artifact/ai_agents_internal/engagement.json" >/dev/null || {
+    jq '.modelTrust' "$artifact/ai_agents_internal/engagement.json" >&2
+    fail "$name preflight did not pin the signed trust anchors when it created the engagement"
+  }
+  [ "$(jq -r .engagement.sha256 "$artifact/ai_agents_internal/preflight.json")" = \
+    "$(manifest_digest "$artifact/ai_agents_internal/engagement.json")" ] || \
+    fail "$name launch preflight report does not bind the pinned engagement manifest digest"
+}
+
+manifest_digest() {
+  node --input-type=module -e 'import { readFileSync } from "node:fs";
+    const { manifestSha256 } = await import(process.argv[1]);
+    process.stdout.write(manifestSha256(JSON.parse(readFileSync(process.argv[2], "utf8"))));' \
+    "$ROOT/argus/runtime/authorization.mjs" "$1"
 }
 
 mkdir -p "$WORK/path target" "$WORK/path artifacts"
@@ -346,7 +379,7 @@ mkdir -p "$WORK/drift-target" "$WORK/drift-artifacts"
 prepare_signer "$WORK/drift-operator" runtime-drift
 PATH="$FIXTURE_PATH:$PATH" "$drift_plugin/bin/argus-launch" claude --target "$WORK/drift-target" \
   --artifact-root "$WORK/drift-artifacts" --mode B --engagement-id launcher-drift \
-  --trust-store "$WORK/drift-operator/model-trust.json" --runtime-key-id runtime-drift \
+  --trust-store "$WORK/drift-operator/model-trust.json" --runtime-key-id runtime-drift --operator-key-id runtime-drift-operator \
   --request-output "$WORK/drift-operator/request.json" --launch-authorization "$WORK/drift-operator/authorization.json" \
   --wait-seconds 30 >"$WORK/drift.stdout" 2>"$WORK/drift.stderr" &
 drift_pid=$!
@@ -372,7 +405,7 @@ mkdir -p "$WORK/dry-run-target" "$WORK/dry-run-artifacts"
 prepare_signer "$WORK/dry-run-operator" runtime-dry-run
 PATH="$FIXTURE_PATH:$PATH" "$LAUNCHER" claude --target "$WORK/dry-run-target" \
   --artifact-root "$WORK/dry-run-artifacts" --mode B --engagement-id launcher-dry-run \
-  --trust-store "$WORK/dry-run-operator/model-trust.json" --runtime-key-id runtime-dry-run \
+  --trust-store "$WORK/dry-run-operator/model-trust.json" --runtime-key-id runtime-dry-run --operator-key-id runtime-dry-run-operator \
   --request-output "$WORK/dry-run-operator/request.json" --launch-authorization "$WORK/dry-run-operator/authorization.json" \
   --wait-seconds 30 --dry-run >"$WORK/dry-run.stdout" 2>"$WORK/dry-run.stderr" &
 dry_run_pid=$!
@@ -427,7 +460,7 @@ mkdir -p "$WORK/usage-dry-run-target" "$WORK/usage-dry-run-artifacts"
 prepare_signer "$WORK/usage-dry-run-operator" runtime-usage-dry-run
 PATH="$FIXTURE_PATH:$PATH" "$LAUNCHER" claude --target "$WORK/usage-dry-run-target" \
   --artifact-root "$WORK/usage-dry-run-artifacts" --mode B --engagement-id launcher-usage-dry-run \
-  --trust-store "$WORK/usage-dry-run-operator/model-trust.json" --runtime-key-id runtime-usage-dry-run \
+  --trust-store "$WORK/usage-dry-run-operator/model-trust.json" --runtime-key-id runtime-usage-dry-run --operator-key-id runtime-usage-dry-run-operator \
   --request-output "$WORK/usage-dry-run-operator/request.json" --launch-authorization "$WORK/usage-dry-run-operator/authorization.json" \
   --usage-json "$WORK/usage-dry-run-operator/usage.json" --wait-seconds 30 --dry-run \
   >"$WORK/usage-dry-run.stdout" 2>"$WORK/usage-dry-run.stderr" &
@@ -447,7 +480,7 @@ for collision in request authorization; do
   set +e
   PATH="$FIXTURE_PATH:$PATH" "$LAUNCHER" claude --target "$WORK/usage-target" \
     --artifact-root "$WORK/usage-collision-artifacts" --mode B --engagement-id launcher-usage-collision \
-    --trust-store "$WORK/usage-collision-operator/model-trust.json" --runtime-key-id runtime-usage-collision \
+    --trust-store "$WORK/usage-collision-operator/model-trust.json" --runtime-key-id runtime-usage-collision --operator-key-id runtime-usage-collision-operator \
     --request-output "$WORK/usage-collision-operator/request.json" --launch-authorization "$WORK/usage-collision-operator/authorization.json" \
     --usage-json "$WORK/usage-collision-operator/$collision.json" --wait-seconds 30 \
     >/dev/null 2>"$WORK/usage-collision-$collision.stderr"
@@ -536,7 +569,7 @@ prepare_signer "$WORK/reject-operator" runtime-reject
 set +e
 PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" claude --target "$WORK/reject-target" \
   --artifact-root "$WORK/reject-target/new-artifacts" --mode A --engagement-id launcher-reject \
-  --trust-store "$WORK/reject-operator/model-trust.json" --runtime-key-id runtime-reject \
+  --trust-store "$WORK/reject-operator/model-trust.json" --runtime-key-id runtime-reject --operator-key-id runtime-reject-operator \
   --request-output "$WORK/reject-operator/request.json" --launch-authorization "$WORK/reject-operator/authorization.json" \
   --wait-seconds 30 >/dev/null 2>&1
 reject_status=$?
@@ -554,7 +587,7 @@ for kind in symlink hardlink; do
   if PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" claude --target "$WORK/alias-target" \
     --artifact-root "$WORK/$kind-artifacts" --mode A --engagement-id "launcher-$kind-alias" \
     --trust-store "$WORK/alias-operator/model-trust.json" --runtime-key-id runtime-alias \
-    --request-output "$WORK/alias-operator/$kind-request.json" \
+    --operator-key-id runtime-alias-operator --request-output "$WORK/alias-operator/$kind-request.json" \
     --launch-authorization "$WORK/alias-operator/$kind-authorization.json" --wait-seconds 30 >/dev/null 2>&1; then
     fail "launcher accepted an artifact tree containing a $kind alias"
   fi
@@ -566,7 +599,7 @@ for bad_target in 'https://[' 'ftp://example.test/qa'; do
   if PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" claude --target "$bad_target" \
     --artifact-root "$WORK/bad-url-artifacts" --mode A --engagement-id launcher-bad-url \
     --trust-store "$WORK/alias-operator/model-trust.json" --runtime-key-id runtime-alias \
-    --request-output "$WORK/alias-operator/bad-url-request.json" \
+    --operator-key-id runtime-alias-operator --request-output "$WORK/alias-operator/bad-url-request.json" \
     --launch-authorization "$WORK/alias-operator/bad-url-authorization.json" --wait-seconds 30 >/dev/null 2>&1; then
     fail "launcher accepted malformed or unsupported target: $bad_target"
   fi
@@ -584,6 +617,56 @@ if "$CLI" launch request --target "$WORK/alias-target" --workspace "$WORK/alias-
   --capability-sha256 "$(printf dead-supervisor | shasum -a 256 | awk '{print $1}')" >/dev/null 2>&1; then
   fail 'launch request accepted a missing supervisor process'
 fi
+
+# The signed operator anchor must be an active operator-approval key of the same trust store:
+# the runtime key, an unknown ID, and a revoked key are refused before any request exists.
+mkdir -p "$WORK/operator-anchor-artifacts" "$WORK/alias-operator/operator-anchor-probe"
+chmod 700 "$WORK/operator-anchor-artifacts" "$WORK/alias-operator/operator-anchor-probe"
+jq '(.keys[] | select(.purpose == "operator-approval")).status = "revoked"' "$WORK/alias-operator/model-trust.json" \
+  >"$WORK/alias-operator/revoked-operator-trust.json"
+chmod 600 "$WORK/alias-operator/revoked-operator-trust.json"
+for anchor_case in runtime-alias:model-trust missing-operator:model-trust runtime-alias-operator:revoked-operator-trust; do
+  anchor="${anchor_case%%:*}"
+  set +e
+  "$CLI" launch request --target "$WORK/alias-target" --workspace "$WORK/alias-target" \
+    --artifact-root "$WORK/operator-anchor-artifacts" --mode A --engagement-id operator-anchor \
+    --launcher "$LAUNCHER" --launcher-pid "$$" --claude-executable "$FIXTURE_BIN/claude" \
+    --runtime-key-id runtime-alias --operator-key-id "$anchor" \
+    --trust-store "$WORK/alias-operator/${anchor_case#*:}.json" \
+    --output "$WORK/alias-operator/operator-anchor-request.json" \
+    --sandbox-probe-path "$WORK/alias-operator/operator-anchor-probe" \
+    --capability-sha256 "$(printf operator-anchor | shasum -a 256 | awk '{print $1}')" >/dev/null 2>"$WORK/operator-anchor.stderr"
+  anchor_status=$?
+  set -e
+  [ "$anchor_status" -ne 0 ] || fail "launch request signed the operator anchor $anchor_case"
+  grep -Fq "native launch trust store has no active operator-approval key $anchor" "$WORK/operator-anchor.stderr" || \
+    { cat "$WORK/operator-anchor.stderr" >&2; fail "operator anchor $anchor_case was not refused as an inactive or wrong-purpose key"; }
+  [ ! -e "$WORK/alias-operator/operator-anchor-request.json" ] || fail "refused operator anchor $anchor_case still wrote a launch request"
+done
+# An attested launch must name its operator anchor; an unattested one cannot.
+set +e
+PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" claude --target "$WORK/alias-target" --artifact-root "$WORK/no-operator-artifacts" \
+  --mode A --engagement-id launcher-no-operator --trust-store "$WORK/alias-operator/model-trust.json" \
+  --runtime-key-id runtime-alias --request-output "$WORK/alias-operator/no-operator-request.json" \
+  --launch-authorization "$WORK/alias-operator/no-operator-authorization.json" --wait-seconds 30 \
+  >/dev/null 2>"$WORK/no-operator.stderr"
+no_operator_status=$?
+set -e
+[ "$no_operator_status" -ne 0 ] || fail 'attested launch started without --operator-key-id'
+grep -Fq -- '--operator-key-id is required' "$WORK/no-operator.stderr" || { cat "$WORK/no-operator.stderr" >&2; fail 'missing --operator-key-id was not refused as such'; }
+[ ! -e "$WORK/no-operator-artifacts" ] || fail 'launch without --operator-key-id created the artifact root'
+mkdir -p "$WORK/unattested-home-operator"
+set +e
+env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-operator" PATH="$FIXTURE_BIN:$PATH" \
+  "$LAUNCHER" claude --target "$WORK/alias-target" --artifact-root "$WORK/unattested-operator-artifacts" \
+  --mode A --engagement-id launcher-unattested-operator --unattested --operator-key-id runtime-alias-operator --dry-run \
+  >/dev/null 2>"$WORK/unattested-operator.stderr"
+unattested_operator_status=$?
+set -e
+[ "$unattested_operator_status" -ne 0 ] || fail 'unattested launch accepted --operator-key-id'
+grep -Fq -- '--unattested cannot be combined with --trust-store/--runtime-key-id/--operator-key-id' "$WORK/unattested-operator.stderr" || \
+  { cat "$WORK/unattested-operator.stderr" >&2; fail 'unattested --operator-key-id was not refused as a signed coordinate'; }
+[ ! -e "$WORK/unattested-operator-artifacts" ] || fail 'unattested --operator-key-id refusal created the artifact root'
 
 # --unattested is a keyless downgrade for hosts with no operator key material. Every case
 # runs with a fresh HOME and no inherited trust store so the host's own keys never leak in.
@@ -1076,7 +1159,7 @@ fi
 if "$LAUNCHER" codex >/dev/null 2>&1; then fail 'launcher accepted Codex without a native turn cap'; fi
 if PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" claude --target "$WORK/path target" --artifact-root "$WORK/invalid-mode" \
   --mode Z --engagement-id invalid-mode --trust-store "$WORK/path-operator/model-trust.json" \
-  --runtime-key-id runtime-path --request-output "$WORK/path-operator/invalid-request.json" \
+  --runtime-key-id runtime-path --operator-key-id runtime-path-operator --request-output "$WORK/path-operator/invalid-request.json" \
   --launch-authorization "$WORK/path-operator/invalid-authorization.json" --wait-seconds 30 >/dev/null 2>&1; then
   fail 'launcher accepted an invalid mode'
 fi
@@ -1161,4 +1244,4 @@ if [ "$probe_browser_status" -ne 2 ]; then
     grep -Fq 'WARN  no Playwright module is resolvable' "$WORK/doctor-browser.stdout" || fail 'doctor --browser did not warn about the skipped browser probe'
   fi
 fi
-printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, browser-provisioning dry run, unsigned operator feature passthrough to preflight, operator authorization manifest and environment binding/installation, one-shot --usage-json Claude result capture and path containment, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'
+printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, signed operator anchor pinned at engagement creation, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, browser-provisioning dry run, unsigned operator feature passthrough to preflight, operator authorization manifest and environment binding/installation, one-shot --usage-json Claude result capture and path containment, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'

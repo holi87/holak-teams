@@ -16,7 +16,7 @@ import {
 const [
   targetKind, target, workspace, artifactRoot, mode, engagementId, launcher, launcherPidRaw,
   claudeExecutable, runtimeKeyId, trustStore, privateKeyPath, authorizationPath, receiptPath, capabilitySha256,
-  sandboxProbePath,
+  sandboxProbePath, operatorKeyId,
 ] = process.argv.slice(2);
 if (!sandboxProbePath) throw new Error('unit authorization fixture arguments are incomplete');
 
@@ -58,6 +58,8 @@ const authorization = {
   sandboxProbeUid: sandboxProbe.uid,
   sandboxProbeMode: sandboxProbe.mode & 0o777,
   environmentPolicy: 'argus-launch-allowlist@1',
+  // Optional 17th argument: the signed operator-approval anchor argus-launch always sets.
+  ...(operatorKeyId ? { operatorKeyId } : {}),
   issuedBy: record.subjectId,
   issuedAt: issuedAt.toISOString(),
   expiresAt: new Date(issuedAt.getTime() + 300_000).toISOString(),
