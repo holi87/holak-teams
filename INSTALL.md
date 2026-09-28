@@ -174,6 +174,15 @@ validates them and reports the choice without installing anything.
   `capabilities/capability-matrix.json`. Features only widen which lanes preflight marks
   available. `db-access` and `multi-service` can come only from this flag; recon never
   releases them.
+- `--template-selection <absolute-path>` supplies your explicit framework choice, which
+  Modes A, C, and D need to build or adapt an automation framework. On the host, run
+  `argus-assets template detect --target "$TARGET"`, then `argus-assets template select
+  --target "$TARGET" --runtime <typescript|java|python> --package-manager <npm|maven|pip>
+  --test-root <path> --harness-root <path> --output "$OPERATOR_ROOT/template-selection.json"`
+  and pass that file. It must be a physical regular file outside the target and artifact
+  roots; the launcher copies it to `ai_agents_internal/template-selection.json` (mode 0600).
+  Without it no runner can run: the final summary reports `runner: null` and is `blocked` by
+  `template-selection-missing` (see `TEMPLATE-CONTRACT.md`).
 - `--usage-json <absolute-path>` writes Claude's final JSON result (usage, cost, turn count,
   and a subtype such as `error_max_turns`) to a new file outside the artifact root. Its
   parent must be a physical directory owned by you and not group- or world-writable.

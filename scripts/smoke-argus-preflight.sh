@@ -658,6 +658,39 @@ for scenario in full partial; do
         "$CLI" engagement merge --manifest "$manifest" --owner minos --token "$(tr -d '\n' <"$WORK/partial-tokens/minos")" \
           --canonical solution/bug-ledger.json >/dev/null
       fi
+      # Kleio's merged final summary is the completion record, so reporting advances only after it.
+      # This Mode A engagement has no installed template selection, hence no framework and no
+      # runner result: the runner=null summary merges, blocked by template-selection-missing.
+      if [ "$phase" = reporting ]; then
+        if "$CLI" engagement barrier advance --manifest "$manifest" --lane odysseus --token "$odysseus_token" >/dev/null 2>"$WORK/partial-unsummarized.err"; then
+          fail 'reporting advanced to completion without a merged final summary'
+        fi
+        grep -Fq 'phase reporting requires the kleio merge of solution/final-summary.json before it can advance' "$WORK/partial-unsummarized.err" || \
+          fail "an unsummarized reporting advance failed for the wrong reason: $(cat "$WORK/partial-unsummarized.err")"
+        kalchas_token="$(tr -d '\n' <"$WORK/partial-tokens/kalchas")"
+        kleio_token="$(tr -d '\n' <"$WORK/partial-tokens/kleio")"
+        engagement_id="$(jq -r .engagementId "$manifest")"
+        jq --arg id "$engagement_id" '.engagementId = $id | .items[0].discoveryEvidenceIds = []' "$ROOT/scripts/fixtures/argus-schemas/valid/surface-inventory.json" \
+          >"$WORK/partial-inventory.json"
+        jq -n --arg id "$engagement_id" '{"$schema":"argus/coverage-observations@2",schemaVersion:2,engagementId:$id,observations:[]}' >"$WORK/partial-observations.json"
+        "$CLI" engagement fragment --manifest "$manifest" --lane kalchas --token "$kalchas_token" \
+          --canonical solution/surface-inventory.json --id partial-inventory --input "$WORK/partial-inventory.json" >/dev/null
+        "$CLI" engagement merge --manifest "$manifest" --owner kalchas --token "$kalchas_token" --canonical solution/surface-inventory.json >/dev/null
+        "$CLI" engagement fragment --manifest "$manifest" --lane kleio --token "$kleio_token" \
+          --canonical solution/coverage-observations.json --id partial-observations --input "$WORK/partial-observations.json" >/dev/null
+        "$CLI" engagement merge --manifest "$manifest" --owner kleio --token "$kleio_token" --canonical solution/coverage-observations.json >/dev/null
+        (cd "$target" && "$CLI" coverage calculate --inventory solution/surface-inventory.json --observations solution/coverage-observations.json \
+          --ledger solution/bug-ledger.json --root "$target") >"$WORK/partial-coverage.json"
+        "$CLI" engagement fragment --manifest "$manifest" --lane kleio --token "$kleio_token" \
+          --canonical solution/coverage-result.json --id partial-coverage --input "$WORK/partial-coverage.json" >/dev/null
+        "$CLI" engagement merge --manifest "$manifest" --owner kleio --token "$kleio_token" --canonical solution/coverage-result.json >/dev/null
+        jq --arg id "$engagement_id" '.engagementId = $id | .runner = null' "$ROOT/scripts/fixtures/argus-schemas/valid/final-summary.json" >"$WORK/partial-summary.json"
+        "$CLI" engagement fragment --manifest "$manifest" --lane kleio --token "$kleio_token" \
+          --canonical solution/final-summary.json --id partial-summary --input "$WORK/partial-summary.json" >/dev/null
+        "$CLI" engagement merge --manifest "$manifest" --owner kleio --token "$kleio_token" --canonical solution/final-summary.json >/dev/null
+        jq -e '.runner == null and .status == "blocked" and (.statusReasons | index("template-selection-missing") != null)' "$target/solution/final-summary.json" >/dev/null || \
+          fail "the unselected Mode A summary was not blocked by the missing template selection: $(cat "$target/solution/final-summary.json")"
+      fi
       "$CLI" engagement barrier advance --manifest "$manifest" --lane odysseus --token "$odysseus_token" >/dev/null
     done
     "$CLI" engagement barrier arrive --manifest "$manifest" --lane odysseus --token "$odysseus_token" --phase complete >/dev/null

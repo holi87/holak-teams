@@ -715,6 +715,7 @@ const FINAL_SUMMARY_TESTED_STATUSES = new Set(['implemented', 'passed', 'failed'
 const FINAL_SUMMARY_DEGRADING_EXIT_CODES = new Set([11, 12, 13, 14, 15]);
 const FINAL_SUMMARY_RUNNER_RESULT = 'reports/argus-runner-result.json';
 const FINAL_SUMMARY_COVERAGE_RESULT = 'solution/coverage-result.json';
+const TEMPLATE_SELECTION_MISSING = 'template-selection-missing';
 
 // Without a fragment (`engagement report-facts`) the runner outcome is read whenever the runner
 // result exists. With a fragment, a non-null runner requires that file, and a null runner stays
@@ -827,6 +828,10 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   for (const reason of skippedPhaseStatusReasons(state)) ceilings.set(reason, 'degraded');
   for (const reason of gateUnmetStatusReasons(state)) ceilings.set(reason, 'degraded');
   for (const reason of abandonedLaneStatusReasons(state)) ceilings.set(reason, 'degraded');
+  // Modes A, C, and D fund automation, but without the operator's installed template selection
+  // no framework, runner, or runner result can exist. That missing operator input justifies a
+  // null runner outcome and blocks the summary; it never excuses a runner result that exists.
+  if (!runner && manifest.mode !== 'B' && !reviewTemplateSelection(manifest)) ceilings.set(TEMPLATE_SELECTION_MISSING, 'blocked');
   const statusReasons = [...ceilings.keys()].sort();
   const statusCeiling = [...ceilings.values()].reduce(worseFinalSummaryStatus, 'completed');
   return { counts, unproven, residuals, automationReview, runner, coverage, sourceSchemas, statusCeiling, statusReasons };
@@ -835,11 +840,22 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
 // The merge overwrites every derived field of Kleio's fragment and never raises its status.
 function applyFinalSummaryFacts(manifest, state, document) {
   const facts = deriveFinalSummaryFacts(manifest, state, document);
-  if (document.runner === null && (manifest.mode !== 'B' || facts.counts.automated !== 0)) throw new Error('runner=null is only valid for Mode B without automation');
+  if (document.runner === null && !nullRunnerAllowed(manifest, facts)) {
+    throw new Error(`runner=null is only valid for Mode B without automation, or in Mode A, C, or D without automation, a ${FINAL_SUMMARY_RUNNER_RESULT}, or an installed template selection`);
+  }
   for (const field of FINAL_SUMMARY_DERIVED_FIELDS) document[field] = facts[field];
   document.status = worseFinalSummaryStatus(document.status, facts.statusCeiling);
   const errors = validateCanonicalDocument('final-summary', document);
   if (errors.length) throw new Error(`derived final summary is invalid: ${errors.join('; ')}`);
+}
+
+// A null runner outcome is valid for Mode B without automation, and in Modes A, C, and D only
+// while nothing was automated, no runner result exists, and the missing template selection is
+// recorded as the blocking status reason.
+function nullRunnerAllowed(manifest, facts) {
+  if (facts.counts.automated !== 0) return false;
+  if (manifest.mode === 'B') return true;
+  return facts.statusReasons.includes(TEMPLATE_SELECTION_MISSING) && !lstatEntry(engagementPath(manifest, FINAL_SUMMARY_RUNNER_RESULT));
 }
 
 function worseFinalSummaryStatus(left, right) {
@@ -1280,6 +1296,12 @@ export function advanceBarrier(manifest, lane, token) {
     if (phaseDefinition(manifest, phase).kind === 'proof' && status.participants.includes(PROOF_VALIDATOR) &&
         !Object.hasOwn(state.ledgerSnapshots, phase)) {
       throw new Error(`proof phase ${phase} requires a Minos bug-ledger merge before it can advance`);
+    }
+    // The merged final summary is the engagement's only completion record, so the phase its
+    // owner reports in cannot advance, and the engagement cannot complete, without it.
+    const summary = finalSummaryCanonical(manifest);
+    if (summary && status.participants.includes(summary.owner) && !readMergedCanonical(manifest, state, summary.path, 'final-summary')) {
+      throw new Error(`phase ${phase} requires the ${summary.owner} merge of ${summary.path} before it can advance`);
     }
     const phases = phaseIds(manifest);
     const index = phases.indexOf(phase);
@@ -2305,8 +2327,12 @@ function projectedPhaseLanes(state, phase, lanes) {
 // is the gate-resolution evidence, Minos's merge gates every proof phase, and the final-summary
 // owner writes the only completion record. Abandoning one would silently lift that gate.
 function nonAbandonableLanes(manifest) {
-  const summaryOwner = manifest.writePolicy.canonicalArtifacts.find((item) => item.schema === 'final-summary')?.owner;
+  const summaryOwner = finalSummaryCanonical(manifest)?.owner;
   return [...new Set([...UNCONDITIONAL_LANES, PROOF_VALIDATOR, ...(summaryOwner ? [summaryOwner] : [])])].sort();
+}
+
+function finalSummaryCanonical(manifest) {
+  return manifest.writePolicy.canonicalArtifacts.find((item) => item.schema === 'final-summary');
 }
 
 function phaseDefinition(manifest, phase) {
