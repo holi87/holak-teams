@@ -507,7 +507,8 @@ Standby lanes never arrive at a barrier. They are the lanes a phase may re-dispa
 their active lease: filing lanes whose candidates need proof repair, Metis as the
 oracle desk, Kalchas for a second recon during hunting and every deep-hunt pass, and, in
 Mode A, Tyche during automation so she can claim the `fault` window for a Nike server-fault
-run. A phase-scoped re-dispatch reuses the lane's allocation and token, so a
+run, and, in Modes A, C, and D, Atlas during reporting so he can merge Kleio's
+`kleio-architecture` fragment into `solution/ARCHITECTURE.md`. A phase-scoped re-dispatch reuses the lane's allocation and token, so a
 standby lane keeps its lease until the standby phase has passed (see Cleanup). The plan
 validator keeps every `proofLoop` cluster lane reachable for repair during the first proof
 phase: in each mode it is on that phase's standby or holds a later phase. It also requires

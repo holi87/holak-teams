@@ -588,4 +588,33 @@ summary_merge >/dev/null
 jq -e '.coverage.criticalUnexecuted == ["SRF-UI-REPORTS"] and (.statusReasons | index("critical-surface-unexecuted")) != null' "$TARGET/solution/final-summary.json" >/dev/null || \
   fail "the re-merged coverage did not reach the final summary: $(<"$TARGET/solution/final-summary.json")"
 
+# Kleio alone publishes coverage-result, so her prompt carries the whole sequence. Run her cited
+# calculate, fragment, and merge commands as written, in order, from a workspace outside the
+# artifact root: the merge must accept the result and report-facts must derive from it.
+node -e '
+  const text = require("node:fs").readFileSync(process.argv[1], "utf8");
+  const citations = [...text.matchAll(/`(argus-assets (?:coverage calculate|engagement (?:fragment|merge) [^`]*--canonical solution\/coverage-result\.json)\b[^`]*)`/gu)]
+    .map(([, citation]) => citation.replace(/\s+/gu, " ").trim());
+  const order = ["argus-assets coverage calculate", "argus-assets engagement fragment", "argus-assets engagement merge"];
+  if (citations.length !== order.length || citations.some((citation, index) => !citation.startsWith(order[index]))) {
+    throw new Error(`kleio.md does not cite the coverage-result calculate, fragment, and merge sequence: ${JSON.stringify(citations)}`);
+  }
+  process.stdout.write(citations.map((citation) => `${citation}\n`).join(""));
+' "$ROOT/argus/roles/kleio.md" >"$WORK/kleio-coverage-citations.txt" || fail 'Kleio does not cite how to publish solution/coverage-result.json'
+KLEIO_OUTPUT="$TARGET/ai_agents_internal/workers/kleio/output"
+mkdir -p "$WORK/kleio-workspace"
+while IFS= read -r citation; do
+  bound="${citation//<engagement.json>/$MANIFEST}"
+  bound="${bound//<artifact-root>/$TARGET}"
+  bound="${bound//<allocated outputDirectory>/$KLEIO_OUTPUT}"
+  bound="${bound//<lane-token>/$KLEIO}"
+  bound="${bound//<coverage-id>/kleio-cited-coverage}"
+  case "$bound" in *'<'*'>'*) fail "Kleio cites an unbound placeholder: $citation" ;; esac
+  read -r -a words <<<"$bound"
+  (cd "$WORK/kleio-workspace" && "$CLI" "${words[@]:1}") >"$WORK/kleio-coverage.out" 2>&1 || \
+    fail "Kleio's cited coverage-result command failed: $citation: $(<"$WORK/kleio-coverage.out")"
+done <"$WORK/kleio-coverage-citations.txt"
+jq -e '.effectiveFragment == "kleio-cited-coverage"' "$WORK/kleio-coverage.out" >/dev/null || fail "Kleio's cited merge did not publish her fragment: $(<"$WORK/kleio-coverage.out")"
+"$CLI" engagement report-facts --manifest "$MANIFEST" >/dev/null || fail 'report-facts refused the coverage result Kleio published as cited'
+
 printf 'PASS  Argus schemas: current fixtures, retired version rejection, deterministic collection merges, fragment rejection, per-bug ledger quarantine, latest-revision ledgers, append-only corpus-bound automation reviews, reviewer-registered audited binary evidence, stable IDs, runner results, and a source-versioned final summary whose facts and status ceiling are derived at merge\n'

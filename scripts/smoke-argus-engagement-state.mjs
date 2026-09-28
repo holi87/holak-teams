@@ -77,6 +77,7 @@ try {
   testStandbyBlocksSuccessCleanup();
   testClusterLaneStandbyDuringProof();
   testRedispatchLanesKeepTheirLease();
+  testArchitectureOwnerMergesDuringReporting();
   testConditionalLaneProjection();
   testConditionalGateResolution();
   testGateUnmetFinalSummary();
@@ -700,6 +701,61 @@ function testRedispatchLanesKeepTheirLease() {
   assert(cleanupWorker(manifest, 'tyche', tokens.tyche, 'success').released === true, 'tyche did not release after the automation phase passed');
   assert(getEngagementStatus(manifest).exclusiveLocks.fault === undefined, 'tyche cleanup left the fault window held');
   for (const lane of ['minos', 'nike']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// Kleio submits the How-we-used-AI and Summary sections of the architecture canonical while she
+// reports, and only Atlas may merge them, so Atlas stays on reporting standby: his lease outlives
+// his last automation arrival and he merges her fragment inside the reporting phase.
+function testArchitectureOwnerMergesDuringReporting() {
+  const fixture = createFixture('architecture-reporting-standby', ['atlas', 'kleio', 'minos', 'odysseus']);
+  const { manifest } = fixture;
+  assert(JSON.stringify(manifest.phasePlan.find((phase) => phase.id === 'reporting').standby) === '["atlas"]', 'atlas is not on reporting standby');
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('architecture-controller') });
+  const tokens = {};
+  for (const lane of ['atlas', 'kleio', 'minos']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`architecture-${lane}`) }).token;
+  }
+  const refusal = (pending) => `atlas success cleanup is not yet available: pending ${pending}; the lease stays active and Odysseus performs terminal cleanup`;
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'discovery');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'proof');
+  mergeEmptyLedger(fixture, tokens.minos, 'architecture-proof');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'deep-proof-1');
+  mergeEmptyLedger(fixture, tokens.minos);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  skipPhases(manifest, 'odysseus', controller.token, 'converged');
+  assert(getEngagementStatus(manifest).currentPhase === 'automation', 'phase did not reach automation after the converged skip');
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'automation');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'atlas', tokens.atlas, 'success'),
+    refusal('reporting'),
+    'atlas success after his last automation arrival while Kleio has not reported',
+  );
+  arriveBarrier(manifest, 'minos', tokens.minos, 'verification');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'reporting', 'phase did not reach reporting');
+  writeFragment(manifest, 'kleio', tokens.kleio, 'solution/ARCHITECTURE.md', 'kleio-architecture',
+    '## 10. How we used AI\nDelegated recon, verified by the reporter.\n\n## 11. Summary\nOne suite, one report.\n');
+  expectThrowMessage(
+    () => cleanupWorker(manifest, 'atlas', tokens.atlas, 'success'),
+    refusal('reporting'),
+    'atlas success before merging the reporter architecture sections',
+  );
+  const merged = mergeCanonical(manifest, 'atlas', tokens.atlas, 'solution/ARCHITECTURE.md');
+  const architecture = readFileSync(join(fixture.root, 'solution/ARCHITECTURE.md'), 'utf8');
+  assert(merged.fragments === 1 && architecture.includes('## 10. How we used AI') && architecture.includes('## 11. Summary'),
+    'atlas did not merge the reporter architecture sections during reporting');
+  arriveBarrier(manifest, 'kleio', tokens.kleio, 'reporting');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'complete', 'phase did not reach complete');
+  for (const lane of ['atlas', 'kleio', 'minos']) {
+    assert(cleanupWorker(manifest, lane, tokens[lane], 'success').released === true, `${lane} did not release after the reporting phase passed`);
+  }
   cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
 }
 

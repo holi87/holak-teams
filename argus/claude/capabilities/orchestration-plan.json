@@ -237,7 +237,7 @@
       "modes": ["A", "B", "C", "D"],
       "skippable": false,
       "participants": ["kleio"],
-      "standby": []
+      "standby": ["atlas"]
     }
   ],
   "roles": [

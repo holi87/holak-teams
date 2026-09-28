@@ -119,7 +119,10 @@ Heartbeats bind allocation/dispatch/attempt; retry starts a new generation.
 
 Route work through `argus-assets raci route`. Workers write owned outputs or immutable
 fragments; only the RACI owner validates and deterministically merges. Reject malformed,
-legacy, cross-engagement, duplicate, or wrong-owner fragments.
+legacy, cross-engagement, duplicate, or wrong-owner fragments. Atlas stays on `reporting`
+standby: once Kleio returns her `kleio-architecture` fragment, re-dispatch him to merge
+`solution/ARCHITECTURE.md`, then re-dispatch Kleio to verify it before her go/no-go; record
+her `reporting` arrival only after that RESULT.
 
 Mode B accepts reproduction with evidence and runner=null. Automation duties in role prose apply only when funded and dispatchable; otherwise report automation-unfunded.
 
