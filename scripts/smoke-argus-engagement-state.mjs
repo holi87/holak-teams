@@ -83,6 +83,8 @@ try {
   testConditionalGateResolution();
   testGateUnmetFinalSummary();
   testAbandonedLaneLeavesBarriers();
+  testBudgetStopAbandonsUnallocatedLanes();
+  testCompletionRequiresFinalSummary();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
   testRedispatchedHeartbeatWorkUnits();
@@ -753,6 +755,7 @@ function testArchitectureOwnerMergesDuringReporting() {
   assert(merged.fragments === 1 && architecture.includes('## 10. How we used AI') && architecture.includes('## 11. Summary'),
     'atlas did not merge the reporter architecture sections during reporting');
   arriveBarrier(manifest, 'kleio', tokens.kleio, 'reporting');
+  mergeFinalSummary(fixture, tokens.kleio);
   advanceBarrier(manifest, 'odysseus', controller.token);
   assert(getEngagementStatus(manifest).currentPhase === 'complete', 'phase did not reach complete');
   for (const lane of ['atlas', 'kleio', 'minos']) {
@@ -938,6 +941,8 @@ function testGateUnmetFinalSummary() {
     },
   });
   assert(JSON.stringify(resolved.lanes) === '{"orion":"gate-unmet","tiresias":"released"}', `unexpected gate-unmet fixture lanes: ${JSON.stringify(resolved.lanes)}`);
+  expectThrowMessage(() => abandonLane(manifest, 'orion', controller.token, 'controller-budget'),
+    'orion was omitted as gate-unmet and holds no barrier', 'budget abandon of a gate-unmet lane');
   mergeFinalSummary(fixture, kleio.token);
   const summary = readSolutionJson(fixture, 'final-summary.json');
   assert(summary.status === 'degraded' && JSON.stringify(summary.statusReasons) === '["gate-unmet:orion"]',
@@ -1024,6 +1029,132 @@ function testAbandonedLaneLeavesBarriers() {
   cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
 }
 
+// A controller-budget stop skips a wave whose participants were never allocated. Such a lane
+// can never arrive and has no cleanup to run, so the controller abandons it directly: only with
+// controller-budget, because the other reasons describe a worker that ran. The non-skippable
+// barrier then completes, the lane is never allocated later, and the final summary names it.
+function testBudgetStopAbandonsUnallocatedLanes() {
+  const lanes = ['aegis', 'atlas', 'kleio', 'minos', 'nike', 'odysseus'];
+  const fixture = createFixture('budget-unallocated', lanes);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('budget-unallocated-controller') });
+  const tokens = {};
+  for (const lane of ['atlas', 'kleio', 'minos']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`budget-unallocated-${lane}`) }).token;
+  }
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'discovery');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'proof');
+  mergeEmptyLedger(fixture, tokens.minos, 'budget-unallocated-ledger');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'deep-proof-1');
+  mergeEmptyLedger(fixture, tokens.minos);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  skipPhases(manifest, 'odysseus', controller.token, 'controller-budget');
+  assert(getEngagementStatus(manifest).currentPhase === 'automation', 'the budget skip did not reach automation');
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'automation');
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token), 'phase automation is waiting for: aegis, nike', 'advance past never-allocated participants');
+
+  const before = getEngagementStatus(manifest).revision;
+  for (const reason of ['worker-failure', 'continuation-exhausted']) {
+    expectThrowMessage(() => abandonLane(manifest, 'aegis', controller.token, reason),
+      'aegis was never allocated; only a controller-budget stop can abandon it', `${reason} abandon of a never-allocated lane`);
+  }
+  expectThrowMessage(() => abandonLane(manifest, 'aegis', tokens.atlas, 'controller-budget'),
+    'aegis controller authority requires the active Odysseus controller token', 'budget abandon on a worker token');
+  assert(getEngagementStatus(manifest).revision === before, 'a refused abandon of a never-allocated lane changed the engagement state');
+
+  const aegis = abandonLane(manifest, 'aegis', controller.token, 'controller-budget');
+  assert(aegis.reason === 'controller-budget' && aegis.phase === 'automation' && JSON.stringify(aegis.barrier.missing) === '["nike"]',
+    `the budget abandon did not release aegis from the automation barrier: ${JSON.stringify(aegis)}`);
+  const nike = abandonLane(manifest, 'nike', controller.token, 'controller-budget');
+  assert(nike.barrier.complete === true && JSON.stringify(nike.barrier.participants) === '["atlas"]',
+    `the budget abandons did not complete the automation barrier: ${JSON.stringify(nike)}`);
+  const status = getEngagementStatus(manifest);
+  assert(status.allocations.aegis === undefined && status.allocations.nike === undefined, 'a budget abandon allocated the lane it abandoned');
+  assertStateSchema(fixture, 'state with never-allocated abandoned lanes');
+  expectThrowMessage(() => abandonLane(manifest, 'aegis', controller.token, 'controller-budget'), 'aegis was already abandoned (controller-budget)', 'second budget abandon');
+  expectThrowMessage(() => allocateWorker(manifest, 'aegis', { controllerToken: controller.token, executionBinding: executionBinding('budget-unallocated-aegis') }),
+    'aegis was abandoned (controller-budget) and cannot be allocated again', 'allocation of a never-allocated abandoned lane');
+
+  // State integrity: only a controller-budget abandonment may leave the lane unallocated.
+  const current = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
+  for (const [label, mutate] of [
+    ['a never-allocated lane abandoned for a worker failure', (state) => { state.abandonedLanes.aegis.reason = 'worker-failure'; }],
+    ['a never-allocated lane abandoned after continuation exhaustion', (state) => { state.abandonedLanes.nike.reason = 'continuation-exhausted'; }],
+  ]) {
+    const tampered = structuredClone(current);
+    mutate(tampered);
+    writeFileSync(fixture.statePath, `${JSON.stringify(tampered, null, 2)}\n`);
+    expectThrow(() => getEngagementStatus(manifest), `state with ${label}`);
+  }
+  writeFileSync(fixture.statePath, `${JSON.stringify(current, null, 2)}\n`);
+  assert(getEngagementStatus(manifest).revision === current.revision, 'restored budget-abandon state was not accepted');
+
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'verification', 'the automation barrier did not advance after the budget abandons');
+  mergeFinalSummary(fixture, tokens.kleio);
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'degraded' &&
+    JSON.stringify(summary.statusReasons) === '["deep-hunt-skipped:controller-budget","lane-abandoned:aegis","lane-abandoned:nike"]',
+  `the budget-abandoned lanes were not named final-summary gaps: ${JSON.stringify({ status: summary.status, statusReasons: summary.statusReasons })}`);
+  for (const lane of ['atlas', 'kleio', 'minos']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// The merged final summary is the only completion record, so the reporting phase cannot advance
+// and the engagement cannot complete without it. In Mode A, C, or D without an installed template
+// selection no framework, runner, or runner result can exist: Kleio's runner=null summary then
+// merges, blocked by template-selection-missing. A runner result or an installed selection still
+// requires the recorded runner outcome.
+function testCompletionRequiresFinalSummary() {
+  const fixture = createFixture('completion-final-summary', ['kleio', 'odysseus']);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('completion-controller') });
+  const kleio = allocateWorker(manifest, 'kleio', { controllerToken: controller.token, executionBinding: executionBinding('completion-kleio') });
+  while (getEngagementStatus(manifest).currentPhase !== 'reporting') advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'kleio', kleio.token, 'reporting');
+  const before = getEngagementStatus(manifest).revision;
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token),
+    'phase reporting requires the kleio merge of solution/final-summary.json before it can advance', 'advance out of reporting without the final summary');
+  assert(getEngagementStatus(manifest).revision === before && getEngagementStatus(manifest).currentPhase === 'reporting',
+    'a refused advance out of reporting changed the engagement state');
+
+  const refusal = 'runner=null is only valid for Mode B without automation, or in Mode A, C, or D without automation, a reports/argus-runner-result.json, or an installed template selection';
+  const runnerPath = join(fixture.root, 'reports', 'argus-runner-result.json');
+  mkdirSync(join(fixture.root, 'reports'), { recursive: true });
+  writeFileSync(runnerPath, `${JSON.stringify(runnerResultFixture)}\n`);
+  expectThrowMessage(() => mergeFinalSummary(fixture, kleio.token, { runner: false, fragmentId: 'summary-hidden-runner' }), refusal,
+    'a Mode A runner=null summary beside an existing runner result');
+  unlinkSync(runnerPath);
+  const selectionPath = join(fixture.root, 'ai_agents_internal', 'template-selection.json');
+  writeFileSync(selectionPath, `${JSON.stringify({
+    $schema: 'argus/template-selection@1', schemaVersion: 1, contractId: 'argus/template-selection@1', targetRoot: fixture.root,
+    runtime: 'typescript', packageManager: 'npm', framework: 'playwright', testRunner: 'playwright', testRoot: 'tests', harnessRoot: 'tests/support',
+    ci: [], action: 'build', choiceSource: 'explicit-user', capabilitiesSha256: '0'.repeat(64), unsupported: [], extensionPoints: [],
+  })}\n`, { mode: 0o600 });
+  expectThrowMessage(() => mergeFinalSummary(fixture, kleio.token, { runner: false, fragmentId: 'summary-selected' }), refusal,
+    'a Mode A runner=null summary with an installed template selection');
+  unlinkSync(selectionPath);
+  assert(getEngagementStatus(manifest).merges['solution/final-summary.json'] === undefined, 'a refused runner=null summary was merged');
+
+  mergeFinalSummary(fixture, kleio.token, { runner: false, fragmentId: 'summary-unselected' });
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'blocked' && summary.runner === null && JSON.stringify(summary.statusReasons) === '["template-selection-missing"]',
+    `a Mode A summary without a template selection was not blocked by it: ${JSON.stringify({ status: summary.status, runner: summary.runner, statusReasons: summary.statusReasons })}`);
+  const rendered = readFileSync(join(fixture.root, 'solution', 'FINAL-SUMMARY.md'), 'utf8');
+  assert(rendered.includes('Status reason: template-selection-missing') &&
+    rendered.includes('Automation: not run; no operator template selection was installed (template-selection-missing).'),
+  'the rendered summary does not report the missing template selection');
+
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'odysseus', controller.token, 'complete');
+  cleanupWorker(manifest, 'kleio', kleio.token, 'success');
+  assert(cleanupWorker(manifest, 'odysseus', controller.token, 'success').outcome === 'success', 'the controller did not complete after the merged final summary');
+}
+
 function assertStateSchema(fixture, label) {
   const state = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
   assert(validateStateSchema(state), `${label} violates engagement-state.schema.json: ${stateSchemaAjv.errorsText(validateStateSchema.errors)}`);
@@ -1074,8 +1205,9 @@ function mergeEmptyLedger(fixture, token, fragmentId) {
 // These fixtures have no Kalchas to publish the coverage inputs, so the helper seeds a complete,
 // merge-recorded coverage result bound to the current input files, and a delivery-gate runner
 // result registered as runner-result evidence; with the empty ledger every fact is clean, and
-// the only status reasons left are the recorded phase skips.
-function mergeFinalSummary(fixture, token) {
+// the only status reasons left are the recorded phase skips. With runner=false it seeds no
+// runner result or evidence and submits runner=null; fragmentId names a superseding fragment.
+function mergeFinalSummary(fixture, token, { runner = true, fragmentId = 'final-summary' } = {}) {
   const coverage = structuredClone(coverageResultFixture);
   coverage.engagementId = fixture.manifest.engagementId;
   coverage.surfaces.find((surface) => surface.surfaceId === 'SRF-UI-HOME').executed = true;
@@ -1091,16 +1223,18 @@ function mergeFinalSummary(fixture, token) {
   mkdirSync(join(fixture.root, 'solution'), { recursive: true });
   mkdirSync(join(fixture.root, 'reports', 'evidence'), { recursive: true });
   writeFileSync(join(fixture.root, 'solution', 'coverage-result.json'), coverageContent);
-  writeFileSync(join(fixture.root, 'solution', 'evidence-reference.json'), registryContent);
-  writeFileSync(join(fixture.root, 'reports', 'evidence', 'runner-result.json'), runnerContent);
-  writeFileSync(join(fixture.root, 'reports', 'argus-runner-result.json'), runnerContent);
+  if (runner) {
+    writeFileSync(join(fixture.root, 'solution', 'evidence-reference.json'), registryContent);
+    writeFileSync(join(fixture.root, 'reports', 'evidence', 'runner-result.json'), runnerContent);
+    writeFileSync(join(fixture.root, 'reports', 'argus-runner-result.json'), runnerContent);
+  }
   const inputs = Object.fromEntries(['surface-inventory', 'coverage-observations', 'evidence-reference', 'bug-ledger', 'automation-status'].map((name) => {
     const path = join(fixture.root, 'solution', `${name}.json`);
     return [`solution/${name}.json`, existsSync(path) ? digest(readFileSync(path)) : null];
   }));
   const state = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
   const mergedAt = new Date().toISOString();
-  state.merges['solution/evidence-reference.json'] = { owner: 'kleio', fragments: 1, sha256: digest(registryContent), mergedAt };
+  if (runner) state.merges['solution/evidence-reference.json'] = { owner: 'kleio', fragments: 1, sha256: digest(registryContent), mergedAt };
   state.merges['solution/coverage-result.json'] = { owner: 'kleio', fragments: 1, sha256: digest(coverageContent), mergedAt, inputs };
   writeFileSync(fixture.statePath, `${JSON.stringify(state, null, 2)}\n`);
 
@@ -1109,7 +1243,8 @@ function mergeFinalSummary(fixture, token) {
   Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [], residuals: [] });
   summary.counts = { bugs: { confirmed: 0, suspected: 0, needsOracle: 0, bounced: 0, quarantined: 0, duplicate: 0, rejected: 0, headline: 0 }, regression: { wired: 0, uncovered: [] }, automated: 0, evidence: 0 };
   summary.automationReview = { status: 'not-applicable', reviewId: null, round: null, blockers: 0, warnings: 0 };
-  writeFragment(fixture.manifest, 'kleio', token, 'solution/final-summary.json', 'final-summary', `${JSON.stringify(summary)}\n`);
+  if (!runner) summary.runner = null;
+  writeFragment(fixture.manifest, 'kleio', token, 'solution/final-summary.json', fragmentId, `${JSON.stringify(summary)}\n`);
   mergeCanonical(fixture.manifest, 'kleio', token, 'solution/final-summary.json');
 }
 

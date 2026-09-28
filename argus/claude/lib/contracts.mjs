@@ -215,6 +215,9 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
   const { bugs, regression } = document.counts;
   const review = document.automationReview;
   const coverage = document.coverage;
+  // A null runner is unfunded automation, except in a mode whose operator installed no
+  // template selection, where the automation was funded but could not run.
+  const unselected = document.statusReasons.includes('template-selection-missing');
   const lines = [
     '# Argus Final Summary',
     '',
@@ -281,7 +284,9 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
     `- Infrastructure: ${document.runner.categories.infrastructure}`,
     `- Skip: ${document.runner.categories.skip}`,
     `- Policy: ${document.runner.categories.policy}`,
-    ] : ['Automation: unfunded; no framework runner was executed.']),
+    ] : [unselected
+      ? 'Automation: not run; no operator template selection was installed (template-selection-missing).'
+      : 'Automation: unfunded; no framework runner was executed.']),
     '',
     '## Surface-derived coverage',
     '',
@@ -290,7 +295,7 @@ export function renderFinalSummary(document, { launchAssurance } = {}) {
     `- Execution coverage: ${formatRatio(coverage.executionCoverage)} (surface breadth)`,
     `- Assertion quality: ${formatRatio(coverage.assertionQuality)}`,
     `- Evidence quality: ${formatRatio(coverage.evidenceQuality)}`,
-    `- Automated re-execution: ${document.runner ? formatRatio(coverage.automatedExecution) : 'n/a (automation unfunded)'}`,
+    `- Automated re-execution: ${document.runner ? formatRatio(coverage.automatedExecution) : unselected ? 'n/a (no template selection)' : 'n/a (automation unfunded)'}`,
     `- Scoped outcomes: ${coverage.scopedOutcomes}`,
     ...coverage.criticalUnexecuted.map((id) => `- Critical surface not executed: ${id}`),
     `- Required-case depth: ${(coverage.caseDepth?.coverage == null ? 'unknown (not fully planned)' : formatRatio(coverage.caseDepth.coverage))}`,

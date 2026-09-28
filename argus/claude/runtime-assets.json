@@ -38,8 +38,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 18294,
-      "sha256": "450c56a31a18625beee7d582b90b406bb4c580c103f5db80b3b77de6611a9f97"
+      "bytes": 18116,
+      "sha256": "c8b7c48efb1f5446db6519028e63fd6dff02ad2433e4c692daa6ee7f7b5ff6df"
     },
     {
       "id": "authorization-policy",
@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 60796,
-      "sha256": "aa6d2871c3cf7666ede014df06e90bc92132deb5509a5f70bef7bf1bd28d6090"
+      "bytes": 61304,
+      "sha256": "ac3732b005e5db73447e5892611365d3b70f1370fa506706e423d7c669db91e4"
     },
     {
       "id": "canonical-contracts",
@@ -65,8 +65,8 @@
       "source": "argus/CANONICAL-CONTRACTS.md",
       "destination": "references/CANONICAL-CONTRACTS.md",
       "files": 1,
-      "bytes": 40558,
-      "sha256": "9997c7694ccbca62a15d137d41669b3f0a7f9e75a197be3ffbad17ec19afb95e"
+      "bytes": 41272,
+      "sha256": "67c49640eb20bb99b12cd197b27bf87ef4104f2fd0cc4169d2fd6b4da407c205"
     },
     {
       "id": "runner-contract",
@@ -101,8 +101,8 @@
       "source": "argus/RACI-CONTRACT.md",
       "destination": "references/RACI-CONTRACT.md",
       "files": 1,
-      "bytes": 12232,
-      "sha256": "3c7fb114fb34529f89eec42e5bfd2cace194d404d76869c8180fbe802324861e"
+      "bytes": 12223,
+      "sha256": "0b10a1530688babeca1fd676eab286f3d67cc21bf7c4ca700919365f2c046580"
     },
     {
       "id": "raci-matrix",
@@ -110,8 +110,8 @@
       "source": "argus/raci.json",
       "destination": "references/raci.json",
       "files": 1,
-      "bytes": 26429,
-      "sha256": "4f1e73e91645e68d109eea1cfdec73fef3c9181d008f64b35127442faadd1b86"
+      "bytes": 26418,
+      "sha256": "2e5174099caf26b72dfec1b1ae775fda0dffa3c34155ec23acfea74dbfe7be18"
     },
     {
       "id": "orchestration-core-skill",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 18580,
-      "sha256": "f219b4d055614d488fd815e5b1655f3d08daa74dfb4c28fc921a72b6b32b8f5a"
+      "bytes": 18594,
+      "sha256": "949a7c820f39f56f8f910dd426d5057cfd3351762a1a4b68a87669bee3a87314"
     },
     {
       "id": "qa-core-skill",
@@ -173,8 +173,8 @@
       "source": "argus/schemas",
       "destination": "schemas",
       "files": 42,
-      "bytes": 206691,
-      "sha256": "5fd0fb8e1fd593650fbdcc6cab74ee3f8b1fdfa47a2a4a4c5b13081276b0e1ca"
+      "bytes": 206743,
+      "sha256": "5bc6892f8dfa9cfe3e6505eeee7bed16566dae980fa0b37a18a5259344cbf12f"
     },
     {
       "id": "capability-matrix",
@@ -254,8 +254,8 @@
       "source": "argus/runtime",
       "destination": "lib",
       "files": 10,
-      "bytes": 440084,
-      "sha256": "569e2c8c24875f82f7767155ba0a971b1579d1f77587bd7ffad5419759a7e121"
+      "bytes": 443248,
+      "sha256": "216ddf2e2d6c0bc0ab16171e30e93ddbefae4394257244f899b43f7d24deb629"
     },
     {
       "id": "common-template",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 65077,
-    "sha256": "8c05226fb522a65b3bac8e2cd26c078599b7c3eb63cd893c86ec709c6dd41acb"
+    "bytes": 64051,
+    "sha256": "2ec39d15ce080dc44ef46218baa435214077560241ef1c4a8f92cf4eed0d4759"
   }
 }

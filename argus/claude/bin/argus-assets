@@ -345,8 +345,9 @@ Engagement coordination:
     skip is controller only (--lane odysseus) from the untouched start of a deep-hunt pass;
     --reason is required and records why the remaining deep-hunt passes end.
     abandon --lane <slug> --controller-token <odysseus-token> --reason <continuation-exhausted|worker-failure|controller-budget>
-    is controller only, after the lane's failure or interrupted cleanup; barriers stop waiting
-    for it, it is never allocated again, and the final summary records lane-abandoned:<lane>.
+    is controller only, after the lane's failure or interrupted cleanup, or with
+    controller-budget for a lane never allocated; barriers stop waiting for it, it is never
+    allocated again, and the final summary records lane-abandoned:<lane>.
   cleanup --manifest <path> --lane <slug> --token <lease> --outcome <success|failure|interrupted>
   resolve-gates --manifest <path> [--controller-token <odysseus-token>] [--evidence <path>]
     Once, in discovery after Kalchas arrives; --evidence defaults to
@@ -2810,6 +2811,11 @@ function engagementAllocateBatch(args) {
       }
       if (state.allocations?.[lane]?.status === 'released') {
         fail(`${lane} was released; its sealed dispatch is consumed and a released lane is never allocated again`);
+      }
+      // A lane abandoned by a budget stop before its first allocation is refused before any
+      // allocation, so the batch never allocates part of the set.
+      if (plainObject(state.abandonedLanes) && Object.hasOwn(state.abandonedLanes, lane)) {
+        fail(`${lane} was abandoned (${state.abandonedLanes[lane].reason}) and cannot be allocated again`);
       }
       const conditionalGates = plainObject(state.conditionalAgents) ? state.conditionalAgents[lane] : undefined;
       if (conditionalGates && state.gateResolution?.lanes?.[lane] !== 'released') {

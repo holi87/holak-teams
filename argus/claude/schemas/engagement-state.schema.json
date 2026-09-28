@@ -37,7 +37,7 @@
       "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/gateResolution" }]
     },
     "abandonedLanes": {
-      "description": "Worker lanes the controller abandoned after their failure or interrupted cleanup; barriers no longer wait for them and the final summary names each as lane-abandoned:<lane>.",
+      "description": "Worker lanes the controller abandoned after their failure or interrupted cleanup, or never allocated before a controller-budget stop; barriers no longer wait for them and the final summary names each as lane-abandoned:<lane>.",
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/abandonableLane" },
       "additionalProperties": { "$ref": "#/$defs/laneAbandonment" }

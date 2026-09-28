@@ -215,7 +215,7 @@ Hunters submit immutable evidence-reference fragments as they collect proof. Min
 
 Never auto-fill historical proof. The 4.9.1 patch kept contract identifiers at their versions because it enforced documented validity requirements; Argus 5 replaces the ledger identity with `argus/bug-ledger@2`, so a 4.x ledger is finished on 4.9.x rather than resumed.
 
-Mode B without funded automation can use `runner: null` in its final summary with zero automated tests. Other modes cannot merge a null runner. The rendered report explicitly says no framework runner was executed.
+Mode B without funded automation can use `runner: null` in its final summary with zero automated tests. Modes A, C, and D can merge a null runner only with zero automated tests, no `reports/argus-runner-result.json`, and no installed operator template selection, and then the summary is blocked by `template-selection-missing`. The rendered report explicitly says no framework runner was executed.
 
 ## Bug ledger v2 in 5.0
 
@@ -391,7 +391,8 @@ Each input counts only once merged and only while its file matches its merge dig
   `reports/argus-runner-result.json`, which a non-null runner requires, and `evidenceId`, the
   `runner-result` reference in the merged evidence registry whose SHA-256 equals that file's
   bytes (none fails the merge, so an unregistered or since-overwritten result never counts);
-  `runner: null` is valid only in Mode B with no automated test;
+  `runner: null` is valid only with no automated test, and outside Mode B only while neither a
+  runner result nor an installed template selection exists (`template-selection-missing`);
 - `coverage` (required) from the merged `argus/coverage-result@2`: discovery completeness, the
   overall ratios including `automatedExecution`, the scoped-outcome count,
   `criticalUnexecuted`, and `caseDepth` when recorded. Its merge record keeps the digest of each
@@ -413,12 +414,15 @@ Each input counts only once merged and only while its file matches its merge dig
 | `deep-hunt-skipped:<reason>` | `degraded` | A deep-hunt pass was skipped for a reason other than `converged`, for example `controller-budget`. |
 | `gate-unmet:<lane>` | `degraded` | Gate resolution omitted the sealed conditional lane; its unmet gates stay in engagement state `gateResolution`. |
 | `lane-abandoned:<lane>` | `degraded` | The controller abandoned the released lane after its `failure` or `interrupted` cleanup; its reason stays in engagement state `abandonedLanes` (`ENGAGEMENT-POLICY.md` "Cleanup"). |
+| `template-selection-missing` | `blocked` | Mode A, C, or D has no runner outcome because no valid `ai_agents_internal/template-selection.json` was installed by `argus-launch --template-selection`. |
 
 `solution/FINAL-SUMMARY.md` prints the status with one `Status reason:` line per reason, the
 defect headline and per-status counts, a "Likely, unproven" section (`None.` when empty), the
 review verdict (`APPROVE`, `BLOCK`, `STALE`, `ABSENT`, or `NOT-APPLICABLE`) with its round,
 the runner outcome, and the coverage section with automated re-execution (`n/a` when automation
-is unfunded) and one line per unexecuted critical surface.
+is unfunded or no template selection was installed) and one line per unexecuted critical surface.
+The phase in which the final-summary owner reports cannot advance until this summary is merged,
+so an engagement never reaches `complete` without its completion record.
 
 ## Lane outcomes in 5.0
 

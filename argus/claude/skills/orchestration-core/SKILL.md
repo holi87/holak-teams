@@ -135,7 +135,8 @@ Mode B accepts reproduction with evidence and runner=null. Automation duties in 
 Before framework work run `argus-assets template detect` and consume the operator's explicit
 `template select` record, `ai_agents_internal/template-selection.json`, which `argus-launch
 --template-selection` installs; never write or infer it. Without it, report the missing
-selection as operator-required residual risk.
+selection as operator-required residual risk; the runner=null summary is then blocked by
+`template-selection-missing`.
 `adapt` forbids scaffolding; `build` allows `template scaffold` only at selected roots. The
 runner defines `baseline`, `defect-evidence`, `candidate-regression`, and `full-suite`;
 preserve product, automation, infrastructure, skip, and policy outcomes with truthful exits.
@@ -192,7 +193,8 @@ wave's estimate:
 1. Stop new hunting, deep-hunt, and retry work. Skip an untouched deep-hunt pass 2 or later
    with `argus-assets engagement barrier skip --lane odysseus --reason controller-budget`.
 2. Batch-clean interrupted lanes with `argus-assets engagement cleanup --json`, then abandon
-   each one a pending barrier still lists with `--reason controller-budget`.
+   each one a pending barrier still lists with `--reason controller-budget`. Abandon a listed
+   lane you never allocated directly, with no allocation or cleanup.
 3. Inside the reserve, run Minos's final merge, the independent blocklist, coverage, and
    Kleio.
 4. Report every skipped wave, pass, retry, and lane as a named residual.
