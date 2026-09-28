@@ -19,6 +19,10 @@
 # failures through scripts/outcome-event.sh, and `return` a status. They never `exit`; an
 # exit, an unbound variable, or any other unexpected stop is recorded as a wrapper failure.
 # Exit codes follow RUNNER-CONTRACT.md (0, 10-15), never framework-native codes.
+#
+# Every kit script names the directory of its temporary files ("${TMPDIR:-/tmp}/argus.XXXXXX"):
+# inside argus-launch TMPDIR is in the artifact root, the only writable root, and BSD mktemp
+# on macOS ignores TMPDIR without a template.
 
 ARGUS_RESULT="reports/argus-runner-result.json"
 ARGUS_INVENTORY="reports/test-inventory.tsv"
@@ -66,7 +70,7 @@ argus_finish() {
     args+=(--expected-bugs "$ARGUS_EXPECTED_BUGS")
   elif [ "$ARGUS_MODE" != baseline ] && { [ ! -s "$ARGUS_INVENTORY" ] ||
     grep -Fxq "$(printf 'expected-bugs\tpolicy\tdenied\tfalse\tn/a\t-\texpected-bugs-missing')" "$ARGUS_EVENTS" 2>/dev/null; }; then
-    no_expected_bugs="$(mktemp)"
+    no_expected_bugs="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
     args+=(--expected-bugs "$no_expected_bugs")
   fi
   if [ "${ARGUS_CONTRACT_SMOKE:-0}" = 1 ]; then args+=(--contract-smoke); fi
@@ -176,7 +180,7 @@ argus_engagement_authorized() {
     echo "ARGUS AUTHORIZATION: the engagement manifest names no owner of the exclusive $resource window; $label refused" >&2
     return 1
   fi
-  state="$(mktemp)"
+  state="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
   if ! "$cli" engagement status --manifest "$ARGUS_ENGAGEMENT_MANIFEST" >"$state"; then
     rm -f "$state"
     echo "ARGUS AUTHORIZATION: engagement state is unreadable; $label refused" >&2
@@ -272,6 +276,21 @@ argus_engagement_request() {
   return 0
 }
 
+# Inside an engagement the launch sandbox denies every write outside the artifact root, so a
+# native browser download into the host Playwright cache can only fail; browsers are provisioned
+# host-side (argus-launch --provision-browser) and probed by preflight. When an engagement is
+# indicated, even one whose manifest cannot be read, an unset or empty PLAYWRIGHT_INSTALL
+# becomes 0 for the native hooks. An explicit value wins; outside an engagement each hook keeps
+# its own default.
+argus_browser_install_default() {
+  local manifest
+  [ -z "${PLAYWRIGHT_INSTALL:-}" ] || return 0
+  manifest="$(argus_engagement_manifest 2>/dev/null)" || manifest=unreadable
+  [ -n "$manifest" ] || return 0
+  export PLAYWRIGHT_INSTALL=0
+  echo "ARGUS RUNNER: inside an Argus engagement the native browser download is skipped (PLAYWRIGHT_INSTALL=0); the host-provisioned browser is used"
+}
+
 argus_engagement_optin() {
   case "$1" in
     reset)
@@ -292,7 +311,7 @@ argus_engagement_optin() {
 
 argus_read_lane_plan() {
   local output csv='^[a-z]+(,[a-z]+)*$'
-  output="$(mktemp)"
+  output="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
   argus_call bash "$ARGUS_ROOT/scripts/lane-plan.sh" validate --plan "$ARGUS_LANE_PLAN" --events "$ARGUS_EVENTS" --mode "$ARGUS_MODE" >"$output"
   ARGUS_LANES="$(cat "$output")"
   rm -f "$output"
@@ -348,7 +367,7 @@ argus_inventory_gate() {
 argus_defect_evidence_passes() {
   local output pass pass_name='^cf-(correct|tamper-[1-9][0-9]*)$'
   local passes=()
-  output="$(mktemp)"
+  output="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
   argus_call bash "$ARGUS_ROOT/scripts/evidence-gate.sh" --plan "$ARGUS_COUNTERFACTUAL_PLAN" --list-passes >"$output"
   if [ "$ARGUS_CALL_STATUS" -ne 0 ]; then rm -f "$output"; argus_finish 1; fi
   while IFS= read -r pass; do
@@ -472,7 +491,7 @@ argus_automation_review_gate() {
   local shape=$'^(APPROVE|BLOCK)\tREV-[0-9]{2}\t[1-9][0-9]?\t[0-9]+$'
   [ "$ARGUS_MODE" = full-suite ] && [ "${ARGUS_CONTRACT_SMOKE:-0}" != 1 ] || return 0
   [ -e "$ARGUS_AUTOMATION_REVIEW" ] || [ -L "$ARGUS_AUTOMATION_REVIEW" ] || return 0
-  output="$(mktemp)"
+  output="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
   argus_call argus_automation_review_latest "$ARGUS_AUTOMATION_REVIEW" >"$output"
   line="$(cat "$output")"
   rm -f "$output"
@@ -541,6 +560,7 @@ argus_main() {
 
   argus_engagement_optin fault
 
+  argus_browser_install_default
   argus_call argus_native_prepare
   if [ "$ARGUS_CALL_STATUS" -ne 0 ]; then argus_finish 1; fi
 

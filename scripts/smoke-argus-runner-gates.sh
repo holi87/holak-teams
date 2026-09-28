@@ -22,7 +22,7 @@ unset ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET AR
   ARGUS_AUTHORIZATION_TARGET ARGUS_AUTHORIZATION_SOURCE_TRUST ARGUS_AUTHORIZATION_ACCOUNT \
   ARGUS_AUTHORIZATION_NAMESPACE ARGUS_AUTHORIZATION_MUTATION ARGUS_AUTHORIZATION_RATE \
   ARGUS_AUTHORIZATION_CONCURRENCY ARGUS_AUTHORIZATION_TOTAL_REQUESTS ARGUS_AUTHORIZATION_DURATION \
-  ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY PERF_BUDGET_MS SECURITY_ENABLED DB_URL
+  ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY PERF_BUDGET_MS SECURITY_ENABLED DB_URL PLAYWRIGHT_INSTALL
 
 # Readiness probes the default API_URL/UI_URL; curl answers file:// URLs without a server.
 READY="$WORK/ready.txt"
@@ -122,6 +122,22 @@ for declaration in test-lanes.tsv environment.tsv; do
       fail "$template/solution/$declaration drifted from the common layer"
   done
 done
+
+# Inside argus-launch the only writable root is the artifact root, and TMPDIR points into it.
+# BSD mktemp on macOS ignores TMPDIR unless it is given a template (it creates the file in the
+# per-user /var/folders directory, which the sandbox denies), so every temporary file of the kit
+# names its directory. smoke-argus-templates.sh runs the kit inside the launch sandbox itself.
+# shellcheck disable=SC2016 # The patterns and the control quote literal shell source.
+anchored_temporary='^[^:]+:\$\(mktemp (-d )?"\$\{TMPDIR:-/tmp\}/argus\.XXXXXX"$'
+temporary_sites() { grep -Ho '\$(mktemp[^)]*' "$@" | grep -Ev "$anchored_temporary" || true; }
+# shellcheck disable=SC2016
+printf 'x="$(mktemp)" y="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"\n' >"$WORK/bare-temporary.sh"
+[ "$(temporary_sites "$WORK/bare-temporary.sh")" = "$WORK/bare-temporary.sh:\$(mktemp" ] ||
+  fail 'the temporary-file check cannot tell a bare mktemp from an anchored one'
+unanchored="$(temporary_sites "$COMMON/scripts/"*.sh)"
+[ -z "$unanchored" ] || fail "runner kit creates temporary files outside TMPDIR: $unanchored"
+[ "$(grep -o '\$(mktemp' "$COMMON/scripts/"*.sh | wc -l | tr -d ' ')" -ge 12 ] ||
+  fail 'the temporary-file check no longer sees the runner kit temporary files'
 
 # ---------------------------------------------------------------------------------------
 # Lane-plan gate, unit level. The shipped default plan is valid and undecided beyond api/ui.
@@ -970,4 +986,46 @@ prepare "$label" green
 run_case "$label" 0 baseline ARGUS_FAULT_INJECTION=authorized ARGUS_FAULT_INJECTION_GRANT=forged
 called "$label" "env mode=baseline pass=live outcome=$WORK/$label/reports/outcomes.raw.tsv fault=authorized grant="
 
-printf 'PASS  Argus runner gates: lane plan, environment baseline, inventory quarantine, inventory gate, adapter status, defect-evidence passes and evidence gate, contract smoke, and engagement opt-in authorization\n'
+# Inside an engagement the launch sandbox denies every write outside the artifact root, so a
+# native browser download into the host Playwright cache can only fail; browsers are
+# provisioned host-side. When an engagement is indicated, even one whose manifest cannot be
+# read, the hooks see PLAYWRIGHT_INSTALL=0 in place of an unset or empty value. An explicit
+# value wins, and outside an engagement the variable stays unset, so each hook keeps its own
+# default.
+label=browser-install-detected
+prepare "$label" green
+detected_engagement "$label"
+run_case "$label" 0 baseline
+called "$label" 'env prepare playwright-install=0'
+grep -Fq 'ARGUS RUNNER: inside an Argus engagement' "$WORK/$label/run.log" || fail "$label did not say why the browser download is skipped"
+
+label=browser-install-launch-root
+prepare "$label" green
+run_case "$label" 0 baseline "ARGUS_LAUNCH_ARTIFACT_ROOT=$(dirname "$(dirname "$MANIFEST")")"
+called "$label" 'env prepare playwright-install=0'
+
+label=browser-install-unreadable-engagement
+prepare "$label" green
+run_case "$label" 0 baseline "ARGUS_NATIVE_LAUNCH_RECEIPT=$WORK/launch/ai_agents_internal/native-launch-receipt.json"
+called "$label" 'env prepare playwright-install=0'
+
+label=browser-install-empty
+prepare "$label" green
+detected_engagement "$label"
+run_case "$label" 0 baseline PLAYWRIGHT_INSTALL=
+called "$label" 'env prepare playwright-install=0'
+
+for value in 0 1; do
+  label="browser-install-explicit-$value"
+  prepare "$label" green
+  detected_engagement "$label"
+  run_case "$label" 0 baseline "PLAYWRIGHT_INSTALL=$value"
+  called "$label" "env prepare playwright-install=$value"
+done
+
+label=browser-install-outside
+prepare "$label" green
+run_case "$label" 0 baseline
+called "$label" 'env prepare playwright-install=unset'
+
+printf 'PASS  Argus runner gates: lane plan, environment baseline, inventory quarantine, inventory gate, adapter status, defect-evidence passes and evidence gate, contract smoke, engagement opt-in authorization, TMPDIR-anchored temporary files, and the in-engagement browser-download default\n'

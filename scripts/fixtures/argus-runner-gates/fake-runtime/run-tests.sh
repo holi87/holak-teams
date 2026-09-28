@@ -18,6 +18,7 @@ fake_record() { mkdir -p reports; printf '%s\n' "$*" >>"$CALLS"; }
 
 argus_native_prepare() {
   fake_record "prepare"
+  fake_record "env prepare playwright-install=${PLAYWRIGHT_INSTALL-unset}"
   if [ -f "$SCENARIO/prepare-fail" ]; then
     bash scripts/outcome-event.sh prepare automation fail false n/a - fake-prepare-failed
     return 1

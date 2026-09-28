@@ -17,7 +17,7 @@ done
 [ -n "$events" ] && [ -n "$inventory" ] && [ -f "$inventory" ] || exit 14
 
 invalid=0 today="${ARGUS_TODAY:-$(date -u +%F)}"
-quarantined="$(mktemp)" registered="$(mktemp)" accepted="$(mktemp)"
+quarantined="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")" registered="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")" accepted="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
 trap 'rm -f "$quarantined" "$registered" "$accepted"' EXIT
 # case_id, regression flag, and bug ids of every quarantined inventory row. An empty case
 # id becomes '!' so it fails the case-id check instead of shifting the fields.
