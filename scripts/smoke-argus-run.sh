@@ -50,6 +50,25 @@ require_text '--engagement-id <engagement-id> --launch-authorization' "$SKILL" "
 require_text '--launch-receipt <launch-receipt> --trust-store <trust-store>' "$SKILL" "run skill does not bind preflight to the verified receipt and trust store"
 # shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
 require_text 'appending `--feature <id>` per optional unsigned `features` entry.' "$SKILL" "run skill does not forward operator-declared launcher features to preflight"
+# An unattested launch sends prose coordinates, not authenticatedLaunch JSON. The run skill must
+# name the launcher's exact form (derived here from the packaged launcher, so the two cannot
+# drift) and route it to preflight --unattested-launch instead of rejecting it.
+LAUNCHER="$PLUGIN/bin/argus-launch"
+unattested_form="$(sed -n 's|^  prompt="/argus:run \(target=[^"]* unattestedLaunch=true [^"]*\)"$|\1|p' "$LAUNCHER")"
+[ -n "$unattested_form" ] || fail "packaged launcher no longer builds the unattested prompt"
+unattested_form="${unattested_form//\$artifact_root/<artifact-root>}"
+unattested_form="${unattested_form//\$engagement_id/<engagement-id>}"
+unattested_form="${unattested_form//\$target/<target>}"
+unattested_form="${unattested_form//\$mode/<mode>}"
+require_text "\`$unattested_form\`" "$SKILL" "run skill does not accept the launcher's exact unattested form: $unattested_form"
+# shellcheck disable=SC2016 # The marker quotes the launcher's literal shell source.
+grep -Fq 'prompt="$prompt features=$launch_features_csv"' "$LAUNCHER" || fail "packaged launcher no longer appends unattested features"
+# shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
+require_text 'optional `features=<csv>`' "$SKILL" "run skill does not accept unattested launcher features"
+require_text '--engagement-id <engagement-id> --unattested-launch`' "$SKILL" "run skill does not run preflight --unattested-launch for an unattested launch"
+require_text 'ARGUS_LAUNCH_UNATTESTED=1' "$SKILL" "run skill does not name the runtime's unattested launcher signal"
+require_text 'Attested launches pin the public-only host trust store' "$SKILL" "run skill pins trust for an unattested launch"
+require_text 'Skip trust pinning and its preflight rerun' "$CORE" "orchestration core pins trust for an unattested launch"
 # shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
 require_text 'Launcher `features`' "$CORE" "orchestration core does not treat launcher features as operator-declared evidence"
 # shellcheck disable=SC2016 # The markers quote literal Markdown code spans.

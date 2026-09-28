@@ -154,10 +154,11 @@ Before any target probe, test, or specialist dispatch:
    infer one. Unknown, staging, and production-like targets stay read-only. Never invent an
    approver/grant.
 
-   **Unattested exception** — only when `ARGUS_LAUNCH_UNATTESTED=1`:
-   swap signed coordinates for `--unattested-launch` per `references/ENGAGEMENT-POLICY.md`.
-   Decisions carry `trust=unattested`; Codex and operator escalations stay blocked. Report
-   `UNATTESTED` residual risk, never attested.
+   **Unattested exception** — only for the launcher's `unattestedLaunch=true` input, which
+   preflight admits only when `ARGUS_LAUNCH_UNATTESTED=1`: swap signed coordinates for
+   `--unattested-launch` per `references/ENGAGEMENT-POLICY.md`.
+   Skip trust pinning and its preflight rerun. Decisions carry `trust=unattested`; Codex
+   and operator escalations stay blocked. Report `UNATTESTED` residual risk, never attested.
 3. Verify persisted `ai_agents_internal/preflight.json`: target evidence, engagement path/digest,
    state/audit paths, orchestration digest, selected count, and guard. Exit 2, missing
    persistence, `blocked`, or a mandatory failure returns

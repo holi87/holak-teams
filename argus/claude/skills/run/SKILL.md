@@ -14,7 +14,7 @@ Only a session started by `${CLAUDE_PLUGIN_ROOT}/bin/argus-launch` may execute t
 Direct invocation stops before probing or dispatch.
 
 `$ARGUMENTS` contains one `authenticatedLaunch` JSON object and QA scope; reject duplicate
-or prose coordinates. Stay the sole controller; never
+or prose coordinates, except the unattested form below. Stay the sole controller; never
 spawn `argus:odysseus`. Execute `${CLAUDE_PLUGIN_ROOT}/skills/orchestration-core/SKILL.md`
 as the only controller policy. Do not read the Odysseus agent as a second policy source.
 
@@ -27,7 +27,15 @@ specialists, then run `argus-assets preflight --target <target> --mode <A|B|C|D>
 <launch-authorization> --launch-receipt <launch-receipt> --trust-store <trust-store>`,
 appending `--feature <id>` per optional unsigned `features` entry. Never derive or
 replace signed coordinates. A mandatory failure stops with evidence.
-Pin the public-only host trust store's distinct `runtime-attestation` and
+An `argus-launch --unattested` session instead receives exactly
+`target=<target> artifact-root=<artifact-root> mode=<mode> unattestedLaunch=true engagementId=<engagement-id>`
+plus optional `features=<csv>` and operator `authorizationSource`/`targetEnvironment`/
+`authorizationSha256` tokens. Run `argus-assets preflight --target <target> --mode <mode>
+--artifact-root <artifact-root> --engagement-id <engagement-id> --unattested-launch`, with
+`--feature <id>` per `features` entry. Its refusal (no `ARGUS_LAUNCH_UNATTESTED=1`, or host
+key material) returns `ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED`. Report the
+engagement `UNATTESTED`.
+Attested launches pin the public-only host trust store's distinct `runtime-attestation` and
 `operator-approval` IDs, then rerun preflight; never sign, access private keys, or accept
 first-use trust. Persist exactly one normal attempt-1 decision for Odysseus and every
 selected `ready`/`degraded`/`conditional` agent with `dispatchAllowed=true`.
