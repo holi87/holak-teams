@@ -395,7 +395,11 @@ Each input counts only once merged and only while its file matches its merge dig
   runner result exists and either no automated test and no installed template selection
   (`template-selection-missing`) or an abandoned `run-tests.sh` owner (`runner-result-missing`),
   or an abandoned `run-tests.sh` owner and a result that matches no registered reference
-  (`runner-result-unregistered`), whose bytes are never parsed or cited;
+  (`runner-result-unregistered`), whose bytes are never parsed or cited; with an installed
+  template selection and a dispatchable `run-tests.sh` owner that is not abandoned, a missing
+  runner result justifies no null runner, so `report-facts` and the merge refuse it and name the
+  recovery: re-dispatch the owner while its lease is active to run and register the full-suite,
+  or abandon it once released;
 - `coverage` (required) from the merged `argus/coverage-result@2`: discovery completeness, the
   overall ratios including `automatedExecution`, the scoped-outcome count,
   `criticalUnexecuted`, and `caseDepth` when recorded. Its merge record keeps the digest of each

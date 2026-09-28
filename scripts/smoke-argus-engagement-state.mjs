@@ -89,6 +89,7 @@ try {
   testCompletionRequiresFinalSummary();
   testAbandonedRunnerOwnerFinalSummary();
   testAbandonedRunnerOwnerUnregisteredResult();
+  testRunnerOwnerWithoutRunnerResult();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
   testRedispatchedHeartbeatWorkUnits();
@@ -1277,6 +1278,74 @@ function testAbandonedRunnerOwnerUnregisteredResult() {
   arriveBarrier(manifest, 'odysseus', controller.token, 'complete');
   cleanupWorker(manifest, 'kleio', tokens.kleio, 'success');
   assert(cleanupWorker(manifest, 'odysseus', controller.token, 'success').outcome === 'success', 'the controller did not complete after an unregistered runner result');
+}
+
+// With an installed template selection, Atlas keeps his lease on reporting standby and can still
+// run and register the runner, so a missing runner result justifies no runner=null summary.
+// report-facts refuses to offer one that the merge would refuse and, like the merge, names the
+// recovery: re-dispatch him while his lease is active, or abandon him once it is released, after
+// which the summary merges blocked by runner-result-missing. His registered re-dispatch run
+// then completes the engagement.
+function testRunnerOwnerWithoutRunnerResult() {
+  const reachReporting = (name) => {
+    const fixture = createFixture(name, ['atlas', 'kleio', 'odysseus']);
+    const { manifest } = fixture;
+    writeTemplateSelection(fixture);
+    const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding(`${name}-controller`) });
+    const tokens = { odysseus: controller.token };
+    for (const lane of ['atlas', 'kleio']) {
+      tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`${name}-${lane}`) }).token;
+    }
+    arriveBarrier(manifest, 'atlas', tokens.atlas, 'discovery');
+    while (getEngagementStatus(manifest).currentPhase !== 'automation') advanceBarrier(manifest, 'odysseus', controller.token);
+    arriveBarrier(manifest, 'atlas', tokens.atlas, 'automation');
+    while (getEngagementStatus(manifest).currentPhase !== 'reporting') advanceBarrier(manifest, 'odysseus', controller.token);
+    writeFragment(manifest, 'kleio', tokens.kleio, 'solution/ARCHITECTURE.md', 'kleio-architecture',
+      '## 10. How we used AI\nDelegated recon, verified by the reporter.\n\n## 11. Summary\nOne suite, one report.\n');
+    mergeCanonical(manifest, 'atlas', tokens.atlas, 'solution/ARCHITECTURE.md');
+    arriveBarrier(manifest, 'kleio', tokens.kleio, 'reporting');
+    seedFinalSummaryInputs(fixture, { runner: false });
+    return { fixture, manifest, tokens };
+  };
+  const missing = 'no reports/argus-runner-result.json exists while the run-tests.sh owner atlas is not abandoned';
+  const expectRefused = ({ fixture, manifest, tokens }, expected, label) => {
+    expectThrowMessage(() => deriveFinalSummaryFacts(manifest, getEngagementStatus(manifest)), expected, `report-facts ${label}`);
+    expectThrowMessage(() => mergeFinalSummary(fixture, tokens.kleio, { runner: false, fragmentId: `summary-null-runner-${label.replace(/\W+/gu, '-')}` }),
+      expected, `a runner=null summary ${label}`);
+    assert(getEngagementStatus(manifest).merges['solution/final-summary.json'] === undefined, `a runner=null summary ${label} was merged`);
+    expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', tokens.odysseus),
+      'phase reporting requires the kleio merge of solution/final-summary.json before it can advance', `advance out of reporting ${label}`);
+  };
+  const complete = ({ manifest, tokens }, lanes) => {
+    advanceBarrier(manifest, 'odysseus', tokens.odysseus);
+    arriveBarrier(manifest, 'odysseus', tokens.odysseus, 'complete');
+    for (const lane of lanes) cleanupWorker(manifest, lane, tokens[lane], 'success');
+    assert(cleanupWorker(manifest, 'odysseus', tokens.odysseus, 'success').outcome === 'success', `the controller did not complete after ${lanes.join(', ')}`);
+  };
+
+  const active = reachReporting('runner-owner-active-no-result');
+  expectRefused(active, `${missing}; re-dispatch atlas on reporting standby to run the full-suite and register its archived runner result, then merge the registry and the coverage result again`,
+    'while the runner owner holds an active lease');
+  // Atlas's re-dispatch on his active lease registers the full-suite run; Kleio merges the
+  // registry and the coverage result again, and the summary carries the registered outcome.
+  mergeFinalSummary(active.fixture, active.tokens.kleio, { fragmentId: 'summary-registered-after-redispatch' });
+  const summary = readSolutionJson(active.fixture, 'final-summary.json');
+  assert(summary.runner?.evidenceId === 'EVD-0001' && !summary.statusReasons.some((reason) => reason.startsWith('runner-') || reason === 'template-selection-missing'),
+    `the re-dispatched runner result is not the summary's runner outcome: ${JSON.stringify({ runner: summary.runner, statusReasons: summary.statusReasons })}`);
+  complete(active, ['atlas', 'kleio']);
+
+  const released = reachReporting('runner-owner-released-no-result');
+  cleanupWorker(released.manifest, 'atlas', released.tokens.atlas, 'failure');
+  expectRefused(released, `${missing} and holds no active lease; abandon atlas with engagement barrier abandon so the summary records runner-result-missing`,
+    'after the runner owner was released unabandoned');
+  abandonLane(released.manifest, 'atlas', released.tokens.odysseus, 'worker-failure');
+  mergeFinalSummary(released.fixture, released.tokens.kleio, { runner: false, fragmentId: 'summary-runner-owner-abandoned-in-reporting' });
+  const abandoned = readSolutionJson(released.fixture, 'final-summary.json');
+  assert(abandoned.status === 'blocked' && abandoned.runner === null &&
+    JSON.stringify(abandoned.statusReasons) === JSON.stringify(['canonical-unmerged:run-tests-sh', 'canonical-unmerged:solution-automation-status-json',
+      'lane-abandoned:atlas', 'runner-result-missing']),
+  `a summary after abandoning the released runner owner was not blocked by the missing runner result: ${JSON.stringify({ status: abandoned.status, runner: abandoned.runner, statusReasons: abandoned.statusReasons })}`);
+  complete(released, ['kleio']);
 }
 
 function writeTemplateSelection(fixture) {
