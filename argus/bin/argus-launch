@@ -106,8 +106,9 @@ Playwright module). doctor --browser runs it after the sandbox probes: a SKIP on
 FAIL fails doctor.
 
 --provision-browser prepares the host before the sandbox starts, for attested and unattested
-launches alike: `argus-assets browser provision` reuses a host Playwright that already
-launches headless Chromium, or installs the pinned release into
+launches alike: `argus-assets browser provision` reuses a host Playwright of the pinned
+release (the TypeScript template lockfile) that already launches headless Chromium, or
+installs that release into
 ~/.cache/argus/browser-runtime/<x.y.z> (outside the artifact root, read-only to the sandbox)
 and Chromium into Playwright's host default cache. It is host preparation, not part of the
 signed launch request: preflight functionally re-probes the runtime inside the sandbox. A

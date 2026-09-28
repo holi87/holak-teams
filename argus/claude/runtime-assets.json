@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 59481,
-      "sha256": "29d45db3f1f7b3f61b8cf1dc408a85733fc1d51ca3c69d03f7ba3822bc667925"
+      "bytes": 59532,
+      "sha256": "540dbd00e6be58fa6105f1599c120a58c172d40de6e0ec23e24d27a7c7e7e86e"
     },
     {
       "id": "browser-isolation",
@@ -38,8 +38,8 @@
       "source": "argus/BROWSER-ISOLATION.md",
       "destination": "references/BROWSER-ISOLATION.md",
       "files": 1,
-      "bytes": 18294,
-      "sha256": "450c56a31a18625beee7d582b90b406bb4c580c103f5db80b3b77de6611a9f97"
+      "bytes": 18525,
+      "sha256": "095a8c410e7850de0f92187d5376a07e3eed2da0153a9a5d213d0ec488126397"
     },
     {
       "id": "authorization-policy",
