@@ -32,7 +32,7 @@ export type FaultSpec = {
 
 const FAULT_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-type RecordedFault = { fault: FaultSpec; restoring?: Promise<void> };
+type RecordedFault = { fault: FaultSpec; injecting: Promise<unknown>; restoring?: Promise<void> };
 
 /** Tracks the faults of one test; the `faultInjector` fixture restores whatever a test leaves active. */
 export class FaultInjector {
@@ -46,11 +46,11 @@ export class FaultInjector {
   async run<T>(fault: FaultSpec, body: () => T | Promise<T>): Promise<T> {
     validate(fault);
     if (fault.scope === 'server') requireServerAuthorization(fault.name);
-    const entry: RecordedFault = { fault };
+    const entry: RecordedFault = { fault, injecting: Promise.resolve().then(() => fault.inject()) };
     this.recorded.add(entry);
     let outcome: { ok: true; value: T } | { ok: false; error: unknown };
     try {
-      await fault.inject();
+      await entry.injecting;
       outcome = { ok: true, value: await body() };
     } catch (error) {
       outcome = { ok: false, error };
@@ -73,9 +73,10 @@ export class FaultInjector {
     if (failure !== undefined) throw failure;
   }
 
-  // Each recorded fault is restored exactly once, whether run() or settle() gets there first.
+  // Each recorded fault is restored exactly once, after injection settles, even when injection
+  // partially fails. run() still propagates that failure; settle() must not restore too early.
   private async restore(entry: RecordedFault): Promise<void> {
-    entry.restoring ??= restoreAndVerify(entry.fault);
+    entry.restoring ??= entry.injecting.catch(() => undefined).then(() => restoreAndVerify(entry.fault));
     try {
       await entry.restoring;
     } finally {

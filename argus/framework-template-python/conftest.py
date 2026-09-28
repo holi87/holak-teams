@@ -90,7 +90,7 @@ def created_resources(
     """Register (client, path) of POST-created entities; teardown DELETEs every one, newest first.
 
     Use when the app ships no reset command — never rely on accumulating unique data alone.
-    Every DELETE is attempted; a status outside 200/202/204/404 (404: already gone) or an
+    Every DELETE is attempted; a status outside 200/204/404 (404: already gone) or an
     exception fails the test as ArgusCleanupError (``cleanup-failed``), never a warning. It
     depends on api_as and anon_client so every client they hand out outlives this teardown.
     """

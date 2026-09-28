@@ -12,7 +12,8 @@ import { LoginPage } from '../pages/login.page';
 export type CreatedResource = { ctx: APIRequestContext; path: string };
 
 // A DELETE that answers one of these removed the resource or found it already gone.
-const CLEANUP_STATUSES = new Set([200, 202, 204, 404]);
+// 202 only accepts deletion; without a target-specific completion check it is not cleanup.
+const CLEANUP_STATUSES = new Set([200, 204, 404]);
 // Contexts whose disposal waits until createdResources has deleted what they created.
 const deferredDisposal = new WeakMap<CreatedResource[], APIRequestContext[]>();
 
@@ -21,7 +22,7 @@ type Fixtures = {
   apiAsAdmin: APIRequestContext;
   loginPage: LoginPage;
   /** Register POST-created entities here; teardown DELETEs every one, newest first. A status
-   *  outside 200/202/204/404 or a thrown error fails the test as ArgusCleanupError. Use when
+   *  outside 200/204/404 or a thrown error fails the test as ArgusCleanupError. Use when
    *  the app ships no reset command; never rely on accumulating unique data alone. */
   createdResources: CreatedResource[];
   /** Runs a fault around one body and always restores it (src/argus/fault-injector.ts). */
@@ -91,7 +92,7 @@ export const test = counterfactualTest.extend<Fixtures>({
 
 /**
  * The createdResources teardown: DELETEs every registered resource, newest first, and attempts
- * each one even after a failure. A status outside 200/202/204/404 or a thrown error (for example
+ * each one even after a failure. A status outside 200/204/404 or a thrown error (for example
  * a disposed context) is a failure; the ArgusCleanupError names only the count, never a path or
  * a body.
  */

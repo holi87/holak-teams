@@ -218,6 +218,12 @@ in every runtime.
 A teardown failure alongside a different primary outcome adds
 `<case>.cleanup automation fail false n/a <bug|-> cleanup-failed`.
 
+Resource cleanup accepts terminal DELETE responses 200, 204, or already-gone 404.
+HTTP 202 only accepts asynchronous deletion and therefore fails cleanup until the target
+adapter supplies a completion check; it must never count as a completed deletion by itself.
+The TypeScript fault fixture waits for a pending injection to settle before its single
+restore and verification, including injection failure after a partial change.
+
 ### SD-6 Product events
 
 A non-regression test gives `product pass false n/a - passed` or

@@ -202,7 +202,7 @@ class RunnerKitSelfTest {
             created.register(live, "/items/4");
             created.register(live, "/items/5");
             ArgusCleanupError error = assertThrows(ArgusCleanupError.class, created::cleanup);
-            assertEquals("cleanup failed for 2 resource(s)", error.getMessage());
+            assertEquals("cleanup failed for 3 resource(s)", error.getMessage());
             assertEquals(List.of("/items/5", "/items/4", "/items/3", "/items/2", "/items/1"),
                     stub.requests().stream().map(RecordedRequest::path).toList());
             assertEquals(0, created.size(), "cleanup left resources queued");

@@ -387,6 +387,10 @@ awk -F'\t' -v prefix="$BEHAVIOR_ORACLE_CASE" \
 if grep -Eq '127[.]0[.]0[.]1|argus-correct-password|ECONNREFUSED' "$WORK/oracles-behavior.tsv"; then fail "a behaviour oracle self-test event carried test details"; fi
 expect_status "ok $behavior_oracle_cases" oracles-behavior
 
+# The runner-kit regressions include terminal DELETE cleanup, including an accepted 202.
+pytest_run runner-kit-selftests -- -m contract_smoke tests/contract/test_runner_kit_selftest.py
+expect_exit runner-kit-selftests 0
+
 # (9) Counterfactual evidence (SD-6, SD-10). Each cf pass serves solution/counterfactual/BUG-0001.json
 # from the session's 127.0.0.1 stub. API_URL names a closed port, so a request that escaped
 # the stub would surface as target-unreachable instead of reaching anything.

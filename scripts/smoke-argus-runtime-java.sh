@@ -335,6 +335,9 @@ awk -F'\t' 'NF != 7 || index($1, "qa.contract.OraclesBehaviorSelfTest.") != 1 ||
 [ "$(cat "$ORACLES/reports/argus-adapter-status.txt" 2>/dev/null)" = "ok $behavior_oracle_cases" ] || fail "behaviour oracle self-test adapter status is not 'ok $behavior_oracle_cases'"
 if grep -Eq '127[.]0[.]0[.]1|overbooked|still serves' "$B"; then fail "a behaviour oracle self-test event carried test details"; fi
 
+# The runner-kit regressions include terminal DELETE cleanup, including an accepted 202.
+run_logged runner-kit-selftests in_dir "$ORACLES" "${MVN[@]}" test -Dtest=RunnerKitSelfTest
+
 # Inside an engagement the opt-in alone never injects a server fault: FaultInjector also needs
 # the grant runner-lib.sh issues after the chaos authorization, whether ARGUS_ENGAGEMENT_MANIFEST
 # names the engagement or its manifest sits above the Maven basedir.

@@ -359,6 +359,10 @@ awk -F'\t' -v prefix='contract-smoke:contract-oracles-behavior.selftest.spec.ts:
   "$EV" >&2 || fail "a behaviour oracle self-test event is not product pass"
 expect_status "ok $behavior_oracle_cases" "behaviour oracle self-tests"
 
+# The runner-kit regressions cover pending injection teardown and terminal DELETE cleanup.
+pw runner-kit-selftests npx playwright test --project=contract-smoke --reporter=line tests/contract/runner-kit.selftest.spec.ts
+[ "$PW_CODE" -eq 0 ] || { tail -80 "$WORK/runner-kit-selftests.log" >&2; fail "the runner-kit self-tests exited $PW_CODE"; }
+
 # --- Counterfactual evidence (SD-6, SD-10) -----------------------------------------------
 # Each cf pass serves solution/counterfactual/BUG-0001.json from the in-worker 127.0.0.1
 # stub. API_URL names a closed port, so a request that escaped the stub would surface as
