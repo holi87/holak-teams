@@ -246,6 +246,15 @@ grep -Fq 'automation-status: ' "$TMP/retired-automation.err" || fail "non-canoni
 PROJECT="$TMP/project"
 mkdir -p "$PROJECT/scripts" "$PROJECT/solution" "$PROJECT/reports"
 cp "$ROOT/argus/claude/templates/typescript/scripts/baseline-coverage.mjs" "$PROJECT/scripts/"
+# Outside an engagement it is the delivered CI's gate: a missing canonical input fails it.
+cp "$FIXTURES/surface-inventory.json" "$PROJECT/solution/surface-inventory.json"
+if ARGUS_ASSETS="$CLI" node "$PROJECT/scripts/baseline-coverage.mjs" >"$TMP/baseline-missing.out" 2>"$TMP/baseline-missing.err"; then
+  fail 'baseline coverage passed outside an engagement without coverage observations'
+fi
+grep -Fq 'surface-coverage: missing solution/coverage-observations.json' "$TMP/baseline-missing.err" \
+  || fail "missing coverage observations failed for another reason: $(<"$TMP/baseline-missing.err")"
+if grep -Fq deferred "$TMP/baseline-missing.out"; then fail 'baseline coverage deferred outside an engagement'; fi
+test ! -e "$PROJECT/solution/coverage-result.json" || fail 'baseline coverage without observations wrote a coverage result'
 for input in surface-inventory coverage-observations evidence-reference bug-ledger; do
   cp "$FIXTURES/$input.json" "$PROJECT/solution/$input.json"
 done
@@ -262,17 +271,27 @@ if ARGUS_ASSETS="$CLI" node "$PROJECT/scripts/baseline-coverage.mjs" >/dev/null 
 fi
 grep -Fq 'is not mapped to SRF-API-ORDERS-POST by automation-status' "$TMP/baseline-unmapped.err" || fail "baseline coverage failed for another reason: $(<"$TMP/baseline-unmapped.err")"
 
-# Inside an engagement the canonical coverage-result is Kleio's single-writer merge: the gate
-# writes its calculation to reports/ and succeeds, from the project root or any other directory.
+# Inside an engagement the canonical coverage-result is Kleio's single-writer merge. She merges
+# the coverage observations only in reporting, after the automation phase's runs, so until then
+# the gate defers: it succeeds without a result, a summary block, or an event.
 ENGAGED="$TMP/engaged"
 mkdir -p "$ENGAGED"
 "$CLI" engagement init --target "$ENGAGED" --artifact-root "$ENGAGED" --mode A --engagement-id coverage-gate-smoke >/dev/null
 mkdir -p "$ENGAGED/scripts" "$ENGAGED/solution" "$ENGAGED/reports"
 cp "$PROJECT/scripts/baseline-coverage.mjs" "$ENGAGED/scripts/"
-for input in surface-inventory coverage-observations evidence-reference bug-ledger automation-status; do
+for input in surface-inventory evidence-reference bug-ledger automation-status; do
   cp "$FIXTURES/$input.json" "$ENGAGED/solution/$input.json"
 done
 cp -R "$FIXTURES/reports/evidence" "$ENGAGED/reports/evidence"
+(cd "$ENGAGED" && ARGUS_ASSETS="$CLI" node scripts/baseline-coverage.mjs >"$TMP/baseline-deferred.out" 2>&1) \
+  || fail "baseline coverage failed inside an engagement before Kleio merged the coverage observations: $(<"$TMP/baseline-deferred.out")"
+grep -Fq 'COVERAGE  deferred reason=canonical-input-unmerged missing=solution/coverage-observations.json' "$TMP/baseline-deferred.out" \
+  || fail "engaged baseline coverage did not report its deferral: $(<"$TMP/baseline-deferred.out")"
+test ! -e "$ENGAGED/reports/coverage-result.json" && test ! -e "$ENGAGED/solution/coverage-result.json" && test ! -e "$ENGAGED/reports/summary.json" \
+  || fail 'deferred baseline coverage wrote a coverage result or summary'
+# Once Kleio merged the observations, the gate writes its calculation to reports/ and succeeds,
+# from the project root or any other directory.
+cp "$FIXTURES/coverage-observations.json" "$ENGAGED/solution/coverage-observations.json"
 (cd "$ENGAGED" && ARGUS_ASSETS="$CLI" node scripts/baseline-coverage.mjs >"$TMP/baseline-engaged.out" 2>&1) \
   || fail "baseline coverage failed inside an engagement: $(<"$TMP/baseline-engaged.out")"
 jq -e '.runnerCaseMapping == "verified" and (.overall | type) == "object"' "$ENGAGED/reports/coverage-result.json" >/dev/null \

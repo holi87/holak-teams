@@ -757,6 +757,20 @@ expect_line "$E2E_EV" "e2e api lane executed" lane.api policy pass false n/a - l
 for lane in ui perf security db resilience; do
   expect_line "$E2E_EV" "e2e $lane lane disabled" "lane.$lane" policy pass false n/a - lane-disabled.residual.not-in-fixture
 done
+# Inside an engagement Atlas runs the suite in automation, before Kleio merges the coverage
+# observations in reporting: the surface-coverage gate defers instead of recording an
+# automation failure (exit 11) in the runner result.
+mkdir -p "$WORK/e2e-engagement"
+"$CLI" engagement init --target "$WORK/e2e-engagement" --artifact-root "$WORK/e2e-engagement" --mode A \
+  --engagement-id typescript-runner-e2e >/dev/null
+mv "$E/solution/coverage-observations.json" "$WORK/coverage-observations.json"
+e2e full-engaged 0 full-suite "ARGUS_ENGAGEMENT_MANIFEST=$WORK/e2e-engagement/ai_agents_internal/engagement.json"
+mv "$WORK/coverage-observations.json" "$E/solution/coverage-observations.json"
+grep -Fq 'COVERAGE  deferred reason=canonical-input-unmerged missing=solution/coverage-observations.json' "$WORK/e2e-full-engaged.log" ||
+  { tail -30 "$WORK/e2e-full-engaged.log" >&2; fail "e2e: the engaged full-suite did not defer the surface-coverage gate"; }
+if grep -Fq baseline-coverage "$E2E_EV"; then show "$E2E_EV"; fail "e2e: the deferred surface-coverage gate recorded an event"; fi
+test ! -e "$E/reports/coverage-result.json" || fail "e2e: the deferred surface-coverage gate wrote a coverage result"
+expect_line "$E2E_EV" "e2e engaged full-suite regression" "$E2E_ID" product pass false fixed BUG-0001 regression-green
 e2e full-narrowed 13 full-suite -- --grep x
 expect_line "$E2E_EV" "e2e narrowed full-suite" runner-selection policy denied false n/a - full-suite-narrowing-forbidden
 

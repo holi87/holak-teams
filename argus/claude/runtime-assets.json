@@ -272,8 +272,8 @@
       "source": "argus/framework-template",
       "destination": "templates/typescript",
       "files": 63,
-      "bytes": 462095,
-      "sha256": "44b5a9ce6041c50f15170c4bd45720dc1359233448a28e49c8d99bbfbc80e8dc"
+      "bytes": 462853,
+      "sha256": "6ccb8563c1a73397186b2d3dc68071fb228d4ddc3367d96baaf0e8a37a33c10c"
     },
     {
       "id": "java-template",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 65077,
-    "sha256": "8c05226fb522a65b3bac8e2cd26c078599b7c3eb63cd893c86ec709c6dd41acb"
+    "bytes": 64972,
+    "sha256": "594d1f52b07d28701ff98f352828e1774fe96b18ed8a3c9e6ed2bcc6140a75c6"
   }
 }
