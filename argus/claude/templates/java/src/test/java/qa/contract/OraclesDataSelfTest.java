@@ -4,11 +4,10 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.networknt.schema.JsonMetaSchema;
+import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SchemaValidatorsConfig;
 import com.networknt.schema.SpecVersion;
-import com.networknt.schema.format.PatternFormat;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -80,6 +79,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Tag("contract-smoke")
 class OraclesDataSelfTest {
 
+    @Test
+    void emailPartitionsDoNotRequireADottedDomain() {
+        JsonSchema reference = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
+                .getSchema(json("{'type':'string','format':'email'}"), REFERENCE_CONFIG);
+        assertTrue(reference.validate(MAPPER.valueToTree("argus.qa@example")).isEmpty());
+        for (InvalidEmail email : Identity.INVALID_EMAILS) {
+            assertFalse(reference.validate(MAPPER.valueToTree(email.value())).isEmpty(), email.label());
+        }
+    }
+
     private record Item(int id) {}
 
     private enum AuthFault { TRIM_REGISTER, TRIM_LOGIN, TRIM_BOTH, CASE_INSENSITIVE_PASSWORD, CASE_SENSITIVE_EMAIL }
@@ -87,15 +96,8 @@ class OraclesDataSelfTest {
     /** Exact decimals: 0.06 parses as 0.06, never as the nearest double. */
     private static final ObjectMapper MAPPER = new ObjectMapper().enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
 
-    // The reference validator for the partition cases: JSON Schema 2020-12 with format
-    // assertions. networknt's built-in email format accepts an RFC 5321 mailbox with a
-    // single-label domain (argus.qa@example), so the reference registers the ajv-formats
-    // full-mode email pattern the TypeScript self-test validates with.
-    private static final String EMAIL_PATTERN = "(?i)^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
-            + "@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$";
-    private static final JsonSchemaFactory REFERENCE = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012,
-            builder -> builder.metaSchema(JsonMetaSchema.builder(JsonMetaSchema.getV202012())
-                    .format(PatternFormat.of("email", EMAIL_PATTERN, null)).build()));
+    // JSON Schema 2020-12 with the native email assertion, including single-label domains.
+    private static final JsonSchemaFactory REFERENCE = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
     private static final SchemaValidatorsConfig REFERENCE_CONFIG = SchemaValidatorsConfig.builder()
             .formatAssertionsEnabled(true).locale(Locale.ENGLISH).build();
 
@@ -329,7 +331,7 @@ class OraclesDataSelfTest {
         assertEquals(List.of(
                 "email.missing-at='argus.qa.example.com'",
                 "email.missing-domain='argus.qa@'",
-                "email.missing-tld='argus.qa@example'",
+                "email.missing-local-part='@example.com'",
                 "email.double-at='argus.qa@@example.com'",
                 "email.embedded-whitespace='argus qa@example.com'",
                 "string.above-max-length='" + "a".repeat(65) + "'",

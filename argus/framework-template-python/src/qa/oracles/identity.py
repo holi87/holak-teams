@@ -16,7 +16,7 @@ from typing import Literal, TypedDict
 EmailPartitionLabel = Literal[
     "email.missing-at",
     "email.missing-domain",
-    "email.missing-tld",
+    "email.missing-local-part",
     "email.double-at",
     "email.embedded-whitespace",
 ]
@@ -111,7 +111,7 @@ IDENTITY_VECTORS = IdentityVectors(
 INVALID_EMAILS: tuple[InvalidEmail, ...] = (
     InvalidEmail("email.missing-at", "argus.qa.example.com"),
     InvalidEmail("email.missing-domain", "argus.qa@"),
-    InvalidEmail("email.missing-tld", "argus.qa@example"),
+    InvalidEmail("email.missing-local-part", "@example.com"),
     InvalidEmail("email.double-at", "argus.qa@@example.com"),
     InvalidEmail("email.embedded-whitespace", "argus qa@example.com"),
 )

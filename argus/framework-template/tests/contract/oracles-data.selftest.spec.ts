@@ -185,7 +185,7 @@ test.describe('data oracles', { tag: '@contract-smoke' }, () => {
     expect(invalidPartitions({ type: 'string', format: 'email', maxLength: 64 })).toEqual([
       { label: 'email.missing-at', value: 'argus.qa.example.com' },
       { label: 'email.missing-domain', value: 'argus.qa@' },
-      { label: 'email.missing-tld', value: 'argus.qa@example' },
+      { label: 'email.missing-local-part', value: '@example.com' },
       { label: 'email.double-at', value: 'argus.qa@@example.com' },
       { label: 'email.embedded-whitespace', value: 'argus qa@example.com' },
       { label: 'string.above-max-length', value: 'a'.repeat(65) },

@@ -61,7 +61,7 @@ class _Bounds:
 def invalid_partitions(field_schema: Mapping[str, Any], *, number_step: int | float | Decimal | None = None) -> list[Partition]:
     """One invalid value per declared constraint, in this order:
 
-    * format email: email.missing-at, email.missing-domain, email.missing-tld,
+    * format email: email.missing-at, email.missing-domain, email.missing-local-part,
       email.double-at, email.embedded-whitespace;
     * string: string.below-min-length ('a' repeated minLength - 1), string.above-max-length,
       string.pattern-mismatch (the first PATTERN_MISMATCH_CANDIDATES entry the pattern

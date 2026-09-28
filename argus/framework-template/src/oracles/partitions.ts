@@ -38,7 +38,7 @@ type Bounds = { minimum?: number; maximum?: number; exclusiveMinimum?: number; e
 
 /**
  * One invalid value per declared constraint, in this order:
- * - format email: email.missing-at, email.missing-domain, email.missing-tld, email.double-at,
+ * - format email: email.missing-at, email.missing-domain, email.missing-local-part, email.double-at,
  *   email.embedded-whitespace;
  * - string: string.below-min-length ('a' repeated minLength - 1), string.above-max-length,
  *   string.pattern-mismatch (the first PATTERN_MISMATCH_CANDIDATES entry the pattern

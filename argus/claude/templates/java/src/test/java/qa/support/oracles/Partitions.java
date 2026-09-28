@@ -75,7 +75,7 @@ public final class Partitions {
     /**
      * One invalid value per declared constraint, in this order:
      * <ul>
-     *   <li>format email: email.missing-at, email.missing-domain, email.missing-tld,
+     *   <li>format email: email.missing-at, email.missing-domain, email.missing-local-part,
      *       email.double-at, email.embedded-whitespace;</li>
      *   <li>string: string.below-min-length ('a' repeated minLength - 1),
      *       string.above-max-length, string.pattern-mismatch (the first

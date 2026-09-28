@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+from email.headerregistry import Address
+from email.errors import HeaderParseError
 import json
 import re
 import unicodedata
@@ -49,12 +51,12 @@ from qa.oracles import (
 
 pytestmark = pytest.mark.contract_smoke
 
-# The reference validator for the partition cases: JSON Schema 2020-12 with the ajv-formats
-# "full" email check (jsonschema's own email check only looks for an "@") and an exact
-# decimal multipleOf (a float quotient judges 19.99 as no multiple of 0.01).
+# The partition reference checks the dot-atom email subset used here, including single-label
+# domains (jsonschema's own email check only looks for an "@"), and exact decimal multipleOf
+# (a float quotient judges 19.99 as no multiple of 0.01).
 _EMAIL = re.compile(
     r"[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
-    r"@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?",
+    r"@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?",
     re.IGNORECASE | re.ASCII,
 )
 FORMATS = FormatChecker(formats=())
@@ -277,7 +279,7 @@ def test_partitions_email_field_yields_the_email_labels_then_the_string_labels()
     assert invalid_partitions({"type": "string", "format": "email", "maxLength": 64}) == [
         Partition("email.missing-at", "argus.qa.example.com"),
         Partition("email.missing-domain", "argus.qa@"),
-        Partition("email.missing-tld", "argus.qa@example"),
+        Partition("email.missing-local-part", "@example.com"),
         Partition("email.double-at", "argus.qa@@example.com"),
         Partition("email.embedded-whitespace", "argus qa@example.com"),
         Partition("string.above-max-length", "a" * 65),
@@ -824,3 +826,14 @@ def test_i18n_charset_usage_errors_raise_type_error() -> None:
         i18n_charset(submit=lambda _value: 200, read_back=read_back)  # type: ignore[arg-type,return-value]
     with pytest.raises(TypeError, match="read_back must return"):
         i18n_charset(submit=submit, read_back=lambda: 42)  # type: ignore[arg-type,return-value]
+
+
+def test_email_partitions_do_not_require_a_dotted_domain() -> None:
+    assert Address(addr_spec="argus.qa@example").domain == "example"
+    for partition in INVALID_EMAILS:
+        try:
+            mailbox = Address(addr_spec=partition.value)
+            accepted = bool(mailbox.username and mailbox.domain)
+        except (ValueError, HeaderParseError):
+            accepted = False
+        assert not accepted, partition.label

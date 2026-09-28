@@ -48,7 +48,9 @@ export async function assertSchema(res: HttpResult, operationId: string, options
   ).toBe(true);
   if (key === undefined) return;
   const where = key === String(snapshot.status) ? `HTTP ${key}` : `HTTP ${snapshot.status} via ${key}`;
-  let pointer = ['paths', path, method, 'responses', key];
+  let pointer = path.startsWith('webhooks:')
+    ? ['webhooks', path.slice('webhooks:'.length), method, 'responses', key]
+    : ['paths', path, method, 'responses', key];
   let response = responses[key];
   // A documented response may be a reference to components.responses (possibly chained).
   for (let hops = 0; isObject(response) && typeof response.$ref === 'string'; hops += 1) {
