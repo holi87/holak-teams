@@ -67,7 +67,7 @@ grep -Fq 'prompt="$prompt features=$launch_features_csv"' "$LAUNCHER" || fail "p
 require_text 'optional `features=<csv>`' "$SKILL" "run skill does not accept unattested launcher features"
 require_text '--engagement-id <engagement-id> --unattested-launch`' "$SKILL" "run skill does not run preflight --unattested-launch for an unattested launch"
 require_text 'ARGUS_LAUNCH_UNATTESTED=1' "$SKILL" "run skill does not name the runtime's unattested launcher signal"
-require_text 'Attested launches pin the public-only host trust store' "$SKILL" "run skill pins trust for an unattested launch"
+require_text 'Attested preflight pins the signed' "$SKILL" "run skill does not scope preflight trust pinning to attested launches"
 require_text 'Skip trust pinning and its preflight rerun' "$CORE" "orchestration core pins trust for an unattested launch"
 # shellcheck disable=SC2016 # The markers quote literal Markdown code spans.
 require_text 'Launcher `features`' "$CORE" "orchestration core does not treat launcher features as operator-declared evidence"
