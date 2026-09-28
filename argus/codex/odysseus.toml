@@ -529,8 +529,8 @@ artifacts are outcomes.
 
 - Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`, `C=GREENFIELD`, `D=BROWNFIELD`; evidence never switches it.
 - Turn cap: `400`; closeout reserve: `30`. Signals: ambiguity, safety, cross-lane, repeated-failure, turn-limit.
-- Validate envelopes with `argus-assets schema validate --kind model-escalation-request --input <request-file|->`; reject any mismatch.
-- Persist through `argus-assets model request ... --token <lane-token>`; route centrally with `argus-assets model route --manifest <manifest> --request <request-id> --controller-token <controller-token> --attempt <next-attempt>`. Running-worker escalation requires its checkpoint; pre-spawn `model-unavailable` uses the availability binding and may have none.
+- Validate envelopes with `argus-assets schema validate --kind model-escalation-request --input <request-file>`; reject any mismatch.
+- Persist through `argus-assets model request ... --token <lane-token>`; route centrally with `argus-assets model route --manifest <manifest> --agent <slug> --runtime <runtime> --signal <signal> --dispatch-id <dispatch-id> --attempt <next-attempt> --request <model-escalation-request.json> --controller-token <controller-token>`. Running-worker escalation requires its checkpoint; pre-spawn `model-unavailable` uses the availability binding and may have none.
 - Automatic continuation follows `autoContinue`; a blocked decision stops, and `operatorEscalation=true` requires an external signed `argus/model-operator-decision@1`.
 - Before rebind or cleanup, emit one `argus-assets model telemetry --manifest <manifest> --decision <current-decision> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <bool>`; reject worker-authored values.
 - Retry with `argus-assets engagement start-attempt ... --decision <next-decision> --token <lane-token> --controller-token <controller-token>`. Replace the consumed token, then start a new thread from checkpoint or availability binding; never resume under another model. The stale token is revoked.
