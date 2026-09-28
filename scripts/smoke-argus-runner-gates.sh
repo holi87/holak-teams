@@ -711,10 +711,16 @@ esac
 STUB
 chmod 755 "$FAKE_BIN/argus-assets"
 MANIFEST="$WORK/engagement/ai_agents_internal/engagement.json"
-printf '{"engagementId":"smoke"}\n' >"$MANIFEST"
+# The manifest names each window's owner (resourcePolicy.exclusiveOperations), as the packaged
+# engagement template does; only a window its owner holds admits an opt-in.
+FAKE_MANIFEST_JSON='{"engagementId":"smoke","resourcePolicy":{"exclusiveOperations":{"reset":"odysseus","fault":"tyche"}}}'
+printf '%s\n' "$FAKE_MANIFEST_JSON" >"$MANIFEST"
 printf '{"engagementId":"smoke","exclusiveLocks":{"reset":{"lane":"odysseus","acquiredAt":"2026-01-01T00:00:00.000Z"}}}\n' >"$WORK/state-reset.json"
 printf '{"engagementId":"smoke","exclusiveLocks":{"fault":{"lane":"tyche","acquiredAt":"2026-01-01T00:00:00.000Z"}}}\n' >"$WORK/state-fault.json"
 printf '{"engagementId":"smoke","exclusiveLocks":{}}\n' >"$WORK/state-none.json"
+# Windows held by a lane that does not own them: state that claimExclusive never writes.
+printf '{"engagementId":"smoke","exclusiveLocks":{"reset":{"lane":"talos","acquiredAt":"2026-01-01T00:00:00.000Z"}}}\n' >"$WORK/state-reset-foreign.json"
+printf '{"engagementId":"smoke","exclusiveLocks":{"fault":{"lane":"odysseus","acquiredAt":"2026-01-01T00:00:00.000Z"}}}\n' >"$WORK/state-fault-foreign.json"
 PATH_WITHOUT_CLI=""
 IFS=: read -r -a path_entries <<<"$PATH"
 for entry in ${path_entries[@]+"${path_entries[@]}"}; do
@@ -783,11 +789,44 @@ run_case "$label" 13 baseline "${ENGAGEMENT_ENV[@]}" ARGUS_ENGAGEMENT_LANE=tyche
 has_event "$label" fault-injection policy denied false n/a - fault-injection-unauthorized
 not_called "$label" '.'
 
+# A window counts only while its manifest owner holds it: a lock held by any other lane, or a
+# manifest that names no owner, refuses the opt-in before any authorization decision.
+label=engagement-reset-foreign-holder
+prepare "$label" reset-ok
+engagement_env "$label" reset-foreign
+run_case "$label" 13 full-suite "${ENGAGEMENT_ENV[@]}" ARGUS_ENGAGEMENT_LANE=nike ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment policy denied false n/a - environment-reset-unauthorized
+not_called "$label" '^reset$'
+grep -Fq 'the exclusive reset window is held by talos, not its owner odysseus' "$WORK/$label/run.log" ||
+  fail "$label did not name the foreign window holder: $(tail -5 "$WORK/$label/run.log")"
+if cli_log "$label" | grep -q '^authorization check'; then fail "$label asked for authorization under a foreign-held window"; fi
+
+label=engagement-fault-foreign-holder
+prepare "$label" green
+engagement_env "$label" fault-foreign
+run_case "$label" 13 baseline "${ENGAGEMENT_ENV[@]}" ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized
+has_event "$label" fault-injection policy denied false n/a - fault-injection-unauthorized
+not_called "$label" '.'
+grep -Fq 'the exclusive fault window is held by odysseus, not its owner tyche' "$WORK/$label/run.log" ||
+  fail "$label did not name the foreign window holder: $(tail -5 "$WORK/$label/run.log")"
+
+label=engagement-reset-ownerless-manifest
+prepare "$label" reset-ok
+mkdir -p "$WORK/ownerless/ai_agents_internal"
+printf '{"engagementId":"smoke"}\n' >"$WORK/ownerless/ai_agents_internal/engagement.json"
+run_case "$label" 13 full-suite "PATH=$FAKE_BIN:$PATH" "ARGUS_ENGAGEMENT_MANIFEST=$WORK/ownerless/ai_agents_internal/engagement.json" \
+  "FAKE_ARGUS_LOG=$WORK/$label/argus-assets.log" "FAKE_ARGUS_STATE=$WORK/state-reset.json" ARGUS_ENGAGEMENT_LANE=odysseus ARGUS_ENVIRONMENT_RESET=execute
+has_event "$label" environment policy denied false n/a - environment-reset-unauthorized
+not_called "$label" '^reset$'
+grep -Fq 'the engagement manifest names no owner of the exclusive reset window' "$WORK/$label/run.log" ||
+  fail "$label did not refuse the ownerless manifest: $(tail -5 "$WORK/$label/run.log")"
+[ -z "$(cli_log "$label")" ] || fail "$label consulted the CLI although the manifest names no window owner"
+
 # argus-launch never exports ARGUS_ENGAGEMENT_MANIFEST, so the library locates the manifest
 # the way argus-assets does: ai_agents_internal/engagement.json at or above the harness root,
 # or next to the launch receipt. A located manifest is checked exactly like a named one.
 implicit_manifest() {
-  printf '{"engagementId":"smoke"}\n' >"$WORK/$1/ai_agents_internal/engagement.json"
+  printf '%s\n' "$FAKE_MANIFEST_JSON" >"$WORK/$1/ai_agents_internal/engagement.json"
   IMPLICIT="$(cd "$WORK/$1/ai_agents_internal" && pwd -P)/engagement.json"
 }
 label=engagement-reset-implicit-allowed
@@ -871,7 +910,7 @@ has_event "$label" environment infrastructure pass false n/a - environment-reset
 # lane, the window, and the decision, and the manifest reaches the CLI and the native hooks.
 # The library reports a located manifest by its physical path.
 detected_engagement() {
-  : >"$WORK/$1/ai_agents_internal/engagement.json"
+  printf '%s\n' "$FAKE_MANIFEST_JSON" >"$WORK/$1/ai_agents_internal/engagement.json"
   DETECTED="$(cd "$WORK/$1/ai_agents_internal" && pwd -P)/engagement.json"
 }
 label=detected-fault-no-lane

@@ -179,8 +179,10 @@ exactly one `reset` row and one `verify` row.
 | `note` | a safe token; `not-yet-planned` means undecided |
 
 Reset runs only with `ARGUS_ENVIRONMENT_RESET=execute`. It is a `destructive` target
-action: the caller holds the destructive authorization grant and the exclusive reset
-window. Verify is read-only.
+action: inside an engagement the calling lane (`ARGUS_ENGAGEMENT_LANE`) needs its own
+`destructive` authorization allow, and the exclusive reset window must be held by its
+manifest owner, Odysseus (see `RUNNER-CONTRACT.md`, engagement opt-ins). Verify is
+read-only.
 
 ### SD-10 Counterfactual fixture
 

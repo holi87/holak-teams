@@ -108,8 +108,9 @@ fi
 
 reset_executed=0 verify_passed=0
 if [ "$reset_script" != - ]; then
-  # A reset is a destructive target action: it runs only on the explicit opt-in, and the
-  # caller holds the destructive grant and the exclusive reset window.
+  # A reset is a destructive target action: it runs only on the explicit opt-in. Inside an
+  # engagement runner-lib.sh has already required the calling lane's destructive allow and
+  # the exclusive reset window held by its owner (Odysseus).
   if [ "${ARGUS_ENVIRONMENT_RESET:-}" = execute ]; then
     if run_bounded "$reset_timeout" "$reset_script"; then
       emit infrastructure pass environment-reset-executed
