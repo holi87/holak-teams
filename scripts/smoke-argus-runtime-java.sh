@@ -385,7 +385,7 @@ EXAMPLES="$ORACLES/src/test/java/qa"
 if grep -Eq 'anyOf\(|notNullValue|assumeTrue|EnabledIf' "$EXAMPLES/api/ExampleApiTest.java" "$EXAMPLES/perf/BudgetSmokeTest.java"; then
   fail "an ADAPT-ME example accepts a status class, a presence-only body, or skips itself"
 fi
-for anchor in 'Http.expectStatus(res, SPEC_ANONYMOUS_STATUS)' 'Schema.assertSchema(res, OP_GET_ME)' 'Http.assertRestStatus(res, RestState.CREATED)' \
+for anchor in 'Http.expectStatus(res, SPEC_ANONYMOUS_STATUS)' 'Schema.assertSchema(res, OP_GET_ME)' 'Http.assertRestStatus(res, RestState.CREATED, null, true)' \
   'created.register(user, location)' 'Boundary.boundary3(' 'Partitions.invalidObjectPartitions('; do
   grep -Fq -- "$anchor" "$EXAMPLES/api/ExampleApiTest.java" || fail "ExampleApiTest lost its exact oracle: $anchor"
 done
