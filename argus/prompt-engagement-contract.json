@@ -39,6 +39,7 @@
       { "id": "authenticated-recon-and-gates", "source": "kalchas", "markers": ["capability-evidence.json", "hunt-driver.mjs --agent kalchas --role"] },
       { "id": "risk-strategy", "source": "metis", "markers": ["solution/TEST-STRATEGY.md", "solution/ORACLES.md", "risk register"] },
       { "id": "shared-runner", "source": "atlas", "markers": ["run-tests.sh", "reports/results.json", "solution/ARCHITECTURE.md"] },
+      { "id": "automation-coverage-deferral", "source": "atlas", "markers": ["never preview coverage inside the engagement", "`solution/evidence-reference.json` only in `reporting`", "never a coverage-tooling blocker"] },
       { "id": "ui-hunt", "source": "orion", "markers": ["bugs/ORI-", "screenshot", "--console", "--net", "--fail-next"] },
       { "id": "api-hunt", "source": "atalanta", "markers": ["bugs/ATA-", "OpenAPI", "mass-assignment"] },
       { "id": "ui-automation", "source": "daidalos", "markers": ["tests/ui/", "RED", "a11y"] },
@@ -69,6 +70,7 @@
     { "id": "no-double-reproduction-gate", "pattern": "reproduced[^.]{0,40}(at least twice|≥\\s*2×)|second reproduction", "flags": "i" },
     { "id": "no-direct-canonical-write", "pattern": "\\b(?:Write|Produce) `(?:solution/[A-Z][A-Za-z_-]*\\.md|README\\.md|run-tests\\.sh)`|unless canonically accountable", "flags": "" },
     { "id": "no-working-directory-artifact-input", "pattern": "--(?:input|inventory|observations|evidence|ledger|automation-status|selection|root|destination) (?:solution|reports|bugs|tests|ai_agents_internal)/", "flags": "" },
-    { "id": "no-vendored-hunt-driver", "pattern": "(?:node |`)scripts/hunt-driver\\.mjs|provisions it into the target repo", "flags": "" }
+    { "id": "no-vendored-hunt-driver", "pattern": "(?:node |`)scripts/hunt-driver\\.mjs|provisions it into the target repo", "flags": "" },
+    { "id": "no-unmerged-coverage-preview", "pattern": "[Pp]review with `argus-assets coverage|`argus-assets coverage calculate[^`]*--output -`", "flags": "" }
   ]
 }

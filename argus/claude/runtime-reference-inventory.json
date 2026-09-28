@@ -678,6 +678,7 @@
     {
       "value": "solution/evidence-reference.json",
       "consumers": [
+        "atlas",
         "kleio"
       ]
     },
