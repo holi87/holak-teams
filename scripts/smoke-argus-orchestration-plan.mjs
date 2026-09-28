@@ -11,7 +11,10 @@ const matrix = readJson('argus/capabilities/capability-matrix.json');
 const raci = readJson('argus/raci.json');
 const modelPolicy = readJson('argus/model-policy.json');
 const fixtures = readJson('scripts/fixtures/argus-orchestration/invalid-mutations.json');
-const faultWindowOwner = readJson('argus/policies/engagement.template.json').resourcePolicy.exclusiveOperations.fault;
+const engagementTemplate = readJson('argus/policies/engagement.template.json');
+const faultWindowOwner = engagementTemplate.resourcePolicy.exclusiveOperations.fault;
+const architectureOwner = engagementTemplate.writePolicy.canonicalArtifacts.find((artifact) => artifact.path === 'solution/ARCHITECTURE.md').owner;
+const reporter = raci.defectLifecycle.find((step) => step.activity === 'report').accountable;
 const controllerSkill = readFileSync(join(ROOT, 'argus/shared-skills/orchestration-core/SKILL.md'), 'utf8');
 const controllerContract = controllerSkill.replace(/\s+/gu, ' ');
 const expectedWaves = {
@@ -229,6 +232,15 @@ for (const [mode, expectedCount] of Object.entries(expectedModeCounts)) {
     for (const phase of phasePlan.filter((candidate) => candidate.participants.includes('nike'))) {
       assert([...phase.participants, ...phase.standby].includes(faultWindowOwner),
         `mode ${mode}/${phase.id}: fault window owner ${faultWindowOwner} must stay reachable while nike runs`);
+    }
+  }
+  // Kleio submits her kleio-architecture sections while she reports, and only the architecture
+  // canonical owner may merge them, so where that owner runs he holds a lease through every
+  // phase Kleio works in; a released owner would leave the canonical without them.
+  if (plan.roles.find((role) => role.slug === architectureOwner)?.modes.includes(mode)) {
+    for (const phase of phasePlan.filter((candidate) => candidate.participants.includes(reporter))) {
+      assert([...phase.participants, ...phase.standby].includes(architectureOwner),
+        `mode ${mode}/${phase.id}: architecture owner ${architectureOwner} must stay reachable while ${reporter} reports`);
     }
   }
 

@@ -2,8 +2,8 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 2530000,
-    "installedPluginBytes": 3550000
+    "generatedAssetsBytes": 2700000,
+    "installedPluginBytes": 3800000
   },
   "templateCompositions": {
     "typescript": {
@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 58391,
-      "sha256": "01c261640e5308262cac7e204fe183a9994c03d7a6d558330f194cd08df790a3"
+      "bytes": 58528,
+      "sha256": "28d62d7b355ee0b7de794cbcafb3fa036ca9ba59729ea7d3f92bc4a54bebce36"
     },
     {
       "id": "canonical-contracts",
@@ -119,8 +119,8 @@
       "source": "argus/shared-skills/orchestration-core",
       "destination": "skills/orchestration-core",
       "files": 1,
-      "bytes": 17242,
-      "sha256": "27ce203bb9852358283cbf574b04f209703c59d031341b5e2ff85fa51caa8a95"
+      "bytes": 17442,
+      "sha256": "abdc3c13e6213d991ecbc84978833f6c46eb3ed01b75c2323dbae691dc1bcb5d"
     },
     {
       "id": "qa-core-skill",
@@ -200,8 +200,8 @@
       "source": "argus/orchestration-plan.json",
       "destination": "capabilities/orchestration-plan.json",
       "files": 1,
-      "bytes": 15518,
-      "sha256": "acb263a7e6bbca9c3d8cd65c6bcc1abe3149e6ee4faf34e136ff0b3d523c857f"
+      "bytes": 15525,
+      "sha256": "623cc1e7e3cdc6b0319d94dbb434ddb0e91cab62e628fe391cf10a989e155ad0"
     },
     {
       "id": "model-policy",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 63204,
-    "sha256": "b9323a203604557b0064ec372e2967a6d77cebdb36bfa65c70a061e5009aaf7f"
+    "bytes": 63240,
+    "sha256": "73ad0af64fe3762658a9956346889810b44953cae0d645daeb49f2f7cfd66312"
   }
 }
