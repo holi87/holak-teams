@@ -71,7 +71,7 @@ but every test the lane plan selects and the run leaves out is reported as not e
   `target/surefire-reports/` XML and `reports/summary.{json,html}` under
   `reports/evidence/passes/<pass>/`.
 - **Cleanup.** `qa.support.CreatedResources` (`@ExtendWith` + a test parameter) DELETEs what
-  a test registered, newest first; a status outside 200/202/204/404 or an exception fails
+  a test registered, newest first; a status outside 200/204/404 or an exception fails
   the test as `cleanup-failed`.
 - **Resilience.** `qa.support.argus.FaultInjector` records the restore before injecting,
   always restores, and verifies the restore; a failed restore stops the run as an

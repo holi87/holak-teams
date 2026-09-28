@@ -70,7 +70,7 @@ lane plan selects and the run leaves out is reported as not executed (exit 15), 
   A plain pytest run still writes `reports/html/index.html`, `reports/report.json`, and
   `reports/junit.xml`.
 - **Cleanup.** `created_resources` DELETEs what a test registered, newest first; a status
-  outside 200/202/204/404 or an exception fails the test as `cleanup-failed`.
+  outside 200/204/404 or an exception fails the test as `cleanup-failed`.
 - **Resilience.** `fault_injector` (`qa.argus.fault_injector`) records the restore before
   injecting, always restores, and verifies the restore; a failed restore stops trusting the
   environment as an infrastructure failure. A server-side fault additionally needs

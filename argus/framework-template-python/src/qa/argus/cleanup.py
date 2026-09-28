@@ -2,7 +2,7 @@
 
 The root conftest's ``created_resources`` fixture hands each test a list of ``(client, path)``
 pairs and calls ``cleanup_created_resources`` in its teardown. Every registered resource gets
-its DELETE, newest first, even after an earlier one failed. A status outside 200/202/204/404
+its DELETE, newest first, even after an earlier one failed. A status outside 200/204/404
 or an exception (a closed client, a dropped connection, a malformed registration) is a
 failure, and the ArgusCleanupError it raises (``automation fail cleanup-failed``) names only
 the count, never a path, a status, or a body.
@@ -15,7 +15,8 @@ from typing import Any
 from .errors import ArgusCleanupError
 
 #: A DELETE that answers one of these removed the resource or found it already gone.
-CLEANUP_STATUSES = frozenset({200, 202, 204, 404})
+# 202 only accepts deletion; without a target-specific completion check it is not cleanup.
+CLEANUP_STATUSES = frozenset({200, 204, 404})
 
 
 def cleanup_created_resources(created: Sequence[Any]) -> None:

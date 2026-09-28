@@ -38,7 +38,7 @@ import static io.restassured.RestAssured.given;
  * <p>Declare the parameter on the test method or on a {@code @BeforeEach} method; each test
  * gets its own registry. {@code afterEach} DELETEs every registered resource through the
  * spec it was created with, newest first, and attempts each one even after a failure. A
- * status outside 200/202/204/404 or any exception counts as a failure, and the test then
+ * status outside 200/204/404 or any exception counts as a failure, and the test then
  * fails with {@link ArgusCleanupError} ({@code automation fail cleanup-failed}); when the
  * body already failed, JUnit attaches it as a suppressed error and the outcome listener adds
  * a secondary {@code <case>.cleanup} event. The message names only the count, never a path,
@@ -50,7 +50,8 @@ import static io.restassured.RestAssured.given;
 public final class CreatedResources implements ParameterResolver, AfterEachCallback {
 
     /** A DELETE that answers one of these removed the resource or found it already gone. */
-    private static final Set<Integer> CLEANUP_STATUSES = Set.of(200, 202, 204, 404);
+    // 202 only accepts deletion; without a target-specific completion check it is not cleanup.
+    private static final Set<Integer> CLEANUP_STATUSES = Set.of(200, 204, 404);
     private static final Namespace NAMESPACE = Namespace.create(CreatedResources.class);
     private static final String REGISTRY = "registry";
 

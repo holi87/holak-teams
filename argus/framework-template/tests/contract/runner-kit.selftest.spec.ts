@@ -144,6 +144,54 @@ test.describe('runner kit', { tag: '@contract-smoke' }, () => {
     expect(calls).toEqual(['inject', 'restore', 'verify']);
   });
 
+  for (const failure of ['none', 'inject', 'body']) {
+    test(`settle waits for a pending injection before restoring an abandoned run (${failure})`, async () => {
+      const calls: string[] = [];
+      const injector = new FaultInjector();
+      let activeFault = false;
+      let releaseInjection!: () => void;
+      let reportStarted!: () => void;
+      const injectionGate = new Promise<void>((resolve) => { releaseInjection = resolve; });
+      const started = new Promise<void>((resolve) => { reportStarted = resolve; });
+      const pending = injector.run({
+        name: 'deferred-fault', scope: 'client',
+        inject: async () => {
+          calls.push('inject-start');
+          reportStarted();
+          await injectionGate;
+          activeFault = true;
+          calls.push('inject-finished');
+          if (failure === 'inject') throw new Error('injection failed after changing the target');
+        },
+        restore: async () => { calls.push('restore'); activeFault = false; },
+        verifyRestored: async () => { calls.push('verify'); expect(activeFault).toBe(false); },
+      }, async () => {
+        calls.push('body');
+        if (failure === 'body') throw new Error('body failed');
+        return 'done';
+      }).then((value) => ({ value, error: null }), (error: Error) => ({ value: null, error }));
+      await started;
+      let settled = false;
+      const settling = injector.settle().then(() => { settled = true; });
+      try {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(calls).toEqual(['inject-start']);
+        expect(settled).toBe(false);
+        expect(injector.active).toBe(true);
+      } finally {
+        releaseInjection();
+        await Promise.all([pending, settling]);
+      }
+      const outcome = await pending;
+      expect(calls).toEqual(['inject-start', 'inject-finished', ...(failure === 'inject' ? [] : ['body']), 'restore', 'verify']);
+      expect(activeFault).toBe(false);
+      expect(injector.active).toBe(false);
+      expect(outcome.error?.message ?? null).toBe(failure === 'none' ? null : failure === 'inject' ? 'injection failed after changing the target' : 'body failed');
+      await injector.settle();
+      expect(calls.filter((call) => call === 'restore')).toHaveLength(1);
+    });
+  }
+
   test('an invalid fault is refused before it is injected', async () => {
     const calls: string[] = [];
     for (const fault of [{ ...recordedFault(calls), name: 'Not A Token' }, { ...recordedFault(calls), scope: 'global' as FaultSpec['scope'] }]) {
@@ -175,7 +223,7 @@ test.describe('runner kit', { tag: '@contract-smoke' }, () => {
       ];
       const error = await rejection(cleanupCreatedResources(created));
       expect(error).toBeInstanceOf(ArgusCleanupError);
-      expect(error.message).toBe('cleanup failed for 2 resource(s)');
+      expect(error.message).toBe('cleanup failed for 3 resource(s)');
       expect(stub.requests().map((record) => record.path)).toEqual(['/items/5', '/items/4', '/items/3', '/items/2', '/items/1']);
     } finally {
       await live.dispose();

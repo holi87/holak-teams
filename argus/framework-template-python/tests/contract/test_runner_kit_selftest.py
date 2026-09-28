@@ -238,7 +238,7 @@ def test_created_resources_cleanup_attempts_every_delete_newest_first_and_counts
     ]
     with pytest.raises(ArgusCleanupError) as caught:
         cleanup_created_resources(created)
-    assert str(caught.value) == "cleanup failed for 2 resource(s)"
+    assert str(caught.value) == "cleanup failed for 3 resource(s)"
     assert [record["path"] for record in stub.requests()] == ["/items/5", "/items/4", "/items/3", "/items/2", "/items/1"]
 
 
