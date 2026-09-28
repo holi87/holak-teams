@@ -78,23 +78,32 @@ public final class Http {
     }
 
     /**
-     * Asserts a REST state with its exact code: created=201 with a non-empty {@code Location},
+     * Asserts a REST state with its exact code: created=201,
      * deleted=204 with an empty body, method-not-allowed=405 with {@code Allow}, missing=404,
      * unsupported-media-type=415, malformed=400, unauthenticated=401, forbidden=403,
      * conflict=409, ok=200. {@code documentedStatus} replaces the code with the one the API
-     * documents (one exact integer, never a class); the Location, empty-body and Allow
-     * requirements belong to the standard code and apply only when it is the expected one.
+     * documents (one exact integer, never a class). HTTP 201 may identify the resource by
+     * the request target URI. Use the {@code requireLocation} overload only when the API
+     * contract requires that header. Empty-body and Allow requirements apply to their
+     * standard status codes.
      */
     public static void assertRestStatus(Response res, RestState state, Integer documentedStatus) {
+        assertRestStatus(res, state, documentedStatus, false);
+    }
+
+    /** An explicit API contract may require a non-empty Location for its creation status. */
+    public static void assertRestStatus(Response res, RestState state, Integer documentedStatus, boolean requireLocation) {
         if (documentedStatus != null) requireStatusCode(documentedStatus, "assertRestStatus: documentedStatus (one exact code, never a class)");
         int expected = documentedStatus == null ? state.status() : documentedStatus;
         if (res.statusCode() != expected) {
             throw new AssertionError(state.label() + ": expected HTTP " + expected + ", got " + res.statusCode()
                     + "; body excerpt: " + excerpt(res.asString()));
         }
+        if (state == RestState.CREATED && requireLocation && blank(res.getHeader("Location"))) {
+            throw new AssertionError("created: the API contract requires a non-empty Location header; body excerpt: " + excerpt(res.asString()));
+        }
         if (expected != state.status()) return;
         String problem = switch (state) {
-            case CREATED -> blank(res.getHeader("Location")) ? "HTTP 201 without a non-empty Location header" : null;
             case DELETED -> res.asByteArray().length > 0 ? "HTTP 204 with a non-empty body" : null;
             case METHOD_NOT_ALLOWED -> blank(res.getHeader("Allow")) ? "HTTP 405 without an Allow header" : null;
             default -> null;

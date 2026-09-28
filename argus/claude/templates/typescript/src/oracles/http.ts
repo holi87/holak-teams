@@ -88,7 +88,7 @@ export async function readResult(res: HttpResult, method?: string): Promise<Http
     url: record.url ?? '-',
     headers: lowerCaseKeys(record.headers ?? {}),
     body,
-    empty: body === undefined || body === null || body === '',
+    empty: body === undefined || body === '' || (body instanceof Uint8Array && body.byteLength === 0),
   };
 }
 
@@ -125,17 +125,18 @@ export async function expectStatus(res: HttpResult, exact: number, options: { me
 }
 
 /**
- * Assert a REST state with its exact code: created=201 with a non-empty Location,
+ * Assert a REST state with its exact code: created=201,
  * deleted=204 with an empty body, method-not-allowed=405 with Allow, missing=404,
  * unsupported-media-type=415, malformed=400, unauthenticated=401, forbidden=403,
  * conflict=409, ok=200. `documentedStatus` replaces the code with the one the API
- * documents (one exact integer, never a class); the Location, empty-body, and Allow
- * requirements belong to the standard code and apply only when it is the expected one.
+ * documents (one exact integer, never a class). HTTP 201 may identify the created resource
+ * by the request target URI; set `requireLocation` only when the API contract requires
+ * that header. Empty-body and Allow requirements apply to their standard status codes.
  */
 export async function assertRestStatus(
   res: HttpResult,
   state: RestState,
-  options: { documentedStatus?: number; method?: string } = {},
+  options: { documentedStatus?: number; method?: string; requireLocation?: boolean } = {},
 ): Promise<void> {
   const standard = Object.prototype.hasOwnProperty.call(REST_STATUS, state) ? REST_STATUS[state] : undefined;
   if (standard === undefined) throw new TypeError(`assertRestStatus: unknown state ${JSON.stringify(state)}`);
@@ -145,11 +146,12 @@ export async function assertRestStatus(
   const expected = options.documentedStatus ?? standard;
   const snapshot = await readResult(res, options.method);
   expect(snapshot.status, `${state}: expected HTTP ${expected}, got ${snapshot.status}: ${describeResult(snapshot)}`).toBe(expected);
-  if (expected !== standard) return;
-  if (state === 'created') {
+  if (state === 'created' && options.requireLocation) {
     const location = (snapshot.headers.location ?? '').trim();
-    expect(location !== '', `created: HTTP 201 without a non-empty Location header: ${describeResult(snapshot)}`).toBe(true);
-  } else if (state === 'deleted') {
+    expect(location !== '', `created: the API contract requires a non-empty Location header: ${describeResult(snapshot)}`).toBe(true);
+  }
+  if (expected !== standard) return;
+  if (state === 'deleted') {
     expect(snapshot.empty, `deleted: HTTP 204 with a non-empty body: ${describeResult(snapshot)}`).toBe(true);
   } else if (state === 'method-not-allowed') {
     const allow = (snapshot.headers.allow ?? '').trim();

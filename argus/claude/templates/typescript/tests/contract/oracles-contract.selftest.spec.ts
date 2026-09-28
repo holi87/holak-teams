@@ -12,6 +12,7 @@ import {
   loadOpenApi,
   normalize,
   replayWithIdempotencyKey,
+  readResult,
   REST_STATUS,
   RestState,
 } from '../../src/oracles';
@@ -269,6 +270,29 @@ test.describe('contract oracles', { tag: '@contract-smoke' }, () => {
     });
   });
 
+  test('HTTP 201 uses the target URI when Location is absent', async ({ request }) => {
+    await withStub({ exchanges: [
+      { id: 'created-at-target', request: { method: 'PUT', path: '/widgets/9' }, response: { status: 201, body: { id: 9 } } },
+    ] }, async (stub) => {
+      await assertRestStatus(await request.put(`${stub.url}/widgets/9`), 'created');
+    });
+    await assertRestStatus({ status: 201, body: { id: 9 } }, 'created', { documentedStatus: 201 });
+    await assertRestStatus({ status: 201, headers: { Location: '/widgets/9' } }, 'created', { requireLocation: true });
+    await expect(assertRestStatus({ status: 200 }, 'created', { documentedStatus: 200, requireLocation: true })).rejects.toThrow(/API contract requires.*Location/);
+  });
+
+  test('explicit JSON null is content in response records', async () => {
+    expect((await readResult({ status: 204, body: null })).empty).toBe(false);
+    await expect(assertSchema({ status: 204, body: null }, 'deleteWidget')).rejects.toThrow(/documents no content/);
+    await expect(assertRestStatus({ status: 204, body: null }, 'deleted')).rejects.toThrow(/non-empty body/);
+    for (const body of [undefined, '', Buffer.alloc(0)]) {
+      expect((await readResult({ status: 204, body })).empty).toBe(true);
+      await assertSchema({ status: 204, body }, 'deleteWidget');
+    }
+    expect((await readResult({ status: 204, body: Buffer.from('null') })).empty).toBe(false);
+    await assertSchema({ status: 204 }, 'deleteWidget');
+  });
+
   test('assertRestStatus: a wrong code or a missing Location, Allow, or empty body is RED', async ({ request }) => {
     const exchanges: StubExchange[] = [
       { id: 'no-location', request: { method: 'POST', path: '/no-location' }, response: { status: 201, body: { id: 1 } } },
@@ -277,14 +301,14 @@ test.describe('contract oracles', { tag: '@contract-smoke' }, () => {
       { id: 'no-content', request: { method: 'GET', path: '/no-content' }, response: { status: 204 } },
     ];
     await withStub({ exchanges }, async (stub) => {
-      await expect(assertRestStatus(await request.post(`${stub.url}/no-location`), 'created')).rejects.toThrow(/Location/);
+      await expect(assertRestStatus(await request.post(`${stub.url}/no-location`), 'created', { requireLocation: true })).rejects.toThrow(/Location/);
       await expect(assertRestStatus(await request.patch(`${stub.url}/no-allow`), 'method-not-allowed')).rejects.toThrow(/Allow/);
       await expect(assertRestStatus(await request.get(`${stub.url}/gone`), 'missing')).rejects.toThrow(/expected HTTP 404, got 410/);
       await expect(assertRestStatus(await request.get(`${stub.url}/no-content`), 'ok')).rejects.toThrow(/expected HTTP 200, got 204/);
     });
     // HTTP drops content on a 204, so a body can only be shown through the record form.
     await expect(assertRestStatus({ status: 204, body: { deleted: true } }, 'deleted')).rejects.toThrow(/non-empty body/);
-    await expect(assertRestStatus({ status: 201, headers: { Location: ' ' } }, 'created')).rejects.toThrow(/Location/);
+    await expect(assertRestStatus({ status: 201, headers: { Location: ' ' } }, 'created', { requireLocation: true })).rejects.toThrow(/Location/);
     await expect(assertRestStatus({ status: 200 }, 'fine' as RestState)).rejects.toThrow(TypeError);
   });
 

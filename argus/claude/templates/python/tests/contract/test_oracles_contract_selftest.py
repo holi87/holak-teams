@@ -31,6 +31,7 @@ from qa.oracles import (
     replay_with_idempotency_key,
 )
 from qa.schema_oracle import SchemaOracle
+from qa.oracles.http import read_result
 
 pytestmark = pytest.mark.contract_smoke
 
@@ -343,6 +344,30 @@ def test_assert_rest_status_every_state_is_green_on_a_conforming_stub(http: http
         assert stub.unmatched() == []
 
 
+def test_http_201_uses_target_uri_when_location_is_absent(http: httpx.Client) -> None:
+    exchanges = [{"id": "created-at-target", "request": {"method": "PUT", "path": "/widgets/9"}, "response": {"status": 201, "body": {"id": 9}}}]
+    with running_stub(exchanges) as stub:
+        assert_rest_status(http.put(f"{stub.url}/widgets/9"), "created")
+    assert_rest_status({"status": 201, "body": {"id": 9}}, "created", documented_status=201)
+    assert_rest_status({"status": 201, "headers": {"Location": "/widgets/9"}}, "created", require_location=True)
+    with pytest.raises(AssertionError, match="API contract requires.*Location"):
+        assert_rest_status({"status": 200}, "created", documented_status=200, require_location=True)
+
+
+def test_explicit_json_null_is_content_in_response_records() -> None:
+    assert not read_result({"status": 204, "body": None}).empty
+    with pytest.raises(AssertionError, match="documents no content"):
+        assert_schema({"status": 204, "body": None}, "deleteWidget")
+    with pytest.raises(AssertionError, match="non-empty body"):
+        assert_rest_status({"status": 204, "body": None}, "deleted")
+    for body in ("", b""):
+        assert read_result({"status": 204, "body": body}).empty
+        assert_schema({"status": 204, "body": body}, "deleteWidget")
+    assert not read_result({"status": 204, "body": b"null"}).empty
+    assert read_result({"status": 204}).empty
+    assert_schema({"status": 204}, "deleteWidget")
+
+
 def test_assert_rest_status_wrong_code_or_missing_location_allow_or_empty_body_is_red(http: httpx.Client) -> None:
     exchanges = [
         {"id": "no-location", "request": {"method": "POST", "path": "/no-location"}, "response": {"status": 201, "body": {"id": 1}}},
@@ -352,7 +377,7 @@ def test_assert_rest_status_wrong_code_or_missing_location_allow_or_empty_body_i
     ]
     with running_stub(exchanges) as stub:
         with pytest.raises(AssertionError, match="Location"):
-            assert_rest_status(http.post(f"{stub.url}/no-location"), "created")
+            assert_rest_status(http.post(f"{stub.url}/no-location"), "created", require_location=True)
         with pytest.raises(AssertionError, match="Allow"):
             assert_rest_status(http.patch(f"{stub.url}/no-allow"), "method-not-allowed")
         with pytest.raises(AssertionError, match="expected HTTP 404, got 410"):
@@ -363,7 +388,7 @@ def test_assert_rest_status_wrong_code_or_missing_location_allow_or_empty_body_i
     with pytest.raises(AssertionError, match="non-empty body"):
         assert_rest_status({"status": 204, "body": {"deleted": True}}, "deleted")
     with pytest.raises(AssertionError, match="Location"):
-        assert_rest_status({"status": 201, "headers": {"Location": " "}}, "created")
+        assert_rest_status({"status": 201, "headers": {"Location": " "}}, "created", require_location=True)
     with pytest.raises(ValueError, match="unknown state"):
         assert_rest_status({"status": 200}, "fine")  # type: ignore[arg-type]
 

@@ -87,7 +87,7 @@ class ExampleApiTest {
         Map<String, Object> input = order().build(); // unique, override-friendly via DataFactory
         Response res = given().spec(user).contentType(JSON).body(input)
                 .when().post(ApiClient.ORDERS); // <-- adapt resource
-        Http.assertRestStatus(res, RestState.CREATED); // exactly 201 with a non-empty Location
+        Http.assertRestStatus(res, RestState.CREATED, null, true); // exactly 201 with a non-empty Location
         String location = resourcePath(res);
         created.register(user, location);
         Schema.assertSchema(res, OP_CREATE_ORDER);

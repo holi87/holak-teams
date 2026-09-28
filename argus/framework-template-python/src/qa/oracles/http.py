@@ -78,7 +78,7 @@ def read_result(res: Any, method: str | None = None) -> HttpSnapshot:
             url=_text(res.get("url")) or "-",
             headers=_lower_keys(res.get("headers") or {}),
             body=body,
-            empty=body is None or (isinstance(body, (str, bytes)) and len(body) == 0),
+            empty="body" not in res or (isinstance(body, (str, bytes)) and len(body) == 0),
         )
     if hasattr(res, "status_code"):  # httpx.Response (and requests-like responses)
         text = _response_text(res)
@@ -127,8 +127,6 @@ def redacted_excerpt(body: Any, limit: int = 500) -> str:
             value = json.loads(body)
         except ValueError:
             return _clip(mask_text(body), limit)
-    if value is None and not (isinstance(body, str) and body.strip() == "null"):
-        return "(empty)"
     try:
         text = json.dumps(redact(value), ensure_ascii=False, separators=(",", ":"))
     except (TypeError, ValueError):
@@ -157,7 +155,8 @@ def mask_text(text: str) -> str:
 def describe_result(snapshot: HttpSnapshot, include_body: bool = True) -> str:
     """``method=GET url=http://... body: {...}`` with secrets masked; used in every oracle message."""
     where = f"method={snapshot.method} url={_redact_url(snapshot.url)}"
-    return f"{where}\nbody: {redacted_excerpt(snapshot.body)}" if include_body else where
+    body = "(empty)" if snapshot.empty else redacted_excerpt(snapshot.body)
+    return f"{where}\nbody: {body}" if include_body else where
 
 
 def expect_status(res: Any, exact: int, *, method: str | None = None) -> None:
@@ -174,15 +173,17 @@ def assert_rest_status(
     *,
     documented_status: int | None = None,
     method: str | None = None,
+    require_location: bool = False,
 ) -> None:
     """Assert a REST state with its exact code.
 
-    created=201 with a non-empty Location, deleted=204 with an empty body,
+    created=201, deleted=204 with an empty body,
     method-not-allowed=405 with Allow, missing=404, unsupported-media-type=415, malformed=400,
     unauthenticated=401, forbidden=403, conflict=409, ok=200. ``documented_status`` replaces
-    the code with the one the API documents (one exact integer, never a class); the Location,
-    empty-body, and Allow requirements belong to the standard code and apply only when it is
-    the expected one.
+    the code with the one the API documents (one exact integer, never a class). HTTP 201 may
+    identify the resource by the request target URI; set ``require_location`` only when the
+    API contract requires that header. Empty-body and Allow requirements apply to their
+    standard status codes.
     """
     if not isinstance(state, str) or state not in REST_STATUS:
         raise ValueError(f"assert_rest_status: unknown state {state!r}")
@@ -193,10 +194,10 @@ def assert_rest_status(
     snapshot = read_result(res, method)
     if snapshot.status != expected:
         raise AssertionError(f"{state}: expected HTTP {expected}, got {snapshot.status}: {describe_result(snapshot)}")
+    if state == "created" and require_location and not snapshot.headers.get("location", "").strip():
+        raise AssertionError(f"created: the API contract requires a non-empty Location header: {describe_result(snapshot)}")
     if expected != standard:
         return
-    if state == "created" and not snapshot.headers.get("location", "").strip():
-        raise AssertionError(f"created: HTTP 201 without a non-empty Location header: {describe_result(snapshot)}")
     if state == "deleted" and not snapshot.empty:
         raise AssertionError(f"deleted: HTTP 204 with a non-empty body: {describe_result(snapshot)}")
     if state == "method-not-allowed" and not snapshot.headers.get("allow", "").strip():

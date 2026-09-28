@@ -309,6 +309,25 @@ class OraclesContractSelfTest {
     }
 
     @Test
+    void http_201_uses_target_uri_when_location_is_absent() {
+        try (StubServer stub = stub(null,
+                exchange("created-at-target", "PUT", "/widgets/9", StubResponse.json(201, Map.of("id", 9))))) {
+            Http.assertRestStatus(given().baseUri(stub.url()).put("/widgets/9"), RestState.CREATED);
+        }
+        Http.assertRestStatus(record(201, "{\"id\":9}"), RestState.CREATED, 201);
+        Http.assertRestStatus(record(201, null, "Location", "/widgets/9"), RestState.CREATED, null, true);
+        red(() -> Http.assertRestStatus(record(200, null, "Content-Type", "application/json"), RestState.CREATED, 200, true), "API contract requires a non-empty Location");
+    }
+
+    @Test
+    void explicit_json_null_is_content_in_response_records() {
+        red(() -> Schema.assertSchema(DOC, 204, "null", "deleteWidget", Options.STRICT), "documents no content");
+        red(() -> Http.assertRestStatus(record(204, "null"), RestState.DELETED), "non-empty body");
+        Schema.assertSchema(DOC, 204, "", "deleteWidget", Options.STRICT);
+        Http.assertRestStatus(record(204, ""), RestState.DELETED);
+    }
+
+    @Test
     void assertRestStatus_a_wrong_code_or_a_missing_location_allow_or_empty_body_is_red() {
         try (StubServer stub = stub(null,
                 exchange("no-location", "POST", "/no-location", StubResponse.json(201, Map.of("id", 1))),
@@ -316,14 +335,14 @@ class OraclesContractSelfTest {
                 exchange("gone", "GET", "/gone", StubResponse.status(410)),
                 exchange("no-content", "GET", "/no-content", StubResponse.status(204)))) {
             String url = stub.url();
-            red(() -> Http.assertRestStatus(given().baseUri(url).post("/no-location"), RestState.CREATED), "Location");
+            red(() -> Http.assertRestStatus(given().baseUri(url).post("/no-location"), RestState.CREATED, null, true), "Location");
             red(() -> Http.assertRestStatus(given().baseUri(url).patch("/no-allow"), RestState.METHOD_NOT_ALLOWED), "Allow");
             red(() -> Http.assertRestStatus(given().baseUri(url).get("/gone"), RestState.MISSING), "expected HTTP 404, got 410");
             red(() -> Http.assertRestStatus(given().baseUri(url).get("/no-content"), RestState.OK), "expected HTTP 200, got 204");
         }
         // HTTP drops content on a 204, so a body can only be shown through a built response.
         red(() -> Http.assertRestStatus(record(204, "{\"deleted\":true}"), RestState.DELETED), "non-empty body");
-        red(() -> Http.assertRestStatus(record(201, null, "Location", " "), RestState.CREATED), "Location");
+        red(() -> Http.assertRestStatus(record(201, null, "Location", " "), RestState.CREATED, null, true), "Location");
         assertThrows(IllegalArgumentException.class, () -> RestState.of("fine"));
     }
 

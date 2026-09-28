@@ -42,7 +42,7 @@ test.describe('@api smoke', () => {
     const location = res.headers().location;
     if (location) createdResources.push({ ctx: apiAsUser, path: location });
     await expectStatus(res, 201);
-    await assertRestStatus(res, 'created');
+    await assertRestStatus(res, 'created', { requireLocation: true });
     const readBack = await apiAsUser.get(location);
     await expectStatus(readBack, 200);
     expect(await readBack.json()).toMatchObject({ ...input });
@@ -63,7 +63,7 @@ test.describe('@api smoke', () => {
       const location = res.headers().location;
       if (location) createdResources.push({ ctx: apiAsUser, path: location });
       if (res.status() === 201) {
-        await assertRestStatus(res, 'created');
+        await assertRestStatus(res, 'created', { requireLocation: true });
         return true;
       }
       await expectStatus(res, SPEC.invalidBodyStatus);

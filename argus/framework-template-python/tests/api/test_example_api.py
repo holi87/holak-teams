@@ -83,7 +83,7 @@ def test_create_answers_201_with_a_location_that_reads_back_what_was_written(api
     res = orders.create(data)
     location = register_created(res, user, created_resources)
     expect_status(res, 201)
-    assert_rest_status(res, "created")  # 201 with a non-empty Location
+    assert_rest_status(res, "created", require_location=True)  # 201 with a non-empty Location
     read_back = user.get(location)
     expect_status(read_back, 200)
     body = read_back.json()
@@ -106,7 +106,7 @@ def test_qty_is_accepted_exactly_from_its_minimum_to_its_maximum(api_as, created
         res = orders.create(build_order(qty=qty))
         register_created(res, user, created_resources)
         if res.status_code == 201:
-            assert_rest_status(res, "created")
+            assert_rest_status(res, "created", require_location=True)
             return True
         expect_status(res, SPEC_INVALID_BODY_STATUS)
         return False
