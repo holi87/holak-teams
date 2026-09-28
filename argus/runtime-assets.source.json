@@ -2,8 +2,8 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 2700000,
-    "installedPluginBytes": 3800000
+    "generatedAssetsBytes": 2630000,
+    "installedPluginBytes": 3680000
   },
   "templateCompositions": {
     "typescript": {
@@ -257,7 +257,7 @@
     "argus/framework-template",
     "agents/argus-template",
     "argus-template/",
-    "repo doc — not shipped with the installed plugin",
+    "repo doc \u2014 not shipped with the installed plugin",
     "not shipped with the installed plugin"
   ]
 }
