@@ -32,7 +32,7 @@ The fourteen shared oracle helpers ship as tested reference code in `qa/support/
 | `assertRestStatus` | `Http` | the REST state with its exact code: 201 + `Location`, 204 empty, 405 + `Allow`, 404 not 500 |
 | `assertSchema` | `Schema` | the response body against the operationId's documented status and schema, strict by default |
 | `assertSchemaStrict` | `Schema` | a component schema with every object closed, so an undocumented field is RED |
-| `idempotentReplay` | `Replay` | an idempotent request twice: same status, body and state; a replayed idempotency key creates one effect |
+| `idempotentReplay` | `Replay` | an idempotent request twice: independently read state stays equal; response equality is contract opt-in; a replayed idempotency key creates one effect |
 | `invalidPartitions` / `invalidObjectPartitions` | `Partitions` | one invalid value per declared constraint, with fixed labels in a fixed order |
 | `paginateAll` / `assertCollectionConservation` | `Pagination` | two walks at a small page size: no duplicate, nothing missing, a total that matches |
 | `boundary3` / `moneyReconciles` / `percentagesSumTo100` | `Boundary` | B - step, B, B + step with step = the domain's smallest unit; exact sums in minor units |

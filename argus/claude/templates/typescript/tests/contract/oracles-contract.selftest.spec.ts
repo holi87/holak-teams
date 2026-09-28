@@ -332,6 +332,7 @@ test.describe('contract oracles', { tag: '@contract-smoke' }, () => {
         send: () => request.put(`${stub.url}/widgets/1`, { data: { name: 'widget' } }),
         read: async () => (await request.get(`${stub.url}/widgets/1`)).json(),
         volatileFields: ['requestId'],
+        requireSameResponse: true,
       });
       expect(result.status).toBe(200);
       expect(requestId).toBe(2);
@@ -343,6 +344,7 @@ test.describe('contract oracles', { tag: '@contract-smoke' }, () => {
     let visits = 0;
     const handler: StubHandler = (req) => {
       if (req.method === 'PUT' && req.path === '/widgets/1') return { status: 200, body: { id: 1, version: ++version } };
+      if (req.method === 'GET' && req.path === '/widgets/1') return { status: 200, body: { id: 1 } };
       if (req.method === 'POST' && req.path === '/visits') {
         visits += 1;
         return { status: 204 };
@@ -351,7 +353,11 @@ test.describe('contract oracles', { tag: '@contract-smoke' }, () => {
       return undefined;
     };
     await withStub({ handler }, async (stub) => {
-      await expect(idempotentReplay({ send: () => request.put(`${stub.url}/widgets/1`) })).rejects.toThrow(/changed the body/);
+      await expect(idempotentReplay({
+        send: () => request.put(`${stub.url}/widgets/1`),
+        read: async () => (await request.get(`${stub.url}/widgets/1`)).json(),
+        requireSameResponse: true,
+      })).rejects.toThrow(/changed the body/);
       // Identical responses, but the state keeps counting.
       await expect(
         idempotentReplay({
@@ -361,6 +367,51 @@ test.describe('contract oracles', { tag: '@contract-smoke' }, () => {
       ).rejects.toThrow(/changed the state/);
     });
   });
+
+  test('idempotentReplay compares responses only for an explicit API contract', async () => {
+    let sends = 0;
+    const read = () => ({ id: 1 });
+    await idempotentReplay({ send: async () => ({ status: 200, body: { requestId: ++sends } }), read });
+    expect(sends).toBe(2);
+    sends = 0;
+    await expect(idempotentReplay({
+      send: async () => ({ status: ++sends === 1 ? 201 : 200, body: { id: 1 } }), read, requireSameResponse: true,
+    })).rejects.toThrow(/changed the status/);
+  });
+
+  test('idempotentReplay requires an independent effect oracle before sending', async () => {
+    let sends = 0;
+    await expect(idempotentReplay({
+      send: async () => { sends += 1; return { status: 200 }; }, requireSameResponse: true,
+    })).rejects.toThrow(/read\(\) is required/);
+    expect(sends).toBe(0);
+  });
+
+  for (const method of ['PUT', 'DELETE'] as const) {
+    test(`idempotentReplay accepts ${method} response changes when the effect is unchanged`, async ({ request }) => {
+      let sends = 0;
+      let present = method === 'DELETE';
+      const handler: StubHandler = (req) => {
+        if (req.method === method && req.path === '/widgets/1') {
+          sends += 1;
+          present = method === 'PUT';
+          return method === 'PUT'
+            ? { status: sends === 1 ? 201 : 200, body: { action: sends === 1 ? 'created' : 'replaced' } }
+            : sends === 1 ? { status: 204 } : { status: 404, body: { error: 'missing' } };
+        }
+        if (req.method === 'GET' && req.path === '/widgets/1') return { status: 200, body: { present } };
+        return undefined;
+      };
+      await withStub({ handler }, async (stub) => {
+        const result = await idempotentReplay({
+          send: () => request.fetch(`${stub.url}/widgets/1`, { method }),
+          read: async () => (await request.get(`${stub.url}/widgets/1`)).json(),
+        });
+        expect(result.state).toEqual({ present: method === 'PUT' });
+        expect(sends).toBe(2);
+      });
+    });
+  }
 
   test('replayWithIdempotencyKey is GREEN when the key deduplicates the create', async ({ request }) => {
     await withStub({ handler: orderStub(true) }, async (stub) => {

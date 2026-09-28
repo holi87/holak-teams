@@ -1,7 +1,7 @@
 """Idempotency oracles.
 
 A replayed idempotent request (PUT, DELETE, or a POST carrying an idempotency key) must not
-change the outcome or the state a second time. Every RED raises AssertionError (product);
+change the intended effect a second time (RFC 9110 section 9.2.2). Every RED raises AssertionError (product);
 misuse raises TypeError (automation).
 """
 from __future__ import annotations
@@ -37,35 +37,40 @@ def idempotent_replay(
     send: Callable[[], Any],
     read: Callable[[], Any] | None = None,
     volatile_fields: Iterable[str] = (),
+    *,
+    require_same_response: bool = False,
 ) -> ReplayResult:
     """Send the same request twice, sequentially.
 
-    Both responses must have the same status and deep-equal bodies once ``volatile_fields``
-    (key names, removed at any depth) are dropped; with ``read``, the state read after each
-    send must be equal too.
+    The independent ``read`` oracle is required and must return equal state after each send.
+    Responses may differ; opt into ``require_same_response`` only when the API contract
+    requires equal statuses and bodies. ``volatile_fields`` removes named keys at any depth
+    from both state and response comparisons.
     """
+    if not callable(read):
+        raise TypeError("idempotent_replay: read() is required to verify the intended effect")
     volatile = frozenset(volatile_fields)
     first = read_result(send())
-    state_after_first = read() if read else None
+    state_after_first = read()
     second = read_result(send())
-    state_after_second = read() if read else None
-    if second.status != first.status:
-        raise AssertionError(f"idempotent replay changed the status from {first.status} to {second.status}: {describe_result(second)}")
-    first_body = _without_volatile(first.body, volatile)
-    second_body = _without_volatile(second.body, volatile)
-    if not _same(first_body, second_body):
-        raise AssertionError(
-            f"idempotent replay changed the body: {describe_result(second, include_body=False)}\n"
-            f"first:  {redacted_excerpt(first_body)}\nreplay: {redacted_excerpt(second_body)}"
-        )
-    if read:
-        before = _without_volatile(state_after_first, volatile)
-        after = _without_volatile(state_after_second, volatile)
-        if not _same(before, after):
+    state_after_second = read()
+    if require_same_response:
+        if second.status != first.status:
+            raise AssertionError(f"idempotent replay changed the status from {first.status} to {second.status}: {describe_result(second)}")
+        first_body = _without_volatile(first.body, volatile)
+        second_body = _without_volatile(second.body, volatile)
+        if not _same(first_body, second_body):
             raise AssertionError(
-                "idempotent replay changed the state read back\n"
-                f"after first:  {redacted_excerpt(before)}\nafter replay: {redacted_excerpt(after)}"
+                f"idempotent replay changed the body: {describe_result(second, include_body=False)}\n"
+                f"first:  {redacted_excerpt(first_body)}\nreplay: {redacted_excerpt(second_body)}"
             )
+    before = _without_volatile(state_after_first, volatile)
+    after = _without_volatile(state_after_second, volatile)
+    if not _same(before, after):
+        raise AssertionError(
+            "idempotent replay changed the state read back\n"
+            f"after first:  {redacted_excerpt(before)}\nafter replay: {redacted_excerpt(after)}"
+        )
     return ReplayResult(status=first.status, body=first.body, state=state_after_second)
 
 

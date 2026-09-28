@@ -365,7 +365,7 @@ class OraclesContractSelfTest {
         };
         try (StubServer stub = stub(handler)) {
             Response first = Replay.idempotentReplay(() -> given().baseUri(stub.url()).body("{\"name\":\"widget\"}").put("/widgets/1"),
-                    () -> given().baseUri(stub.url()).get("/widgets/1").asString(), "requestId");
+                    () -> given().baseUri(stub.url()).get("/widgets/1").asString(), true, "requestId");
             assertEquals(200, first.statusCode());
             assertEquals(2, requestId.get());
         }
@@ -377,6 +377,7 @@ class OraclesContractSelfTest {
         AtomicInteger visits = new AtomicInteger();
         StubServer.Handler handler = request -> switch (request.method() + " " + request.path()) {
             case "PUT /widgets/1" -> StubResponse.json(200, Map.of("id", 1, "version", version.incrementAndGet()));
+            case "GET /widgets/1" -> StubResponse.json(200, Map.of("id", 1));
             case "POST /visits" -> {
                 visits.incrementAndGet();
                 yield StubResponse.status(204);
@@ -385,10 +386,61 @@ class OraclesContractSelfTest {
             default -> null;
         };
         try (StubServer stub = stub(handler)) {
-            red(() -> Replay.idempotentReplay(() -> given().baseUri(stub.url()).put("/widgets/1")), "changed the body");
+            red(() -> Replay.idempotentReplay(() -> given().baseUri(stub.url()).put("/widgets/1"),
+                    () -> given().baseUri(stub.url()).get("/widgets/1"), true), "changed the body");
             // Identical responses, but the state keeps counting.
             red(() -> Replay.idempotentReplay(() -> given().baseUri(stub.url()).post("/visits"),
                     () -> given().baseUri(stub.url()).get("/visits")), "changed the state");
+        }
+    }
+
+    @Test
+    void idempotentReplay_compares_responses_only_for_an_explicit_api_contract() {
+        AtomicInteger sends = new AtomicInteger();
+        Replay.idempotentReplay(() -> record(200, "{\"requestId\":" + sends.incrementAndGet() + "}"), () -> Map.of("id", 1));
+        assertEquals(2, sends.get());
+        sends.set(0);
+        red(() -> Replay.idempotentReplay(() -> record(sends.incrementAndGet() == 1 ? 201 : 200, "{\"id\":1}"),
+                () -> Map.of("id", 1), true), "changed the status");
+    }
+
+    @Test
+    void idempotentReplay_requires_an_independent_effect_oracle_before_sending() {
+        AtomicInteger sends = new AtomicInteger();
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> Replay.idempotentReplay(() -> { sends.incrementAndGet(); return record(200, "{}"); }, null, true));
+        assertTrue(error.getMessage().contains("read() is required"));
+        assertEquals(0, sends.get());
+    }
+
+    @Test
+    void idempotentReplay_accepts_put_response_changes_when_the_effect_is_unchanged() {
+        replayWithChangingResponse("PUT");
+    }
+
+    @Test
+    void idempotentReplay_accepts_delete_response_changes_when_the_effect_is_unchanged() {
+        replayWithChangingResponse("DELETE");
+    }
+
+    private static void replayWithChangingResponse(String method) {
+        AtomicInteger sends = new AtomicInteger();
+        StubServer.Handler handler = request -> {
+            if (method.equals(request.method()) && "/widgets/1".equals(request.path())) {
+                int attempt = sends.incrementAndGet();
+                if ("PUT".equals(method)) return StubResponse.json(attempt == 1 ? 201 : 200,
+                        Map.of("action", attempt == 1 ? "created" : "replaced"));
+                return attempt == 1 ? StubResponse.status(204) : StubResponse.json(404, Map.of("error", "missing"));
+            }
+            if ("GET".equals(request.method()) && "/widgets/1".equals(request.path())) {
+                return StubResponse.json(200, Map.of("present", sends.get() == 0 ? "DELETE".equals(method) : "PUT".equals(method)));
+            }
+            return null;
+        };
+        try (StubServer stub = stub(handler)) {
+            Replay.idempotentReplay(() -> given().baseUri(stub.url()).request(method, "/widgets/1"),
+                    () -> given().baseUri(stub.url()).get("/widgets/1").asString());
+            assertEquals(2, sends.get());
         }
     }
 

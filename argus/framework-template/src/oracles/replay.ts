@@ -3,41 +3,43 @@ import { isDeepStrictEqual } from 'node:util';
 import { describeResult, HttpResult, readResult, redactedExcerpt } from './http';
 
 // Idempotency oracles. A replayed idempotent request (PUT, DELETE, or a POST carrying an
-// idempotency key) must not change the outcome or the state a second time.
+// idempotency key) must not change the intended effect a second time (RFC 9110 §9.2.2).
 
 export type ReplayResult = { status: number; body: unknown; state?: unknown };
 
 /**
- * Send the same request twice, sequentially. Both responses must have the same status and
- * deep-equal bodies once `volatileFields` (key names, removed at any depth) are dropped;
- * with `read`, the state read after each send must be equal too.
+ * Send the same request twice and require equal state from the independent `read` oracle.
+ * Responses may differ; use `requireSameResponse` only when the API contract requires
+ * equal statuses and bodies. `volatileFields` removes named keys at any depth in both checks.
  */
 export async function idempotentReplay(options: {
   send: () => Promise<HttpResult>;
   read?: () => unknown | Promise<unknown>;
   volatileFields?: string[];
+  requireSameResponse?: boolean;
 }): Promise<ReplayResult> {
   const { send, read } = options;
+  if (typeof read !== 'function') throw new TypeError('idempotentReplay: read() is required to verify the intended effect');
   const volatile = new Set(options.volatileFields ?? []);
   const first = await readResult(await send());
-  const stateAfterFirst = read ? await read() : undefined;
+  const stateAfterFirst = await read();
   const second = await readResult(await send());
-  const stateAfterSecond = read ? await read() : undefined;
-  expect(second.status, `idempotent replay changed the status from ${first.status} to ${second.status}: ${describeResult(second)}`).toBe(first.status);
-  const firstBody = withoutVolatile(first.body, volatile);
-  const secondBody = withoutVolatile(second.body, volatile);
-  expect(
-    isDeepStrictEqual(firstBody, secondBody),
-    `idempotent replay changed the body: ${describeResult(second, false)}\nfirst:  ${redactedExcerpt(firstBody)}\nreplay: ${redactedExcerpt(secondBody)}`,
-  ).toBe(true);
-  if (read) {
-    const before = withoutVolatile(stateAfterFirst, volatile);
-    const after = withoutVolatile(stateAfterSecond, volatile);
+  const stateAfterSecond = await read();
+  if (options.requireSameResponse) {
+    expect(second.status, `idempotent replay changed the status from ${first.status} to ${second.status}: ${describeResult(second)}`).toBe(first.status);
+    const firstBody = withoutVolatile(first.body, volatile);
+    const secondBody = withoutVolatile(second.body, volatile);
     expect(
-      isDeepStrictEqual(before, after),
-      `idempotent replay changed the state read back\nafter first:  ${redactedExcerpt(before)}\nafter replay: ${redactedExcerpt(after)}`,
+      isDeepStrictEqual(firstBody, secondBody),
+      `idempotent replay changed the body: ${describeResult(second, false)}\nfirst:  ${redactedExcerpt(firstBody)}\nreplay: ${redactedExcerpt(secondBody)}`,
     ).toBe(true);
   }
+  const before = withoutVolatile(stateAfterFirst, volatile);
+  const after = withoutVolatile(stateAfterSecond, volatile);
+  expect(
+    isDeepStrictEqual(before, after),
+    `idempotent replay changed the state read back\nafter first:  ${redactedExcerpt(before)}\nafter replay: ${redactedExcerpt(after)}`,
+  ).toBe(true);
   return { status: first.status, body: first.body, state: stateAfterSecond };
 }
 
