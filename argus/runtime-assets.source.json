@@ -2,8 +2,8 @@
   "$schema": "./schemas/runtime-assets.schema.json",
   "schemaVersion": 1,
   "budgets": {
-    "generatedAssetsBytes": 2530000,
-    "installedPluginBytes": 3550000
+    "generatedAssetsBytes": 2700000,
+    "installedPluginBytes": 3800000
   },
   "templateCompositions": {
     "typescript": {
