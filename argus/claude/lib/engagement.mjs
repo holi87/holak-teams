@@ -843,15 +843,29 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   // Modes A, C, and D fund automation, but without the operator's installed template selection
   // no framework, runner, or runner result can exist, and once the lane that owns the runner
   // script is abandoned no runner result can follow or be registered. Each justifies a null
-  // runner outcome and blocks the summary; none ever excuses a registered runner result.
+  // runner outcome and blocks the summary; none ever excuses a registered runner result. With a
+  // selection installed and the dispatchable runner-script owner not abandoned, a missing runner
+  // result justifies nothing, so no null runner is offered: the refusal names the recovery.
   if (!runner && manifest.mode !== 'B') {
-    if (!reviewTemplateSelection(manifest)) ceilings.set(TEMPLATE_SELECTION_MISSING, 'blocked');
+    const selection = reviewTemplateSelection(manifest);
+    if (!selection) ceilings.set(TEMPLATE_SELECTION_MISSING, 'blocked');
     if (runnerUnregistered) ceilings.set(RUNNER_RESULT_UNREGISTERED, 'blocked');
     else if (runnerOwnerAbandoned && !runnerPresent) ceilings.set(RUNNER_RESULT_MISSING, 'blocked');
+    else if (selection && !runnerPresent && dispatchable.includes(runnerOwner)) throw new Error(pendingRunnerResultRefusal(runnerOwner, state));
   }
   const statusReasons = [...ceilings.keys()].sort();
   const statusCeiling = [...ceilings.values()].reduce(worseFinalSummaryStatus, 'completed');
   return { counts, unproven, residuals, automationReview, runner, coverage, sourceSchemas, statusCeiling, statusReasons };
+}
+
+// While the runner-script owner holds its lease on reporting standby, it can still run the
+// full-suite and register the result; once released unabandoned, only its abandonment can
+// justify the null runner outcome.
+function pendingRunnerResultRefusal(owner, state) {
+  const missing = `no ${FINAL_SUMMARY_RUNNER_RESULT} exists while the ${FINAL_SUMMARY_RUNNER_SCRIPT} owner ${owner} is not abandoned`;
+  return state.allocations[owner]?.status === 'active'
+    ? `${missing}; re-dispatch ${owner} on reporting standby to run the full-suite and register its archived runner result, then merge the registry and the coverage result again`
+    : `${missing} and holds no active lease; abandon ${owner} with engagement barrier abandon so the summary records ${RUNNER_RESULT_MISSING}`;
 }
 
 // The merge overwrites every derived field of Kleio's fragment and never raises its status.

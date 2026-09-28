@@ -750,8 +750,10 @@ degrade. In Mode A, C, or D without a runner result, a null runner merges when n
 selection is installed and nothing was automated (`template-selection-missing` blocks) or after
 the `run-tests.sh` owner was abandoned (`runner-result-missing` blocks); after that abandonment
 it also merges beside a runner result that is not registered evidence
-(`runner-result-unregistered` blocks), because no lane can register it any more. It
-never raises a status. `reporting` cannot advance until the summary is merged. The merge also renders `solution/FINAL-SUMMARY.md` with an
+(`runner-result-unregistered` blocks), because no lane can register it any more. With a
+template selection installed and the `run-tests.sh` owner dispatchable and not abandoned,
+`report-facts` and the merge refuse a missing runner result and name the recovery instead of
+offering a null runner. It never raises a status. `reporting` cannot advance until the summary is merged. The merge also renders `solution/FINAL-SUMMARY.md` with an
 explicit `Source schema:` line and one `Status reason:` line per reason, so the human-facing
 summary is traceable to the machine contract. The lane-plan `lanes`, evidence-reference
 `references`, and automation-status `tests` arrays contain unique records sorted by
