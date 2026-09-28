@@ -14,6 +14,14 @@ trap 'rm -rf "$WORK"' EXIT
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 
+# The launch's fresh CLAUDE_CONFIG_DIR sees no stored or keychain login, so the launcher refuses
+# to start unless `claude auth status` reports one in that isolated shape. Every case here logs
+# in through a fixture OAuth token (both the fixture and the real CLI's local status accept any
+# value); the host's own credentials never reach a fixture child.
+readonly FIXTURE_OAUTH_TOKEN="argus-launcher-smoke-oauth-token-$$"
+export CLAUDE_CODE_OAUTH_TOKEN="$FIXTURE_OAUTH_TOKEN"
+unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
+
 known_argus_environment=(
   ARGUS_ALLOWED_WRITE_ROOTS ARGUS_ASSETS ARGUS_AUTH_DIRECTORY ARGUS_AUTHORIZATION_MANIFEST
   ARGUS_AUTHORIZATION_MUTATION ARGUS_AUTHORIZATION_SOURCE_TRUST ARGUS_BINARY_EVIDENCE_REVIEWED
@@ -224,6 +232,10 @@ run_authenticated_launch() {
     esac
     ! grep -q "^$forbidden=" "$env_file" || fail "$name inherited forbidden capability $forbidden"
   done
+  # The operator's credential variable passes through the allowlist, and only in memory: its
+  # value appears in no launch file (the fixture's own environment record redacts it).
+  grep -Fxq 'CLAUDE_CODE_OAUTH_TOKEN=<redacted>' "$env_file" || fail "$name child did not receive the operator CLAUDE_CODE_OAUTH_TOKEN"
+  ! grep -rqF -- "$FIXTURE_OAUTH_TOKEN" "$artifact" "$request" "$authorization" || fail "$name wrote the operator credential to a launch file"
   grep -Fq -- '--max-turns' "$artifact/ai_agents_internal/fixture-claude-arguments.txt" || fail "$name Claude argv omitted --max-turns"
   grep -Fxq '400' "$artifact/ai_agents_internal/fixture-claude-arguments.txt" || fail "$name Claude argv omitted the exact 400-turn cap"
   jq -e '.requestedTurns == 401 and .completedTurns == 400 and .outcome == "error_max_turns" and .supervisorObserved == true' \
@@ -715,6 +727,42 @@ grep -Fq -- '--unattested cannot be combined with --trust-store/--runtime-key-id
   { cat "$WORK/unattested-operator.stderr" >&2; fail 'unattested --operator-key-id was not refused as a signed coordinate'; }
 [ ! -e "$WORK/unattested-operator-artifacts" ] || fail 'unattested --operator-key-id refusal created the artifact root'
 
+# Without a login its isolated CLAUDE_CONFIG_DIR can use (the fixture, like the real CLI, sees
+# none without a credential variable), a launch stops before it creates the artifact root,
+# writes a request, or starts Claude. The fixture reports the operator's own keychain login
+# whenever CLAUDE_CONFIG_DIR is unset, so a probe outside the isolated config would not be
+# refused here; it also refuses an inherited Argus variable, which the forged environment of
+# every authenticated launch above would expose.
+mkdir -p "$WORK/no-login-target"
+prepare_signer "$WORK/no-login-operator" runtime-no-login
+set +e
+env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$FIXTURE_PATH:$PATH" \
+  "$LAUNCHER" claude --target "$WORK/no-login-target" --artifact-root "$WORK/no-login-artifacts" \
+  --mode B --engagement-id launcher-no-login --trust-store "$WORK/no-login-operator/model-trust.json" \
+  --runtime-key-id runtime-no-login --operator-key-id runtime-no-login-operator \
+  --request-output "$WORK/no-login-operator/request.json" --launch-authorization "$WORK/no-login-operator/authorization.json" \
+  --wait-seconds 30 >/dev/null 2>"$WORK/no-login.stderr"
+no_login_status=$?
+set -e
+[ "$no_login_status" -eq 2 ] || { cat "$WORK/no-login.stderr" >&2; fail "attested launch without a Claude login exited $no_login_status instead of refusing"; }
+# shellcheck disable=SC2016 # The marker quotes the launcher's literal remedy text.
+grep -Fq 'Claude reports no login for the isolated launch CLAUDE_CONFIG_DIR (claude auth status)' "$WORK/no-login.stderr" && \
+  grep -Fq 'export ANTHROPIC_API_KEY, or run `claude setup-token` and export CLAUDE_CODE_OAUTH_TOKEN' "$WORK/no-login.stderr" || \
+  { cat "$WORK/no-login.stderr" >&2; fail 'launch without a Claude login was not refused with the credential remedy'; }
+[ ! -e "$WORK/no-login-operator/request.json" ] || fail 'launch without a Claude login wrote a launch request'
+[ ! -e "$WORK/no-login-artifacts" ] || fail 'launch without a Claude login created the artifact root'
+# doctor applies the same isolated login probe and fails the host check.
+set +e
+env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" doctor >/dev/null 2>"$WORK/doctor-no-login.stderr"
+doctor_no_login_status=$?
+set -e
+[ "$doctor_no_login_status" -ne 0 ] || fail 'doctor passed without a Claude login for the isolated launch config'
+grep -Fq 'Claude reports no login for the isolated launch CLAUDE_CONFIG_DIR' "$WORK/doctor-no-login.stderr" || \
+  { cat "$WORK/doctor-no-login.stderr" >&2; fail 'doctor did not report the missing isolated Claude login'; }
+PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" doctor >"$WORK/doctor-login.stdout" 2>"$WORK/doctor-login.stderr" || \
+  { cat "$WORK/doctor-login.stderr" >&2; fail 'doctor failed although CLAUDE_CODE_OAUTH_TOKEN logs in the isolated launch config'; }
+grep -Fq 'reports a login for the isolated launch config' "$WORK/doctor-login.stdout" || fail 'doctor did not report the isolated Claude login'
+
 # --unattested is a keyless downgrade for hosts with no operator key material. Every case
 # runs with a fresh HOME and no inherited trust store so the host's own keys never leak in.
 mkdir -p "$WORK/unattested-target" "$WORK/unattested-operator"
@@ -747,6 +795,12 @@ grep -Fq 'attestation=UNATTESTED' "$WORK/unattested-dry-run.stdout" || fail 'una
 grep -Fq 'sandbox=os-native-target-readonly@3 ' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run omitted sandbox policy @3'
 grep -Fq 'browserProvisioning=none' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run did not report browserProvisioning=none'
 grep -Eq ' features=none$' "$WORK/unattested-dry-run.stdout" || fail 'unattested dry run did not report features=none'
+# A keyless dry run without a credential variable is refused by the same isolated login probe.
+set +e
+run_unattested_case no-login CLAUDE_CODE_OAUTH_TOKEN=
+unattested_status=$?
+set -e
+expect_unattested_refusal no-login "$unattested_status" 'Claude reports no login for the isolated launch CLAUDE_CONFIG_DIR'
 
 # (a2) --provision-browser is host preparation outside the signed request: a dry run only
 # reports it and never provisions anything into the (private) host cache.
@@ -1090,6 +1144,9 @@ usage_env_file="$WORK/usage-artifacts-launch/ai_agents_internal/fixture-child-en
 [ "$(grep -c '^ARGUS_' "$usage_env_file")" -eq 2 ] && grep -Fxq 'ARGUS_LAUNCH_UNATTESTED=1' "$usage_env_file" \
   && grep -Fxq "ARGUS_LAUNCH_ARTIFACT_ROOT=$WORK/usage-artifacts-launch" "$usage_env_file" || \
   { grep '^ARGUS_' "$usage_env_file" >&2; fail 'unattested child did not receive exactly ARGUS_LAUNCH_UNATTESTED=1 and its ARGUS_LAUNCH_ARTIFACT_ROOT'; }
+grep -Fxq 'CLAUDE_CODE_OAUTH_TOKEN=<redacted>' "$usage_env_file" || fail 'unattested child did not receive the operator CLAUDE_CODE_OAUTH_TOKEN'
+! grep -rqF -- "$FIXTURE_OAUTH_TOKEN" "$WORK/usage-artifacts-launch" "$WORK/usage-reports/launch.json" || \
+  fail 'unattested launch wrote the operator credential to a launch file'
 usage_arguments="$WORK/usage-artifacts-launch/ai_agents_internal/fixture-claude-arguments.txt"
 [ "$(grep -Fx -A 1 -- '--output-format' "$usage_arguments" | tail -n 1)" = json ] && \
   [ "$(grep -Fx -A 1 -- '--max-turns' "$usage_arguments" | tail -n 1)" = "$REVIEWED_CONTROLLER_TURNS" ] || \

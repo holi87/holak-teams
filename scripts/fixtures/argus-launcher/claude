@@ -42,6 +42,27 @@ if [ "${1:-}" = "--help" ]; then
   exit 0
 fi
 
+# Emulates the real CLI's local `auth status --json` report (exit 1 when not logged in). A
+# credential variable logs in; without CLAUDE_CONFIG_DIR the operator's own config and keychain
+# login would apply, so a login probe that does not isolate the config, or that inherits the
+# launcher's Argus environment instead of the child allowlist, is refused as a probe defect.
+if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
+  if env | grep -q '^ARGUS_'; then printf 'fixture: login probe inherited an Argus variable\n' >&2; exit 90; fi
+  auth_method=none
+  if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then auth_method=claude.ai
+  elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then auth_method=api_key
+  elif [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_AUTH_TOKEN:-}" ]; then auth_method=oauth_token
+  fi
+  jq -n --arg method "$auth_method" '{loggedIn:($method != "none"),authMethod:$method,apiProvider:"firstParty"}'
+  [ "$auth_method" != none ] || exit 1
+  exit 0
+fi
+
+# Records the child environment with every secret value replaced.
+record_environment() {
+  env | sed -E 's/^(ARGUS_NATIVE_LAUNCH_CAPABILITY|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN)=.*/\1=<redacted>/' | sort >"$1"
+}
+
 plugin_root=''
 prompt="${!#}"
 previous=''
@@ -82,7 +103,7 @@ case "$prompt" in
     engagement_id="${prompt#* engagementId=}"
     engagement_id="${engagement_id%% *}"
     [ -d "$artifact_root/ai_agents_internal" ] || { printf 'fixture: unattested prompt omitted the artifact root\n' >&2; exit 81; }
-    env | sort >"$artifact_root/ai_agents_internal/fixture-child-environment.txt"
+    record_environment "$artifact_root/ai_agents_internal/fixture-child-environment.txt"
     printf '%s\n' "$@" >"$artifact_root/ai_agents_internal/fixture-claude-arguments.txt"
     case "$engagement_id" in
       *-fixture-error-max-turns)
@@ -114,8 +135,7 @@ while IFS= read -r feature; do
   if [ -n "$feature" ]; then feature_arguments+=(--feature "$feature"); fi
 done < <(printf '%s' "$launch_payload" | jq -r '.features // [] | .[]')
 
-env | sed 's/^ARGUS_NATIVE_LAUNCH_CAPABILITY=.*/ARGUS_NATIVE_LAUNCH_CAPABILITY=<redacted>/' | sort \
-  >"$artifact_root/ai_agents_internal/fixture-child-environment.txt"
+record_environment "$artifact_root/ai_agents_internal/fixture-child-environment.txt"
 printf '%s\n' "$@" >"$artifact_root/ai_agents_internal/fixture-claude-arguments.txt"
 write_turn_cap_behavior "$artifact_root/ai_agents_internal/fixture-turn-cap-behavior.json" "$max_turns"
 
