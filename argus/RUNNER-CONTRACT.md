@@ -302,7 +302,10 @@ The steps run in this order; a denial finishes the run through `scripts/runner-c
    lane-disabled.<reason>`. Under `ARGUS_CONTRACT_SMOKE=1` the run instead records
    `contract-smoke-mode`, selects only the `contract-smoke` lane, skips the lane plan,
    readiness, and environment steps, and its result has `deliveryGate: false` in every mode.
-5. The engagement fault-injection opt-in (below), then `argus_native_prepare`.
+5. The engagement fault-injection opt-in (below), then `argus_native_prepare`. Inside an
+   engagement (an indicated manifest, even an unreadable one, see below) an unset or empty
+   `PLAYWRIGHT_INSTALL` becomes `0` first: the launch sandbox denies the native browser
+   download, and browsers are provisioned host-side. An explicit value wins.
 6. Readiness: `ARGUS_READINESS_URLS` (space-separated; an explicitly empty value probes
    nothing), otherwise `API_URL` for an enabled api, perf, security, or resilience lane and
    `UI_URL` for an enabled ui lane: `readiness infrastructure fail target-not-ready`.

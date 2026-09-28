@@ -37,7 +37,8 @@ WORKERS=4 ./run-tests.sh --mode full-suite # opt-in parallelism (pytest-xdist)
 ```
 `run-tests.sh` defines only the pytest hooks; the shared `scripts/runner-lib.sh` owns the
 run. In order: template selection, the lane plan, the local `.venv` (created once from
-`requirements.txt`, with the Chromium download unless `PLAYWRIGHT_INSTALL=0`), the compile
+`requirements.txt`, with the Chromium download unless `PLAYWRIGHT_INSTALL=0`, the default
+inside an Argus engagement), the compile
 gate (`python -m compileall` over the test root, `conftest.py`, and the harness root — a
 suite that doesn't compile doesn't run), readiness ("ENVIRONMENT NOT READY"), the
 environment baseline, a collect-only inventory through the outcome adapter

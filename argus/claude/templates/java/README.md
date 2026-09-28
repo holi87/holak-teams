@@ -44,7 +44,7 @@ open reports/summary.html                  # the human report
 the run. In order: template selection, the lane plan, `mvn test-compile` (a suite that
 doesn't compile doesn't run — the Java analog of the TS typecheck gate) plus the optional
 Playwright Chromium install when a browser lane is enabled (`PLAYWRIGHT_INSTALL=0` skips
-it), readiness ("ENVIRONMENT NOT READY"), the environment baseline, a collect-only inventory
+it; inside an Argus engagement that is the default), readiness ("ENVIRONMENT NOT READY"), the environment baseline, a collect-only inventory
 through JUnit Platform discovery (`reports/test-inventory.tsv`, `reports/expected-bugs.txt`,
 `reports/counterfactual-plan.tsv`), the quarantine and inventory gates, the evidence
 passes, and `reports/argus-runner-result.json`. Exit codes are 0 or 10-15 per

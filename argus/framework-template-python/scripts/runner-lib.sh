@@ -276,6 +276,21 @@ argus_engagement_request() {
   return 0
 }
 
+# Inside an engagement the launch sandbox denies every write outside the artifact root, so a
+# native browser download into the host Playwright cache can only fail; browsers are provisioned
+# host-side (argus-launch --provision-browser) and probed by preflight. When an engagement is
+# indicated, even one whose manifest cannot be read, an unset or empty PLAYWRIGHT_INSTALL
+# becomes 0 for the native hooks. An explicit value wins; outside an engagement each hook keeps
+# its own default.
+argus_browser_install_default() {
+  local manifest
+  [ -z "${PLAYWRIGHT_INSTALL:-}" ] || return 0
+  manifest="$(argus_engagement_manifest 2>/dev/null)" || manifest=unreadable
+  [ -n "$manifest" ] || return 0
+  export PLAYWRIGHT_INSTALL=0
+  echo "ARGUS RUNNER: inside an Argus engagement the native browser download is skipped (PLAYWRIGHT_INSTALL=0); the host-provisioned browser is used"
+}
+
 argus_engagement_optin() {
   case "$1" in
     reset)
@@ -545,6 +560,7 @@ argus_main() {
 
   argus_engagement_optin fault
 
+  argus_browser_install_default
   argus_call argus_native_prepare
   if [ "$ARGUS_CALL_STATUS" -ne 0 ]; then argus_finish 1; fi
 

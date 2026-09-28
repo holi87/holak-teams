@@ -566,6 +566,58 @@ else
   printf 'PASS  launch-sandbox runners: the three contract-smoke baselines pass inside argus-launch sandbox_exec\n'
 fi
 
+# The first TypeScript run in a fresh artifact root installs its packages. Inside an engagement
+# the launch sandbox denies the Playwright browser download (its lock lives in the host cache),
+# and browsers are provisioned host-side, so the runner never attempts it there unless
+# PLAYWRIGHT_INSTALL asks; outside an engagement the download stays the default. A stand-in npm
+# links the installed packages, and a stand-in npx fails `playwright install` the way the
+# sandbox does and passes every other call to the real npx.
+first_run_bin="$WORK/first-run-bin"
+first_run_root="$WORK/first-run-artifact-root"
+mkdir -p "$first_run_bin" "$first_run_root/ai_agents_internal"
+printf '{"engagementId":"template-smoke"}\n' >"$first_run_root/ai_agents_internal/engagement.json"
+cat >"$first_run_bin/npm" <<'STUB'
+#!/usr/bin/env bash
+if [ "${1:-}" = ci ]; then ln -s "$FIRST_RUN_NODE_MODULES" node_modules; exit; fi
+exec "$FIRST_RUN_REAL_NPM" "$@"
+STUB
+cat >"$first_run_bin/npx" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$FIRST_RUN_NPX_LOG"
+if [ "${1:-} ${2:-}" = 'playwright install' ]; then
+  echo "Error: EPERM: operation not permitted, mkdir 'ms-playwright/__dirlock' (launch-sandbox stand-in)" >&2
+  exit 1
+fi
+exec "$FIRST_RUN_REAL_NPX" "$@"
+STUB
+chmod 755 "$first_run_bin/npm" "$first_run_bin/npx"
+# Usage: first_run <label> <expected-exit> [env arguments...]
+first_run() {
+  local label="$1" expected="$2" code
+  shift 2
+  "$CLI" template scaffold --selection "$WORK/typescript-selection.json" --destination "$WORK/$label" >/dev/null
+  set +e
+  (cd "$WORK/$label" && env -u PLAYWRIGHT_INSTALL -u ARGUS_ENGAGEMENT_MANIFEST -u ARGUS_NATIVE_LAUNCH_RECEIPT -u ARGUS_LAUNCH_ARTIFACT_ROOT \
+    "PATH=$first_run_bin:$PATH" "FIRST_RUN_NODE_MODULES=$WORK/typescript/node_modules" \
+    "FIRST_RUN_REAL_NPM=$(command -v npm)" "FIRST_RUN_REAL_NPX=$(command -v npx)" "FIRST_RUN_NPX_LOG=$WORK/$label.npx.log" \
+    ARGUS_CONTRACT_SMOKE=1 "$@" ./run-tests.sh --mode baseline >"$WORK/$label.log" 2>&1)
+  code=$?
+  set -e
+  [ "$code" -eq "$expected" ] && jq -e --argjson code "$expected" '.exitCode == $code' "$WORK/$label/reports/argus-runner-result.json" >/dev/null ||
+    { tail -40 "$WORK/$label.log" >&2; fail "$label exited $code instead of $expected"; }
+}
+first_run first-run-engagement 0 "ARGUS_LAUNCH_ARTIFACT_ROOT=$first_run_root"
+grep -q '^tsc --noEmit' "$WORK/first-run-engagement.npx.log" && ! grep -q '^playwright install' "$WORK/first-run-engagement.npx.log" ||
+  fail 'the first in-engagement TypeScript run attempted the browser download or never reached the typecheck'
+grep -Fq 'ARGUS RUNNER: inside an Argus engagement' "$WORK/first-run-engagement.log" || fail 'the first in-engagement run did not say why it skipped the download'
+first_run first-run-explicit 12 "ARGUS_LAUNCH_ARTIFACT_ROOT=$first_run_root" PLAYWRIGHT_INSTALL=1
+first_run first-run-outside 12
+for label in first-run-explicit first-run-outside; do
+  grep -q '^playwright install' "$WORK/$label.npx.log" || fail "$label skipped the browser download"
+  jq -e '[.events[] | select(.reason == "playwright-install-failed")] | length == 1' "$WORK/$label/reports/argus-runner-result.json" >/dev/null ||
+    fail "$label did not record the failed browser download"
+done
+
 # A layout may keep a template root (tests, src, src/test/java), nest in one (src/e2e, tests/ui),
 # or swap two: every root is staged before any lands, so no move collides with or sweeps up
 # another. The runner, docs, and TypeScript imports follow each root.
@@ -642,4 +694,4 @@ expired_code=$?
 set -e
 [ "$expired_code" -eq 13 ] && jq -e '.exitCode == 13 and .categories.policy == 1' "$WORK/expired-result.json" >/dev/null || fail "expired quarantine did not fail as policy exit 13"
 
-printf 'PASS  Argus templates: detected ADAPT, explicit BUILD, arbitrary layouts, three clean-room runners, shared contract, and quarantine\n'
+printf 'PASS  Argus templates: detected ADAPT, explicit BUILD, arbitrary layouts, three clean-room runners, shared contract, quarantine, and the in-engagement first TypeScript run without a browser download\n'
