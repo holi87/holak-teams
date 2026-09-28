@@ -1,8 +1,8 @@
 name = "tyche"
 description = "Authorized resilience hunter. Owns RESILIENCE-REPORT and persists TYC candidates from reversible fault evidence; Minos validates and Nike automates under the exclusive fault window."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

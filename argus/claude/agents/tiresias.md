@@ -2,8 +2,8 @@
 name: tiresias
 description: Gated read-only source analyst. Returns TIR candidates and source leads as immutable fragments; Minos validates and persists canonical bug files and WHITEBOX-LEADS.
 tools: Read, Grep, Glob, Bash
-model: opus
-effort: max
+model: claude-opus-5-5
+effort: high
 maxTurns: 140
 color: purple
 skills:

@@ -117,6 +117,80 @@ for field in port accountAlias dataNamespace browserProfile outputDirectory; do
   [ "$count" -eq "${#lanes[@]}" ] || fail "parallel allocations collide on $field"
 done
 
+# Native Agent dispatch binds the first-line envelope to the live allocation and
+# never accepts effort/resume guesses as though they were native tool options.
+DISPATCH_ENVELOPE="$(jq -c '{lane:.lane,decisionId:.modelDecisionId,dispatchId,attempt,token}' "$ALLOCATIONS/hermes.json")"
+DISPATCH_PAYLOAD="$(jq -cn --arg cwd "$TARGET" --arg envelope "$DISPATCH_ENVELOPE" '
+  {hook_event_name:"PreToolUse",session_id:"smoke-controller",agent_type:"argus:odysseus",tool_name:"Agent",cwd:$cwd,
+   tool_input:{subagent_type:"argus:hermes",description:"Scoped performance work",prompt:("ARGUS_DISPATCH="+$envelope+"\nUse only the allocated work unit.")}}')"
+dispatch_output="$(printf '%s' "$DISPATCH_PAYLOAD" | "$CLI" guard)"
+grep -Fq GUARD-MODEL-DISPATCH <<<"$dispatch_output" || fail 'direct baseline dispatch bypassed the authenticated launcher'
+for mutation in '.agent_id="worker-forging-controller"' '.tool_input.effort="max"' '.tool_input.max_turns=999' \
+  '.tool_input.resume="old-agent"' '.tool_input.cwd="/tmp"' '.tool_input.model="opus"' \
+  '.tool_input.model="claude-opus-5-5"' '.tool_input.prompt="stale prompt without binding"'; do
+  dispatch_output="$(printf '%s' "$DISPATCH_PAYLOAD" | jq "$mutation" | "$CLI" guard)"
+  grep -Fq GUARD-MODEL-DISPATCH <<<"$dispatch_output" || fail "dispatch guard accepted $mutation"
+done
+dispatch_output="$(printf '%s' "$DISPATCH_PAYLOAD" | CLAUDE_CODE_EFFORT_LEVEL=max "$CLI" guard)"
+grep -Fq GUARD-MODEL-DISPATCH <<<"$dispatch_output" || fail 'dispatch guard accepted a global effort override'
+DISPATCH_AUDIT="$TARGET/$(jq -r .writePolicy.auditPath "$MANIFEST")"
+mv "$DISPATCH_AUDIT" "$DISPATCH_AUDIT.saved"
+mkdir "$DISPATCH_AUDIT"
+dispatch_output="$(printf '%s' "$DISPATCH_PAYLOAD" | "$CLI" guard)"
+rmdir "$DISPATCH_AUDIT"
+mv "$DISPATCH_AUDIT.saved" "$DISPATCH_AUDIT"
+jq -e '.hookSpecificOutput.permissionDecision == "deny"' <<<"$dispatch_output" >/dev/null || fail 'audit I/O failure lost the structured dispatch denial'
+
+# Pure guard fixture: the CLI alone supplies trusted aliases after authenticating
+# the launcher. Construct an upward decision and its exact allocation binding,
+# then restore both files; this is not a paid/native model execution claim.
+node --input-type=module - "$ROOT" "$MANIFEST" "$ALLOCATIONS/hermes.json" <<'JS'
+import assert from 'node:assert/strict';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const [root, manifestPath, allocationPath] = process.argv.slice(2);
+const { evaluateAgentDispatchGuard } = await import(pathToFileURL(join(root, 'argus/runtime/engagement.mjs')));
+const { modelDecisionIntegritySha256 } = await import(pathToFileURL(join(root, 'argus/runtime/model-policy.mjs')));
+const manifest = JSON.parse(readFileSync(manifestPath));
+const allocation = JSON.parse(readFileSync(allocationPath));
+const modelPolicy = JSON.parse(readFileSync(join(root, 'argus/model-policy.json')));
+const statePath = join(manifest.artifactRoot, manifest.statePath);
+const decisionPath = join(manifest.artifactRoot, 'ai_agents_internal/model-decisions', `${allocation.modelDecisionId}.json`);
+const originalState = readFileSync(statePath), originalDecision = readFileSync(decisionPath);
+const envelope = { lane:'hermes', decisionId:allocation.modelDecisionId, dispatchId:allocation.dispatchId, attempt:allocation.attempt, token:allocation.token };
+const payload = { hook_event_name:'PreToolUse', tool_name:'Agent', agent_type:'argus:odysseus',
+  tool_input:{ subagent_type:'argus:hermes', description:'Bound upward fixture', model:'opus', prompt:`ARGUS_DISPATCH=${JSON.stringify(envelope)}\nFixture work.` } };
+const nativeModelAliases = { opus:'claude-opus-5-5', sonnet:'claude-sonnet-5-5' };
+const run = (input = payload, aliases = nativeModelAliases) => evaluateAgentDispatchGuard({ manifest, payload:input, modelPolicy, nativeModelAliases:aliases });
+function select(config) {
+  const decision = JSON.parse(originalDecision), state = JSON.parse(originalState);
+  decision.selectedConfig = { ...decision.selectedConfig, ...config };
+  decision.integritySha256 = modelDecisionIntegritySha256(decision);
+  state.allocations.hermes.modelDecisionIntegritySha256 = decision.integritySha256;
+  writeFileSync(decisionPath, JSON.stringify(decision));
+  writeFileSync(statePath, JSON.stringify(state));
+}
+try {
+  const baseline = structuredClone(payload); delete baseline.tool_input.model;
+  assert.equal(run(baseline).decision, 'allow', 'baseline definition must match the selected decision');
+  assert.equal(run(baseline).decision, 'allow', 'phase-scoped work units may reuse the live allocation');
+  assert.equal(run().decision, 'deny', 'upward model cannot override baseline selection');
+  select({ tier:'frontier', model:'claude-opus-5-5', effort:'high' });
+  assert.equal(run().decision, 'allow', 'same-effort Opus-high dispatch must match the selected decision');
+  assert.equal(run(payload, null).decision, 'deny', 'an untrusted alias has no native model proof');
+  const wrong = structuredClone(payload); wrong.tool_input.model = 'sonnet';
+  assert.equal(run(wrong).decision, 'deny', 'explicit alias must match the selected model');
+  const stale = structuredClone(payload); stale.tool_input.prompt = `ARGUS_DISPATCH=${JSON.stringify({...envelope,attempt:envelope.attempt+1})}`;
+  assert.equal(run(stale).decision, 'deny', 'stale attempt must fail');
+  const token = structuredClone(payload); token.tool_input.prompt = `ARGUS_DISPATCH=${JSON.stringify({...envelope,token:'wrong-token'})}`;
+  assert.equal(run(token).decision, 'deny', 'stale lane token must fail');
+  select({ tier:'frontier', model:'claude-opus-5-5', effort:'max' });
+  assert.equal(run().decision, 'deny', 'a model alias cannot raise role effort');
+} finally { writeFileSync(statePath, originalState); writeFileSync(decisionPath, originalDecision); }
+console.log('PASS  Native dispatch guard: same-effort model escalation, exact aliases, allocation, token and attempt; unsupported effort/resume blocked');
+JS
+
 # Heartbeats use a bounded append command; they are progress only, never evidence.
 "$CLI" engagement heartbeat --manifest "$MANIFEST" --lane odysseus --token "$(token_for odysseus)" --phase discovery --completed 0 --total 4 --status started >/dev/null
 "$CLI" engagement heartbeat --manifest "$MANIFEST" --lane hermes --token "$(token_for hermes)" --phase hunting --completed 1 --total 4 --status running >/dev/null

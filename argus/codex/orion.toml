@@ -1,8 +1,8 @@
 name = "orion"
 description = "Functional UI hunter. Persists ORI candidates for behavior, forms, and client state; presentation belongs to Lynceus, accessibility to Antigone, and validation to Minos."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

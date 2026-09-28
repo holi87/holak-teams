@@ -33,9 +33,9 @@ require_controller_text() {
 require_text "name: run" "$SKILL" "run skill has no stable name"
 require_text 'disable-model-invocation: true' "$SKILL" "run skill must be user-invoked"
 require_text 'allowed-tools: Read, Agent, Bash(argus-assets *)' "$SKILL" "run skill does not pre-approve its runtime asset verifier"
-ODYSSEUS_TIER="$(jq -r '.roles[] | select(.slug == "odysseus") | .tier' "$MODEL_POLICY")"
-EXPECTED_CONTROLLER_MODEL="$(jq -r --arg tier "$ODYSSEUS_TIER" '.tiers[$tier].claude.model' "$MODEL_POLICY")"
-EXPECTED_CONTROLLER_EFFORT="$(jq -r --arg tier "$ODYSSEUS_TIER" '.tiers[$tier].claude.effort' "$MODEL_POLICY")"
+ODYSSEUS_PROFILE="$(jq -er '.roles[] | select(.slug == "odysseus") | .executionProfile' "$MODEL_POLICY")"
+EXPECTED_CONTROLLER_MODEL="$(jq -er --arg profile "$ODYSSEUS_PROFILE" '.executionProfiles[$profile].claude.model' "$MODEL_POLICY")"
+EXPECTED_CONTROLLER_EFFORT="$(jq -er --arg profile "$ODYSSEUS_PROFILE" '.executionProfiles[$profile].claude.effort' "$MODEL_POLICY")"
 require_text "model: $EXPECTED_CONTROLLER_MODEL" "$SKILL" "run skill model differs from canonical Odysseus policy"
 require_text "effort: $EXPECTED_CONTROLLER_EFFORT" "$SKILL" "run skill effort differs from canonical Odysseus policy"
 # shellcheck disable=SC2016 # The skill must retain Claude Code's literal runtime variable.

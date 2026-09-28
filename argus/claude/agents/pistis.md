@@ -2,8 +2,8 @@
 name: pistis
 description: Gated consumer-contract analyst. Owns contract path specifications for confirmed multi-service targets; Proteus or Atalanta discovers defects, Minos validates, and Talos automates.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: medium
 maxTurns: 80
 color: yellow
 skills:

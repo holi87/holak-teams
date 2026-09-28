@@ -29,6 +29,7 @@ import {
   modelAuthenticatedDocumentSha256,
   modelConfigSha256,
   modelDecisionIntegritySha256,
+  roleModelConfig,
   verifyModelDocumentAuthentication,
 } from './model-policy.mjs';
 
@@ -1709,6 +1710,65 @@ export function evaluateWriteGuard({ manifest, manifestPath, payload, cwd, bypas
   }
   const bypassed = evaluated.some((path) => isBypassed(manifest, resolvePhysical(path, manifest.artifactRoot), bypassToken, now));
   return guardDecision('allow', bypassed ? 'GUARD-EXPLICIT-BYPASS' : 'GUARD-ALLOW', bypassed ? 'exact operator bypass authorized the destination' : 'destinations are inside explicit write roots', evaluated, commandSha256);
+}
+
+// Agent has a model override but no effort/turn-cap override. Bind each fresh
+// invocation to the live lane lease, then compare what the native tool will use
+// with the immutable routing decision. Prompt contents and lease tokens never
+// enter the returned decision or audit.
+export function evaluateAgentDispatchGuard({ manifest, payload, modelPolicy, nativeModelAliases = null }) {
+  const deny = (reason) => guardDecision('deny', 'GUARD-MODEL-DISPATCH', reason, [], null);
+  if (payload.hook_event_name !== 'PreToolUse' || payload.agent_id != null || guardLaneIdentity(payload) !== 'odysseus') {
+    return deny('only the main Odysseus controller may dispatch an Argus worker');
+  }
+  const input = payload.tool_input;
+  const supported = new Set(['description', 'prompt', 'subagent_type', 'model', 'run_in_background']);
+  if (!plainObject(input) || Object.keys(input).some((key) => !supported.has(key))) {
+    return deny('dispatch contains unsupported native arguments; effort, turn-cap, resume and alternate working-directory overrides are forbidden');
+  }
+  const role = /^argus:([a-z][a-z0-9-]*)$/.exec(input.subagent_type ?? '')?.[1];
+  if (!role || role === 'odysseus' || !manifest.selectedAgents.includes(role)) return deny('dispatch must name one selected packaged worker role');
+  if (!nonEmpty(input.description) || !nonEmpty(input.prompt) ||
+      (input.run_in_background !== undefined && typeof input.run_in_background !== 'boolean')) {
+    return deny('dispatch description, prompt or background option is invalid');
+  }
+  const firstLine = input.prompt.split('\n', 1)[0];
+  if (!firstLine.startsWith('ARGUS_DISPATCH=') || firstLine.length > 4096) return deny('dispatch requires its exact ARGUS_DISPATCH envelope on the first prompt line');
+  let envelope;
+  try { envelope = JSON.parse(firstLine.slice('ARGUS_DISPATCH='.length)); }
+  catch { return deny('dispatch envelope is not valid JSON'); }
+  const fields = ['lane', 'decisionId', 'dispatchId', 'attempt', 'token'];
+  if (!plainObject(envelope) || Object.keys(envelope).length !== fields.length || !fields.every((key) => Object.hasOwn(envelope, key)) ||
+      envelope.lane !== role || !nonEmpty(envelope.token)) return deny('dispatch envelope fields do not match the worker role');
+  try {
+    return withStateLock(manifest, () => {
+      const state = readState(manifest);
+      requireLiveLeaseMarker(manifest, state, 'odysseus');
+      requireLiveLeaseMarker(manifest, state, role);
+      const allocation = state.allocations[role];
+      if (allocation.leaseTokenSha256 !== sha256(envelope.token) || allocation.modelDecisionId !== envelope.decisionId ||
+          allocation.dispatchId !== envelope.dispatchId || allocation.attempt !== envelope.attempt || allocation.runtime !== 'claude') {
+        return deny('dispatch envelope is stale or differs from the active Claude allocation');
+      }
+      const decision = loadImmutableSelectedDecision(manifest, role, allocation);
+      const baseline = roleModelConfig(modelPolicy, role, 'claude');
+      const selected = decision.selectedConfig;
+      if (selected.effort !== baseline.effort || selected.maxTurns !== baseline.maxTurns) {
+        return deny('the selected effort or turn cap cannot be enforced by this role native definition');
+      }
+      let effectiveModel = baseline.model;
+      if (Object.hasOwn(input, 'model')) {
+        if (!['opus', 'sonnet'].includes(input.model) || !nativeModelAliases?.[input.model]) {
+          return deny('model override requires a supported family alias in an authenticated pinned launcher');
+        }
+        effectiveModel = nativeModelAliases[input.model];
+      }
+      if (effectiveModel !== selected.model) return deny('native model selection differs from the immutable selected decision');
+      return guardDecision('allow', 'GUARD-ALLOW', 'dispatch matches its active lease and native model, effort and turn cap', [], null);
+    });
+  } catch {
+    return deny('dispatch allocation, live lease or immutable model decision could not be verified');
+  }
 }
 
 export function buildGuardAudit({ manifest, payload, decision, timestamp }) {

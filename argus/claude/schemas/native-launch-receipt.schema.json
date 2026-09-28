@@ -32,7 +32,7 @@
     "artifactRoot": { "type": "string", "pattern": "^/" },
     "mode": { "enum": ["A", "B", "C", "D"] },
     "runtime": { "const": "claude" },
-    "model": { "const": "opus" },
+    "model": { "const": "claude-opus-5-5" },
     "effort": { "const": "max" },
     "maxTurns": { "const": 400 },
     "launcherExecutable": { "type": "string", "pattern": "^/" },

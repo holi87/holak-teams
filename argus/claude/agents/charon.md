@@ -2,8 +2,8 @@
 name: charon
 description: Gated direct-database hunter. Persists CHA candidates from read-only DB analysis when db-access is ready; public-data behavior belongs to Atalanta and canonical validation to Minos.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: high
 maxTurns: 120
 color: red
 skills:

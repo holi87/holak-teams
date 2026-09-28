@@ -44,7 +44,8 @@ The marketplace lifecycle smoke installs the immediately previous release, updat
 `argus-launch` is the only supported Claude entry point. The external runtime-attestation
 signer authorizes the exact request; launch verification issues a receipt, and preflight
 also requires the inherited private launch capability. The launcher binds Odysseus to the
-reviewed `opus` / maximum-effort baseline, Claude's native 400-turn cap (96 before 5.0), no session
+reviewed `claude-opus-5-5` / maximum-effort baseline in 5.0.1, Claude's native 400-turn cap
+(96 before 5.0), no session
 persistence, a minimal environment, and an OS filesystem sandbox. Direct `/argus:run`
 preflight and authorization-file replay fail.
 
@@ -101,6 +102,46 @@ The release gate includes `scripts/smoke-argus-quality.mjs` and the maintainer-o
 ## Argus 4.9.2 documentation alignment
 
 This user-requested patch changes no agent prompt, runtime library, schema, or budget; only the plugin version moves. It aligns the maintainer documentation with the 4.9.1 runtime and with current Claude Code guidance: `AGENTS.md` falls below the 200-line memory-file target and points to the canonical contracts; the frontier/standard split (12/15), the asset budgets (880,000 / 1,800,000 bytes), the six preflight dispositions, the `--unattested` launch opt-in, `plugin.json` version precedence, and the highest-plugin-version marketplace rule are now stated correctly. `INSTALL.md` resolves the newest cached Argus version instead of a hard-coded 4.0.0 path.
+
+## Argus 5.0.1 role-specific model allocation
+
+The approved allocation replaces the uniform 27-role maximum-effort baseline with
+11 frontier and 16 standard roles. Explicit execution profiles select model and
+effort independently of each role's judgment, evidence and ownership obligations.
+Deep-hunt passes use `modelSelection: role-execution-profile`, preserving each
+role's assigned model and effort throughout the deeper passes.
+
+| Roles | Claude | Codex |
+|---|---|---|
+| Odysseus, Metis, Minos, Aristarchus | Opus 5.5 / max | GPT-6 Sol / xhigh |
+| Ariadne, Perseus, Tyche, Tiresias, Atlas, Kalchas, Kleio | Opus 5.5 / high | GPT-6 Sol / high |
+| Antigone, Atalanta, Charon, Hermes, Lynceus, Orion, Proteus, Nike, Asklepios | Sonnet 5.5 / high | GPT-6 Sol / high |
+| Aegis, Daidalos, Mnemosyne, Talos, Penelope, Pistis, Theseus | Sonnet 5.5 / medium | GPT-6 Sol / medium |
+
+Provider IDs are pinned to `claude-opus-5-5`, `claude-sonnet-5-5` and `gpt-6-sol`.
+The launcher requires Claude Code 2.1.284 or newer within 2.x and retains
+Odysseus's maximum effort and 400-turn cap. GPT-6 Astra/high
+is reserved for bounded escalation, not a full default role; no full role uses
+Haiku/Luna. Hephaestus's mapping is unchanged.
+Family aliases resolve to pinned IDs. Automatic model substitution is disabled
+with `switchModelsOnFlag: false`, preserving provider refusals.
+
+Codex dispatch remains fail-closed without a verified native hard turn cap.
+Claude model-only Sonnet/high to Opus/high escalation preserves effort and the
+turn cap with signed launcher proof of pinned model aliases;
+effort-changing routes remain blocked. Model availability and effective live
+settings require runtime verification; real API model, billing and quality checks
+have not been performed for this allocation.
+Configuration and release checks do not establish discovery quality or cost savings:
+the comparative evaluation and discovery baseline remain pending. See
+[`argus/MODEL-EFFICIENCY-PROPOSAL.md`](argus/MODEL-EFFICIENCY-PROPOSAL.md) for the
+approved rationale and evaluation plan.
+
+The M3–M6 orchestration follow-ups remain deferred; their historical 5.0.1 target
+in the notes below is superseded by this release's model-allocation scope.
+Existing frontier continuation is unchanged. Standard roles have
+at most one upward escalation per dispatch, preventing indefinite turn-budget
+renewal. The 5.0.1 model change claims no measured effectiveness improvement.
 
 ## Argus 5.0 effectiveness release
 

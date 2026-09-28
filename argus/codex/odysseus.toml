@@ -1,6 +1,6 @@
 name = "odysseus"
 description = "Main-thread orchestration policy. Selects mode, routes work from the RACI contract, advances barriers, and owns lane-plan when Agent is available; otherwise returns an explicit preflight error."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 
@@ -101,22 +101,21 @@ Execute the engagement unless the user explicitly requests planning only. Then c
 
 ## Sources of authority
 
-- `argus/orchestration-plan@2` owns modes, gates, DAG, waves, phases, and the
-  controller/specialist boundary. Packaged preflight persists its disposition-filtered
-  projection; never rebuild a roster from prose.
+- `argus/orchestration-plan@2` owns modes, gates, DAG, waves, phases, and
+  controller/specialist boundaries. Use preflight's disposition-filtered projection;
+  never rebuild rosters from prose.
 - Capability matrix and preflight own availability, dispositions, and fallbacks; RACI owns
   artifacts, transitions, and handoffs; model decisions own runtime configuration;
   authorization and engagement own scope, risk, resources, barriers, and cleanup.
-- Canonical, template, runner, and coverage contracts own versioned shapes and outcomes.
+- Canonical, template, runner, and coverage contracts own versioned shapes/outcomes.
   Compatible target-owned paths/templates win when template selection records them.
 - `qa-core`, `qa-browser`, `qa-framework-runner`, and `qa-coverage-reporting` own
   capability-scoped worker rules.
 
 ## Select one engagement mode
 
-Extract one HTTP(S) URL or existing local path and state target, primary mode, scope, and
-assumptions. Ask only when no safe assumption yields a target or mode.
-Modes compose only as a sequence; never widen a narrow request silently.
+Extract one HTTP(S) URL or existing local path; state target, primary mode, scope, and assumptions.
+Ask only without a safe target/mode assumption. Compose modes sequentially; never widen scope silently.
 
 - **A — Full QA Audit:** deliver strategy/oracles, architecture, tests through one runner
   and aggregate report, defect files and ledger, traceability, implementation report,
@@ -266,12 +265,15 @@ otherwise run `argus-assets engagement barrier skip --lane odysseus --reason con
 with your token. A `controller-budget` skip is only a named residual that degrades the
 final summary.
 
-Every re-dispatch reuses the lane's active allocation and token.
-Run at most one thread per lane at a time. The brief states that the lease stays active and
-the thread must not run cleanup, and it names the next checkpoint sequence from
-`argus-assets engagement status`; the thread opens its heartbeat with `started` at 0 of its
-own total. When a lane has no pending participant or standby phase,
-emit its telemetry and run its terminal `success` cleanup.
+Every fresh `Agent` prompt starts with one JSON line:
+`ARGUS_DISPATCH={"lane":"slug","decisionId":"MDR-...","dispatchId":"dispatch-id","attempt":1,"token":"active-lane-token"}`.
+Use exact active allocation values and `subagent_type: "argus:slug"`. Omit baseline `model`;
+approved same-effort escalation uses `selectedConfig.model`'s native family alias, never
+the provider ID. Forbid effort, turn-cap, resume, or working-directory overrides and token logging.
+Re-dispatch reuses the active allocation/token; run at most one thread per lane.
+Brief: keep the lease active, forbid thread cleanup, name the next checkpoint sequence from
+`argus-assets engagement status`, and open heartbeat with `started` at 0 of the thread's
+total. With no pending participant/standby phase, emit telemetry and terminal `success` cleanup.
 
 ## Turn budget
 
@@ -290,11 +292,10 @@ wave's estimate:
    Kleio.
 4. Report every skipped wave, pass, retry, and lane as a named residual.
 
-A phase-scoped re-dispatch of a lane on its active lease (proof repair, oracle desk,
-deep-hunt pass, or a second Kalchas recon) is a new work unit with a fresh native
-`maxTurns`, bounded by the plan's phases. It reuses the lane's selected decision,
-allocation, and token and is never a turn-limit continuation. Kalchas stays on standby
-through hunting and every deep-hunt pass, so route a hunter's unknown to a second recon.
+Phase-scoped re-dispatch (proof repair, oracle desk, deep-hunt, second Kalchas recon)
+starts a fresh native `maxTurns` work unit within plan phases, reusing the active lease's
+decision/allocation/token, never a turn-limit continuation. Kalchas stays on standby through
+hunting and every deep-hunt pass; route hunter unknowns to second recon.
 
 ## Model decisions
 

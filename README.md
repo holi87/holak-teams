@@ -143,9 +143,15 @@ Example pools (Marcus extends freely, keep the team's theme):
 - **Sonnet + escalation to Opus** (12): Varro, Fabricius, Maximus, Lucius, Tiberius, Fabius, Boethius, Mercury, Cato, Appius, Janus, Cicero — daily work; flag hard/risky decisions for review by Marcus.
 - **Haiku** (3): Numa, Regulus, Tacitus — fast, narrow, cheap tasks.
 
-The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 27 frontier / 0 standard policy from `argus/model-policy.json`.
+The above is the **main team (22)**. **Argus QA (27)** is a separate, permanent QA team with a generated 11 frontier / 16 standard policy from `argus/model-policy.json`.
 
-**Codex runtime mapping for both teams:** Claude `opus` source roles run on `sol` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles run on `terra` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles run on `luna` with `model_reasoning_effort = "medium"`.
+**Hephaestus Codex mapping:** Claude `opus` source roles run on `sol` with `model_reasoning_effort = "xhigh"`; Claude `sonnet` source roles run on `terra` with `model_reasoning_effort = "medium"`; Claude `haiku` source roles run on `luna` with `model_reasoning_effort = "medium"`.
+
+**Argus 5.0.1 uses per-role execution profiles:** four Opus 5.5/max, seven
+Opus 5.5/high, nine Sonnet 5.5/high and seven Sonnet 5.5/medium roles. Codex pins
+GPT-6 Sol for all 27 roles: four at `xhigh`, sixteen at `high` and seven at
+`medium`. GPT-6 Astra/high is reserved for bounded escalation. Quality and
+evidence obligations apply at every tier; no complete Argus role uses Haiku or Luna.
 
 The mapping and generated role-body/configuration alignment are enforced for all 49 agents. Hephaestus Codex
 files are generated from `hephaestus/claude/agents/*.md`; Argus runtime variants are
@@ -157,7 +163,12 @@ parent-provided orchestration, packaged assets, and equivalent tools. See
 
 ## Full roster — model per runtime
 
-Every agent runs on an **Anthropic** model under Claude Code and on a **mapped OpenAI** model under Codex — **Codex never uses Anthropic models.** The mapping is fixed by source tier: `opus → sol · xhigh`, `sonnet → terra · medium`, `haiku → luna · medium`. The `· value` after the Codex model is `model_reasoning_effort`.
+Claude configurations use **Anthropic** models and Codex configurations use
+**OpenAI** models. Hephaestus retains its fixed source-tier mapping; Argus resolves
+each role's explicit model and effort from `argus/model-policy.json`. The
+`· value` after a Codex model is `model_reasoning_effort`. Argus Codex dispatch
+still fails closed without a verified native hard turn cap; these rows document
+configuration, not a successful live engagement.
 
 ### Hephaestus — delivery (22)
 
@@ -192,35 +203,41 @@ Every agent runs on an **Anthropic** model under Claude Code and on a **mapped O
 
 | Name | Slug | Role | Claude (Anthropic) | Codex (OpenAI) |
 |------|------|------|------|------|
-| Odysseus | `odysseus` | Team Lead & Orchestrator (entry) | opus | sol · xhigh |
-| Kalchas | `kalchas` | System Analyst (recon) | opus | sol · xhigh |
-| Metis | `metis` | Test Strategist | opus | sol · xhigh |
-| Minos | `minos` | Bug Triage / QA Lead | opus | sol · xhigh |
-| Kleio | `kleio` | QA Reporter | opus | sol · xhigh |
-| Theseus | `theseus` | API test-path analyst | opus | sol · xhigh |
-| Penelope | `penelope` | UI test-path analyst | opus | sol · xhigh |
-| Pistis | `pistis` | Consumer-driven contract analyst (Pact) | opus | sol · xhigh |
-| Atalanta | `atalanta` | API / data-integrity hunter | opus | sol · xhigh |
-| Proteus | `proteus` | Multi-protocol API hunter (GraphQL/gRPC/WS/async) | opus | sol · xhigh |
-| Orion | `orion` | UI functional hunter | opus | sol · xhigh |
-| Lynceus | `lynceus` | UI presentation / i18n hunter | opus | sol · xhigh |
-| Ariadne | `ariadne` | Deep-journey / business-rule hunter | opus | sol · xhigh |
-| Hermes | `hermes` | Performance hunter (structural oracles) | opus | sol · xhigh |
-| Tyche | `tyche` | Resilience / chaos hunter (fault injection) | opus | sol · xhigh |
-| Perseus | `perseus` | Security hunter (STRIDE/OWASP) | opus | sol · xhigh |
-| Antigone | `antigone` | Accessibility hunter (WCAG 2.2 AA) | opus | sol · xhigh |
-| Charon | `charon` | Database hunter *(gated: DB access)* | opus | sol · xhigh |
-| Tiresias | `tiresias` | White-box source analyst *(gated: source)* | opus | sol · xhigh |
-| Atlas | `atlas` | Automation Architect (harness, run-tests.sh) | opus | sol · xhigh |
-| Aristarchus | `aristarchus` | Automation code reviewer (runs LAST) | opus | sol · xhigh |
-| Asklepios | `asklepios` | Test-suite sanitation / deflaking (brownfield) | opus | sol · xhigh |
-| Talos | `talos` | API regression automation | opus | sol · xhigh |
-| Daidalos | `daidalos` | UI E2E + a11y automation | opus | sol · xhigh |
-| Aegis | `aegis` | Security regression automation | opus | sol · xhigh |
-| Nike | `nike` | Perf regression automation | opus | sol · xhigh |
-| Mnemosyne | `mnemosyne` | DB invariants automation *(gated)* | opus | sol · xhigh |
+| Odysseus | `odysseus` | Team Lead & Orchestrator (entry) | claude-opus-5-5 · max | gpt-6-sol · xhigh |
+| Kalchas | `kalchas` | System Analyst (recon) | claude-opus-5-5 · high | gpt-6-sol · high |
+| Metis | `metis` | Test Strategist | claude-opus-5-5 · max | gpt-6-sol · xhigh |
+| Minos | `minos` | Bug Triage / QA Lead | claude-opus-5-5 · max | gpt-6-sol · xhigh |
+| Kleio | `kleio` | QA Reporter | claude-opus-5-5 · high | gpt-6-sol · high |
+| Theseus | `theseus` | API test-path analyst | claude-sonnet-5-5 · medium | gpt-6-sol · medium |
+| Penelope | `penelope` | UI test-path analyst | claude-sonnet-5-5 · medium | gpt-6-sol · medium |
+| Pistis | `pistis` | Consumer-driven contract analyst (Pact) | claude-sonnet-5-5 · medium | gpt-6-sol · medium |
+| Atalanta | `atalanta` | API / data-integrity hunter | claude-sonnet-5-5 · high | gpt-6-sol · high |
+| Proteus | `proteus` | Multi-protocol API hunter (GraphQL/gRPC/WS/async) | claude-sonnet-5-5 · high | gpt-6-sol · high |
+| Orion | `orion` | UI functional hunter | claude-sonnet-5-5 · high | gpt-6-sol · high |
+| Lynceus | `lynceus` | UI presentation / i18n hunter | claude-sonnet-5-5 · high | gpt-6-sol · high |
+| Ariadne | `ariadne` | Deep-journey / business-rule hunter | claude-opus-5-5 · high | gpt-6-sol · high |
+| Hermes | `hermes` | Performance hunter (structural oracles) | claude-sonnet-5-5 · high | gpt-6-sol · high |
+| Tyche | `tyche` | Resilience / chaos hunter (fault injection) | claude-opus-5-5 · high | gpt-6-sol · high |
+| Perseus | `perseus` | Security hunter (STRIDE/OWASP) | claude-opus-5-5 · high | gpt-6-sol · high |
+| Antigone | `antigone` | Accessibility hunter (WCAG 2.2 AA) | claude-sonnet-5-5 · high | gpt-6-sol · high |
+| Charon | `charon` | Database hunter *(gated: DB access)* | claude-sonnet-5-5 · high | gpt-6-sol · high |
+| Tiresias | `tiresias` | White-box source analyst *(gated: source)* | claude-opus-5-5 · high | gpt-6-sol · high |
+| Atlas | `atlas` | Automation Architect (harness, run-tests.sh) | claude-opus-5-5 · high | gpt-6-sol · high |
+| Aristarchus | `aristarchus` | Automation code reviewer (runs LAST) | claude-opus-5-5 · max | gpt-6-sol · xhigh |
+| Asklepios | `asklepios` | Test-suite sanitation / deflaking (brownfield) | claude-sonnet-5-5 · high | gpt-6-sol · high |
+| Talos | `talos` | API regression automation | claude-sonnet-5-5 · medium | gpt-6-sol · medium |
+| Daidalos | `daidalos` | UI E2E + a11y automation | claude-sonnet-5-5 · medium | gpt-6-sol · medium |
+| Aegis | `aegis` | Security regression automation | claude-sonnet-5-5 · medium | gpt-6-sol · medium |
+| Nike | `nike` | Perf regression automation | claude-sonnet-5-5 · high | gpt-6-sol · high |
+| Mnemosyne | `mnemosyne` | DB invariants automation *(gated)* | claude-sonnet-5-5 · medium | gpt-6-sol · medium |
 
-**Tiers:** 27 opus · 0 sonnet · 0 haiku full roles.
+**Tiers:** 11 opus · 16 sonnet · 0 haiku full roles.
+
+The approved allocation and its rationale are recorded in
+[`MODEL-EFFICIENCY-PROPOSAL.md`](argus/MODEL-EFFICIENCY-PROPOSAL.md). Comparative
+discovery-quality and cost evaluation remains pending; configuration parity does
+not establish equal model effectiveness. Claude effort escalation and Codex
+dispatch retain their existing capability checks.
 
 ## Preflight and escalation to Codex
 
@@ -281,7 +298,7 @@ A second, **separate**, **permanent** QA team (**27 agents**) you point at any t
 
 **Cross-cutting / deep journey (5):** **Ariadne** — deep lifecycle & business-rule journey hunter · **Atlas** — Automation Architect, owner of the SINGLE aggregating `run-tests.sh` + the shared oracle helpers · **Aristarchus** — Code Reviewer of the automation, runs **LAST** (determinism, oracle-honesty, blocklist) · **Tiresias** — White-box Source Analyst *(gated: source access)*, code→surface leads to the lanes · **Asklepios** — Test-Suite Sanitation / deflaking, heals a sick existing suite (brownfield Mode D), fixes flakiness at the source.
 
-Current Argus QA policy: **27 opus / 0 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.
+Current Argus QA policy: **11 opus / 16 sonnet / 0 haiku full roles**. The generated [model policy](argus/MODEL-POLICY.md) is the single cross-runtime view of native models, effort, maximum turns, escalation, fallback, downgrade guards, telemetry, and benchmark evidence. Worker prompts contain no opposite-runtime model narrative; the role-variant generator resolves each runtime from that policy. Colors by role type (cyan=core, red=hunter, green=automation, yellow=path-analyst, purple=cross) remain in `argus/COLOR-SCHEME.md`.
 
 **Separation:** a separate lead (Odysseus = the Argus QA hub), baked-in QA doctrine (modes/deliverables/paths/rules), a separate `argus/` directory. **Collaboration:** the crew resolves within its own lanes (it has dedicated UI/API/Perf/DB/Sec/a11y) — the main team is pulled in only for a real gap and only via Odysseus→Marcus (e.g. Cassius=deep security, Maximus/Fabricius=wiring in the framework, Seneca=strategy sanity). **The hard rule baked into everyone:** NEVER modify the application under test.
 

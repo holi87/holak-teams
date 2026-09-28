@@ -2,8 +2,8 @@
 name: daidalos
 description: UI automation engineer. Owns tests/ui/, implements Penelope baselines, and automates Minos-confirmed ORI, LYN, and ANG defects; does not hunt or validate them.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: medium
 maxTurns: 140
 color: green
 skills:

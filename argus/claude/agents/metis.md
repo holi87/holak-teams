@@ -2,7 +2,7 @@
 name: metis
 description: Test strategist. Owns TEST-STRATEGY and ORACLES from Kalchas inventory; plans risk-weighted coverage but does not execute tests, validate defects, or report final outcomes.
 tools: Read, Grep, Glob, Bash, Write, Edit
-model: opus
+model: claude-opus-5-5
 effort: max
 maxTurns: 80
 color: cyan

@@ -74,7 +74,7 @@ Never hand-edit a generated file. Edit its source, then regenerate:
 | Assets declared in `argus/runtime-assets.source.json` (`argus/bin/`, `argus/runtime/`, `argus/schemas/`, `argus/shared-skills/`, `argus/policies/`, `argus/orchestration-plan.json`, contracts, templates) | `scripts/sync-argus-runtime-assets.mjs --write` | matching paths under `argus/claude/` (`argus/claude/bin/argus-launch`, `argus/claude/lib/`, `argus/claude/references/`, …) |
 | `argus/framework-template-common/` (shared runner kit, gates, solution skeletons) | `scripts/sync-argus-runtime-assets.mjs --write` | the common files inside `argus/framework-template/`, `argus/framework-template-java/`, `argus/framework-template-python/`, and `argus/claude/templates/` |
 | `argus/raci.json` | `node scripts/sync-argus-raci.mjs --write` | `argus/RACI-CONTRACT.md`, roster block in `argus/README.md` |
-| `argus/model-policy.json` | `node scripts/sync-argus-model-policy.mjs --write` | `argus/MODEL-POLICY.md` |
+| `argus/model-policy.json` | `node scripts/sync-argus-model-policy.mjs --write` | `argus/MODEL-POLICY.md`, model rows/counts in `README.md` and `agents-roster.html` |
 | `argus/technique-catalogs/*.json` | `node scripts/sync-argus-technique-bundle.mjs --write` | `argus/technique-catalogs.bundle.b64` |
 | `hephaestus/claude/agents/<slug>.md` | `scripts/sync-hephaestus-codex-variants.mjs --write` | `hephaestus/codex/*` |
 
@@ -100,11 +100,12 @@ Never hand-edit a generated file. Edit its source, then regenerate:
   Charon, Lynceus, Metis, Orion, Perseus, and Proteus load hash-bound catalogs lazily after
   the surface inventory; unknown or ambiguous `techniqueScopes` get the complete catalog.
   Register every catalog in `argus/capabilities/capability-matrix.json`.
-- **Models** (`argus/model-policy.json`) — 27 frontier roles (Claude `opus` / max, Codex
-  `sol` / `xhigh`), 0 standard; a standard role needs a justified `baseline.standardAllowlist`
-  entry, and no complete role may use Haiku/Luna. Specialists get 80–200 turns; the
-  controller gets 400, the last 30 reserved for canonical merges and Kleio. Frontier
-  auto-continuation ships on. Codex dispatch fails closed: its CLI has no native turn cap.
+- **Models** (`argus/model-policy.json`) — 11 frontier / 16 standard roles; per-role
+  `executionProfiles` separate model/effort from judgment obligations. Claude: 4 Opus/max,
+  7 Opus/high, 9 Sonnet/high, 7 Sonnet/medium; Codex: 4 Sol/xhigh, 16 Sol/high, 7 Sol/medium.
+  Standard roles need justified allowlist entries and at most one upward escalation; no full role uses Haiku/Luna.
+  Specialists get 80–200 turns, the controller 400 with 30 reserved for closeout. Frontier
+  auto-continuation stays on; Codex and effort-changing Claude escalation remain fail-closed.
 - **Preflight** (report v3) — writes `<artifact-root>/ai_agents_internal/` before any
   target probe. Roles get `not-selected`, `ready`, `degraded`, `conditional`, `deferred`,
   `skipped`, or `blocked`. `ready`, `degraded`, and `conditional` are sealed; a
@@ -147,10 +148,9 @@ Never hand-edit a generated file. Edit its source, then regenerate:
 ## Rosters
 
 - **Hephaestus** — `hephaestus/README.md` (22 agents: BA / dev / management / QA, leader `marcus`).
-- **Argus** — `argus/README.md` (27 agents: core, surface×mode hunter/automation/path-analyst
-  lanes, resilience, consumer contract, and suite sanitation; leader `odysseus`).
-- Codex mapping for both teams: Claude `opus` → `sol` + `xhigh`, `sonnet` → `terra` +
-  `medium`, `haiku` → `luna` + `medium` (Hephaestus only).
+- **Argus** — `argus/README.md` (27 agents: core, surface×mode lanes, resilience, contracts and suite sanitation; leader `odysseus`).
+- Hephaestus maps `opus` → `sol`/`xhigh`, `sonnet` → `terra`/`medium`, `haiku` → `luna`/`medium`.
+- Argus pins Opus 5.5, Sonnet 5.5 and GPT-6 Sol IDs per execution profile; Astra/high is escalation-only.
 
 ---
 

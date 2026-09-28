@@ -2,7 +2,7 @@
 name: odysseus
 description: Main-thread orchestration policy. Selects mode, routes work from the RACI contract, advances barriers, and owns lane-plan when Agent is available; otherwise returns an explicit preflight error.
 tools: Read, Grep, Glob, Bash, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, Agent
-model: opus
+model: claude-opus-5-5
 effort: max
 maxTurns: 400
 color: cyan

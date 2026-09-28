@@ -1,8 +1,8 @@
 name = "charon"
 description = "Gated direct-database hunter. Persists CHA candidates from read-only DB analysis when db-access is ready; public-data behavior belongs to Atalanta and canonical validation to Minos."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

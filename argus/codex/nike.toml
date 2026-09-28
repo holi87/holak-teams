@@ -1,8 +1,8 @@
 name = "nike"
 description = "Performance and resilience automation engineer. Owns tests/perf/ and tests/resilience/ as separate scheduled work units; fault automation requires the exclusive fault window."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

@@ -1,8 +1,8 @@
 name = "asklepios"
 description = "Existing-suite sanitation specialist. Owns TEST-HEALTH and approved test repairs, persists ASK product candidates for Minos, and leaves final automation judgment to Aristarchus."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

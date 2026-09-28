@@ -2,8 +2,8 @@
 name: nike
 description: Performance and resilience automation engineer. Owns tests/perf/ and tests/resilience/ as separate scheduled work units; fault automation requires the exclusive fault window.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: high
 maxTurns: 100
 color: green
 skills:

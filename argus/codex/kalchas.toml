@@ -1,8 +1,8 @@
 name = "kalchas"
 description = "Recon analyst. Maps target surfaces, roles, states, and access gates and owns surface-inventory; does not hunt, validate, or persist defects."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

@@ -4,6 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyEssentialLanePolicy, derivePhasePlan, projectOrchestrationPlan, validateOrchestrationPlan } from '../argus/runtime/orchestration-plan.mjs';
+import { roleModelConfig, validateModelPolicy } from '../argus/runtime/model-policy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const plan = readJson('argus/orchestration-plan.json');
@@ -150,10 +151,10 @@ assert(planSchemaConst === plan.$schema && planReferences.some(({ source }) => s
 for (const { source, reference } of planReferences) {
   assert(reference === planSchemaConst, `${source} names ${reference}, but the plan schema accepts only ${planSchemaConst}`);
 }
-assert(plan.deepHunt?.tier === 'frontier' && plan.deepHunt.maxPasses === 3
+assert(plan.deepHunt?.modelSelection === 'role-execution-profile' && plan.deepHunt.tier === undefined && plan.deepHunt.maxPasses === 3
   && plan.deepHunt.continueWhen === 'new-confirmed-defects'
   && sameSet(plan.deepHunt.roles, deepHuntRoles) && sameSet(plan.deepHunt.modes, ['A', 'B']),
-  'deep hunt is not a bounded three-pass frontier loop over the 11 hunters in Modes A and B');
+  'deep hunt is not a bounded three-pass loop preserving the 11 hunter role profiles in Modes A and B');
 assert(plan.deepHunt.brief.length >= 12
   && [/suspected/u, /bounced/u, /WHITEBOX-LEADS/u].every((pattern) => plan.deepHunt.brief.some((line) => pattern.test(line))),
   'deep-hunt brief must route suspected defects, bounced candidates and open WHITEBOX-LEADS rows');
@@ -162,9 +163,28 @@ assert(plan.deepHunt.brief.length >= 12
 // cannot become a contract-only pass again.
 assert(plan.deepHunt.roles.includes('ariadne') && plan.deepHunt.roles.includes('tyche'),
   'deep hunt dropped the invariant and resilience lanes');
+assert(validateModelPolicy(modelPolicy).length === 0, 'deep hunt requires the reviewed role model policy');
+const criticalDeepHunters = new Set(['ariadne', 'perseus', 'tiresias', 'tyche']);
+const effortRank = { low: 0, medium: 1, high: 2, xhigh: 3, max: 4 };
 for (const slug of plan.deepHunt.roles) {
-  assert(modelPolicy.roles.find((role) => role.slug === slug)?.tier === 'frontier',
-    `deep-hunt role ${slug} must use the frontier model tier`);
+  const claude = roleModelConfig(modelPolicy, slug, 'claude');
+  const codex = roleModelConfig(modelPolicy, slug, 'codex');
+  assert(effortRank[claude.effort] >= effortRank.high && effortRank[codex.effort] >= effortRank.high,
+    `deep-hunt role ${slug} must retain at least high reasoning effort in both runtimes`);
+  const critical = criticalDeepHunters.has(slug);
+  const expectedTier = critical ? 'frontier' : 'standard';
+  assert(claude.tier === expectedTier && codex.tier === expectedTier &&
+    claude.model === (critical ? 'claude-opus-5-5' : 'claude-sonnet-5-5') && codex.model === 'gpt-6-sol',
+    `deep-hunt role ${slug} lost its reviewed responsibility floor or silently changed its baseline model`);
+}
+for (const mutation of [
+  (document) => { document.deepHunt.modelSelection = 'frontier'; },
+  (document) => { delete document.deepHunt.modelSelection; document.deepHunt.tier = 'frontier'; },
+]) {
+  const invalid = structuredClone(plan);
+  mutation(invalid);
+  assert(validateOrchestrationPlan(invalid, matrix, raci).length > 0,
+    'deep hunt accepted an implicit blanket upgrade instead of the role execution profile contract');
 }
 assert(plan.huntingBrief.some((line) => /Tiresias TIR lead/u.test(line))
   && plan.huntingBrief.some((line) => /never a precondition/u.test(line)),
@@ -212,7 +232,8 @@ for (const [mode, expectedCount] of Object.entries(expectedModeCounts)) {
   assert(projected.omitted.length === 0, `mode ${mode}: complete projection unexpectedly omitted roles`);
   if (plan.deepHunt.modes.includes(mode)) {
     assert(projected.deepHunt
-      && projected.deepHunt.tier === plan.deepHunt.tier
+      && projected.deepHunt.modelSelection === plan.deepHunt.modelSelection
+      && projected.deepHunt.tier === undefined
       && projected.deepHunt.maxPasses === plan.deepHunt.maxPasses
       && projected.deepHunt.continueWhen === plan.deepHunt.continueWhen
       && sameSet(projected.deepHunt.roles, plan.deepHunt.roles)

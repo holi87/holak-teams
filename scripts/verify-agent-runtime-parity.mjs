@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { roleModelConfig } from '../argus/runtime/model-policy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const mapping = {
@@ -12,6 +13,7 @@ const mapping = {
   sonnet: { model: 'terra', effort: 'medium' },
   haiku: { model: 'luna', effort: 'medium' },
 };
+const argusModelPolicy = JSON.parse(readFileSync(join(ROOT, 'argus/model-policy.json'), 'utf8'));
 const expectedCounts = { hephaestus: 22, argus: 27 };
 const ARGUS_PROVENANCE_FIELDS = Object.freeze([
   'schema',
@@ -77,7 +79,11 @@ for (const team of Object.keys(expectedCounts)) {
     const tomlRaw = readFileSync(join(codexRoot, `${slug}.toml`), 'utf8');
     const markdownRaw = readFileSync(join(codexRoot, `${slug}.md`), 'utf8');
     const codex = parseCodexToml(tomlRaw);
-    const expected = mapping[claude.model];
+    const expected = team === 'argus' ? roleModelConfig(argusModelPolicy, slug, 'codex') : mapping[claude.model];
+    if (team === 'argus') {
+      const expectedClaude = roleModelConfig(argusModelPolicy, slug, 'claude');
+      assert(claude.model === expectedClaude.model && claude.effort === expectedClaude.effort && claude.maxTurns === expectedClaude.maxTurns, `${team}/${slug}: native Claude execution profile drift`);
+    }
     assert(expected, `${team}/${slug}: unsupported Claude model ${claude.model}`);
     assert(codex.name === slug, `${team}/${slug}: Codex name mismatch`);
     assert(codex.description === claude.description, `${team}/${slug}: description drift`);
@@ -131,13 +137,19 @@ for (const team of Object.keys(expectedCounts)) {
         assert(codex.instructions.includes(marker), `${team}/${slug}: missing ${marker}`);
       }
     }
-    const readmeRow = new RegExp(`^\\|[^\\n]*\\| \`${escapeRegex(slug)}\` \\|[^\\n]*\\| ${claude.model} \\| ${expected.model} · ${expected.effort} \\|$`, 'm');
+    const claudeLabel = team === 'argus' ? `${claude.model} · ${claude.effort}` : claude.model;
+    const readmeRow = new RegExp(`^\\|[^\\n]*\\| \`${escapeRegex(slug)}\` \\|[^\\n]*\\| ${escapeRegex(claudeLabel)} \\| ${escapeRegex(expected.model)} · ${expected.effort} \\|$`, 'm');
     assert(readmeRow.test(readme), `${team}/${slug}: README model roster row is missing or stale`);
     const display = titleCase(slug);
-    const htmlRow = new RegExp(`<tr><td class="name">${display}</td>[^\\n]*<span class="model m-${claude.model}">${claude.model}</span>`);
+    const family = (model) => model.match(/(?:^|-)(opus|sonnet|haiku|sol|terra|luna)(?:-|$)/)?.[1];
+    const claudeFamily = family(claude.model);
+    const codexFamily = family(expected.model);
+    const htmlLabel = team === 'argus' ? `${claudeFamily} · ${claude.effort}` : claude.model;
+    const htmlTitle = team === 'argus' ? ` title="${claude.model}"` : '';
+    const htmlRow = new RegExp(`<tr><td class="name">${display}</td>[^\\n]*<span class="model m-${claudeFamily}"${htmlTitle}>${htmlLabel}</span>`);
     assert(htmlRow.test(roster), `${team}/${slug}: HTML roster model is missing or stale`);
-    totals[claude.model] += 1;
-    totals[expected.model] += 1;
+    totals[claudeFamily] += 1;
+    totals[codexFamily] += 1;
   }
 }
 
@@ -148,7 +160,7 @@ console.log(`PASS  Generated configuration parity: 49 Claude agents = 49 Codex p
 function parseClaude(raw) {
   const parsed = parseMarkdown(raw);
   const scalar = Object.fromEntries([...parsed.frontmatter.matchAll(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.+)$/gm)].map((match) => [match[1], match[2].trim()]));
-  return { description: scalar.description, model: scalar.model, tools: scalar.tools.split(',').map((tool) => tool.trim()) };
+  return { description: scalar.description, model: scalar.model, effort: scalar.effort, maxTurns: Number(scalar.maxTurns), tools: scalar.tools.split(',').map((tool) => tool.trim()) };
 }
 
 function parseCodexToml(raw) {

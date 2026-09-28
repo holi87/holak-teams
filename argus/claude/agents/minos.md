@@ -2,7 +2,7 @@
 name: minos
 description: Defect authority. Independently validates, deduplicates, ranks, and persists canonical bugs, BUG-LEDGER, and WHITEBOX-LEADS; does not discover candidates or implement regression tests.
 tools: Read, Grep, Glob, Bash, Write, Edit
-model: opus
+model: claude-opus-5-5
 effort: max
 maxTurns: 200
 color: cyan

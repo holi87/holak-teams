@@ -1,23 +1,24 @@
 # Claude and Codex generated-configuration parity
 
-This report records the full-roster audit completed on 2026-07-12. The authoritative
-regression command is:
+This document describes the Argus 5.0.1 generated-configuration contract. Current
+validation evidence comes from the release gate, not from the model allocation
+alone. The authoritative regression command is:
 
 ```bash
 scripts/smoke-agent-runtime-parity.sh
 ```
 
-## Scope and result
+## Scope
 
-The audit compared every Claude role definition with its generated Codex TOML and
-Markdown companion. Hephaestus companions remain readable role copies; Argus companions
-are compact non-runtime provenance stubs:
+The gate compares every Claude role definition with its generated Codex TOML and
+Markdown companion. Hephaestus companions remain readable role copies; Argus
+companions are compact non-runtime provenance stubs. Expected inventory:
 
-| Team | Claude roles | Codex TOML | Codex Markdown | Result |
-|---|---:|---:|---:|---|
-| Hephaestus | 22 | 22 | 22 | aligned |
-| Argus | 27 | 27 | 27 | aligned |
-| Total | 49 | 49 | 49 | aligned |
+| Team | Claude roles | Codex TOML | Codex Markdown |
+|---|---:|---:|---:|
+| Hephaestus | 22 | 22 | 22 |
+| Argus | 27 | 27 | 27 |
+| Total | 49 | 49 | 49 |
 
 For each role, configuration validation covers the slug, description, complete TOML role
 instructions, canonical-source path and SHA-256, sandbox mode, artifact-language contract,
@@ -33,24 +34,22 @@ must be supplied by the parent session. A missing requirement returns `CAPABILIT
 
 ## Model mapping
 
-| Claude tier | Claude roles | Codex model | Codex roles | Reasoning effort |
-|---|---:|---|---:|---|
-| `opus` | 17 | `sol` | 17 | `xhigh` |
-| `sonnet` | 29 | `terra` | 29 | `medium` |
-| `haiku` | 3 | `luna` | 3 | `medium` |
+| Team | Claude model / effort | Roles | Codex model / effort |
+|---|---|---:|---|
+| Argus | `claude-opus-5-5` / `max` | 4 | `gpt-6-sol` / `xhigh` |
+| Argus | `claude-opus-5-5` / `high` | 7 | `gpt-6-sol` / `high` |
+| Argus | `claude-sonnet-5-5` / `high` | 9 | `gpt-6-sol` / `high` |
+| Argus | `claude-sonnet-5-5` / `medium` | 7 | `gpt-6-sol` / `medium` |
+| Hephaestus | `opus` / inherited | 7 | `sol` / `xhigh` |
+| Hephaestus | `sonnet` / inherited | 12 | `terra` / `medium` |
+| Hephaestus | `haiku` / inherited | 3 | `luna` / `medium` |
 
-No Codex role uses an Anthropic model identifier. No Claude/Codex model or effort mismatch
-was found. The generator now makes the mapping executable rather than documentation-only.
+Argus has 11 frontier and 16 standard roles. Its execution profiles select models
+and effort independently of quality responsibilities; Hephaestus retains its
+existing mapping. `gpt-6-astra` / `high` is an Argus escalation profile, not a 28th
+role. No full Argus role uses Haiku/Luna, and no Codex role uses an Anthropic ID.
 
-## Findings and remediation
-
-The role bodies and model assignments were already semantically aligned at audit start.
-The material drift was in Hephaestus maintenance metadata: 21 Codex companions referenced
-removed pre-flattening paths such as `claude/dev/`, `claude/QA/`, `claude/ba/`, or
-`claude/management/`. Hephaestus also lacked a deterministic generation gate, so future
-Claude edits could silently leave Codex stale.
-
-Remediation:
+## Generated checks and validation limits
 
 - `scripts/sync-hephaestus-codex-variants.mjs --write` now generates all 22 Codex pairs
   from the flat Claude sources and records valid source paths plus SHA-256 values.
@@ -63,9 +62,17 @@ Remediation:
 - The release gate loads both Claude plugins with `claude plugin validate --strict` and
   all 49 TOML files with an isolated native `codex doctor` config load.
 
-The native checks prove that the plugin manifests and TOML configuration parse and load
-without warnings. They do not execute representative engagements and therefore do not
-prove tool availability, delegation, packaged-asset access, or equivalent target outcomes.
+Passing native checks establishes that the plugin manifests and TOML configuration
+parse and load. It does not establish effective live model selection, delegation,
+packaged-asset access, or equivalent target outcomes. Argus Codex dispatch remains
+`CAPABILITY_DRIFT` without a verified native hard turn cap. Claude model-only
+Sonnet/high to Opus/high escalation must preserve generated effort and the turn cap
+with signed launcher proof of pinned aliases. Effort-changing routes
+remain blocked. Configuring Astra does not unlock either missing capability.
+
+The 5.0.1 allocation has no completed comparative quality/cost evaluation. Historical
+synthetic marker checks are not evidence of discovery-quality equivalence; the
+discovery baseline remains pending.
 
 Runtime API names remain intentionally different. Claude tool frontmatter is provenance
 for Codex; Codex uses equivalent tools actually supplied by its runtime and reports a

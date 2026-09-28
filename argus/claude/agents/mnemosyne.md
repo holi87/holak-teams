@@ -2,8 +2,8 @@
 name: mnemosyne
 description: Gated database automation engineer. Owns tests/db/ for confirmed DB invariants when db-access is ready; Charon discovers and Minos validates defects.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: medium
 maxTurns: 100
 color: green
 skills:

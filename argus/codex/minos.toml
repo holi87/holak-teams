@@ -1,6 +1,6 @@
 name = "minos"
 description = "Defect authority. Independently validates, deduplicates, ranks, and persists canonical bugs, BUG-LEDGER, and WHITEBOX-LEADS; does not discover candidates or implement regression tests."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 

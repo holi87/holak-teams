@@ -2,8 +2,8 @@
 name: kleio
 description: Final reporter. Owns evidence, coverage result, final summary, README, findings, implementation report, and traceability; reports Minos and Atlas outcomes without re-validating them.
 tools: Read, Grep, Glob, Bash, Write, Edit
-model: opus
-effort: max
+model: claude-opus-5-5
+effort: high
 maxTurns: 120
 color: cyan
 skills:

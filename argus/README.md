@@ -302,12 +302,23 @@ The ownership source of truth is `raci.json`, rendered as `RACI-CONTRACT.md`. Us
 transitions. The sole role-variant generator renders all 27 prompt descriptions and contract blocks from this source. The RACI sync gate validates ownership, roster, and transition consistency.
 
 The model source of truth is `model-policy.json`, rendered as
-[`MODEL-POLICY.md`](MODEL-POLICY.md). It defines 27 frontier and 0 standard roles (a
-standard role needs a justified `baseline.standardAllowlist` entry), native runtime models
-and effort, maximum turns (80 to 200 per specialist, 400 for Odysseus with a 30-turn
-closeout reserve), upward-only or fail-closed fallback with bounded frontier
-auto-continuation, and dynamic escalation signals. No full role may use the mechanical
-Haiku/Luna tier.
+[`MODEL-POLICY.md`](MODEL-POLICY.md). Version 5.0.1 assigns 11 frontier and 16
+standard roles, each standard role with a justified `baseline.standardAllowlist`
+entry. Per-role `executionProfiles` select explicit models and effort independently
+of judgment obligations: Claude uses 4 Opus 5.5/max, 7 Opus 5.5/high, 9 Sonnet 5.5/high
+and 7 Sonnet 5.5/medium roles; Codex uses 4 GPT-6 Sol/xhigh, 16 Sol/high and 7 Sol/medium
+roles. GPT-6 Astra/high is a bounded escalation profile, never a default full role.
+Specialists retain 80 to 200 turns and Odysseus 400 with a 30-turn closeout reserve.
+Upward-only or fail-closed fallback, bounded frontier auto-continuation, evidence
+gates and dynamic escalation signals remain enforced. No full role may use Haiku/Luna.
+Standard roles have at most one upward escalation per dispatch; they cannot
+renew their turn budget through repeated escalation.
+Codex dispatch still fails closed without a verified native hard turn cap.
+Claude model-only Sonnet/high to Opus/high escalation preserves effort and the turn
+cap with signed launcher proof of pinned model aliases; routes that
+change effort remain blocked.
+The [approved allocation rationale](MODEL-EFFICIENCY-PROPOSAL.md) records the pending
+quality/cost evaluation; this release claims no measured improvement.
 `argus-assets model route` resolves dispatches and `argus-assets model telemetry` records
 only sanitized operational fields: schema/timestamp; event/decision and adapter bindings;
 engagement, dispatch, attempt, agent, and runtime identifiers; tier, model, effort, turn cap,

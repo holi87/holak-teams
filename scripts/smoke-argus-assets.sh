@@ -136,7 +136,7 @@ done < <(cd "$PLUGIN/templates/common" && find . -type f -print | sed 's#^./##' 
 jq -e '.assets[] | select(.id == "coverage-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits coverage contract"
 jq -e '.assets[] | select(.id == "raci-contract")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits RACI contract"
 jq -e '.assets[] | select(.id == "raci-matrix")' "$PLUGIN/runtime-assets.json" >/dev/null || fail "plugin runtime manifest omits RACI matrix"
-jq -e '.hooks.PreToolUse[] | select(.matcher == "Write|Edit|MultiEdit|Bash")' "$PLUGIN/hooks/hooks.json" >/dev/null || fail "plugin hook does not cover direct and shell writes"
+jq -e '.hooks.PreToolUse[] | select((.matcher | split("|") | sort) == (["Write", "Edit", "MultiEdit", "Bash", "Agent"] | sort))' "$PLUGIN/hooks/hooks.json" >/dev/null || fail "plugin hook does not cover direct writes, shell writes, and model dispatch"
 
 cp -R "$PLUGIN" "$STATIC_WORK/tampered-plugin"
 jq '.schemaVersion = 999 | .unknownAssetReferences = [{assetId:"ghost"}]' \

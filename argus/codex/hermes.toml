@@ -1,8 +1,8 @@
 name = "hermes"
 description = "Performance hunter. Owns PERF-REPORT and persists HER candidates from structural and characterized latency evidence; Minos validates and Nike automates."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

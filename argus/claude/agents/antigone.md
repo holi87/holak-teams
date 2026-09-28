@@ -2,8 +2,8 @@
 name: antigone
 description: Accessibility hunter. Discovers WCAG candidates and persists ANG candidate reports; Minos validates, deduplicates, and promotes canonical defects, while Daidalos owns automation.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: high
 maxTurns: 140
 color: red
 skills:

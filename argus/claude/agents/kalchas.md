@@ -2,8 +2,8 @@
 name: kalchas
 description: Recon analyst. Maps target surfaces, roles, states, and access gates and owns surface-inventory; does not hunt, validate, or persist defects.
 tools: Read, Grep, Glob, Bash, Write, WebFetch, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot
-model: opus
-effort: max
+model: claude-opus-5-5
+effort: high
 maxTurns: 120
 color: cyan
 skills:

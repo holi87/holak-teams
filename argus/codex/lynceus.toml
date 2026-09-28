@@ -1,8 +1,8 @@
 name = "lynceus"
 description = "UI presentation hunter. Persists LYN candidates for layout, format, locale, and rendering; functional behavior belongs to Orion, accessibility to Antigone, and validation to Minos."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

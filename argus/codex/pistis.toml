@@ -1,8 +1,8 @@
 name = "pistis"
 description = "Gated consumer-contract analyst. Owns contract path specifications for confirmed multi-service targets; Proteus or Atalanta discovers defects, Minos validates, and Talos automates."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "medium"
 
 developer_instructions = '''
 # Runtime capability delta

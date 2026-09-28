@@ -12,7 +12,7 @@
   },
   "deepHunt": {
     "modes": ["A", "B"],
-    "tier": "frontier",
+    "modelSelection": "role-execution-profile",
     "maxPasses": 3,
     "continueWhen": "new-confirmed-defects",
     "roles": ["antigone", "ariadne", "atalanta", "charon", "hermes", "lynceus", "orion", "perseus", "proteus", "tiresias", "tyche"],

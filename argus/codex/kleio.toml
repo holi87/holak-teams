@@ -1,8 +1,8 @@
 name = "kleio"
 description = "Final reporter. Owns evidence, coverage result, final summary, README, findings, implementation report, and traceability; reports Minos and Atlas outcomes without re-validating them."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

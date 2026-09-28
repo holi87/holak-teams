@@ -2,8 +2,8 @@
 name: tyche
 description: Authorized resilience hunter. Owns RESILIENCE-REPORT and persists TYC candidates from reversible fault evidence; Minos validates and Nike automates under the exclusive fault window.
 tools: Read, Grep, Glob, Bash, Write
-model: opus
-effort: max
+model: claude-opus-5-5
+effort: high
 maxTurns: 160
 color: red
 skills:

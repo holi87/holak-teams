@@ -46,7 +46,8 @@ PLUGIN_ROOT="$(ls -d "$HOME"/.claude/plugins/cache/holak-teams/argus/* | sort -V
 "$PLUGIN_ROOT/bin/argus-launch" doctor --browser
 ```
 
-`doctor` checks the reviewed Claude 2.x turn-cap contract, confirms that Claude reports a
+`doctor` requires [Claude Code 2.1.284 or newer](https://code.claude.com/docs/en/model-config)
+within 2.x, checks the native turn-cap contract and confirms a
 login inside the launch's isolated config (see "Claude credentials"), and runs the OS
 sandbox behavior probes. `--browser` then runs `argus-launch probe-browser`, which needs no
 Claude CLI: it resolves a host Playwright package (`--module <absolute-dir>`, else `npm root -g`, then the
@@ -105,6 +106,8 @@ key; the launcher, controller, workers, and their sandbox must not. A signer bui
 Argus 4 must be updated first: 5.0 authorizations and receipts require `maxTurns: 400` and
 `sandboxPolicy: os-native-target-readonly@3`, and a 5.0 request carries the signed
 `operatorKeyId` field, which a strict signer must accept.
+For 5.0.1, signer policies must also accept the pinned `claude-opus-5-5` model ID
+instead of requiring the older `opus` alias.
 
 ```bash
 "$PLUGIN_ROOT/bin/argus-assets" model payload \
@@ -122,8 +125,9 @@ mv "$OPERATOR_ROOT/qa-001.authorization.json.tmp" \
 rm -f payload.txt signature.bin
 ```
 
-The launcher binds Odysseus to Claude `opus`, maximum effort, and the native 400-turn cap;
-the controller reserves the last 30 turns for canonical merges and the final report.
+The 5.0.1 launcher binds Odysseus to `claude-opus-5-5`, maximum effort and the native
+400-turn cap; the controller reserves the last 30 turns for canonical merges and
+the final report.
 It supports local paths and normalized HTTP(S) URLs, requires target and artifact roots to
 be physically disjoint, disables session persistence, starts from an environment allowlist,
 and uses `sandbox-exec` on macOS or Bubblewrap on Linux. Claude runs headless with
@@ -131,8 +135,9 @@ and uses `sandbox-exec` on macOS or Bubblewrap on Linux. Claude runs headless wi
 agents declare, so workers can write and run commands without a prompt. Permissions are never
 bypassed: the packaged write guard and the sandbox still enforce every call from any workspace.
 Unattested launches export `ARGUS_LAUNCH_ARTIFACT_ROOT` to retain that guard binding. Only the
-alias-free artifact root is writable; Claude config and temporary files stay inside it. If the reviewed Claude 2.x
-turn-cap contract or OS sandbox is unavailable, launch stops.
+alias-free artifact root is writable; Claude config and temporary files stay inside it.
+If Claude Code is older than 2.1.284, outside the reviewed 2.x line, or lacks the
+native turn-cap contract or OS sandbox, launch stops.
 
 The sandbox policy is `os-native-target-readonly@3`. It adds to @2 only the
 `RootDomainUserClient` IOKit user client and the `org.chromium.*` mach names that headless
@@ -313,7 +318,28 @@ cp hephaestus/codex/*.toml argus/codex/*.toml ~/.codex/agents/
 
 Only `*.toml` files are runtime configurations. Matching Hephaestus Markdown is a readable companion; Argus Markdown is provenance only.
 
-The Argus Codex roster preserves the reviewed mapping (`sol`/`xhigh` for frontier roles, which today are all 27, and `terra`/`medium` for any standard role), but full Argus dispatch is intentionally unavailable today. The installed Codex CLI can bind model and reasoning effort but exposes no native hard turn cap. Argus therefore reports `CAPABILITY_DRIFT`; a signed claim or approximate wrapper counter cannot unlock it. The TOMLs remain configuration-parity artifacts for a future native runtime capability.
+The Argus 5.0.1 Codex roster pins `gpt-6-sol`: four roles use `xhigh`, sixteen use
+`high`, and seven use `medium`. `gpt-6-astra`/`high` is reserved for bounded
+escalation; it is not a default full-role model. See the generated
+[model policy](argus/MODEL-POLICY.md) for every assignment.
+
+Full Argus Codex dispatch remains intentionally unavailable: the declared runtime
+can bind model and reasoning effort but has no verified native hard turn cap.
+Argus therefore reports `CAPABILITY_DRIFT`; a signed claim or approximate wrapper
+counter cannot unlock it. The TOMLs remain configuration-parity artifacts until
+that enforcement exists. Astra configuration does not bypass this restriction.
+
+Claude role baselines pin `claude-opus-5-5` and `claude-sonnet-5-5` with per-role
+effort; family aliases resolve to those IDs, without automatic family-version selection.
+The launcher sets `switchModelsOnFlag: false` to preserve provider refusals instead
+of silently substituting another model.
+Model-only Sonnet/high to Opus/high escalation preserves the role's effort and
+turn cap and requires signed launcher proof of pinned model aliases; unattested
+engagements cannot use that model override.
+Standard roles may escalate upward at most once per dispatch; this cannot renew
+their turn budget indefinitely. Routes that change effort remain fail-closed.
+Configuration loading alone proves neither effective live model selection nor
+a successful escalation.
 
 Verify the expected global count:
 

@@ -2,8 +2,8 @@
 name: atalanta
 description: REST API hunter. Persists ATA candidates for API and public-data behavior; non-REST events belong to Proteus, canonical validation to Minos, and automation to Talos.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: high
 maxTurns: 160
 color: red
 skills:

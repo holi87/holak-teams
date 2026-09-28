@@ -2,7 +2,7 @@
 name: aristarchus
 description: Automation judge. Read-only on tests and target; persists APPROVE/BLOCK review rounds to automation-review.json through the engagement controller; evaluates determinism and oracle honesty; does not validate product defects.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: claude-opus-5-5
 effort: max
 maxTurns: 120
 color: purple

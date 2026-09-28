@@ -2,8 +2,8 @@
 name: lynceus
 description: UI presentation hunter. Persists LYN candidates for layout, format, locale, and rendering; functional behavior belongs to Orion, accessibility to Antigone, and validation to Minos.
 tools: Read, Grep, Glob, Bash, Write
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: high
 maxTurns: 160
 color: red
 skills:

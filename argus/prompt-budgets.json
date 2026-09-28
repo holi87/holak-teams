@@ -2,10 +2,10 @@
   "$schema": "./schemas/prompt-budgets.schema.json",
   "schemaVersion": 2,
   "approvedCorpus": {
-    "sha256": "3ae042b3d37814bad9a313a0debc384f0a04afaf99a6c0aff6b079827d202426",
+    "sha256": "68bf2c552c54b6babbd423a632fdbf9f0a9763c1327730192b33595e4ddcfc0a",
     "words": 82695,
-    "effectiveWords": 149400,
-    "codexEstimatedTokens": 268851,
+    "effectiveWords": 149376,
+    "codexEstimatedTokens": 268946,
     "agents": {
       "aegis": 2430,
       "antigone": 3536,
@@ -36,17 +36,17 @@
       "tyche": 3779
     },
     "profiles": {
-      "orchestration-core": 2395,
+      "orchestration-core": 2371,
       "qa-browser": 364,
       "qa-core": 1847,
       "qa-coverage-reporting": 393,
       "qa-framework-runner": 798
     },
-    "releaseVersion": "5.0.0",
-    "approvedFor": "5.0.0 — defect discovery release",
+    "releaseVersion": "5.0.1",
+    "approvedFor": "Argus 5.0.1 approved Opus 5.5, Sonnet 5.5 and GPT-6 role profiles with authenticated native dispatch binding",
     "benchmark": {
       "status": "pending",
-      "reason": "No adjudicated discovery comparison was run before release; next release must provide one or re-approve explicitly"
+      "reason": "Owner-approved model allocation and dispatch contract for 5.0.1; paired real-model discovery quality and cost evaluation has not been recorded."
     }
   },
   "nonRegression": {

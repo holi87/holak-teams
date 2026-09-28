@@ -1,6 +1,6 @@
 name = "aristarchus"
 description = "Automation judge. Read-only on tests and target; persists APPROVE/BLOCK review rounds to automation-review.json through the engagement controller; evaluates determinism and oracle honesty; does not validate product defects."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "read-only"
 model_reasoning_effort = "xhigh"
 

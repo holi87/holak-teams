@@ -22,6 +22,12 @@ ASSETS="$RUNTIME_ROOT/bin/argus-assets"
 # native-launch-receipt schemas, and the cap argus-assets signs into launch requests;
 # scripts/smoke-argus-launcher.sh fails on any drift between these sites.
 readonly CONTROLLER_MAX_TURNS=400
+# Agent accepts family aliases, so bind those aliases to reviewed exact models in
+# the cleared child environment. These are launcher-owned, never host passthrough.
+readonly CLAUDE_OPUS_MODEL=claude-opus-5-5
+readonly CLAUDE_SONNET_MODEL=claude-sonnet-5-5
+# Headless flagged requests must retain the refusal instead of silently changing
+# the selected model; --settings pins switchModelsOnFlag=false in both launches.
 # Headless permission posture. Claude runs with --permission-mode dontAsk and grants exactly
 # these tools without a prompt: the union of the tools the packaged agents declare, which
 # scripts/smoke-argus-launcher.sh recomputes from agents/*.md and fails on any drift. Every
@@ -392,16 +398,19 @@ run_controller() {
 }
 
 claude_supports_native_turn_cap() {
-  local executable="$1" identity version major minor
+  local executable="$1" identity version major minor patch
   identity="$($executable --version 2>/dev/null || true)"
   version="${identity%% *}"
   [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
   major="${version%%.*}"
   minor="${version#*.}"
   minor="${minor%%.*}"
+  patch="${version##*.}"
   # The reviewed 2.1+ family carries the native cap/error markers. A new major
   # is blocked until its machine identity and behavior are reviewed.
   [ "$major" -eq 2 ] && [ "$minor" -ge 1 ] || return 1
+  # Sonnet 5.5 and the reviewed Agent model override require this minimum version.
+  [ "$minor" -gt 1 ] || [ "$patch" -ge 284 ] || return 1
   command -v strings >/dev/null 2>&1 || return 1
   strings "$executable" 2>/dev/null | awk '
     index($0, "--max-turns") { option = 1 }
@@ -956,9 +965,9 @@ if $unattested; then
   if [ "$authorization_source" != preflight ]; then
     prompt="$prompt authorizationSource=$authorization_source targetEnvironment=$authorization_manifest_environment authorizationSha256=$authorization_sha256"
   fi
-  command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS" --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+  command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS" --settings '{"switchModelsOnFlag":false}' --max-turns "$CONTROLLER_MAX_TURNS" --model claude-opus-5-5 --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
   if $dry_run; then
-    printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@3 environment=argus-launch-unattested@1 attestation=UNATTESTED browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s%s\n' \
+    printf 'ARGUS_LAUNCH runtime=claude model=claude-opus-5-5 effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s sandbox=os-native-target-readonly@3 environment=argus-launch-unattested@1 attestation=UNATTESTED browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s%s\n' \
       "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$browser_provisioning" \
       "$authorization_source" "${authorization_manifest_environment:-none}" "${launch_features_csv:-none}" "$usage_report_suffix"
     exit 0
@@ -968,6 +977,8 @@ if $unattested; then
     "PATH=${PATH:-/usr/bin:/bin}"
     "TMPDIR=$artifact_root/ai_agents_internal/tmp"
     "CLAUDE_CONFIG_DIR=$artifact_root/ai_agents_internal/claude-config"
+    "ANTHROPIC_DEFAULT_OPUS_MODEL=$CLAUDE_OPUS_MODEL"
+    "ANTHROPIC_DEFAULT_SONNET_MODEL=$CLAUDE_SONNET_MODEL"
     "ARGUS_LAUNCH_UNATTESTED=1"
     # With no receipt, this names the engagement to the write guard from any workspace.
     "ARGUS_LAUNCH_ARTIFACT_ROOT=$artifact_root"
@@ -1025,14 +1036,14 @@ launch_payload="$(jq -cn \
   --argjson operatorAuthorization "$operator_authorization_json" \
   '{target:$target,"artifact-root":$artifactRoot,mode:$mode,"engagement-id":$engagementId,"launch-authorization":$launchAuthorization,"launch-receipt":$launchReceipt,"trust-store":$trustStore,features:$features,operatorAuthorization:$operatorAuthorization}')"
 prompt="/argus:run authenticatedLaunch=$launch_payload"
-command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS" --max-turns "$CONTROLLER_MAX_TURNS" --model opus --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
+command=("$claude_executable" -p ${output_format_arguments[@]+"${output_format_arguments[@]}"} --no-session-persistence --permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS" --settings '{"switchModelsOnFlag":false}' --max-turns "$CONTROLLER_MAX_TURNS" --model claude-opus-5-5 --effort max --agent argus:odysseus --plugin-dir "$RUNTIME_ROOT" "$prompt")
 
 if $dry_run; then
   rm -f "$capability_file"
   capability_file=''
   rmdir "$sandbox_probe_dir"
   sandbox_probe_dir=''
-  printf 'ARGUS_LAUNCH runtime=claude model=opus effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist@1 browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s%s\n' \
+  printf 'ARGUS_LAUNCH runtime=claude model=claude-opus-5-5 effort=max maxTurns=%s agent=argus:odysseus mode=%s targetKind=%s target=%s workspace=%s artifactRoot=%s launchId=%s sandbox=os-native-target-readonly@3 environment=argus-launch-allowlist@1 browserProvisioning=%s authorizationSource=%s targetEnvironment=%s features=%s%s\n' \
     "$CONTROLLER_MAX_TURNS" "$mode" "$target_kind" "$target" "$workspace" "$artifact_root" "$(jq -r .launchId "$receipt")" "$browser_provisioning" \
     "$authorization_source" "${authorization_manifest_environment:-none}" "${launch_features_csv:-none}" "$usage_report_suffix"
   exit 0
@@ -1047,6 +1058,8 @@ child_env=(
   "PATH=${PATH:-/usr/bin:/bin}"
   "TMPDIR=$artifact_root/ai_agents_internal/tmp"
   "CLAUDE_CONFIG_DIR=$artifact_root/ai_agents_internal/claude-config"
+  "ANTHROPIC_DEFAULT_OPUS_MODEL=$CLAUDE_OPUS_MODEL"
+  "ANTHROPIC_DEFAULT_SONNET_MODEL=$CLAUDE_SONNET_MODEL"
   "ARGUS_MODEL_TRUST_STORE=$trust_store"
   "ARGUS_NATIVE_LAUNCH_AUTHORIZATION=$launch_authorization"
   "ARGUS_NATIVE_LAUNCH_RECEIPT=$receipt"

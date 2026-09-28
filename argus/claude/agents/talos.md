@@ -2,8 +2,8 @@
 name: talos
 description: API automation engineer. Owns tests/api/, implements Theseus and Pistis baselines, and automates Minos-confirmed ATA and PRO defects using Atlas's shared harness.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: medium
 maxTurns: 140
 color: green
 skills:

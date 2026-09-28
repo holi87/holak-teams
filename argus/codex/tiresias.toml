@@ -1,8 +1,8 @@
 name = "tiresias"
 description = "Gated read-only source analyst. Returns TIR candidates and source leads as immutable fragments; Minos validates and persists canonical bug files and WHITEBOX-LEADS."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "read-only"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

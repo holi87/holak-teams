@@ -1,6 +1,6 @@
 name = "metis"
 description = "Test strategist. Owns TEST-STRATEGY and ORACLES from Kalchas inventory; plans risk-weighted coverage but does not execute tests, validate defects, or report final outcomes."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
 model_reasoning_effort = "xhigh"
 
