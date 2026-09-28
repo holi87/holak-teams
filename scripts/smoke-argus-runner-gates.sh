@@ -123,6 +123,22 @@ for declaration in test-lanes.tsv environment.tsv; do
   done
 done
 
+# Inside argus-launch the only writable root is the artifact root, and TMPDIR points into it.
+# BSD mktemp on macOS ignores TMPDIR unless it is given a template (it creates the file in the
+# per-user /var/folders directory, which the sandbox denies), so every temporary file of the kit
+# names its directory. smoke-argus-templates.sh runs the kit inside the launch sandbox itself.
+# shellcheck disable=SC2016 # The patterns and the control quote literal shell source.
+anchored_temporary='^[^:]+:\$\(mktemp (-d )?"\$\{TMPDIR:-/tmp\}/argus\.XXXXXX"$'
+temporary_sites() { grep -Ho '\$(mktemp[^)]*' "$@" | grep -Ev "$anchored_temporary" || true; }
+# shellcheck disable=SC2016
+printf 'x="$(mktemp)" y="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"\n' >"$WORK/bare-temporary.sh"
+[ "$(temporary_sites "$WORK/bare-temporary.sh")" = "$WORK/bare-temporary.sh:\$(mktemp" ] ||
+  fail 'the temporary-file check cannot tell a bare mktemp from an anchored one'
+unanchored="$(temporary_sites "$COMMON/scripts/"*.sh)"
+[ -z "$unanchored" ] || fail "runner kit creates temporary files outside TMPDIR: $unanchored"
+[ "$(grep -o '\$(mktemp' "$COMMON/scripts/"*.sh | wc -l | tr -d ' ')" -ge 12 ] ||
+  fail 'the temporary-file check no longer sees the runner kit temporary files'
+
 # ---------------------------------------------------------------------------------------
 # Lane-plan gate, unit level. The shipped default plan is valid and undecided beyond api/ui.
 UNIT="$WORK/unit"
@@ -970,4 +986,4 @@ prepare "$label" green
 run_case "$label" 0 baseline ARGUS_FAULT_INJECTION=authorized ARGUS_FAULT_INJECTION_GRANT=forged
 called "$label" "env mode=baseline pass=live outcome=$WORK/$label/reports/outcomes.raw.tsv fault=authorized grant="
 
-printf 'PASS  Argus runner gates: lane plan, environment baseline, inventory quarantine, inventory gate, adapter status, defect-evidence passes and evidence gate, contract smoke, and engagement opt-in authorization\n'
+printf 'PASS  Argus runner gates: lane plan, environment baseline, inventory quarantine, inventory gate, adapter status, defect-evidence passes and evidence gate, contract smoke, engagement opt-in authorization, and TMPDIR-anchored temporary files\n'

@@ -130,7 +130,7 @@ fi
 
 [ -f "$expected_bugs" ] || exit 0
 touch "$events"
-facts="$(mktemp)"
+facts="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
 # One fact per line, keyed by bug: the proofs SD-6 defines, and `answered <bug> <pass>` for
 # an event that already fails the run under runner-contract.sh's defect-evidence rules. The
 # pass comes from the SD-2 case-id suffix (.repeat, .cf-correct, .cf, .cf-<tamper>, then an

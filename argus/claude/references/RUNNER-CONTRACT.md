@@ -286,7 +286,8 @@ is valid.
 <mode>`, sources the library, and calls `argus_main "$@"`. Hooks run with errexit
 suspended, report their own failures through `scripts/outcome-event.sh`, and return a
 status; they never `exit`. Any unexpected stop is `wrapper infrastructure fail
-wrapper-command-failed`.
+wrapper-command-failed`. Kit temporary files are created under `${TMPDIR:-/tmp}`, which
+argus-launch points into the artifact root, the only writable root of its sandbox.
 
 The steps run in this order; a denial finishes the run through `scripts/runner-contract.sh`.
 

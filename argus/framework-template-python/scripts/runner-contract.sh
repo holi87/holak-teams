@@ -31,7 +31,7 @@ temporary=""
 empty_selection=0
 if [ ! -s "$events" ]; then
   if [ "$runner_exit" -ne 0 ]; then
-    temporary="$(mktemp)"
+    temporary="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
     events="$temporary"
     printf 'runner\tinfrastructure\tfail\tfalse\tn/a\t-\tunclassified-runner-failure\n' >"$events"
   elif [ "$mode" = candidate-regression ]; then
@@ -46,7 +46,7 @@ fi
 product=0 automation=0 infrastructure=0 skip=0 policy=0 expected_red=0
 product_violation=0 automation_violation=0 infrastructure_violation=0 skip_violation=0 policy_violation=0
 event_count=0 missing_expected=0
-seen_bugs="$(mktemp)"
+seen_bugs="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
 trap 'rm -f "$seen_bugs"' EXIT
 
 if [ "$contract_error" -eq 0 ]; then

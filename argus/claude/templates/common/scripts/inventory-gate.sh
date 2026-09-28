@@ -114,7 +114,7 @@ if ! inventory_usable; then
   emit test-inventory automation fail false n/a - test-inventory-invalid
   exit 1
 fi
-scratch="$(mktemp)"
+scratch="$(mktemp "${TMPDIR:-/tmp}/argus.XXXXXX")"
 
 if [ "$action" = executed ]; then
   touch "$events"

@@ -515,6 +515,57 @@ for runtime in typescript java python; do
   test -d "$WORK/$runtime/reports/evidence" || fail "$runtime runner omitted the shared evidence root"
 done
 
+# Inside argus-launch every runner runs in the launch OS sandbox, whose only writable root is the
+# artifact root, with TMPDIR inside it. Each clean-room scaffold reruns its contract-smoke
+# baseline through the packaged launcher's own sandbox_exec with the scaffold as the artifact
+# root. A kit temporary file outside TMPDIR (BSD mktemp without a template on macOS) stops the
+# run without a result. The real Node directory leads PATH, as in the discovery replay, so a
+# version-manager shim never needs to write outside the sandbox.
+launcher_sandbox="$(awk '/^escape_sandbox_value\(\) \{$/ { copy = 1 } /^sandbox_probe\(\) \{$/ { exit } copy' "$ROOT/argus/claude/bin/argus-launch")"
+grep -Fxq 'sandbox_exec() {' <<<"$launcher_sandbox" || fail 'the packaged argus-launch has no sandbox_exec'
+sandbox_skip=""
+case "$(uname -s)" in
+  Darwin) command -v sandbox-exec >/dev/null 2>&1 || sandbox_skip='sandbox-exec is unavailable' ;;
+  Linux)
+    if ! command -v bwrap >/dev/null 2>&1; then
+      sandbox_skip='bubblewrap is unavailable'
+    elif ! bwrap --die-with-parent --new-session --unshare-all --share-net --ro-bind / / --dev /dev --proc /proc /bin/true >/dev/null 2>&1; then
+      sandbox_skip='bubblewrap cannot create a sandbox on this host'
+    fi
+    ;;
+  *) sandbox_skip="no argus-launch sandbox on $(uname -s)" ;;
+esac
+if [ -n "$sandbox_skip" ]; then
+  printf 'SKIP  launch-sandbox runners: %s\n' "$sandbox_skip"
+else
+  eval "$launcher_sandbox"
+  node_directory="$(dirname "$(node -p process.execPath)")"
+  for runtime in typescript java python; do
+    scaffold="$(cd "$WORK/$runtime" && pwd -P)"
+    mkdir -p "$scaffold/ai_agents_internal/tmp"
+    # The sandbox is live: a write outside the scaffold fails and leaves nothing behind.
+    # shellcheck disable=SC2016 # The probe command is literal shell for the sandboxed child.
+    if sandbox_exec "$scaffold" "$scaffold" /bin/sh -c 'printf escaped >"$1/sandbox-escape.txt"' sh "$WORK" >/dev/null 2>&1 ||
+      [ -e "$WORK/sandbox-escape.txt" ]; then
+      fail "the argus-launch sandbox let the $runtime scaffold write outside its root"
+    fi
+    rm -f "$scaffold/reports/argus-runner-result.json"
+    set +e
+    sandbox_exec "$scaffold" "$scaffold" env -i "HOME=${HOME:-}" "PATH=$node_directory:$PATH" \
+      "TMPDIR=$scaffold/ai_agents_internal/tmp" ARGUS_CONTRACT_SMOKE=1 PLAYWRIGHT_INSTALL=0 \
+      ./run-tests.sh --mode baseline >"$WORK/$runtime-sandboxed.log" 2>&1
+    sandboxed_code=$?
+    set -e
+    if [ "$sandboxed_code" -ne 0 ] ||
+      ! jq -e '."$schema" == "argus/runner-result@1" and .mode == "baseline" and .status == "pass" and .exitCode == 0' \
+        "$scaffold/reports/argus-runner-result.json" >/dev/null 2>&1; then
+      tail -40 "$WORK/$runtime-sandboxed.log" >&2
+      fail "$runtime contract-smoke baseline failed inside the argus-launch sandbox (exit $sandboxed_code)"
+    fi
+  done
+  printf 'PASS  launch-sandbox runners: the three contract-smoke baselines pass inside argus-launch sandbox_exec\n'
+fi
+
 # A layout may keep a template root (tests, src, src/test/java), nest in one (src/e2e, tests/ui),
 # or swap two: every root is staged before any lands, so no move collides with or sweeps up
 # another. The runner, docs, and TypeScript imports follow each root.
