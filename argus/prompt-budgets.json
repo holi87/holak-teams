@@ -2,10 +2,10 @@
   "$schema": "./schemas/prompt-budgets.schema.json",
   "schemaVersion": 2,
   "approvedCorpus": {
-    "sha256": "2c001955f7681a0c4136a79276f42fe12655bd19c62af641abf54794b69c4fad",
+    "sha256": "3ae042b3d37814bad9a313a0debc384f0a04afaf99a6c0aff6b079827d202426",
     "words": 82695,
-    "effectiveWords": 149397,
-    "codexEstimatedTokens": 268844,
+    "effectiveWords": 149400,
+    "codexEstimatedTokens": 268851,
     "agents": {
       "aegis": 2430,
       "antigone": 3536,
@@ -36,7 +36,7 @@
       "tyche": 3779
     },
     "profiles": {
-      "orchestration-core": 2392,
+      "orchestration-core": 2395,
       "qa-browser": 364,
       "qa-core": 1847,
       "qa-coverage-reporting": 393,

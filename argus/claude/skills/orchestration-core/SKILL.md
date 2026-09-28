@@ -6,7 +6,7 @@ user-invocable: false
 
 # Argus Orchestration Core
 
-Execute unless the user requests planning only; then claim no execution or evidence.
+Execute the engagement unless the user explicitly requests planning only. Then claim no execution or evidence.
 
 ## Sources of authority
 
