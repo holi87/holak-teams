@@ -128,8 +128,8 @@
       "source": "argus/shared-skills/qa-core",
       "destination": "skills/qa-core",
       "files": 1,
-      "bytes": 12585,
-      "sha256": "54f9b1535fc95849cf272e94d9493342f7d174f86e772554e4ebc46b6d7ce2de"
+      "bytes": 12951,
+      "sha256": "085388e64843d37e05d7daf7831974bb98dd016675e5b51e38d854b391fe6a2c"
     },
     {
       "id": "qa-browser-skill",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 63711,
-    "sha256": "283558338d4508d635b350e92840bb9f2691b641729d6607d961f6ea18794959"
+    "bytes": 64015,
+    "sha256": "84ec28fe3767c523658beeb49d633e2927f8fce9bf455f34fd304dcc8927603c"
   }
 }

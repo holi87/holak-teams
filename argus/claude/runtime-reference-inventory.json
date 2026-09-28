@@ -142,6 +142,12 @@
       "consumers": [
         "ariadne"
       ]
+    },
+    {
+      "value": "templates/common/solution/TEST-STRATEGY.md",
+      "consumers": [
+        "metis"
+      ]
     }
   ],
   "targetFileReferences": [
@@ -2654,6 +2660,12 @@
           "kind": "command",
           "mechanism": "validated-template-composition",
           "reference": "typescript:common"
+        },
+        {
+          "consumer": "metis",
+          "kind": "agent",
+          "mechanism": "plugin-path",
+          "reference": "templates/common/solution/TEST-STRATEGY.md"
         },
         {
           "consumer": "minos",
