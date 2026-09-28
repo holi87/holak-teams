@@ -47,10 +47,14 @@ const EXCLUSIVE_WINDOW_DOCTRINE = Object.freeze({
   tyche: ['`argus-assets engagement claim --manifest <manifest> --lane tyche --token <lane-token> --resource fault`', '`engagement release` it after the last verified restore'],
 });
 // The selection record that grants the harness root is the operator's, installed at launch;
-// the harness architect consumes it and never writes it.
+// the harness architect consumes it and never writes it. Inside an engagement the scaffold is
+// staged in Atlas's worker directory and placed at the artifact root: the root configuration
+// the selection grants Atlas, and the runner through its revisioned canonical merge.
 const TEMPLATE_SELECTION_DOCTRINE = Object.freeze({
   atlas: ['which `argus-launch --template-selection` installs and no lane can write; never write, infer, or relocate it',
-    '`argus-assets template scaffold --selection ai_agents_internal/template-selection.json'],
+    '`argus-assets template scaffold --selection <artifact-root>/ai_agents_internal/template-selection.json --destination <artifact-root>/ai_agents_internal/workers/atlas/scaffold`',
+    'the root configuration only you may write', '`--canonical run-tests.sh --input <staged file>`',
+    'Never place the staged `.claude/`, `ai_agents_internal/`'],
 });
 assert(!sourceSkills.get('orchestration-core').includes('persist explicit `template select`'), 'orchestration-core: the controller must consume, never persist, the template selection');
 for (const [profile, fragments] of Object.entries({

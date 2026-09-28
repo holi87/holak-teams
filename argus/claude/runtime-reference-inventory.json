@@ -148,6 +148,7 @@
     {
       "value": "ai_agents_internal/",
       "consumers": [
+        "atlas",
         "kleio"
       ]
     },
@@ -202,6 +203,7 @@
         "ariadne",
         "asklepios",
         "atalanta",
+        "atlas",
         "charon",
         "hermes",
         "kleio",
@@ -339,12 +341,20 @@
       "value": "package.json",
       "consumers": [
         "asklepios",
+        "atlas",
         "tiresias"
+      ]
+    },
+    {
+      "value": "playwright.config.ts",
+      "consumers": [
+        "atlas"
       ]
     },
     {
       "value": "pom.xml",
       "consumers": [
+        "atlas",
         "tiresias"
       ]
     },
@@ -352,12 +362,14 @@
       "value": "pyproject.toml",
       "consumers": [
         "asklepios",
+        "atlas",
         "tiresias"
       ]
     },
     {
       "value": "README.md",
       "consumers": [
+        "atlas",
         "kleio"
       ]
     },
@@ -443,6 +455,12 @@
       "consumers": [
         "asklepios",
         "skill:qa-framework-runner"
+      ]
+    },
+    {
+      "value": "requirements.txt",
+      "consumers": [
+        "atlas"
       ]
     },
     {
@@ -993,6 +1011,12 @@
       "value": "tests/ui/<flow>/",
       "consumers": [
         "metis"
+      ]
+    },
+    {
+      "value": "tsconfig.json",
+      "consumers": [
+        "atlas"
       ]
     }
   ],
