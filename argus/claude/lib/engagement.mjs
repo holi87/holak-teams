@@ -797,7 +797,7 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
   const runnerEvidence = runnerRead && (evidence?.references ?? []).find((ref) => ref.kind === 'runner-result' && ref.sha256 === runnerRead.sha256);
   const runnerUnregistered = Boolean(runnerRead && !runnerEvidence && runnerOwnerAbandoned);
   if (runnerRead && !runnerEvidence && !runnerOwnerAbandoned) {
-    throw new Error(`${FINAL_SUMMARY_RUNNER_RESULT} (sha256 ${runnerRead.sha256}) is not registered runner-result evidence in the merged solution/evidence-reference.json; archive and register it, then merge the registry again`);
+    throw new Error(`${FINAL_SUMMARY_RUNNER_RESULT} (sha256 ${runnerRead.sha256}) is not registered runner-result evidence in the merged solution/evidence-reference.json; a later run replaced the registered result, or none was registered: the run-tests.sh owner reruns full-suite and archives and registers that run, never this one, then the registry is merged again`);
   }
   const runnerResult = runnerEvidence ? parseRunnerResult(runnerRead.content) : null;
   const runner = runnerResult && {

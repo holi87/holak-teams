@@ -3,8 +3,9 @@
 # plan, environment baseline, inventory-based quarantine, the inventory gate (provenance,
 # lanes, disabled regressions, confirmed-bug coverage, focused tests, unexecuted selection),
 # adapter status, the defect-evidence pass loop and evidence gate (live, repeat,
-# counterfactual), contract smoke, and engagement authorization of destructive opt-ins. A
-# replay runtime stands in for the frameworks, so no target, browser, or build tool is needed.
+# counterfactual), contract smoke, the per-root run lock, and engagement authorization of
+# destructive opt-ins. A replay runtime stands in for the frameworks, so no target, browser, or
+# build tool is needed.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,7 +14,8 @@ FIXTURES="$ROOT/scripts/fixtures/argus-runner-gates"
 SCENARIOS="$FIXTURES/scenarios"
 CLI="$ROOT/argus/claude/bin/argus-assets"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+# A run the smoke holds in the background never outlives it.
+trap 'kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
 # The runner reads these; a hermetic smoke never inherits them from its caller.
 unset ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET ARGUS_FAULT_INJECTION ARGUS_FAULT_INJECTION_GRANT \
@@ -22,7 +24,7 @@ unset ARGUS_ENGAGEMENT_MANIFEST ARGUS_ENGAGEMENT_LANE ARGUS_ENVIRONMENT_RESET AR
   ARGUS_AUTHORIZATION_TARGET ARGUS_AUTHORIZATION_SOURCE_TRUST ARGUS_AUTHORIZATION_ACCOUNT \
   ARGUS_AUTHORIZATION_NAMESPACE ARGUS_AUTHORIZATION_MUTATION ARGUS_AUTHORIZATION_RATE \
   ARGUS_AUTHORIZATION_CONCURRENCY ARGUS_AUTHORIZATION_TOTAL_REQUESTS ARGUS_AUTHORIZATION_DURATION \
-  ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY PERF_BUDGET_MS SECURITY_ENABLED DB_URL PLAYWRIGHT_INSTALL
+  ARGUS_RUNNER_MODE ARGUS_EVIDENCE_PASS ARGUS_INVENTORY_ONLY ARGUS_RUN_LOCK_WAIT_SECONDS PERF_BUDGET_MS SECURITY_ENABLED DB_URL PLAYWRIGHT_INSTALL
 
 # Readiness probes the default API_URL/UI_URL; curl answers file:// URLs without a server.
 READY="$WORK/ready.txt"
@@ -69,6 +71,10 @@ run_case() {
   if [ "$code" -ne "$expected" ]; then
     tail -40 "$dir/run.log" >&2
     fail "$label exited $code instead of $expected"
+  fi
+  # Every ending of a run, a denial or a wrapper failure included, releases its run lock.
+  if [ -e "$dir/reports/.argus-run.lock" ] || [ -e "$dir/reports/.argus-run.lock.reclaim" ]; then
+    fail "$label left its run lock behind"
   fi
   if [ -f "$dir/reports/argus-runner-result.json" ]; then
     jq -e --arg mode "$mode" --argjson code "$expected" '.mode == $mode and .exitCode == $code' \
@@ -708,6 +714,169 @@ has_event counterfactual-plan-absent counterfactual.BUG-0001 policy denied false
 not_called counterfactual-plan-absent '^run regression cf-'
 
 # ---------------------------------------------------------------------------------------
+# One run at a time per harness root. Every run rewrites the same result, event file,
+# inventory, and pass evidence, so a run started while another is in progress changes nothing
+# and exits 12 (runner-busy). A held pass keeps a run in progress deterministically.
+RUN_LOCK=reports/.argus-run.lock
+HELD_PID=""
+# start_held <label> <mode> [env...]: starts the harness in the background with its full live
+# pass held, and returns once that pass is running.
+start_held() {
+  local label="$1" mode="$2" dir="$WORK/$1"
+  shift 2
+  : >"$dir/scenario/hold.full.live"
+  (cd "$dir" && env "$@" ARGUS_FAKE_SCENARIO="$dir/scenario" ./run-tests.sh --mode "$mode" >"$dir/held.log" 2>&1) &
+  HELD_PID=$!
+  for _ in $(seq 1 600); do
+    [ ! -e "$dir/scenario/held.full.live" ] || return 0
+    kill -0 "$HELD_PID" 2>/dev/null || { tail -40 "$dir/held.log" >&2; fail "$label ended before its held pass"; }
+    sleep 0.1
+  done
+  fail "$label never reached its held pass"
+}
+# finish_held <label> <expected-exit>: releases the held pass and checks how the run ended.
+finish_held() {
+  local label="$1" expected="$2" dir="$WORK/$1" code
+  : >"$dir/scenario/release.full.live"
+  set +e
+  wait "$HELD_PID"
+  code=$?
+  set -e
+  [ "$code" -eq "$expected" ] || { tail -40 "$dir/held.log" >&2; fail "$label held run exited $code instead of $expected"; }
+  grep -Fq "Argus contract: mode=full-suite result=reports/argus-runner-result.json exit=$expected" "$dir/held.log" ||
+    fail "$label held run did not print its contract summary"
+}
+# Every path and every file checksum below reports/, the lock and the hook log included.
+reports_state() { (cd "$WORK/$1" && find reports -print | LC_ALL=C sort && find reports -type f -exec cksum {} + | LC_ALL=C sort); }
+# busy_case <label> <mode> [env...]: a run that must find the harness root busy and leave it
+# exactly as it was.
+busy_case() {
+  local label="$1" mode="$2" dir="$WORK/$1" before code
+  shift 2
+  before="$(reports_state "$label")"
+  set +e
+  (cd "$dir" && env "$@" ARGUS_FAKE_SCENARIO="$dir/scenario" ./run-tests.sh --mode "$mode" >"$dir/busy.log" 2>&1)
+  code=$?
+  set -e
+  [ "$code" -eq 12 ] || { tail -40 "$dir/busy.log" >&2; fail "$label second run exited $code instead of 12"; }
+  grep -Fq 'ARGUS RUNNER BUSY (runner-busy)' "$dir/busy.log" || fail "$label second run did not report runner-busy"
+  ! grep -Fq 'Argus contract:' "$dir/busy.log" || fail "$label second run claimed a result"
+  [ "$(reports_state "$label")" = "$before" ] || fail "$label second run changed the harness reports"
+}
+
+label=run-lock-busy
+prepare "$label" green
+start_held "$label" full-suite ARGUS_ENGAGEMENT_LANE=atlas
+dir="$WORK/$label"
+[ -f "$dir/$RUN_LOCK/owner" ] || fail "$label holds no run lock while it runs"
+IFS=$'\t' read -r lock_pid lock_start lock_lane lock_mode lock_since <"$dir/$RUN_LOCK/owner"
+kill -0 "$lock_pid" 2>/dev/null || fail "$label run lock names pid $lock_pid, which is not running"
+[ "$lock_lane $lock_mode" = "atlas full-suite" ] || fail "$label run lock names lane $lock_lane and mode $lock_mode"
+[[ "$lock_since" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || fail "$label run lock has no UTC start: $lock_since"
+if command -v ps >/dev/null 2>&1; then
+  [ "$lock_start" = "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$lock_pid" | awk 'NF { $1 = $1; gsub(/ /, "_"); print; exit }')" ] ||
+    fail "$label run lock does not record its process start time: $lock_start"
+fi
+[ ! -e "$dir/reports/argus-runner-result.json" ] || fail "$label wrote a result before its run ended"
+# The second run leaves the first run's events, inventory, pass evidence, and lock alone.
+busy_case "$label" baseline ARGUS_ENGAGEMENT_LANE=daidalos
+grep -Fq "(pid $lock_pid, lane atlas, mode full-suite, since $lock_since)" "$WORK/$label/busy.log" ||
+  fail "$label second run did not name the run that holds the lock"
+started="$(date +%s)"
+busy_case "$label" candidate-regression ARGUS_RUN_LOCK_WAIT_SECONDS=2
+[ $(($(date +%s) - started)) -ge 2 ] || fail "$label second run did not wait ARGUS_RUN_LOCK_WAIT_SECONDS before giving up"
+for value in -1 1.5 010 3601 soon; do
+  before="$(reports_state "$label")"
+  set +e
+  (cd "$dir" && ARGUS_RUN_LOCK_WAIT_SECONDS="$value" ARGUS_FAKE_SCENARIO="$dir/scenario" ./run-tests.sh --mode baseline >"$dir/invalid-wait.log" 2>&1)
+  code=$?
+  set -e
+  [ "$code" -eq 14 ] || fail "$label accepted ARGUS_RUN_LOCK_WAIT_SECONDS=$value (exit $code)"
+  [ "$(reports_state "$label")" = "$before" ] || fail "$label invalid lock wait $value changed the harness reports"
+done
+[ "$(grep -c '^prepare$' "$dir/reports/fake-calls.log")" -eq 1 ] || fail "$label second run reached a native hook"
+finish_held "$label" 0
+[ ! -e "$dir/$RUN_LOCK" ] || fail "$label left its run lock behind"
+# The held run's result is exactly that of an undisturbed full-suite run.
+[ "$(jq -c '[.mode, .exitCode, .deliveryGate, .categories, .events]' "$dir/reports/argus-runner-result.json")" = \
+  "$(jq -c '[.mode, .exitCode, .deliveryGate, .categories, .events]' "$WORK/green-full/reports/argus-runner-result.json")" ] ||
+  fail "$label held run result differs from an undisturbed full-suite run"
+
+# A run that waits for the lock starts only after the holder has ended.
+label=run-lock-wait
+prepare "$label" green
+start_held "$label" full-suite
+dir="$WORK/$label"
+(set +e; cd "$dir" && ARGUS_RUN_LOCK_WAIT_SECONDS=60 ARGUS_FAKE_SCENARIO="$dir/scenario" ./run-tests.sh --mode baseline >"$dir/waiting.log" 2>&1
+  printf '%s\n' "$?" >"$dir/waiting.code") &
+waiting_pid=$!
+sleep 1
+[ "$(grep -c '^prepare$' "$dir/reports/fake-calls.log")" -eq 1 ] || fail "$label waiting run started while the lock was held"
+finish_held "$label" 0
+wait "$waiting_pid"
+[ "$(cat "$dir/waiting.code")" = 0 ] || { tail -40 "$dir/waiting.log" >&2; fail "$label waiting run exited $(cat "$dir/waiting.code") instead of 0"; }
+[ "$(call_order "$label")" = "prepare|verify|inventory only=1|run full live api,ui|collect live|post full-suite|prepare|verify|inventory only=1|run baseline live api,ui|collect live|post baseline|" ] ||
+  fail "$label runs overlapped: $(call_order "$label")"
+result_is "$label" '.mode == "baseline" and .exitCode == 0'
+[ ! -e "$dir/$RUN_LOCK" ] || fail "$label left its run lock behind"
+
+# A lock whose holder is gone is reclaimed: a dead pid, a live pid with another start time (a
+# reused pid), a malformed owner record, and a lock without an owner for over a minute. A
+# younger lock without an owner is still being created, and a reclaim guard younger than a
+# minute belongs to a run that is reclaiming, so both keep the harness busy.
+stale_lock() {
+  local dir="$WORK/$1"
+  mkdir -p "$dir/$RUN_LOCK"
+  if [ "$2" != - ]; then printf '%s\n' "$2" >"$dir/$RUN_LOCK/owner"; fi
+  if [ "${3:-}" = old ]; then touch -t 202001010000 "$dir/$RUN_LOCK"; fi
+}
+sh -c 'exit 0' &
+dead_pid=$!
+wait "$dead_pid"
+dead_record="$(printf '%s\t-\tatlas\tfull-suite\t2026-01-01T00:00:00Z' "$dead_pid")"
+for variant in dead malformed ownerless-old; do
+  label="run-lock-stale-$variant"
+  prepare "$label" green
+  case "$variant" in
+    dead) stale_lock "$label" "$dead_record" ;;
+    malformed) stale_lock "$label" 'not a lock owner record' ;;
+    ownerless-old) stale_lock "$label" - old ;;
+  esac
+  run_case "$label" 0 baseline
+  result_is "$label" '.mode == "baseline" and .exitCode == 0'
+done
+if command -v ps >/dev/null 2>&1; then
+  label=run-lock-stale-reused
+  prepare "$label" green
+  stale_lock "$label" "$(printf '%s\tThu_Jan_1_00:00:00_1970\tatlas\tfull-suite\t2026-01-01T00:00:00Z' "$$")"
+  run_case "$label" 0 baseline
+fi
+label=run-lock-ownerless-new
+prepare "$label" green
+stale_lock "$label" -
+busy_case "$label" baseline
+label=run-lock-guard-new
+prepare "$label" green
+stale_lock "$label" "$dead_record"
+mkdir "$WORK/$label/$RUN_LOCK.reclaim"
+busy_case "$label" baseline
+label=run-lock-guard-old
+prepare "$label" green
+stale_lock "$label" "$dead_record"
+mkdir "$WORK/$label/$RUN_LOCK.reclaim"
+touch -t 202001010000 "$WORK/$label/$RUN_LOCK.reclaim"
+run_case "$label" 0 baseline
+
+# Holding the run lock, a run clears the event lock a killed run left behind, so its own
+# events never wait for it.
+label=stale-event-lock
+prepare "$label" green
+mkdir -p "$WORK/$label/reports/outcomes.raw.tsv.lock"
+started="$(date +%s)"
+run_case "$label" 0 baseline
+[ $(($(date +%s) - started)) -lt 5 ] || fail "$label waited for a stale event lock"
+
+# ---------------------------------------------------------------------------------------
 # Engagement authorization of destructive opt-ins (reset: destructive; fault: chaos). A PATH
 # stub stands in for the packaged CLI and records every call it receives.
 FAKE_BIN="$WORK/fake-bin"
@@ -1028,4 +1197,4 @@ prepare "$label" green
 run_case "$label" 0 baseline
 called "$label" 'env prepare playwright-install=unset'
 
-printf 'PASS  Argus runner gates: lane plan, environment baseline, inventory quarantine, inventory gate, adapter status, defect-evidence passes and evidence gate, contract smoke, engagement opt-in authorization, TMPDIR-anchored temporary files, and the in-engagement browser-download default\n'
+printf 'PASS  Argus runner gates: lane plan, environment baseline, inventory quarantine, inventory gate, adapter status, defect-evidence passes and evidence gate, contract smoke, one run at a time per harness root, engagement opt-in authorization, TMPDIR-anchored temporary files, and the in-engagement browser-download default\n'

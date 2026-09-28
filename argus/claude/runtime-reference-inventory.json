@@ -398,7 +398,8 @@
       "consumers": [
         "aristarchus",
         "atlas",
-        "kleio"
+        "kleio",
+        "skill:qa-framework-runner"
       ]
     },
     {
@@ -487,6 +488,7 @@
         "mnemosyne",
         "nike",
         "skill:qa-core",
+        "skill:qa-framework-runner",
         "talos"
       ]
     },

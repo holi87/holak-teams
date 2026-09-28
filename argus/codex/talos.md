@@ -3,8 +3,8 @@ schema: argus/codex-provenance@1
 slug: talos
 display_name: Talos
 runtime_config: argus/codex/talos.toml
-runtime_config_sha256: eb405dd897e7a844041e596565413d436af1a7f778b40c842ee5011d3ff55a8d
-developer_instructions_sha256: b096684eead58d29b9d475c65bd1d843cc41ea92f2e94f1924457d121c762620
+runtime_config_sha256: ab9e56429a52a777e9ff378bc2131c59919b3e13f9780f126f21cab0123385ee
+developer_instructions_sha256: 3ed9bf58223ada5fd0d67fddb75670f1f305f015843f9a16e19c2f4d15a58718
 canonical_source: argus/roles/talos.md
 canonical_source_sha256: e6842ee3bfed32228b015fc63fee898900f57ab9d10f4de646ed1bc2be8c9979
 model: sol
