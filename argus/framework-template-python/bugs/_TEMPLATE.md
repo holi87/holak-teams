@@ -34,6 +34,8 @@
 <what happened — status code, response body, error>
 
 ## Evidence
+Allocate every EVD ID with `argus-assets engagement id --kind evidence --identity <lane>:<source>` on your active lease. Replay the identity for the same capture; each evidence-reference fragment lists only new references.
+
 One line per registered evidence ID from `solution/evidence-reference.json`:
 - <EVD-NNNN> — <kind: http | har | screenshot | video | dom-snapshot | trace | log | metric | runner-result | text> — <what it shows>
 

@@ -19,6 +19,7 @@ fail() {
 # Exercise canonical runtime state migration and adversarial filesystem cases
 # independently from the packaged CLI wiring checked below.
 node "$ROOT/scripts/smoke-argus-engagement-state.mjs"
+node "$ROOT/scripts/smoke-argus-evidence-ids.mjs"
 
 token_for() {
   jq -r .token "$ALLOCATIONS/$1.json"
@@ -223,6 +224,13 @@ stable_id="$("$CLI" engagement id --manifest "$MANIFEST" --lane minos --token "$
 [ "$stable_id" = "$(cat "$WORK/ids/1")" ] || fail "stable identity did not deduplicate across resume"
 grep -Fxq 'BUG-0001' "$WORK"/ids/* || fail "bug ID sequence did not start at BUG-0001"
 grep -Fxq 'BUG-0024' "$WORK"/ids/* || fail "bug ID sequence did not reach BUG-0024"
+
+# Every active lane uses a namespaced, replay-stable evidence allocator through the guarded CLI.
+first_evidence="$("$CLI" engagement id --manifest "$MANIFEST" --lane hermes --token "$(token_for hermes)" --kind evidence --identity hermes:reports/capture.txt)"
+[ "$first_evidence" = EVD-0001 ] || fail "evidence allocator did not start at EVD-0001"
+[ "$("$CLI" engagement id --manifest "$MANIFEST" --lane hermes --token "$(token_for hermes)" --kind evidence --identity hermes:reports/capture.txt)" = "$first_evidence" ] || fail "evidence identity replay changed its ID"
+[ "$("$CLI" engagement id --manifest "$MANIFEST" --lane tyche --token "$(token_for tyche)" --kind evidence --identity tyche:reports/capture.txt)" = EVD-0002 ] || fail "evidence IDs collided across lanes"
+guard_as argus:hermes Bash "argus-assets engagement id --manifest $MANIFEST --lane hermes --token $(token_for hermes) --kind evidence --identity hermes:reports/capture.txt" allow
 
 # Checkpoints are resumable and idempotent, but sequence/content conflicts fail closed.
 printf '%s\n' '{"completed":["surface-a"],"next":"surface-b"}' >"$WORK/checkpoint-1.json"

@@ -38,8 +38,9 @@ Automation-status tests and coverage observations are owned records: a test belo
 (Atlas, Kleio) may write it, so a foreign record is refused when the fragment is written. A
 later fragment of the same key (a higher write `sequence`) supersedes the earlier record, so a
 lane updates a test status or re-records an observation in a later pass; a key never changes
-owner. Lane-plan and evidence-reference records are immutable: a key repeated across
-fragments fails closed. The canonical arrays are sorted by key so fragment arrival order
+owner. Lane-plan and evidence-reference records are immutable. Lane-plan rejects repeated
+keys; evidence-reference de-duplicates byte-identical record replays, and refuses any conflicting
+record at fragment write with the conflicting fragment path and an allocation recovery command. The canonical arrays are sorted by key so fragment arrival order
 cannot change the resulting bytes.
 
 Bug-ledger, surface-inventory, coverage-result, final-summary, and automation-review
@@ -211,7 +212,7 @@ The release repairs previously permissive validation of the existing proof requi
 
 Critical/Blocker or disputed-oracle findings require either a different executor's independently collected reproduction evidence, or an explicit unavailable limitation. Unavailable independence is reported honestly and does not invent an independent pass. Similar class/entity keys identify related candidates, not proven identical causes. The same requirement applies to an intermittent (occurrences < attempts) or single-attempt (attempts = 1) confirmation: validation rejects its `not-required` independent status.
 
-Hunters submit immutable evidence-reference fragments as they collect proof. Minos validates those digest-bound contributions when merging the ledger; he does not wait for Kleio's later final registry merge. A foreign engagement registry fails the merge; since 5.0 an unresolved, changed, missing, or out-of-boundary evidence file quarantines the rows that cite it (see "Bug ledger v2 in 5.0"). The oracle citation and runtime proof must be archived as redacted evidence inside the boundary; a remote URL alone is not a reproducible proof artifact.
+Every active selected lane allocates evidence IDs with `engagement id --kind evidence --identity <lane>:<source>`; replaying that identity returns the same ID, and different lanes receive distinct IDs. Hunters submit immutable evidence-reference fragments listing only new references as they collect proof. Minos validates those digest-bound contributions when merging the ledger; he does not wait for Kleio's later final registry merge. A foreign engagement registry fails the merge; since 5.0 an unresolved, changed, missing, or out-of-boundary evidence file quarantines the rows that cite it (see "Bug ledger v2 in 5.0"). The oracle citation and runtime proof must be archived as redacted evidence inside the boundary; a remote URL alone is not a reproducible proof artifact.
 
 Never auto-fill historical proof. The 4.9.1 patch kept contract identifiers at their versions because it enforced documented validity requirements; Argus 5 replaces the ledger identity with `argus/bug-ledger@2`, so a 4.x ledger is finished on 4.9.x rather than resumed.
 

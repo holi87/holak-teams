@@ -27,7 +27,7 @@ export const CONTRACT_KINDS = Object.freeze([
 // A collection whose records name an `owner` field holds updatable records: each record belongs
 // to that lane, only that lane (or the canonical's merging owner) may write it, and a later
 // fragment of the same key supersedes the earlier one at merge. Every other collection record is
-// immutable once written, so its key may appear in only one fragment.
+// immutable once written; evidence references alone permit byte-identical record replays.
 const COLLECTION_CONTRACTS = Object.freeze({
   'lane-plan': { field: 'lanes', key: 'lane', label: 'lane' },
   'evidence-reference': { field: 'references', key: 'id', label: 'evidence reference' },
@@ -157,7 +157,7 @@ export function collectionOwnershipErrors(kind, document, writer, canonicalOwner
 // engagement's fragment records), an owned collection supersedes a key record by record: every
 // fragment must respect record ownership, a key keeps one owner, and the record from the highest
 // write sequence is merged. Without writers, or for an immutable collection, a key that appears
-// in two fragments fails closed.
+// in two fragments fails closed, except byte-identical evidence-reference record replays.
 export function mergeCanonicalDocuments(kind, documents, { writers = null, canonicalOwner = null } = {}) {
   if (!Array.isArray(documents) || documents.length === 0) throw new Error(`${kind} merge requires at least one document`);
   const contract = COLLECTION_CONTRACTS[kind];
@@ -176,7 +176,18 @@ export function mergeCanonicalDocuments(kind, documents, { writers = null, canon
     const migrated = migrateCanonicalDocument(kind, document);
     if (migrated.engagementId !== engagementId) throw new Error(`${kind} collection fragments have different engagementId values`);
     if (!supersedes) {
-      records.push(...migrated[contract.field]);
+      for (const record of migrated[contract.field]) {
+        if (kind === 'evidence-reference') {
+          const key = record[contract.key];
+          const serialized = JSON.stringify(record);
+          if (latest.has(key)) {
+            if (latest.get(key) === serialized) continue;
+            throw new Error(`duplicate evidence reference id: ${key}; immutable records differ`);
+          }
+          latest.set(key, serialized);
+        }
+        records.push(record);
+      }
       return;
     }
     const { lane, sequence } = writers[index];
