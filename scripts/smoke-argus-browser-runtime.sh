@@ -189,8 +189,11 @@ mkdir -p "$ENGAGED"
 "$CLI" engagement init --target "$ENGAGED" --artifact-root "$ENGAGED" --mode A --engagement-id browser-runtime-smoke >/dev/null
 CONTROL="$ENGAGED/ai_agents_internal"
 MANIFEST="$CONTROL/engagement.json"
+# The optional second argument names the calling subagent, as Claude Code writes it into the
+# PreToolUse payload: the guard lets only that lane run the hunt driver for its own --agent.
 guard_output() {
-  jq -nc --arg cwd "$ENGAGED" --arg command "$1" '{tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' | "$CLI" guard
+  jq -nc --arg cwd "$ENGAGED" --arg command "$1" --arg agent "${2:-}" '{tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}
+    + (if $agent == "" then {} else {hook_event_name:"PreToolUse",agent_id:("smoke-" + $agent),agent_type:("argus:" + $agent)} end)' | "$CLI" guard
 }
 denial="$(guard_output "argus-assets browser provision --artifact-root $ENGAGED")"
 grep -Fq '"permissionDecision":"deny"' <<<"$denial" && grep -Fq 'browser provisioning is host/operator-only' <<<"$denial" || \
@@ -198,7 +201,9 @@ grep -Fq '"permissionDecision":"deny"' <<<"$denial" && grep -Fq 'browser provisi
 denial="$(guard_output "$CLI browser provision --artifact-root $ENGAGED --package $TGZ --json")"
 grep -Fq 'GUARD-SHELL-AMBIGUOUS' <<<"$denial" || fail "guard did not deny the absolute-path provisioning command: $denial"
 [ -z "$(guard_output 'argus-assets path typescript-template')" ] || fail 'guard denied the read-only template path lookup'
-[ -z "$(guard_output "node $DRIVER --agent kalchas --goto / --snapshot")" ] || fail 'guard denied the in-place managed driver invocation'
+[ -z "$(guard_output "node $DRIVER --agent kalchas --goto / --snapshot" kalchas)" ] || fail 'guard denied the in-place managed driver invocation'
+grep -Fq 'the packaged hunt driver requires an identified calling lane' <<<"$(guard_output "node $DRIVER --agent kalchas --goto / --snapshot")" || \
+  fail 'guard allowed the managed driver for an unidentified caller'
 
 # (d) The managed driver resolves its config, authorization, and Playwright module from the
 # engagement control directory and imports exactly the recorded, digest-verified module.
