@@ -83,8 +83,8 @@
       "source": "argus/TEMPLATE-CONTRACT.md",
       "destination": "references/TEMPLATE-CONTRACT.md",
       "files": 1,
-      "bytes": 15172,
-      "sha256": "222efa339e88fcc3fa7ff67394b1b47b5945cbede50c2a23dc6951bd07731e81"
+      "bytes": 15431,
+      "sha256": "5c02f816fbc753c5f37c05c8713d1083b11bfbc698dabe9d373ebc5c637f5dc4"
     },
     {
       "id": "coverage-contract",

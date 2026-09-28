@@ -545,29 +545,44 @@ function techniqueScopePattern() {
   return new RegExp(`^(?:${roles.join('|')}):[a-z0-9]+(?:-[a-z0-9]+)*$`);
 }
 
+// Detection walks a local directory tree, so a refusal is reported as a FAIL line, never a stack
+// trace. A URL target has no tree: for an engagement against a running stack the operator
+// detects and selects against the (pre-created) artifact root, which the launcher accepts as
+// the selection's targetRoot.
+function detectTemplateTarget(target, command) {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(target)) fail(`${command}: a URL target selects against the artifact root (--target <artifact-root>)`);
+  try { return detectTemplateCapabilities(target); }
+  catch (error) { fail(`${command}: ${error.message}`); }
+}
+
 function templateCommand(args) {
   const [operation, ...rest] = args;
   if (operation === 'detect') {
     const options = parseNamedOptions(rest, new Set(['--target', '--output']));
     requireOptions(options, ['target'], 'template detect');
-    const detected = detectTemplateCapabilities(options.target);
+    const detected = detectTemplateTarget(options.target, 'template detect');
     writeTemplateOutput(detected, options.output ?? '-');
     return 0;
   }
   if (operation === 'select') {
     const options = parseNamedOptions(rest, new Set(['--target', '--runtime', '--package-manager', '--test-root', '--harness-root', '--ci', '--output']));
     requireOptions(options, ['target', 'runtime', 'testRoot', 'harnessRoot', 'output'], 'template select');
-    const capabilities = detectTemplateCapabilities(options.target);
+    const capabilities = detectTemplateTarget(options.target, 'template select');
     const packageManager = options.packageManager ?? resolveDetectedPackageManager(capabilities, options.runtime, templateContract);
-    const selection = selectTemplate({
-      capabilities,
-      contract: templateContract,
-      runtime: options.runtime,
-      packageManager,
-      testRoot: options.testRoot,
-      harnessRoot: options.harnessRoot,
-      ci: options.ci ? options.ci.split(',').map((value) => value.trim()).filter(Boolean) : undefined,
-    });
+    let selection;
+    try {
+      selection = selectTemplate({
+        capabilities,
+        contract: templateContract,
+        runtime: options.runtime,
+        packageManager,
+        testRoot: options.testRoot,
+        harnessRoot: options.harnessRoot,
+        ci: options.ci ? options.ci.split(',').map((value) => value.trim()).filter(Boolean) : undefined,
+      });
+    } catch (error) {
+      fail(`template select: ${error.message}`);
+    }
     writeTemplateOutput(selection, options.output);
     return 0;
   }
@@ -578,7 +593,7 @@ function templateCommand(args) {
     const selectionErrors = validateTemplateSelection(selection, templateContract);
     if (selectionErrors.length) fail(`template scaffold selection invalid: ${selectionErrors.join('; ')}`);
     if (selection.action !== 'build') fail('template scaffold refuses action=adapt; extend the detected suite and its existing runner in place');
-    const current = detectTemplateCapabilities(selection.targetRoot);
+    const current = detectTemplateTarget(selection.targetRoot, 'template scaffold');
     const digest = createHash('sha256').update(stableTemplateJson(current)).digest('hex');
     if (digest !== selection.capabilitiesSha256) fail('target capabilities changed after selection; detect and select again');
     if (selection.unsupported?.length) fail(`template scaffold has unsupported capabilities: ${selection.unsupported.join(', ')}`);
@@ -634,7 +649,7 @@ function operatorTemplateSelection(args, operation) {
   if (!namedRoots.some((root) => physicalPathsEquivalent(root, selection.targetRoot))) {
     fail('operator template selection targetRoot must name the launch target or the artifact root');
   }
-  const capabilities = detectTemplateCapabilities(selection.targetRoot);
+  const capabilities = detectTemplateTarget(selection.targetRoot, command);
   if (createHash('sha256').update(stableTemplateJson(capabilities)).digest('hex') !== selection.capabilitiesSha256) {
     fail('operator template selection is stale: the target capabilities changed after template select; select again');
   }
