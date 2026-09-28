@@ -913,6 +913,17 @@ jq 'del(.writePolicy.selectedTemplateRoots.rootConfigOwners)' "$WORK/selected-ma
 guard_as argus:atlas Write package.json GUARD-TARGET-IMMUTABLE "$SELECTED_ROOT"
 guard_as argus:atlas Write quality/support/config.ts allow "$SELECTED_ROOT"
 cat "$WORK/selected-manifest.json" >"$SELECTED_MANIFEST"
+# A URL target has no target root, and its artifact root receives the same grant.
+URL_ROOT="$WORK/url-selected/artifacts"
+mkdir -p "$URL_ROOT"
+"$CLI" engagement init --target https://shop.example.test --artifact-root "$URL_ROOT" --mode A --engagement-id url-selected >/dev/null
+guard_as argus:atlas Write package.json GUARD-TARGET-IMMUTABLE "$URL_ROOT"
+"$CLI" template select --target "$URL_ROOT" --runtime typescript --package-manager npm \
+  --test-root tests --harness-root harness --output "$WORK/url-selection.json" >/dev/null
+cp "$WORK/url-selection.json" "$URL_ROOT/ai_agents_internal/template-selection.json"
+guard_as argus:atlas Write package.json allow "$URL_ROOT"
+guard_as argus:atlas Write harness/config.ts allow "$URL_ROOT"
+guard_as argus:talos Write playwright.config.ts 'GUARD-OWNED-ARTIFACT: lane-owned playwright.config.ts is written only by atlas, not talos' "$URL_ROOT"
 # Engagement-context scaffold and placement: Atlas scaffolds the selection into its worker
 # staging directory, and the guard admits every staged file Atlas places at the same relative
 # path under the artifact root, except the staged control plane, Claude settings, security
