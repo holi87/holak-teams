@@ -83,6 +83,7 @@ try {
   testConditionalGateResolution();
   testGateUnmetFinalSummary();
   testAbandonedLaneLeavesBarriers();
+  testBudgetStopAbandonsUnallocatedLanes();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
   testRedispatchedHeartbeatWorkUnits();
@@ -938,6 +939,8 @@ function testGateUnmetFinalSummary() {
     },
   });
   assert(JSON.stringify(resolved.lanes) === '{"orion":"gate-unmet","tiresias":"released"}', `unexpected gate-unmet fixture lanes: ${JSON.stringify(resolved.lanes)}`);
+  expectThrowMessage(() => abandonLane(manifest, 'orion', controller.token, 'controller-budget'),
+    'orion was omitted as gate-unmet and holds no barrier', 'budget abandon of a gate-unmet lane');
   mergeFinalSummary(fixture, kleio.token);
   const summary = readSolutionJson(fixture, 'final-summary.json');
   assert(summary.status === 'degraded' && JSON.stringify(summary.statusReasons) === '["gate-unmet:orion"]',
@@ -1021,6 +1024,81 @@ function testAbandonedLaneLeavesBarriers() {
   assert(summary.status === 'degraded' && JSON.stringify(summary.statusReasons) === '["lane-abandoned:charon"]',
     `an abandoned lane was not a named final-summary gap: ${JSON.stringify({ status: summary.status, statusReasons: summary.statusReasons })}`);
   for (const lane of ['hermes', 'kleio', 'minos']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
+  cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
+}
+
+// A controller-budget stop skips a wave whose participants were never allocated. Such a lane
+// can never arrive and has no cleanup to run, so the controller abandons it directly: only with
+// controller-budget, because the other reasons describe a worker that ran. The non-skippable
+// barrier then completes, the lane is never allocated later, and the final summary names it.
+function testBudgetStopAbandonsUnallocatedLanes() {
+  const lanes = ['aegis', 'atlas', 'kleio', 'minos', 'nike', 'odysseus'];
+  const fixture = createFixture('budget-unallocated', lanes);
+  const { manifest } = fixture;
+  const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding('budget-unallocated-controller') });
+  const tokens = {};
+  for (const lane of ['atlas', 'kleio', 'minos']) {
+    tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`budget-unallocated-${lane}`) }).token;
+  }
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'discovery');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'proof');
+  mergeEmptyLedger(fixture, tokens.minos, 'budget-unallocated-ledger');
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  arriveBarrier(manifest, 'minos', tokens.minos, 'deep-proof-1');
+  mergeEmptyLedger(fixture, tokens.minos);
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  skipPhases(manifest, 'odysseus', controller.token, 'controller-budget');
+  assert(getEngagementStatus(manifest).currentPhase === 'automation', 'the budget skip did not reach automation');
+  arriveBarrier(manifest, 'atlas', tokens.atlas, 'automation');
+  expectThrowMessage(() => advanceBarrier(manifest, 'odysseus', controller.token), 'phase automation is waiting for: aegis, nike', 'advance past never-allocated participants');
+
+  const before = getEngagementStatus(manifest).revision;
+  for (const reason of ['worker-failure', 'continuation-exhausted']) {
+    expectThrowMessage(() => abandonLane(manifest, 'aegis', controller.token, reason),
+      'aegis was never allocated; only a controller-budget stop can abandon it', `${reason} abandon of a never-allocated lane`);
+  }
+  expectThrowMessage(() => abandonLane(manifest, 'aegis', tokens.atlas, 'controller-budget'),
+    'aegis controller authority requires the active Odysseus controller token', 'budget abandon on a worker token');
+  assert(getEngagementStatus(manifest).revision === before, 'a refused abandon of a never-allocated lane changed the engagement state');
+
+  const aegis = abandonLane(manifest, 'aegis', controller.token, 'controller-budget');
+  assert(aegis.reason === 'controller-budget' && aegis.phase === 'automation' && JSON.stringify(aegis.barrier.missing) === '["nike"]',
+    `the budget abandon did not release aegis from the automation barrier: ${JSON.stringify(aegis)}`);
+  const nike = abandonLane(manifest, 'nike', controller.token, 'controller-budget');
+  assert(nike.barrier.complete === true && JSON.stringify(nike.barrier.participants) === '["atlas"]',
+    `the budget abandons did not complete the automation barrier: ${JSON.stringify(nike)}`);
+  const status = getEngagementStatus(manifest);
+  assert(status.allocations.aegis === undefined && status.allocations.nike === undefined, 'a budget abandon allocated the lane it abandoned');
+  assertStateSchema(fixture, 'state with never-allocated abandoned lanes');
+  expectThrowMessage(() => abandonLane(manifest, 'aegis', controller.token, 'controller-budget'), 'aegis was already abandoned (controller-budget)', 'second budget abandon');
+  expectThrowMessage(() => allocateWorker(manifest, 'aegis', { controllerToken: controller.token, executionBinding: executionBinding('budget-unallocated-aegis') }),
+    'aegis was abandoned (controller-budget) and cannot be allocated again', 'allocation of a never-allocated abandoned lane');
+
+  // State integrity: only a controller-budget abandonment may leave the lane unallocated.
+  const current = JSON.parse(readFileSync(fixture.statePath, 'utf8'));
+  for (const [label, mutate] of [
+    ['a never-allocated lane abandoned for a worker failure', (state) => { state.abandonedLanes.aegis.reason = 'worker-failure'; }],
+    ['a never-allocated lane abandoned after continuation exhaustion', (state) => { state.abandonedLanes.nike.reason = 'continuation-exhausted'; }],
+  ]) {
+    const tampered = structuredClone(current);
+    mutate(tampered);
+    writeFileSync(fixture.statePath, `${JSON.stringify(tampered, null, 2)}\n`);
+    expectThrow(() => getEngagementStatus(manifest), `state with ${label}`);
+  }
+  writeFileSync(fixture.statePath, `${JSON.stringify(current, null, 2)}\n`);
+  assert(getEngagementStatus(manifest).revision === current.revision, 'restored budget-abandon state was not accepted');
+
+  advanceBarrier(manifest, 'odysseus', controller.token);
+  assert(getEngagementStatus(manifest).currentPhase === 'verification', 'the automation barrier did not advance after the budget abandons');
+  mergeFinalSummary(fixture, tokens.kleio);
+  const summary = readSolutionJson(fixture, 'final-summary.json');
+  assert(summary.status === 'degraded' &&
+    JSON.stringify(summary.statusReasons) === '["deep-hunt-skipped:controller-budget","lane-abandoned:aegis","lane-abandoned:nike"]',
+  `the budget-abandoned lanes were not named final-summary gaps: ${JSON.stringify({ status: summary.status, statusReasons: summary.statusReasons })}`);
+  for (const lane of ['atlas', 'kleio', 'minos']) cleanupWorker(manifest, lane, tokens[lane], 'interrupted');
   cleanupWorker(manifest, 'odysseus', controller.token, 'interrupted');
 }
 

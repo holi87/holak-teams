@@ -43,8 +43,10 @@ const PHASE_KEYS = ['id', 'wave', 'kind', 'pass', 'skippable', 'participants', '
 const PROOF_VALIDATOR = 'minos';
 const SKIP_REASONS = ['converged', 'controller-budget'];
 // A permanently failed or budget-stopped worker lane is abandoned by the controller so the
-// barriers stop waiting for it; the record is exactly these keys.
+// barriers stop waiting for it; the record is exactly these keys. Only a budget stop may
+// abandon a lane that was never allocated, because the other reasons describe a worker that ran.
 const ABANDON_REASONS = ['continuation-exhausted', 'worker-failure', 'controller-budget'];
+const UNALLOCATED_ABANDON_REASON = 'controller-budget';
 const ABANDONABLE_OUTCOMES = ['failure', 'interrupted'];
 const ABANDONED_LANE_KEYS = ['reason', 'phase', 'abandonedAt'];
 const LEDGER_SNAPSHOT_STATUSES = [
@@ -1330,9 +1332,10 @@ export function skipPhases(manifest, lane, token, reason) {
 
 // Abandons a worker lane that can never arrive again, so no barrier deadlocks on it. Only the
 // active Odysseus controller may abandon, only a lane already released with outcome failure or
-// interrupted, and never a lane the runtime itself depends on (see nonAbandonableLanes). The
-// lane then leaves every phase's participants and standby lanes, like a gate-unmet lane, cannot
-// be allocated again, and the final-summary merge names it as lane-abandoned:<lane>.
+// interrupted or, for a controller-budget stop, a lane that was never allocated, and never a
+// lane the runtime itself depends on (see nonAbandonableLanes). The lane then leaves every
+// phase's participants and standby lanes, like a gate-unmet lane, cannot be allocated again,
+// and the final-summary merge names it as lane-abandoned:<lane>.
 export function abandonLane(manifest, lane, controllerToken, reason) {
   requireSelected(manifest, lane);
   if (!ABANDON_REASONS.includes(reason)) throw new Error(`abandon reason must be one of ${ABANDON_REASONS.join(', ')}`);
@@ -1341,9 +1344,12 @@ export function abandonLane(manifest, lane, controllerToken, reason) {
     requireControllerAuthority(manifest, state, lane, controllerToken);
     requireDispatchableState(state, lane);
     if (Object.hasOwn(state.abandonedLanes, lane)) throw new Error(`${lane} was already abandoned (${state.abandonedLanes[lane].reason})`);
+    if (omittedConditionalLanes(state).has(lane)) throw new Error(`${lane} was omitted as gate-unmet and holds no barrier`);
     const allocation = state.allocations[lane];
-    if (allocation?.status !== 'released' || !ABANDONABLE_OUTCOMES.includes(allocation.outcome)) {
-      throw new Error(`${lane} can be abandoned only after its cleanup with outcome failure or interrupted`);
+    if (!abandonableAllocation(allocation, reason)) {
+      throw new Error(allocation
+        ? `${lane} can be abandoned only after its cleanup with outcome failure or interrupted`
+        : `${lane} was never allocated; only a ${UNALLOCATED_ABANDON_REASON} stop can abandon it`);
     }
     state.abandonedLanes[lane] = { reason, phase: state.currentPhase, abandonedAt: new Date().toISOString() };
     return { result: { lane, ...state.abandonedLanes[lane], barrier: barrierStatus(manifest, state, state.currentPhase) }, changed: true };
@@ -2506,9 +2512,16 @@ function validateSkippedPhases(manifest, state, errors) {
   if (Object.hasOwn(skipped, state.currentPhase)) errors.push('currentPhase must not be a skipped phase');
 }
 
+// A lane is abandonable once released with outcome failure or interrupted, or, only for a
+// controller-budget stop, while it has never been allocated.
+function abandonableAllocation(allocation, reason) {
+  if (allocation === undefined) return reason === UNALLOCATED_ABANDON_REASON;
+  return allocation?.status === 'released' && ABANDONABLE_OUTCOMES.includes(allocation.outcome);
+}
+
 // An abandoned lane stays released with the failure or interrupted outcome its abandonment
-// required, is never a lane the runtime depends on, and its record is exactly reason, phase,
-// and abandonedAt.
+// required, or stays unallocated after a controller-budget abandonment, is never a lane the
+// runtime depends on, and its record is exactly reason, phase, and abandonedAt.
 function validateAbandonedLanes(manifest, state, errors) {
   const abandoned = state.abandonedLanes;
   if (!plainObject(abandoned)) {
@@ -2523,9 +2536,10 @@ function validateAbandonedLanes(manifest, state, errors) {
         (Array.isArray(state.dispatchableAgents) && !state.dispatchableAgents.includes(lane))) {
       errors.push(`abandonedLanes.${lane}: lane must be a dispatchable worker other than ${protectedLanes.join(', ')}`);
     }
-    if (allocation?.status !== 'released' || !ABANDONABLE_OUTCOMES.includes(allocation.outcome)) {
-      errors.push(`abandonedLanes.${lane}: lane must stay released with outcome ${ABANDONABLE_OUTCOMES.join(' or ')}`);
+    if (!abandonableAllocation(allocation, record?.reason)) {
+      errors.push(`abandonedLanes.${lane}: lane must stay released with outcome ${ABANDONABLE_OUTCOMES.join(' or ')}, or unallocated after a ${UNALLOCATED_ABANDON_REASON} abandonment`);
     }
+    if (omittedConditionalLanes(state).has(lane)) errors.push(`abandonedLanes.${lane}: a gate-unmet lane holds no barrier and cannot be abandoned`);
     if (!plainObject(record) || Object.keys(record).length !== ABANDONED_LANE_KEYS.length ||
         !ABANDONED_LANE_KEYS.every((key) => Object.hasOwn(record, key)) || !ABANDON_REASONS.includes(record.reason) ||
         !phases.includes(record.phase) || !validDate(record.abandonedAt)) {

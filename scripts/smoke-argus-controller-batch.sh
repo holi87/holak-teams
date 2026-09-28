@@ -470,6 +470,18 @@ refuse 'a second abandon of the same lane' 'metis was already abandoned (worker-
 refuse 'single-lane allocation of an abandoned lane' 'metis was abandoned (worker-failure) and cannot be allocated again' \
   "$CLI" engagement allocate --manifest "$MANIFEST" --lane metis --decision "$(decision_for metis)" --controller-token "$ODYSSEUS"
 [ "$(lane_status metis)" = released ] && [ "$(lane_status atlas)" = released ] || fail 'a refused re-allocation changed a released lane'
+# A budget stop abandons a lane that was never allocated; only controller-budget describes a
+# lane that never ran. A batch naming it is then refused before any lane of the set allocates.
+refuse 'barrier abandon of a never-allocated lane for a worker failure' 'aegis was never allocated; only a controller-budget stop can abandon it' \
+  abandon --lane aegis --controller-token "$ODYSSEUS" --reason worker-failure
+abandon --lane aegis --controller-token "$ODYSSEUS" --reason controller-budget >"$WORK/abandon-unallocated.json" || \
+  fail "a controller-budget abandon of never-allocated aegis was refused: $(cat "$WORK/abandon-unallocated.json")"
+jq -e '.lane == "aegis" and .reason == "controller-budget"' "$WORK/abandon-unallocated.json" >/dev/null || \
+  fail "barrier abandon did not record never-allocated aegis: $(cat "$WORK/abandon-unallocated.json")"
+refuse 'batch allocation naming a never-allocated abandoned lane' 'aegis was abandoned (controller-budget) and cannot be allocated again' \
+  batch_allocate daidalos,aegis "$ODYSSEUS"
+"$CLI" engagement status --manifest "$MANIFEST" | jq -e '(.allocations | has("daidalos") | not) and (.allocations | has("aegis") | not)' >/dev/null || \
+  fail 'a batch refused for an abandoned lane allocated part of its set'
 
 "$CLI" engagement cleanup --manifest "$MANIFEST" --lane odysseus --token "$ODYSSEUS" --outcome interrupted >/dev/null
 refuse 'batch cleanup after the controller was released' 'batch engagement cleanup requires the active Odysseus controller token' \

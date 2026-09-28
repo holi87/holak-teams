@@ -794,6 +794,10 @@ or is stopped by the controller budget would otherwise hold every barrier it sti
 participates in, since failure is never an arrival and a released lane cannot arrive. After
 its `failure` or `interrupted` cleanup, Odysseus runs `engagement barrier abandon --lane
 <slug> --controller-token <token> --reason <continuation-exhausted|worker-failure|controller-budget>`.
+A budget stop that skips a wave before its lanes start abandons each never-allocated
+participant the same way, only with `controller-budget` (the other reasons describe a worker
+that ran); no allocation or cleanup precedes it, and a `gate-unmet` lane holds no barrier and
+is never abandoned.
 State records `abandonedLanes[<lane>]` (`reason`, `phase`, `abandonedAt`); the lane leaves every
 phase's participants and standby lanes like a `gate-unmet` lane, can never be allocated again,
 and the final-summary merge adds `lane-abandoned:<lane>` (`degraded`). Odysseus, Kalchas,
