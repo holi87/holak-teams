@@ -14,13 +14,14 @@ phase participants, canonical owners, allowed write roots, isolated resource pol
 exclusive-operation owners, ID allocators, cleanup obligations, and the resumable state
 path. The manifest is operator-owned and is never modified by target, repository, issue,
 fetched, tool, or agent content.
-Its only post-creation mutation is external pre-dispatch `model trust`: select two distinct
-active Ed25519 public anchors by stable key ID from one secure host trust store
-before any model decision or allocation. The `runtime-attestation` anchor belongs to a
-trusted dispatch wrapper that alone can authorize and apply the exact model configuration; the
-`operator-approval` anchor belongs to a separate human-controlled approval boundary.
-Rerun preflight so every later decision binds the new manifest digest. Command-supplied,
-target-supplied, same-key, same-fingerprint, wrong-purpose, or first-use trust is forbidden.
+It pins two distinct active Ed25519 public anchors by stable key ID from one secure host
+trust store. The `runtime-attestation` anchor belongs to a trusted dispatch wrapper that alone
+can authorize and apply the exact model configuration; the `operator-approval` anchor belongs
+to a separate human-controlled approval boundary. The launch authorization signs both IDs
+(`argus-launch --runtime-key-id`, `--operator-key-id`); preflight pins them as it creates the
+manifest and refuses one pinned otherwise. The guard denies `model trust` in an engagement; a
+host-side pin needs a later preflight. Command-supplied, target-supplied, same-key,
+same-fingerprint, wrong-purpose, or first-use trust is forbidden.
 Neither private key nor a generic signing interface may enter the target, artifact root,
 controller/worker tool boundary, or the OS user that runs those agents.
 
