@@ -227,6 +227,16 @@
       "construct": ["When recon flags an AI or LLM-backed surface, drive prompt injection and jailbreak as a hostile user, attempt system-prompt leakage, and feed model output into a downstream sink"],
       "oracles": ["The model refuses injected instructions, never leaks its system prompt or sensitive data, and its output is neutralised before reaching SQL, HTML, or eval; excessive agency is bounded to the documented scope"],
       "routes": ["security", "api"]
+    },
+    {
+      "id": "PER-T23",
+      "title": "Formula or CSV injection through exported cells",
+      "scope": ["export-generation", "injection"],
+      "techniques": ["abuse-case testing", "negative testing"],
+      "appliesWhen": "surface-present",
+      "construct": ["From a throwaway account store benign formula payloads (arithmetic only, never an external link or command) that begin with =, +, -, @, tab, or carriage return in every user-controlled field that reaches a CSV, spreadsheet, or report export, then generate and download that export"],
+      "oracles": ["Every exported cell that begins with a formula-trigger character is neutralised per the OWASP CSV injection guidance, prefixed so it stays text and quoted, so no spreadsheet evaluates it; a raw formula surviving into the downloaded file is a formula or CSV injection defect, while the export's row set stays Ariadne's journey finding"],
+      "routes": ["security", "api"]
     }
   ]
 }

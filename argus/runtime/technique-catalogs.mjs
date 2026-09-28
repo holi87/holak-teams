@@ -120,13 +120,15 @@ const SEMANTIC_MARKERS = Object.freeze({
   'ARI-T19': ['exactly the permitted rows', 'formula or CSV injection'],
   'ARI-T20': ['within the documented window', 'exactly once per trigger'],
   'ARI-T21': ['legitimate input that makes it fail', 'silently dropped job'],
-  // Perseus markers pin the four security classes this catalog newly owns. They exist so a
+  // Perseus markers pin the five security classes this catalog newly owns. They exist so a
   // later edit cannot quietly soften a class into a generic suggestion: removing the phrase
-  // fails the catalog validator.
+  // fails the catalog validator. PER-T23 repeats ARI-T19's routing phrase, so the export's
+  // security half that Ariadne and Kalchas route here always has a row to land on.
   'PER-T18': ['sniffed content', 'content-sniffing bypass'],
   'PER-T19': ['anti-forgery token', 'persisted query or mutation'],
   'PER-T20': ['validated against an allowlist', '//host redirect'],
   'PER-T21': ['per-object authorization', 'idor on a download endpoint'],
+  'PER-T23': ['formula or CSV injection', 'formula-trigger character', 'no spreadsheet evaluates it'],
   // Antigone's markers pin the success criteria WCAG 2.2 added at levels A and AA, plus
   // Reflow and Text Spacing, which no prompt covered before. Each marker holds the cited
   // criterion and its normative condition, so a row cannot drift into a vaguer check.
