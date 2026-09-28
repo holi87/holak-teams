@@ -395,6 +395,7 @@ def test_idempotent_replay_is_green_on_a_deterministic_stub(http: httpx.Client) 
             send=lambda: http.put(f"{stub.url}/widgets/1", json={"name": "widget"}),
             read=lambda: http.get(f"{stub.url}/widgets/1").json(),
             volatile_fields=["requestId"],
+            require_same_response=True,
         )
     assert result.status == 200
     assert calls["put"] == 2
@@ -407,6 +408,8 @@ def test_idempotent_replay_is_red_on_a_counter_stub(http: httpx.Client) -> None:
         if request["method"] == "PUT" and request["path"] == "/widgets/1":
             counters["version"] += 1
             return {"status": 200, "body": {"id": 1, "version": counters["version"]}}
+        if request["method"] == "GET" and request["path"] == "/widgets/1":
+            return {"status": 200, "body": {"id": 1}}
         if request["method"] == "POST" and request["path"] == "/visits":
             counters["visits"] += 1
             return {"status": 204}
@@ -416,13 +419,56 @@ def test_idempotent_replay_is_red_on_a_counter_stub(http: httpx.Client) -> None:
 
     with running_stub(handler=handler) as stub:
         with pytest.raises(AssertionError, match="changed the body"):
-            idempotent_replay(send=lambda: http.put(f"{stub.url}/widgets/1"))
+            idempotent_replay(
+                send=lambda: http.put(f"{stub.url}/widgets/1"),
+                read=lambda: http.get(f"{stub.url}/widgets/1").json(),
+                require_same_response=True,
+            )
         # Identical responses, but the state keeps counting.
         with pytest.raises(AssertionError, match="changed the state"):
             idempotent_replay(
                 send=lambda: http.post(f"{stub.url}/visits"),
                 read=lambda: http.get(f"{stub.url}/visits").json(),
             )
+
+
+def test_idempotent_replay_compares_responses_only_for_an_explicit_api_contract() -> None:
+    responses = iter([{"status": 200, "body": {"requestId": 1}}, {"status": 200, "body": {"requestId": 2}}])
+    idempotent_replay(send=lambda: next(responses), read=lambda: {"id": 1})
+    responses = iter([{"status": 201, "body": {"id": 1}}, {"status": 200, "body": {"id": 1}}])
+    with pytest.raises(AssertionError, match="changed the status"):
+        idempotent_replay(send=lambda: next(responses), read=lambda: {"id": 1}, require_same_response=True)
+
+
+def test_idempotent_replay_requires_an_independent_effect_oracle_before_sending() -> None:
+    sends = []
+    with pytest.raises(TypeError, match=r"read\(\) is required"):
+        idempotent_replay(send=lambda: sends.append(True) or {"status": 200}, require_same_response=True)
+    assert sends == []
+
+
+@pytest.mark.parametrize("method", ["PUT", "DELETE"])
+def test_idempotent_replay_accepts_response_changes_when_the_effect_is_unchanged(http: httpx.Client, method: str) -> None:
+    state = {"present": method == "DELETE", "sends": 0}
+
+    def handler(request: dict[str, Any]) -> dict[str, Any] | None:
+        if request["method"] == method and request["path"] == "/widgets/1":
+            state["sends"] += 1
+            state["present"] = method == "PUT"
+            if method == "PUT":
+                return {"status": 201 if state["sends"] == 1 else 200, "body": {"action": "created" if state["sends"] == 1 else "replaced"}}
+            return {"status": 204} if state["sends"] == 1 else {"status": 404, "body": {"error": "missing"}}
+        if request["method"] == "GET" and request["path"] == "/widgets/1":
+            return {"status": 200, "body": {"present": state["present"]}}
+        return None
+
+    with running_stub(handler=handler) as stub:
+        result = idempotent_replay(
+            send=lambda: http.request(method, f"{stub.url}/widgets/1"),
+            read=lambda: http.get(f"{stub.url}/widgets/1").json(),
+        )
+    assert result.state == {"present": method == "PUT"}
+    assert state["sends"] == 2
 
 
 def test_replay_with_idempotency_key_is_green_when_the_key_deduplicates_the_create(http: httpx.Client) -> None:

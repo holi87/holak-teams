@@ -16,7 +16,7 @@ import java.util.function.Supplier;
 
 /**
  * Idempotency oracles. A replayed idempotent request (PUT, DELETE, or a POST carrying an
- * idempotency key) must not change the outcome or the state a second time.
+ * idempotency key) must not change the intended effect a second time (RFC 9110 section 9.2.2).
  */
 public final class Replay {
 
@@ -32,28 +32,35 @@ public final class Replay {
     }
 
     /**
-     * Sends the same request twice, sequentially. Both responses must have the same status and
-     * deep-equal bodies once {@code volatileFields} (key names, removed at any depth) are
-     * dropped; with {@code read}, the state read after each send must be equal too. Returns
-     * the first response.
+     * Sends twice and requires equal state from an independent {@code read} oracle.
+     * Responses may differ. Returns the first response; {@code volatileFields} removes
+     * named keys at any depth from state comparisons.
      */
     public static Response idempotentReplay(Supplier<Response> send, Supplier<?> read, String... volatileFields) {
+        return idempotentReplay(send, read, false, volatileFields);
+    }
+
+    /** Opt into response equality only when the API contract requires equal statuses and bodies. */
+    public static Response idempotentReplay(Supplier<Response> send, Supplier<?> read, boolean requireSameResponse, String... volatileFields) {
+        if (read == null) throw new IllegalArgumentException("idempotentReplay: read() is required to verify the intended effect");
         Set<String> ignored = Set.of(volatileFields);
         Response first = send.get();
-        JsonNode stateAfterFirst = read == null ? null : state(read.get(), ignored);
+        JsonNode stateAfterFirst = state(read.get(), ignored);
         Response second = send.get();
-        JsonNode stateAfterSecond = read == null ? null : state(read.get(), ignored);
-        if (first.statusCode() != second.statusCode()) {
-            throw new AssertionError("idempotent replay changed the status from " + first.statusCode() + " to " + second.statusCode()
-                    + "; body excerpt: " + Http.excerpt(second.asString()));
+        JsonNode stateAfterSecond = state(read.get(), ignored);
+        if (requireSameResponse) {
+            if (first.statusCode() != second.statusCode()) {
+                throw new AssertionError("idempotent replay changed the status from " + first.statusCode() + " to " + second.statusCode()
+                        + "; body excerpt: " + Http.excerpt(second.asString()));
+            }
+            JsonNode firstBody = comparable(first.asString(), ignored);
+            JsonNode secondBody = comparable(second.asString(), ignored);
+            if (!firstBody.equals(secondBody)) {
+                throw new AssertionError("idempotent replay changed the body\nfirst:  " + Http.excerpt(firstBody.toString())
+                        + "\nreplay: " + Http.excerpt(secondBody.toString()));
+            }
         }
-        JsonNode firstBody = comparable(first.asString(), ignored);
-        JsonNode secondBody = comparable(second.asString(), ignored);
-        if (!firstBody.equals(secondBody)) {
-            throw new AssertionError("idempotent replay changed the body\nfirst:  " + Http.excerpt(firstBody.toString())
-                    + "\nreplay: " + Http.excerpt(secondBody.toString()));
-        }
-        if (read != null && !stateAfterFirst.equals(stateAfterSecond)) {
+        if (!stateAfterFirst.equals(stateAfterSecond)) {
             throw new AssertionError("idempotent replay changed the state read back\nafter first:  " + Http.excerpt(stateAfterFirst.toString())
                     + "\nafter replay: " + Http.excerpt(stateAfterSecond.toString()));
         }

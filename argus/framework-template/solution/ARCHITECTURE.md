@@ -46,7 +46,7 @@ Every spec imports its oracles from `src/oracles` (`src/oracles/index.ts`); no l
 | 1 | `assertSchema(res, operationId)` | `src/oracles/schema.ts` | the body matches the schema documented for that status; strict by default, so an undocumented field is RED |
 | 2 | `assertSchemaStrict(body, ref)` | `src/oracles/schema.ts` | a body matches a component schema with strict mode forced |
 | 3 | `expectStatus(res, exact)` | `src/oracles/http.ts` | one exact documented status code, never a class |
-| 4 | `idempotentReplay` / `replayWithIdempotencyKey` + `assertRestStatus(res, state)` | `src/oracles/replay.ts`, `src/oracles/http.ts` | a replay changes neither the response nor the state, and one idempotency key makes one effect; the REST-correct code per state (201 + Location, 204 empty, 405 + Allow) |
+| 4 | `idempotentReplay` / `replayWithIdempotencyKey` + `assertRestStatus(res, state)` | `src/oracles/replay.ts`, `src/oracles/http.ts` | a replay preserves the independently read state (response equality is contract opt-in), and one idempotency key makes one effect; the REST-correct code per state (201 + Location, 204 empty, 405 + Allow) |
 | 5 | `softDeleteSweep` | `src/oracles/state.ts` | after the delete: 404 by id, absent from every list, and a deleted user's login answers 401 |
 | 6 | `doubleSubmit` | `src/oracles/concurrency.ts` | two simultaneous submits make exactly the contracted number of effects |
 | 7 | `concurrentRace` | `src/oracles/concurrency.ts` | N simultaneous contenders: no 5xx, successes within capacity, the invariant holds |
