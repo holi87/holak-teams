@@ -801,6 +801,21 @@ run_unattested_case no-login CLAUDE_CODE_OAUTH_TOKEN=
 unattested_status=$?
 set -e
 expect_unattested_refusal no-login "$unattested_status" 'Claude reports no login for the isolated launch CLAUDE_CONFIG_DIR'
+# A CLI build without a JSON `auth status` report fails closed with that reason instead.
+no_status_bin="$WORK/no-auth-status-bin"
+mkdir -p "$no_status_bin"
+# shellcheck disable=SC2016 # The wrapper's own comment quotes a literal command.
+printf '%s\n' '#!/usr/bin/env bash' \
+  '# A Claude CLI without `auth status`; the fixture handles the rest (--max-turns, error_max_turns).' \
+  "if [ \"\${1:-}\" = auth ]; then printf 'error: unknown command auth\\n' >&2; exit 1; fi" \
+  "exec '$FIXTURE_BIN/claude' \"\$@\"" >"$no_status_bin/claude"
+chmod 755 "$no_status_bin/claude"
+set +e
+run_unattested_case no-auth-status PATH="$no_status_bin:$PATH"
+unattested_status=$?
+set -e
+# shellcheck disable=SC2016 # The marker quotes the launcher's literal message.
+expect_unattested_refusal no-auth-status "$unattested_status" 'gave no `claude auth status --json` login report'
 
 # (a2) --provision-browser is host preparation outside the signed request: a dry run only
 # reports it and never provisions anything into the (private) host cache.

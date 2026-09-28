@@ -574,9 +574,13 @@ require_isolated_claude_login() {
   for name in "${CHILD_PASSTHROUGH_ENVIRONMENT[@]}"; do
     if [ -n "${!name:-}" ]; then probe_environment+=("$name=${!name}"); fi
   done
-  report="$(run_with_deadline 30 env -i "${probe_environment[@]}" "$executable" auth status --json 2>/dev/null)" || report=''
+  # The CLI exits non-zero when not logged in but still prints its report.
+  report="$(run_with_deadline 30 env -i "${probe_environment[@]}" "$executable" auth status --json 2>/dev/null)" || true
   rm -rf "$login_probe_dir"
   login_probe_dir=''
+  # shellcheck disable=SC2016 # The message names a literal command.
+  printf '%s' "$report" | jq -e 'type == "object" and (.loggedIn | type) == "boolean"' >/dev/null 2>&1 || \
+    fail 'this Claude Code CLI gave no `claude auth status --json` login report for the isolated launch config; update Claude Code within the reviewed 2.x family'
   # shellcheck disable=SC2016 # The remedy names a literal command.
   printf '%s' "$report" | jq -e '.loggedIn == true' >/dev/null 2>&1 || \
     fail 'Claude reports no login for the isolated launch CLAUDE_CONFIG_DIR (claude auth status), which no keychain or claude.ai subscription login reaches; export ANTHROPIC_API_KEY, or run `claude setup-token` and export CLAUDE_CODE_OAUTH_TOKEN, then retry'
