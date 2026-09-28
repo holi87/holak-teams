@@ -99,6 +99,8 @@ fi
 require_controller_text 'Advance W0–W4' "controller does not own wave and barrier advancement"
 require_controller_text 'Collect every RESULT' "controller does not collect and validate worker results"
 require_controller_text 'argus-assets engagement lane-outcomes' "controller does not record the count-only per-lane outcome report"
+# shellcheck disable=SC2016 # The marker quotes a literal Markdown code span.
+require_text 'Odysseus included, then run `argus-assets engagement lane-outcomes`' "$SKILL" "run skill runs lane-outcomes before the closeout telemetry batch"
 require_controller_text 'selected-dispatchable-predecessors' "controller does not define dependency barrier semantics"
 require_controller_text 'independent automation blocklist' "controller does not preserve independent automation review"
 require_controller_text 'model route --agents dispatchable' "controller does not route the initial sealed set in one batch"

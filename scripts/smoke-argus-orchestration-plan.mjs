@@ -85,6 +85,20 @@ for (const citation of allocateCitations) {
 }
 assert(controllerContract.includes('`argus-assets engagement allocate --manifest <manifest> --lane odysseus --decision <decision>`'),
   'orchestration-core does not cite the exact Odysseus allocation form');
+// Lane outcomes count only telemetry already recorded and need the live controller lease, so
+// the closeout telemetry batch (Odysseus included) precedes them and every cleanup follows.
+const closeout = controllerContract.slice(controllerContract.indexOf('## Validation and closeout'));
+const closeoutOrder = [
+  'final merges;',
+  'one `model telemetry --json` batch for every lane still allocated, Odysseus included;',
+  '`argus-assets engagement lane-outcomes --manifest <manifest> --controller-token <odysseus-token>`',
+  'the worker `engagement cleanup --json` batch;',
+  "Odysseus's own cleanup last.",
+].map((step) => [step, closeout.indexOf(step)]);
+for (const [index, [step, position]] of closeoutOrder.entries()) {
+  assert(position >= 0 && (index === 0 || position > closeoutOrder[index - 1][1]), `orchestration-core closeout order lost or misplaced: ${step}`);
+}
+assert(!controllerContract.includes('After final merges and before cleanup, run'), 'orchestration-core still runs lane-outcomes before the closeout telemetry batch');
 // A backoff retry blocks inside one Bash call, so the doctrine must size that call's timeout
 // from the decision's backoff. That timeout must outlast the command's own wait ceiling, and
 // the policy's longest backoff must fit within the Bash tool's 600000 ms maximum; the 120 s

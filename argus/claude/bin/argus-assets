@@ -352,7 +352,7 @@ Engagement coordination:
     unproven, residuals, automationReview, runner, coverage, sourceSchemas, statusReasons) plus the
     statusCeiling; the runner outcome comes from reports/argus-runner-result.json when present.
   lane-outcomes --manifest <path> --controller-token <odysseus-token>
-    Controller only, after the final merges and before cleanup. Recomputes the count-only
+    Controller only, after the closeout telemetry batch and before cleanup. Recomputes the count-only
     argus/lane-outcomes@1 report from the model decisions, telemetry, and merged ledger and
     automation status, and atomically replaces ai_agents_internal/lane-outcomes.json.
 

@@ -42,8 +42,9 @@ Dispatch persisted `ready`/`degraded` roles, and `conditional` roles only after
 RACI projection and W0–W4 barriers. The sealed dispatchable projection is the immutable
 barrier-participant set; worker `success` cleanup requires every declared arrival, and
 heartbeats are allocation/dispatch/attempt-generation-bound. Collect every RESULT, validate
-canonical outputs, and run gates. Before cleanup, run
-`argus-assets engagement lane-outcomes` with the controller token and cite its per-lane counts.
+canonical outputs, and run gates. After the final merges, batch telemetry for every allocated
+lane, Odysseus included, then run `argus-assets engagement lane-outcomes` with the controller
+token and cite its per-lane counts; clean workers next, Odysseus last.
 Clean all allocations on success, failure, or interruption. Report verified
 preflight/authorization, contributions, runner categories, surface-derived coverage,
 denials, residual risk, model bindings, and cleanup. Never equate defect yield
