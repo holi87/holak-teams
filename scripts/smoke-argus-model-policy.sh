@@ -53,7 +53,8 @@ jq -e --slurpfile manifest "$MANIFEST" '
     and .telemetry.events == 1 and .telemetry.successes == 1 and .telemetry.totalTokens == 120 and .telemetry.reportedCostUsd == null)
   and (.lanes[] | select(.agent == "kalchas") | .decisions.total >= 1 and .telemetry.events == 0)' "$LANE_OUTCOMES" >/dev/null \
   || fail "lane-outcomes report is wrong: $(cat "$LANE_OUTCOMES")"
-[ "$(stat -f '%Lp' "$LANE_OUTCOMES" 2>/dev/null || stat -c '%a' "$LANE_OUTCOMES")" = 600 ] || fail 'lane-outcomes report is not private (0600)'
+# Node reads permission bits identically on BSD and GNU hosts; stat -f means filesystem statistics on GNU.
+node -e 'process.exit((require("node:fs").statSync(process.argv[1]).mode & 0o7777) === 0o600 ? 0 : 1)' "$LANE_OUTCOMES" || fail 'lane-outcomes report is not private (0600)'
 if grep -Fq -- "$controller_token" "$LANE_OUTCOMES" || grep -Fq -- "$worker_token" "$LANE_OUTCOMES"; then
   fail 'lane-outcomes report discloses a lease token'
 fi
