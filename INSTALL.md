@@ -95,7 +95,8 @@ TRUST_STORE="$(cd /secure/trust && pwd -P)/model-trust.json"
 
 `--runtime-key-id` and `--operator-key-id` name the trust store's `runtime-attestation` and
 `operator-approval` keys (see "Model trust and revocation"). The request signs both, and the
-launch preflight pins both anchors when it creates the engagement.
+launch preflight pins both anchors when it creates the engagement. There is no subsequent
+in-session `model trust` step or preflight rerun.
 
 The launcher writes the immutable request and waits up to five minutes (`--wait-seconds
 <30..300>`). In the isolated runtime-attestation signer, review every request field, sign
@@ -128,7 +129,8 @@ be physically disjoint, disables session persistence, starts from an environment
 and uses `sandbox-exec` on macOS or Bubblewrap on Linux. Claude runs headless with
 `--permission-mode dontAsk` and an explicit `--allowedTools` list of the tools the packaged
 agents declare, so workers can write and run commands without a prompt. Permissions are never
-bypassed: the packaged write guard and the sandbox still enforce every call. Only the
+bypassed: the packaged write guard and the sandbox still enforce every call from any workspace.
+Unattested launches export `ARGUS_LAUNCH_ARTIFACT_ROOT` to retain that guard binding. Only the
 alias-free artifact root is writable; Claude config and temporary files stay inside it. If the reviewed Claude 2.x
 turn-cap contract or OS sandbox is unavailable, launch stops.
 
@@ -152,12 +154,13 @@ launch request, and none widens what the authorization evaluator allows. `--dry-
 validates them and reports the choice without installing anything.
 
 - `--provision-browser` prepares the host before the sandbox starts. It runs
-  `argus-assets browser provision`, which reuses a host Playwright that already launches
-  headless Chromium, or installs the pinned release into
+  `argus-assets browser provision`, which reuses a host Playwright matching the template's
+  pinned version that already launches headless Chromium, or installs that release into
   `~/.cache/argus/browser-runtime/<x.y.z>` (outside the artifact root, read-only to the
   sandbox) and Chromium into Playwright's host default cache. A provisioning failure stops
   the launch. Preflight still re-probes the runtime inside the sandbox and records the result
-  in `ai_agents_internal/browser-runtime.json`; it never installs a runtime itself.
+  in `ai_agents_internal/browser-runtime.json`; it never installs a runtime itself. Host
+  provisioning never executes Playwright candidates from the artifact root, target, or workspace.
 - `--authorization <absolute-path>` supplies your authorization manifest. It must be a
   physical regular file outside the target and artifact roots, satisfy the packaged
   authorization-manifest schema, carry this `--engagement-id`, and allow the preflight read
@@ -227,6 +230,9 @@ The launcher refuses `--unattested` while `ARGUS_MODEL_TRUST_STORE` is set or
 residual risk.
 
 ## Manual Claude plugin install
+
+The Argus package is checked against ceilings of 2,630,000 generated runtime bytes and
+3,680,000 bytes for the complete installed plugin.
 
 Marketplace installation is recommended. For a local development checkout, Claude Code can load either plugin root directly:
 

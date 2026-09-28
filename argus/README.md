@@ -29,6 +29,10 @@ replace the five signer flags with the explicit `--unattested` opt-in; every rep
 names the engagement UNATTESTED (see `INSTALL.md`). The launch config holds no stored login:
 export `ANTHROPIC_API_KEY` or a `claude setup-token` `CLAUDE_CODE_OAUTH_TOKEN` first.
 
+Claude runs with `--permission-mode dontAsk --allowedTools <declared tool union>`. The
+packaged write guard and OS sandbox enforce each call from every workspace; unattested
+launches export `ARGUS_LAUNCH_ARTIFACT_ROOT` to bind the guard to the engagement.
+
 Optional host flags, none of them signed or able to widen authorization:
 `--provision-browser` prepares a Playwright runtime outside the artifact root before the
 sandbox starts; `--authorization <absolute-path>` or `--environment
@@ -88,6 +92,12 @@ report-facts`, `engagement lane-outcomes`, the controller batch forms (`engageme
 `argus-assets --help` for every option. Inside an active engagement the write guard allows
 only the verbs it classifies and denies `browser` and `model trust` outright.
 
+Every active selected lane allocates evidence IDs with `engagement id --kind evidence
+--identity <lane>:<source>` and its lease. Identity replays return the same ID; conflicting
+records are refused before fragment persistence, and identical evidence records deduplicate
+at merge. After the latest APPROVE and Minos's verification merge, Atlas reruns and registers
+`full-suite` before Kleio reports; `runner-predates-automation-review` blocks stale results.
+
 Maintainers edit the canonical sources under `argus/` and run
 `scripts/sync-argus-runtime-assets.mjs --write`. Generated plugin copies are checked
 byte-for-byte by `--check`; the generated prompt inventory covers all 27 agents. The same
@@ -98,7 +108,7 @@ corpus and per-agent ceilings, description and duplication budgets, and the SHA-
 capability-selected profile and the default-off optional profile, and checks a
 representative Mode A output/quality contract. `scripts/approve-argus-prompts.mjs` restamps
 the approval from benchmark evidence or as a pending record valid for one release. The
-budget is 2,530,000 bytes for generated runtime assets and 3,550,000 bytes for the complete
+budget is 2,630,000 bytes for generated runtime assets and 3,680,000 bytes for the complete
 installed plugin (`runtime-assets.source.json`). `COLOR-SCHEME.md` and team graphs are
 intentionally maintainer-only.
 
