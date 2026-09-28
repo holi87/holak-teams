@@ -93,8 +93,8 @@ reviewed, and authorized.
 ## Plan-driven execution and ownership
 
 After sealing, allocate Odysseus with `argus-assets engagement allocate --manifest
-<manifest> --decision <decision>` and retain its token; allocate each worker with its exact decision plus that token:
-`--decision <decision> --controller-token <token>`. Pass only its own token, resources,
+<manifest> --lane odysseus --decision <decision>` and retain its token; allocate each worker with its exact decision plus that token:
+`--lane <slug> --decision <decision> --controller-token <token>`. Pass only its own token, resources,
 paths, and decision; never signing material. Workers checkpoint, honor locks/barriers, and
 clean on `success`, `failure`, or `interrupted`, preserving durable fragments/checkpoints.
 

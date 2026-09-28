@@ -76,6 +76,15 @@ for (const fragment of [
 ]) {
   assert(controllerContract.includes(fragment), `orchestration-core lost required controller semantic: ${fragment}`);
 }
+// `engagement allocate` requires --lane (single) or --lanes (batch); a cited form without either
+// fails literally, so the controller's first allocation would have to guess the missing flag.
+const allocateCitations = [...controllerContract.matchAll(/`(argus-assets engagement allocate\b[^`]*)`/gu)].map(([, citation]) => citation);
+assert(allocateCitations.length > 0, 'orchestration-core no longer cites engagement allocate');
+for (const citation of allocateCitations) {
+  assert(/ --lanes? /u.test(`${citation} `), `orchestration-core cites an engagement allocate form without --lane or --lanes: ${citation}`);
+}
+assert(controllerContract.includes('`argus-assets engagement allocate --manifest <manifest> --lane odysseus --decision <decision>`'),
+  'orchestration-core does not cite the exact Odysseus allocation form');
 // A backoff retry blocks inside one Bash call, so the doctrine must size that call's timeout
 // from the decision's backoff. That timeout must outlast the command's own wait ceiling, and
 // the policy's longest backoff must fit within the Bash tool's 600000 ms maximum; the 120 s
