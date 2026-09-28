@@ -36,6 +36,7 @@ import {
   initializeEngagementState,
   mergeCanonical,
   resolveConditionalGates,
+  reviewCorpusDigest,
   skipPhases,
   validateEngagementManifest,
   writeCheckpoint,
@@ -52,6 +53,7 @@ const raci = readRepoJson('argus/raci.json');
 const finalSummaryFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/final-summary.json');
 const coverageResultFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/coverage-result.json');
 const runnerResultFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/runner-result.json');
+const automationReviewFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/automation-review.json');
 const bugLedgerFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/bug-ledger.json');
 const evidenceFixture = readRepoJson('scripts/fixtures/argus-schemas/valid/evidence-reference.json');
 const stateSchemaAjv = new Ajv2020({ allErrors: true, strict: false, validateFormats: true });
@@ -90,6 +92,7 @@ try {
   testAbandonedRunnerOwnerFinalSummary();
   testAbandonedRunnerOwnerUnregisteredResult();
   testRunnerOwnerWithoutRunnerResult();
+  testRunnerAfterAutomationReview();
   testIdempotentPreflightHeartbeat();
   testAuthenticatedMonotonicHeartbeats();
   testRedispatchedHeartbeatWorkUnits();
@@ -1348,6 +1351,100 @@ function testRunnerOwnerWithoutRunnerResult() {
   complete(released, ['kleio']);
 }
 
+// A W3 full-suite pass cannot certify tests changed in the later review loop. Only a
+// registered full-suite result whose policy-pass event names the latest APPROVE can close out.
+function testRunnerAfterAutomationReview() {
+  const reachReporting = (name) => {
+    const fixture = createFixture(name, ['aristarchus', 'atlas', 'kleio', 'minos', 'odysseus']);
+    const { manifest } = fixture;
+    writeTemplateSelection(fixture);
+    mkdirSync(join(fixture.root, 'tests'), { recursive: true });
+    writeFileSync(join(fixture.root, 'tests', 'regression.spec.ts'), 'try { assertInvariant(); } catch {}\n');
+    const controller = allocateWorker(manifest, 'odysseus', { executionBinding: executionBinding(`${name}-controller`) });
+    const tokens = { odysseus: controller.token };
+    for (const lane of ['aristarchus', 'atlas', 'kleio', 'minos']) {
+      tokens[lane] = allocateWorker(manifest, lane, { controllerToken: controller.token, executionBinding: executionBinding(`${name}-${lane}`) }).token;
+    }
+    while (getEngagementStatus(manifest).currentPhase !== 'verification') {
+      const phase = getEngagementStatus(manifest).currentPhase;
+      for (const lane of getBarrierStatus(manifest, phase).participants) arriveBarrier(manifest, lane, tokens[lane], phase);
+      if (phase.includes('proof')) mergeEmptyLedger(fixture, tokens.minos, phase === 'proof' ? 'review-ledger' : null);
+      if (phase === 'automation') seedFinalSummaryInputs(fixture);
+      advanceBarrier(manifest, 'odysseus', tokens.odysseus);
+    }
+    const review = structuredClone(automationReviewFixture);
+    review.engagementId = manifest.engagementId;
+    const approval = review.reviews.pop();
+    review.reviews[0].corpus = reviewCorpusDigest(manifest);
+    writeFragment(manifest, 'aristarchus', tokens.aristarchus, 'solution/automation-review.json', 'review-block', `${JSON.stringify(review)}\n`);
+    mergeCanonical(manifest, 'aristarchus', tokens.aristarchus, 'solution/automation-review.json');
+    writeFileSync(join(fixture.root, 'tests', 'regression.spec.ts'), 'assertInvariant();\n');
+    approval.corpus = reviewCorpusDigest(manifest);
+    assert(approval.corpus.sha256 !== review.reviews[0].corpus.sha256, 'the review fix did not change the test corpus');
+    review.reviews.push(approval);
+    writeFragment(manifest, 'aristarchus', tokens.aristarchus, 'solution/automation-review.json', 'review-approve', `${JSON.stringify(review)}\n`);
+    mergeCanonical(manifest, 'aristarchus', tokens.aristarchus, 'solution/automation-review.json');
+    mergeEmptyLedger(fixture, tokens.minos);
+    for (const lane of getBarrierStatus(manifest, 'verification').participants) arriveBarrier(manifest, lane, tokens[lane], 'verification');
+    advanceBarrier(manifest, 'odysseus', tokens.odysseus);
+    assert(getEngagementStatus(manifest).currentPhase === 'reporting', 'review fixture did not reach reporting');
+    seedFinalSummaryInputs(fixture);
+    return { fixture, manifest, tokens };
+  };
+  const event = { caseId: 'automation-review.REV-02', category: 'policy', status: 'pass', expected: false,
+    lifecycle: 'n/a', bugId: null, reason: 'automation-review-approved' };
+  const reviewedRun = { ...structuredClone(runnerResultFixture), categories: { ...runnerResultFixture.categories, policy: 1 },
+    events: [...runnerResultFixture.events, event] };
+  const active = reachReporting('runner-after-review-active');
+  const refusal = 'registered runner result does not prove a full-suite run after REV-02; re-dispatch atlas on reporting standby to rerun full-suite after REV-02 and register it, then merge the registry and the coverage result again';
+  for (const [label, result] of [
+    ['pre-review run', runnerResultFixture],
+    ['earlier review event', { ...reviewedRun, events: [...runnerResultFixture.events, { ...event, caseId: 'automation-review.REV-01' }] }],
+    ['denied review event', { ...reviewedRun, events: [...runnerResultFixture.events, { ...event, status: 'denied', reason: 'automation-review-blocked' }] }],
+    ['non-policy review event', { ...reviewedRun, categories: { ...runnerResultFixture.categories, automation: 2 },
+      events: [...runnerResultFixture.events, { ...event, category: 'automation' }] }],
+    ['non-full-suite run', { ...reviewedRun, mode: 'baseline', deliveryGate: false }],
+  ]) {
+    seedFinalSummaryInputs(active.fixture, { runnerResult: result });
+    expectThrowMessage(() => deriveFinalSummaryFacts(active.manifest, getEngagementStatus(active.manifest)), refusal, `report-facts with ${label}`);
+    expectThrowMessage(() => mergeFinalSummary(active.fixture, active.tokens.kleio, {
+      runnerResult: result, fragmentId: `summary-${label.replace(/\W+/gu, '-')}`,
+    }), refusal, `final-summary merge with ${label}`);
+    assert(getEngagementStatus(active.manifest).merges['solution/final-summary.json'] === undefined, `${label} produced a final summary`);
+  }
+  unlinkSync(join(active.fixture.root, 'reports', 'argus-runner-result.json'));
+  seedFinalSummaryInputs(active.fixture, { runner: false });
+  expectThrowMessage(() => deriveFinalSummaryFacts(active.manifest, getEngagementStatus(active.manifest)), refusal, 'report-facts without a post-review runner');
+  expectThrowMessage(() => mergeFinalSummary(active.fixture, active.tokens.kleio, { runner: false, fragmentId: 'summary-review-without-runner' }),
+    refusal, 'final-summary merge without a post-review runner');
+  seedFinalSummaryInputs(active.fixture);
+  const state = getEngagementStatus(active.manifest);
+  const noReviewer = deriveFinalSummaryFacts(active.manifest, { ...state,
+    dispatchableAgents: (state.dispatchableAgents ?? active.manifest.selectedAgents).filter((lane) => lane !== 'aristarchus') });
+  const modeB = deriveFinalSummaryFacts({ ...active.manifest, mode: 'B' }, state);
+  assert(!noReviewer.statusReasons.includes('runner-predates-automation-review') && !modeB.statusReasons.includes('runner-predates-automation-review'),
+    'the new runner-review gate changed Mode B or no-dispatchable-review paths');
+
+  mergeFinalSummary(active.fixture, active.tokens.kleio, { runnerResult: reviewedRun, fragmentId: 'summary-after-review-rerun' });
+  const summary = readSolutionJson(active.fixture, 'final-summary.json');
+  assert(summary.status === 'completed' && summary.automationReview.reviewId === 'REV-02' && summary.runner?.evidenceId === 'EVD-0001' &&
+    !summary.statusReasons.includes('runner-predates-automation-review'), 'the registered post-APPROVE full-suite run did not complete the summary');
+  arriveBarrier(active.manifest, 'kleio', active.tokens.kleio, 'reporting');
+  advanceBarrier(active.manifest, 'odysseus', active.tokens.odysseus);
+  arriveBarrier(active.manifest, 'odysseus', active.tokens.odysseus, 'complete');
+  for (const lane of ['aristarchus', 'atlas', 'kleio', 'minos']) cleanupWorker(active.manifest, lane, active.tokens[lane], 'success');
+  assert(cleanupWorker(active.manifest, 'odysseus', active.tokens.odysseus, 'success').outcome === 'success', 'the reviewed runner engagement did not complete');
+
+  const released = reachReporting('runner-after-review-released');
+  cleanupWorker(released.manifest, 'atlas', released.tokens.atlas, 'failure');
+  const facts = deriveFinalSummaryFacts(released.manifest, getEngagementStatus(released.manifest));
+  assert(facts.statusCeiling === 'blocked' && facts.statusReasons.includes('runner-predates-automation-review') && facts.runner?.status === 'pass',
+    'a released runner owner left a stale passing runner green after APPROVE');
+  mergeFinalSummary(released.fixture, released.tokens.kleio, { fragmentId: 'summary-stale-runner-blocked' });
+  const blocked = readSolutionJson(released.fixture, 'final-summary.json');
+  assert(blocked.status === 'blocked' && blocked.statusReasons.includes('runner-predates-automation-review'), 'the summary did not preserve the stale-runner blocked ceiling');
+}
+
 function writeTemplateSelection(fixture) {
   writeFileSync(join(fixture.root, 'ai_agents_internal', 'template-selection.json'), `${JSON.stringify({
     $schema: 'argus/template-selection@1', schemaVersion: 1, contractId: 'argus/template-selection@1', targetRoot: fixture.root,
@@ -1408,8 +1505,8 @@ function mergeEmptyLedger(fixture, token, fragmentId) {
 // result registered as runner-result evidence; with the empty ledger every fact is clean, and
 // the only status reasons left are the recorded phase skips. With runner=false it seeds no
 // runner result or evidence and submits runner=null; fragmentId names a superseding fragment.
-function mergeFinalSummary(fixture, token, { runner = true, fragmentId = 'final-summary' } = {}) {
-  seedFinalSummaryInputs(fixture, { runner });
+function mergeFinalSummary(fixture, token, { runner = true, runnerResult = runnerResultFixture, fragmentId = 'final-summary' } = {}) {
+  seedFinalSummaryInputs(fixture, { runner, runnerResult });
   const summary = structuredClone(finalSummaryFixture);
   summary.engagementId = fixture.manifest.engagementId;
   Object.assign(summary, { status: 'completed', statusReasons: [], unproven: [], residuals: [] });
@@ -1422,14 +1519,14 @@ function mergeFinalSummary(fixture, token, { runner = true, fragmentId = 'final-
 
 // Seeds the merged coverage result, and with runner=true the registered runner result, that the
 // final-summary facts are derived from.
-function seedFinalSummaryInputs(fixture, { runner = true } = {}) {
+function seedFinalSummaryInputs(fixture, { runner = true, runnerResult = runnerResultFixture } = {}) {
   const coverage = structuredClone(coverageResultFixture);
   coverage.engagementId = fixture.manifest.engagementId;
   coverage.surfaces.find((surface) => surface.surfaceId === 'SRF-UI-HOME').executed = true;
   coverage.criticalUnexecuted = [];
   coverage.overall.caseDepth = { plannedWeight: 5, executedWeight: 5, verifiedWeight: 5, coverage: 1, unplannedSurfaces: [], gaps: [] };
   const coverageContent = `${JSON.stringify(coverage, null, 2)}\n`;
-  const runnerContent = `${JSON.stringify(runnerResultFixture)}\n`;
+  const runnerContent = `${JSON.stringify(runnerResult)}\n`;
   const digest = (content) => createHash('sha256').update(content).digest('hex');
   const registry = { $schema: 'argus/evidence-reference@3', schemaVersion: 3, engagementId: fixture.manifest.engagementId, references: [{
     id: 'EVD-0001', kind: 'runner-result', mediaType: 'application/json', source: 'reports/evidence/runner-result.json', collectedBy: 'atlas',

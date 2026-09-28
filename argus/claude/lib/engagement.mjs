@@ -734,6 +734,7 @@ const FINAL_SUMMARY_COVERAGE_RESULT = 'solution/coverage-result.json';
 const TEMPLATE_SELECTION_MISSING = 'template-selection-missing';
 const RUNNER_RESULT_MISSING = 'runner-result-missing';
 const RUNNER_RESULT_UNREGISTERED = 'runner-result-unregistered';
+const RUNNER_PREDATES_AUTOMATION_REVIEW = 'runner-predates-automation-review';
 const FINAL_SUMMARY_RUNNER_SCRIPT = 'run-tests.sh';
 
 // Without a fragment (`engagement report-facts`) the runner outcome is read whenever the runner
@@ -825,6 +826,17 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
     categories: Object.fromEntries(['product', 'automation', 'infrastructure', 'skip', 'policy'].map((category) => [category, runnerResult.categories[category]])),
     deliveryGate: runnerResult.deliveryGate,
   };
+  // W3 can pass before Aristarchus reviews and repairs the corpus in verification. Its
+  // registered result proves delivery only if the full-suite policy gate observed the latest
+  // APPROVE. Atlas can recover on reporting standby while his lease is active; otherwise keep
+  // the actual runner outcome but block closeout instead of presenting a pre-review green.
+  const runnerPredatesReview = manifest.mode !== 'B' && dispatchable.includes('aristarchus') && automationReview.status === 'approved' &&
+    (runnerResult !== null || !runnerPresent) &&
+    !(runnerResult?.mode === 'full-suite' && runnerResult.events.some((event) =>
+      event.caseId === `automation-review.${automationReview.reviewId}` && event.category === 'policy' && event.status === 'pass'));
+  if (runnerPredatesReview && state.allocations[runnerOwner]?.status === 'active') {
+    throw new Error(`registered runner result does not prove a full-suite run after ${automationReview.reviewId}; re-dispatch ${runnerOwner} on reporting standby to rerun full-suite after ${automationReview.reviewId} and register it, then merge the registry and the coverage result again`);
+  }
 
   const overall = coverageResult.overall;
   const coverage = {
@@ -842,6 +854,7 @@ export function deriveFinalSummaryFacts(manifest, state, fragment = null) {
     .filter(Boolean).map((document) => document.$schema);
 
   const ceilings = new Map();
+  if (runnerPredatesReview) ceilings.set(RUNNER_PREDATES_AUTOMATION_REVIEW, 'blocked');
   if (['blocked', 'stale', 'absent'].includes(automationReview.status)) ceilings.set(`automation-review-${automationReview.status}`, 'blocked');
   if (runner && counts.regression.uncovered.length > 0) ceilings.set('confirmed-bug-without-regression', 'blocked');
   if (coverage.criticalUnexecuted.length > 0) ceilings.set('critical-surface-unexecuted', 'degraded');

@@ -408,6 +408,17 @@ manifest and belong to `argus-assets automation-review check`. Other modes and c
 smokes skip the gate: only a `full-suite` result carries `deliveryGate: true`, and
 `defect-evidence` and `candidate-regression` runs are the repair loop a `BLOCK` asks for.
 
+Inside an engagement outside Mode B, when Aristarchus is dispatchable, the delivered run
+must follow the latest APPROVE and Minos's verification merge: Atlas reruns `full-suite`
+on reporting standby, archives and registers it, then Kleio merges evidence and coverage
+before reporting. `report-facts` and the final-summary merge require that registered
+result's `automation-review.<latest reviewId>` event to have `category: policy` and
+`status: pass`. A missing or older result is refused while Atlas's lease is active, with
+instructions to rerun and register after that review; otherwise
+`runner-predates-automation-review` blocks the final summary. A passing W3 run cannot
+certify tests repaired during verification. Mode B and paths without a dispatchable
+reviewer retain their existing behavior.
+
 **Engagement opt-ins.** Inside an Argus engagement, `ARGUS_ENVIRONMENT_RESET=execute` and
 `ARGUS_FAULT_INJECTION=authorized` are requests, not permissions. The library locates the
 engagement manifest the way `argus-assets` does, because `argus-launch` never exports
