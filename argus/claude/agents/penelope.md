@@ -2,8 +2,8 @@
 name: penelope
 description: UI baseline analyst. Owns solution/paths/ui-* specifications and submits incidental PEN leads; Orion confirms functional defects and Daidalos automates the baseline.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: medium
 maxTurns: 80
 color: yellow
 skills:

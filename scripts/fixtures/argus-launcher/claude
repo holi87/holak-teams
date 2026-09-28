@@ -33,7 +33,7 @@ emit_result() {
 }
 
 if [ "${1:-}" = "--version" ]; then
-  printf '2.1.0 (Claude Code fixture)\n'
+  printf '2.1.284 (Claude Code fixture)\n'
   exit 0
 fi
 
@@ -69,11 +69,14 @@ previous=''
 max_turns=''
 turn_cap_probe=''
 output_format=text
+settings=''
+settings_count=0
 for argument in "$@"; do
   if [ "$previous" = '--plugin-dir' ]; then plugin_root="$argument"; fi
   if [ "$previous" = '--max-turns' ]; then max_turns="$argument"; fi
   if [ "$previous" = '--argus-turn-cap-probe' ]; then turn_cap_probe="$argument"; fi
   if [ "$previous" = '--output-format' ]; then output_format="$argument"; fi
+  if [ "$previous" = '--settings' ]; then settings="$argument"; settings_count=$((settings_count + 1)); fi
   previous="$argument"
 done
 case "$output_format" in text|json) ;; *) printf 'fixture: unsupported --output-format %s\n' "$output_format" >&2; exit 89 ;; esac
@@ -91,6 +94,16 @@ if [ -n "$turn_cap_probe" ]; then
 fi
 [ -n "$plugin_root" ] || { printf 'fixture: --plugin-dir is missing\n' >&2; exit 80; }
 [ "$max_turns" = 400 ] || { printf 'fixture: native max-turns is not exactly 400\n' >&2; exit 84; }
+[ "$settings_count" -eq 1 ] && printf '%s' "$settings" | jq -e 'keys == ["switchModelsOnFlag"] and .switchModelsOnFlag == false' >/dev/null || {
+  printf 'fixture: flagged requests must refuse without changing model\n' >&2; exit 99;
+}
+[ "${ANTHROPIC_DEFAULT_OPUS_MODEL:-}" = claude-opus-5-5 ] &&
+  [ "${ANTHROPIC_DEFAULT_SONNET_MODEL:-}" = claude-sonnet-5-5 ] || {
+    printf 'fixture: native model aliases are not exactly pinned\n' >&2; exit 94;
+  }
+for forbidden in CLAUDE_CODE_EFFORT_LEVEL CLAUDE_CODE_SUBAGENT_MODEL CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_MODEL; do
+  [ -z "${!forbidden:-}" ] || { printf 'fixture: inherited model override %s\n' "$forbidden" >&2; exit 95; }
+done
 
 case "$prompt" in
   '/argus:run authenticatedLaunch='*) launch_payload="${prompt#'/argus:run authenticatedLaunch='}" ;;
@@ -160,6 +173,34 @@ jq -e '.checks[] | select(.id == "native-host-execution" and .status == "pass")'
 # environment, cwd = workspace) for granted Write and Bash calls, and record each decision.
 guard_hook="$(jq -er '.hooks.PreToolUse[] | select(.matcher | split("|") | index("Write") and index("Bash")) | .hooks[0].command' \
   "$plugin_root/hooks/hooks.json")" || { printf 'fixture: the plugin has no Write|Bash PreToolUse hook\n' >&2; exit 92; }
+# One signed sandbox launch exercises actual hook wiring, including baseline
+# model omission and pinned native aliases. No model API call is made.
+if [ "$engagement_id" = launcher-path ]; then
+  assets="$plugin_root/bin/argus-assets"
+  manifest="$artifact_root/ai_agents_internal/engagement.json"
+  routes="$("$assets" model route --manifest "$manifest" --agents dispatchable --runtime claude --signal normal --dispatch-prefix fixture-dispatch --attempt 1)"
+  controller_decision="$artifact_root/$(printf '%s' "$routes" | jq -r '.decisions[] | select(.agent == "odysseus") | .relativePath')"
+  worker_decision="$artifact_root/$(printf '%s' "$routes" | jq -r '.decisions[] | select(.agent == "kalchas") | .relativePath')"
+  controller="$("$assets" engagement allocate --manifest "$manifest" --lane odysseus --decision "$controller_decision")"
+  worker="$("$assets" engagement allocate --manifest "$manifest" --lane kalchas --decision "$worker_decision" --controller-token "$(printf '%s' "$controller" | jq -r .token)")"
+  envelope="$(printf '%s' "$worker" | jq -c '{lane:.lane,decisionId:.modelDecisionId,dispatchId,attempt,token}')"
+  dispatch_payload="$(jq -cn --arg cwd "$PWD" --arg envelope "$envelope" '
+    {hook_event_name:"PreToolUse",session_id:"fixture-controller",agent_type:"argus:odysseus",tool_name:"Agent",cwd:$cwd,
+     tool_input:{subagent_type:"argus:kalchas",description:"Signed fixture dispatch",prompt:("ARGUS_DISPATCH="+$envelope+"\nFixture work unit.")}}')"
+  for model in baseline opus; do
+    input="$dispatch_payload"
+    [ "$model" = baseline ] || input="$(printf '%s' "$input" | jq '.tool_input.model="opus"')"
+    result="$(printf '%s' "$input" | CLAUDE_PLUGIN_ROOT="$plugin_root" bash -c "$guard_hook")"
+    [ -z "$result" ] || { printf 'fixture: signed %s dispatch was denied: %s\n' "$model" "$result" >&2; exit 96; }
+  done
+  for mutation in '.tool_input.model="sonnet"' '.tool_input.effort="max"' '.tool_input.resume="old-agent"'; do
+    result="$(printf '%s' "$dispatch_payload" | jq "$mutation" | CLAUDE_PLUGIN_ROOT="$plugin_root" bash -c "$guard_hook")"
+    printf '%s' "$result" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null || { printf 'fixture: unsafe dispatch was not denied\n' >&2; exit 97; }
+  done
+  result="$(printf '%s' "$dispatch_payload" | jq '.tool_input.model="opus"' | env -u ANTHROPIC_DEFAULT_OPUS_MODEL CLAUDE_PLUGIN_ROOT="$plugin_root" bash -c "$guard_hook")"
+  printf '%s' "$result" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null || { printf 'fixture: missing native alias pin was accepted\n' >&2; exit 98; }
+  printf '%s\n' 'signed-baseline-and-pinned-alias-verified' >"$artifact_root/ai_agents_internal/fixture-dispatch-verified.txt"
+fi
 guard_decision() {
   local name="$1" tool="$2" subject="$3" output
   output="$(jq -nc --arg tool "$tool" --arg subject "$subject" --arg cwd "$PWD" '

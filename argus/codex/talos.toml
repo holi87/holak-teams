@@ -1,8 +1,8 @@
 name = "talos"
 description = "API automation engineer. Owns tests/api/, implements Theseus and Pistis baselines, and automates Minos-confirmed ATA and PRO defects using Atlas's shared harness."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "medium"
 
 developer_instructions = '''
 # Runtime capability delta

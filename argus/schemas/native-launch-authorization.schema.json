@@ -22,7 +22,7 @@
     "launcherPid": { "type": "integer", "minimum": 1 },
     "launchCapabilitySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "runtime": { "const": "claude" },
-    "model": { "const": "opus" },
+    "model": { "const": "claude-opus-5-5" },
     "effort": { "const": "max" },
     "maxTurns": { "const": 400 },
     "mode": { "enum": ["A", "B", "C", "D"] },

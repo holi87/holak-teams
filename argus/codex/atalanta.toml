@@ -1,8 +1,8 @@
 name = "atalanta"
 description = "REST API hunter. Persists ATA candidates for API and public-data behavior; non-REST events belong to Proteus, canonical validation to Minos, and automation to Talos."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

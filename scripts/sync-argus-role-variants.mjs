@@ -18,6 +18,7 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { roleModelConfig } from '../argus/runtime/model-policy.mjs';
 import {
   validateTechniqueCatalog,
   validateTechniqueCatalogContracts,
@@ -112,17 +113,19 @@ for (const role of [...manifest.roles].sort((left, right) => left.slug.localeCom
     description: ownership.description,
     claudeTools: resolveClaudeTools(capability),
   };
-  const tier = modelPolicy.tiers[policyRole.tier];
+  const claudeConfig = roleModelConfig(modelPolicy, policyRole, 'claude');
+  const codexConfig = roleModelConfig(modelPolicy, policyRole, 'codex');
+  const nativeCodexConfig = { model: codexConfig.model, reasoningEffort: codexConfig.effort };
   const sourcePath = join(ROLE_ROOT, role.source);
   const sourceRaw = readSourceFile(sourcePath, `${role.slug}: canonical role source`, ROLE_ROOT);
   const sourceBody = sourceRaw.toString('utf8');
   const body = renderCanonicalBody(sourceBody, policyRole, ownership, capability);
-  const claude = renderClaude(resolvedRole, tier.claude, policyRole, capability, body);
+  const claude = renderClaude(resolvedRole, claudeConfig, policyRole, capability, body);
   const codexInstructions = renderCodexInstructions(resolvedRole, capability, body);
-  const codexToml = normalizeGenerated(renderCodexToml(resolvedRole, tier.codex, capability, codexInstructions));
+  const codexToml = normalizeGenerated(renderCodexToml(resolvedRole, nativeCodexConfig, capability, codexInstructions));
   const codexMarkdown = normalizeGenerated(renderCodexMarkdown(
     resolvedRole,
-    tier.codex,
+    nativeCodexConfig,
     capability,
     codexToml,
     exactDeveloperInstructions(codexInstructions),

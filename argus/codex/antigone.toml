@@ -1,8 +1,8 @@
 name = "antigone"
 description = "Accessibility hunter. Discovers WCAG candidates and persists ANG candidate reports; Minos validates, deduplicates, and promotes canonical defects, while Daidalos owns automation."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

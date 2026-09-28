@@ -129,8 +129,8 @@
                 "required": ["tier", "model", "effort", "maxTurns"],
                 "properties": {
                   "tier": { "enum": ["frontier", "standard"] },
-                  "model": { "enum": ["opus", "sonnet", "sol", "terra"] },
-                  "effort": { "enum": ["medium", "max", "xhigh"] },
+                  "model": { "enum": ["claude-opus-5-5", "claude-sonnet-5-5", "gpt-6-sol"] },
+                  "effort": { "enum": ["medium", "high", "max", "xhigh"] },
                   "maxTurns": { "type": "integer", "minimum": 1 }
                 }
               },

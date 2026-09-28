@@ -2,8 +2,8 @@
 name: proteus
 description: Event and non-REST hunter. Persists PRO candidates for GraphQL, gRPC, WebSocket, SSE, messaging, and webhooks; REST belongs to Atalanta and validation to Minos.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: high
 maxTurns: 140
 color: red
 skills:

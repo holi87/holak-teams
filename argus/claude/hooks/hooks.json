@@ -2,13 +2,13 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit|Bash",
+        "matcher": "Write|Edit|MultiEdit|Bash|Agent",
         "hooks": [
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/argus-assets\" guard",
             "timeout": 10,
-            "statusMessage": "Enforcing Argus engagement write policy"
+            "statusMessage": "Enforcing Argus write and model dispatch policy"
           }
         ]
       }

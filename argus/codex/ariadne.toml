@@ -1,8 +1,8 @@
 name = "ariadne"
 description = "Journey hunter. Owns cross-feature business invariants and STATE_MODEL; persists ARI candidates, while Minos validates and Talos or Daidalos automates by the failing surface."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

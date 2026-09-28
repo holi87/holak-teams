@@ -1,8 +1,8 @@
 name = "mnemosyne"
 description = "Gated database automation engineer. Owns tests/db/ for confirmed DB invariants when db-access is ready; Charon discovers and Minos validates defects."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "medium"
 
 developer_instructions = '''
 # Runtime capability delta

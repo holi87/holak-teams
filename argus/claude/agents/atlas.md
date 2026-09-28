@@ -2,8 +2,8 @@
 name: atlas
 description: Automation architect. Owns the shared harness, fourteen oracle helpers, run-tests.sh, automation status; contributes coverage observations; delegates lane tests and never validates product defects.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: opus
-effort: max
+model: claude-opus-5-5
+effort: high
 maxTurns: 100
 color: purple
 skills:

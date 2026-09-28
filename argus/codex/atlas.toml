@@ -1,8 +1,8 @@
 name = "atlas"
 description = "Automation architect. Owns the shared harness, fourteen oracle helpers, run-tests.sh, automation status; contributes coverage observations; delegates lane tests and never validates product defects."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

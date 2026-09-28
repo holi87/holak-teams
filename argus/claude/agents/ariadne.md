@@ -2,8 +2,8 @@
 name: ariadne
 description: Journey hunter. Owns cross-feature business invariants and STATE_MODEL; persists ARI candidates, while Minos validates and Talos or Daidalos automates by the failing surface.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: opus
-effort: max
+model: claude-opus-5-5
+effort: high
 maxTurns: 160
 color: red
 skills:

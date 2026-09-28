@@ -116,7 +116,7 @@
       "additionalProperties": false,
       "required": [
         "modes",
-        "tier",
+        "modelSelection",
         "maxPasses",
         "continueWhen",
         "roles",
@@ -136,8 +136,8 @@
             ]
           }
         },
-        "tier": {
-          "const": "frontier"
+        "modelSelection": {
+          "const": "role-execution-profile"
         },
         "maxPasses": {
           "type": "integer",

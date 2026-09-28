@@ -90,6 +90,9 @@ export function validateOrchestrationPlan(plan, capabilityMatrix, raci) {
   if (deepHunt !== undefined) {
     if (!isObject(deepHunt)) errors.push('deepHunt: must be an object');
     else {
+      if (deepHunt.modelSelection !== 'role-execution-profile') {
+        errors.push('deepHunt.modelSelection: must preserve the role execution profile');
+      }
       for (const mode of Array.isArray(deepHunt.modes) ? deepHunt.modes : []) {
         if (!MODES.includes(mode)) errors.push(`deepHunt.modes: unknown mode ${String(mode)}`);
       }
@@ -315,7 +318,7 @@ function buildPhasePlan(plan, mode, selected) {
 function projectDeepHunt(deepHunt, mode, selectedSlugs) {
   if (!deepHunt.modes.includes(mode)) return null;
   return {
-    tier: deepHunt.tier,
+    modelSelection: deepHunt.modelSelection,
     maxPasses: deepHunt.maxPasses,
     continueWhen: deepHunt.continueWhen,
     brief: [...deepHunt.brief],

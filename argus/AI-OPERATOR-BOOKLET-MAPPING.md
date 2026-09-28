@@ -184,9 +184,18 @@ No single role finds, validates, and automates its own defect.
 
 ---
 
-## Appendix — model tier verification
+## Appendix — historical model tier verification (before 5.0.1)
 
-The booklet run assumes the frontier roles reason on the strongest available model. Status:
+The observations below record the earlier booklet runs and CLI checks; they are
+historical, not current configuration guidance. Argus 5.0.1 supersedes the uniform
+frontier policy and floating-model decision with 11 frontier / 16 standard roles,
+explicit Opus 5.5, Sonnet 5.5 and GPT-6 Sol IDs, and per-role effort. See
+[`MODEL-POLICY.md`](MODEL-POLICY.md) for the current contract and
+[`MODEL-EFFICIENCY-PROPOSAL.md`](MODEL-EFFICIENCY-PROPOSAL.md) for the approved allocation
+and pending comparative evaluation. Earlier runtime fallback observations are not
+verified behavior for the new pinned configuration.
+
+At the time of the earlier checks:
 
 - All 27 roles use the frontier tier and declare `model: opus` with `effort: max` (Codex
   `sol` / `xhigh`), generated from `argus/model-policy.json` (frontier tier

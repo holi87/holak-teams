@@ -2,8 +2,8 @@
 name: perseus
 description: Security hunter. Persists PER candidates from authorized STRIDE and OWASP probes; Minos validates and Aegis automates canonical security defects.
 tools: Read, Grep, Glob, Bash, Write
-model: opus
-effort: max
+model: claude-opus-5-5
+effort: high
 maxTurns: 160
 color: red
 skills:

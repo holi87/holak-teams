@@ -8,7 +8,7 @@ const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rootArg = process.argv.indexOf('--root');
 const ROOT = rootArg >= 0 ? resolve(process.argv[rootArg + 1] ?? '') : DEFAULT_ROOT;
 const expectedCounts = { hephaestus: 22, argus: 27 };
-const supportedModels = new Set(['opus', 'sonnet', 'haiku']);
+const supportedModels = new Set(['opus', 'sonnet', 'haiku', 'claude-opus-5-5', 'claude-sonnet-5-5']);
 const supportedFrontmatter = new Set(['name', 'description', 'tools', 'model', 'color', 'skills', 'effort', 'maxTurns']);
 const supportedTools = new Set([
   'Agent', 'Bash', 'Edit', 'Glob', 'Grep', 'LS', 'MultiEdit', 'Read', 'Task',

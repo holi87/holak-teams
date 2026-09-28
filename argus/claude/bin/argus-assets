@@ -60,6 +60,7 @@ import {
   deriveFinalSummaryFacts,
   evaluateWriteGuard,
   ensurePreflightHeartbeat,
+  evaluateAgentDispatchGuard,
   getBarrierStatus,
   getEngagementStatus,
   initializeEngagementState,
@@ -90,6 +91,7 @@ import {
   modelLaunchAssurance,
   modelPublicKeyFingerprint,
   resolveModelDecision,
+  roleModelConfig,
   verifyModelDocumentAuthentication,
   verifyNativeLaunchAuthorization,
   validateModelDecisionBinding,
@@ -110,6 +112,8 @@ import {
 // Set only while withFailurePrefix runs one member of a batch command; declared before any
 // top-level code so that fail() can always read it.
 let failurePrefix = '';
+// Hook checks must return a structured deny; exit 1 alone is not a blocking hook.
+let guardChecksActive = false;
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'runtime-assets.json');
@@ -754,8 +758,8 @@ function launchCommand(args) {
       launcherPid,
       launchCapabilitySha256: options.capabilitySha256,
       runtime: 'claude',
-      model: 'opus',
-      effort: 'max',
+      model: roleModelConfig(modelPolicy, 'odysseus', 'claude').model,
+      effort: roleModelConfig(modelPolicy, 'odysseus', 'claude').effort,
       maxTurns: controllerMaxTurns(),
       mode,
       targetKind: target.kind,
@@ -1068,8 +1072,9 @@ function modelCommand(args) {
   if (operation === 'list') {
     assertPackagedAsset(requireAsset('model-policy'), 'trusted model-policy');
     for (const role of policy.roles) {
-      const tier = policy.tiers[role.tier];
-      console.log(`${role.slug}\t${role.tier}\tclaude=${tier.claude.model}/${tier.claude.effort}\tcodex=${tier.codex.model}/${tier.codex.reasoningEffort}\tturns=${role.maxTurns}\tescalation=${role.escalationProfile}\tfallback=${role.fallbackPolicy}`);
+      const claude = roleModelConfig(policy, role, 'claude');
+      const codex = roleModelConfig(policy, role, 'codex');
+      console.log(`${role.slug}\t${role.tier}\tprofile=${role.executionProfile}\tclaude=${claude.model}/${claude.effort}\tcodex=${codex.model}/${codex.effort}\tturns=${role.maxTurns}\tescalation=${role.escalationProfile}\tfallback=${role.fallbackPolicy}`);
     }
     return 0;
   }
@@ -3658,13 +3663,60 @@ function guardCommand(args) {
   let manifestPath;
   try { manifestPath = activeEngagementManifest(cwd); }
   catch (error) { return denyHook('GUARD-MANIFEST-INVALID', `the active engagement cannot be resolved: ${error.message}`); }
-  if (!manifestPath) return 0;
+  if (!manifestPath) return payload.tool_name === 'Agent' && String(payload.tool_input?.subagent_type ?? '').startsWith('argus:')
+    ? denyHook('GUARD-MODEL-DISPATCH', 'Argus dispatch requires an initialized engagement') : 0;
   let engagement;
   try { engagement = JSON.parse(readFileSync(manifestPath, 'utf8')); }
   catch { return denyHook('GUARD-MANIFEST-INVALID', 'engagement manifest is not valid JSON'); }
   const errors = validateEngagementManifest(engagement);
   if (errors.length > 0) return denyHook('GUARD-MANIFEST-INVALID', errors.join('; '));
-  const decision = evaluateWriteGuard({
+  let decision;
+  if (payload.tool_name === 'Agent') {
+    guardChecksActive = true;
+    try {
+      for (const name of ['CLAUDE_CODE_EFFORT_LEVEL', 'CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE', 'ANTHROPIC_MODEL']) {
+        if (Object.hasOwn(process.env, name)) throw new Error('a global model override prevents native role enforcement');
+      }
+      assertTrustedModelRoutingAssets();
+      const context = loadModelEngagement(manifestPath);
+      requirePinnedModelTrust(context);
+      const seal = loadModelControlSeal(context);
+      if (seal.runtime !== 'claude') throw new Error('Agent dispatch requires the sealed Claude runtime');
+      const role = /^argus:([a-z][a-z0-9-]*)$/.exec(payload.tool_input?.subagent_type ?? '')?.[1];
+      const baseline = roleModelConfig(modelPolicy, role, 'claude');
+      const definition = readSecureSingleLink(join(ROOT, 'agents', `${role}.md`), 'native worker definition').toString('utf8');
+      const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(definition)?.[1];
+      for (const [field, expected] of Object.entries({ model: baseline.model, effort: baseline.effort, maxTurns: baseline.maxTurns })) {
+        const values = [...(frontmatter ?? '').matchAll(new RegExp(`^${field}: ([^\\r\\n]+)$`, 'gm'))];
+        if (values.length !== 1 || values[0][1] !== String(expected)) throw new Error('native role definition differs from the packaged baseline');
+      }
+      let nativeModelAliases = null;
+      if (modelLaunchAssurance(engagement.launchAssurance) === 'attested' || Object.hasOwn(payload.tool_input ?? {}, 'model')) {
+        const preflight = readSecureJson(join(context.artifactRoot, 'ai_agents_internal', 'preflight.json'), 'sealed native preflight');
+        if (!preflight.checks.some((check) => check.id === 'native-host-execution' && check.status === 'pass')) {
+          throw new Error('model aliases require an authenticated native launch');
+        }
+        const native = inspectNativeLaunchForPreflight({
+          options: { launchAuthorization: process.env.ARGUS_NATIVE_LAUNCH_AUTHORIZATION,
+            launchReceipt: process.env.ARGUS_NATIVE_LAUNCH_RECEIPT, trustStore: process.env.ARGUS_MODEL_TRUST_STORE },
+          modelRuntime: 'claude', mode: engagement.mode,
+          targetKind: preflight.target.kind, targetIdentity: engagement.target.identifier,
+          artifactRootPath: context.artifactRoot, engagementId: engagement.engagementId,
+          sealedPreflightAt: preflight.generatedAt,
+        });
+        if (!native.ready) throw new Error('the pinned native launch could not be revalidated for a model override');
+        nativeModelAliases = { opus: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL, sonnet: process.env.ANTHROPIC_DEFAULT_SONNET_MODEL };
+      } else if (process.env.ARGUS_LAUNCH_UNATTESTED !== '1' || process.env.ARGUS_LAUNCH_ARTIFACT_ROOT !== context.artifactRoot ||
+          process.env.ANTHROPIC_DEFAULT_OPUS_MODEL !== modelPolicy.tiers.frontier.claude.model ||
+          process.env.ANTHROPIC_DEFAULT_SONNET_MODEL !== modelPolicy.tiers.standard.claude.model) {
+        throw new Error('unattested dispatch must retain its explicit launcher context and fixed model pins');
+      }
+      decision = evaluateAgentDispatchGuard({ manifest: engagement, payload, modelPolicy, nativeModelAliases });
+    } catch {
+      decision = { decision: 'deny', ruleId: 'GUARD-MODEL-DISPATCH',
+        reason: 'native dispatch context, sealed preflight or pinned role definition could not be verified', paths: [], commandSha256: null };
+    } finally { guardChecksActive = false; }
+  } else decision = evaluateWriteGuard({
     manifest: engagement,
     manifestPath,
     payload,
@@ -3672,12 +3724,17 @@ function guardCommand(args) {
     bypassToken: process.env.ARGUS_IMMUTABILITY_BYPASS_TOKEN,
   });
   if (decision.decision === 'deny' || decision.ruleId === 'GUARD-EXPLICIT-BYPASS') {
-    const patterns = readJson(REDACTION_PATTERNS_PATH);
-    const event = redactValue(buildGuardAudit({ manifest: engagement, payload, decision, timestamp: new Date().toISOString() }), patterns).value;
-    const auditPath = resolve(engagement.artifactRoot, engagement.writePolicy.auditPath);
-    if (!safePhysicalPath(engagement.artifactRoot, auditPath)) return denyHook('GUARD-MANIFEST-INVALID', 'guard audit path escapes its physical artifact root or crosses a symbolic link');
-    mkdirSync(dirname(auditPath), { recursive: true });
-    atomicPrivateAppend(auditPath, `${JSON.stringify(event)}\n`);
+    guardChecksActive = true;
+    try {
+      const patterns = readJson(REDACTION_PATTERNS_PATH);
+      const event = redactValue(buildGuardAudit({ manifest: engagement, payload, decision, timestamp: new Date().toISOString() }), patterns).value;
+      const auditPath = resolve(engagement.artifactRoot, engagement.writePolicy.auditPath);
+      if (!safePhysicalPath(engagement.artifactRoot, auditPath)) return denyHook('GUARD-MANIFEST-INVALID', 'guard audit path escapes its physical artifact root or crosses a symbolic link');
+      mkdirSync(dirname(auditPath), { recursive: true });
+      atomicPrivateAppend(auditPath, `${JSON.stringify(event)}\n`);
+    } catch {
+      return denyHook(decision.decision === 'deny' ? decision.ruleId : 'GUARD-AUDIT-FAILED', 'guard refused the action and could not persist its audit');
+    } finally { guardChecksActive = false; }
   }
   if (decision.decision === 'deny') return denyHook(decision.ruleId, `${decision.reason}; audit=${engagement.writePolicy.auditPath}`);
   return 0;
@@ -4056,7 +4113,7 @@ function loadVerifiedRuntimeInventory() {
   return inventory;
 }
 
-function inspectNativeLaunchForPreflight({ options, modelRuntime, mode, targetKind, targetIdentity, artifactRootPath, engagementId }) {
+function inspectNativeLaunchForPreflight({ options, modelRuntime, mode, targetKind, targetIdentity, artifactRootPath, engagementId, sealedPreflightAt }) {
   if (modelRuntime !== 'claude') return { ready: false, evidence: 'native launch authorization is available only for Claude runtime' };
   try {
     if (!options.launchAuthorization || !options.launchReceipt || !options.trustStore) {
@@ -4118,8 +4175,11 @@ function inspectNativeLaunchForPreflight({ options, modelRuntime, mode, targetKi
     const now = Date.now();
     const issuedAt = Date.parse(authorization.issuedAt);
     const expiresAt = Date.parse(authorization.expiresAt);
+    // Expiry bounds starting a launch. A running controller may dispatch later only
+    // after the caller verifies the immutable seal and its successful preflight.
+    const verificationTime = sealedPreflightAt === undefined ? now : Date.parse(sealedPreflightAt);
     if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt) || expiresAt <= issuedAt || expiresAt - issuedAt > 300_000 ||
-        issuedAt > now + 30_000 || expiresAt <= now) {
+        issuedAt > now + 30_000 || !Number.isFinite(verificationTime) || verificationTime < issuedAt || verificationTime > now || expiresAt <= verificationTime) {
       throw new Error('native launch authorization is stale or has an invalid validity window');
     }
     if (authorization.mode !== mode || authorization.targetKind !== targetKind || authorization.target !== targetIdentity ||
@@ -4201,12 +4261,17 @@ function inspectNativeLaunchForPreflight({ options, modelRuntime, mode, targetKi
       throw new Error('OS sandbox does not permit the contracted artifact root');
     }
     const expectedEnvironment = {
+      ANTHROPIC_DEFAULT_OPUS_MODEL: modelPolicy.tiers.frontier.claude.model,
+      ANTHROPIC_DEFAULT_SONNET_MODEL: modelPolicy.tiers.standard.claude.model,
       ARGUS_MODEL_TRUST_STORE: trustStorePath,
       ARGUS_NATIVE_LAUNCH_AUTHORIZATION: authorizationPath,
       ARGUS_NATIVE_LAUNCH_RECEIPT: receiptPath,
     };
     for (const [name, expected] of Object.entries(expectedEnvironment)) {
       if (process.env[name] !== expected) throw new Error(`${name} does not match the signed launcher binding`);
+    }
+    for (const name of ['CLAUDE_CODE_EFFORT_LEVEL', 'CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE', 'ANTHROPIC_MODEL']) {
+      if (Object.hasOwn(process.env, name)) throw new Error(`native model override ${name} is forbidden`);
     }
     const capability = process.env.ARGUS_NATIVE_LAUNCH_CAPABILITY;
     if (!/^[a-f0-9]{64}$/.test(capability ?? '')) throw new Error('native launch capability is missing or malformed');
@@ -4218,7 +4283,7 @@ function inspectNativeLaunchForPreflight({ options, modelRuntime, mode, targetKi
     if (unexpectedArgus.length) throw new Error(`unapproved inherited Argus environment: ${unexpectedArgus.sort().join(',')}`);
     return {
       ready: true,
-      evidence: `authenticated launch ${authorization.launchId}; signer=${authorization.issuedBy}; claude=${authorization.claudeVersion}; model=opus effort=max maxTurns=${authorization.maxTurns}; sandbox=${authorization.sandboxPolicy}; environment=${authorization.environmentPolicy}`,
+      evidence: `authenticated launch ${authorization.launchId}; signer=${authorization.issuedBy}; claude=${authorization.claudeVersion}; model=${authorization.model} effort=${authorization.effort} maxTurns=${authorization.maxTurns}; sandbox=${authorization.sandboxPolicy}; environment=${authorization.environmentPolicy}`,
       runtimeKeyId: authentication.keyId,
       operatorKeyId: authorization.operatorKeyId,
       trustStorePath,
@@ -6422,6 +6487,7 @@ function readSecureJson(path, label) {
 }
 
 function fail(message) {
+  if (guardChecksActive) throw new Error(`${failurePrefix}${message}`);
   console.error(`FAIL  ${failurePrefix}${message}`);
   process.exit(1);
 }

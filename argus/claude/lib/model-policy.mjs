@@ -39,16 +39,30 @@ const MAX_BACKOFF_SECONDS = 300;
 
 const REQUIRED_ENFORCEMENTS = ['effort', 'maxTurns', 'model'];
 const EXPECTED_TIERS = {
-  frontier: { rank: 2, qualityCritical: true, claude: { model: 'opus', effort: 'max' }, codex: { model: 'sol', reasoningEffort: 'xhigh' } },
-  standard: { rank: 1, qualityCritical: false, claude: { model: 'sonnet', effort: 'medium' }, codex: { model: 'terra', reasoningEffort: 'medium' } },
+  frontier: { rank: 2, qualityCritical: true, claude: { model: 'claude-opus-5-5', effort: 'max' }, codex: { model: 'gpt-6-sol', reasoningEffort: 'xhigh' } },
+  standard: { rank: 1, qualityCritical: false, claude: { model: 'claude-sonnet-5-5', effort: 'medium' }, codex: { model: 'gpt-6-sol', reasoningEffort: 'medium' } },
   mechanical: {
     rank: 0,
     qualityCritical: false,
-    claude: { model: 'haiku', effort: 'low' },
-    codex: { model: 'luna', reasoningEffort: 'medium' },
+    claude: { model: 'claude-haiku-4-5-20251001' },
+    codex: { model: 'gpt-6-luna', reasoningEffort: 'medium' },
     eligibility: ['bounded-subrole', 'no-quality-judgment', 'deterministic-output-schema', 'validator-passes-before-merge'],
   },
 };
+const EXPECTED_EXECUTION_PROFILES = {
+  critical: { tier: 'frontier', claude: { model: 'claude-opus-5-5', effort: 'max' }, codex: { model: 'gpt-6-sol', reasoningEffort: 'xhigh' } },
+  'frontier-high': { tier: 'frontier', claude: { model: 'claude-opus-5-5', effort: 'high' }, codex: { model: 'gpt-6-sol', reasoningEffort: 'high' } },
+  'standard-high': { tier: 'standard', claude: { model: 'claude-sonnet-5-5', effort: 'high' }, codex: { model: 'gpt-6-sol', reasoningEffort: 'high' } },
+  'standard-medium': { tier: 'standard', claude: { model: 'claude-sonnet-5-5', effort: 'medium' }, codex: { model: 'gpt-6-sol', reasoningEffort: 'medium' } },
+  'astra-reasoning': { tier: 'frontier', claude: { model: 'claude-opus-5-5', effort: 'max' }, codex: { model: 'gpt-6-astra', reasoningEffort: 'high' } },
+};
+const BASELINE_PROFILE_ROLES = {
+  critical: ['odysseus', 'metis', 'minos', 'aristarchus'],
+  'frontier-high': ['ariadne', 'perseus', 'tyche', 'tiresias', 'atlas', 'kalchas', 'kleio'],
+  'standard-high': ['antigone', 'atalanta', 'charon', 'hermes', 'lynceus', 'orion', 'proteus', 'nike', 'asklepios'],
+  'standard-medium': ['aegis', 'daidalos', 'mnemosyne', 'talos', 'penelope', 'pistis', 'theseus'],
+};
+const CODEX_REASONING_SIGNALS = ['ambiguity', 'cross-lane', 'conflicting-evidence', 'oracle-ambiguity'];
 const EXPECTED_MECHANICAL_DOWNGRADE = {
   fullRoleAllowed: false,
   requiresBoundedSubrole: true,
@@ -56,9 +70,9 @@ const EXPECTED_MECHANICAL_DOWNGRADE = {
   requiresValidatorPass: true,
   forbiddenWhenQualityJudgment: true,
 };
-// Roles whose escalation profile carries orchestration, judgment, or analysis work
-// never run below the frontier tier, whatever the baseline allowlist says.
-export const FRONTIER_FLOOR_PROFILES = ['orchestration', 'judgment', 'analysis'];
+// Quality floors follow the reviewed responsibilities, not broad signal categories:
+// standard hunters still retain judgment, safety, and upward-escalation obligations.
+export const FRONTIER_FLOOR_ROLES = [...BASELINE_PROFILE_ROLES.critical, ...BASELINE_PROFILE_ROLES['frontier-high']];
 const MIN_STANDARD_JUSTIFICATION = 20;
 // The controller drives the whole engagement under one native turn cap. The cap must
 // fund every wave, and a closeout reserve of it stays free for canonical merges and
@@ -96,18 +110,30 @@ export function validateModelPolicy(policy, expectedSlugs = []) {
     }
   }
   if (stableJson(policy?.tiers) !== stableJson(EXPECTED_TIERS)) errors.push('tier models, effort, rank, quality, and mechanical eligibility differ from the adopted mapping');
+  if (stableJson(policy?.executionProfiles) !== stableJson(EXPECTED_EXECUTION_PROFILES)) errors.push('execution profiles differ from the reviewed model and effort mapping');
   if (stableJson(policy?.mechanicalDowngrade) !== stableJson(EXPECTED_MECHANICAL_DOWNGRADE)) errors.push('mechanical downgrade eligibility differs from the bounded-subrole contract');
+  if (policy?.fallbackPolicies?.['upward-only']?.maxEscalations !== 1) errors.push('upward-only must allow exactly one bounded escalation per dispatch');
   if (policy?.routing?.decisionDirectory !== 'ai_agents_internal/model-decisions' || policy?.routing?.decisionSchema !== 'argus/model-decision@3') {
     errors.push('routing must persist argus/model-decision@3 under ai_agents_internal/model-decisions');
   }
   if (!sameStrings(policy?.routing?.requiredEnforcements, REQUIRED_ENFORCEMENTS)) errors.push('routing must require model, effort, and maxTurns together');
+  const reasoning = policy?.routing?.codexReasoningEscalation;
+  if (reasoning?.executionProfile !== 'astra-reasoning' || !Array.isArray(reasoning.signals) ||
+      reasoning.signals.length === 0 || new Set(reasoning.signals).size !== reasoning.signals.length ||
+      reasoning.signals.some((signal) => !CODEX_REASONING_SIGNALS.includes(signal)) ||
+      !Number.isInteger(reasoning.maxTurns) || reasoning.maxTurns < 1 || reasoning.maxTurns > 80) {
+    errors.push('codexReasoningEscalation must bind astra-reasoning to reviewed reasoning signals and at most 80 turns');
+  }
   if (policy?.telemetry?.schema !== 'argus/model-telemetry-event@3') errors.push('telemetry schema must be argus/model-telemetry-event@3');
   for (const role of roles) {
     if (!policy?.tiers?.[role.tier]) errors.push(`${role.slug}: unknown tier ${role.tier}`);
     else if (role.tier !== 'frontier' && role.tier !== 'standard') errors.push(`${role.slug}: a full role must use the frontier or standard tier`);
-    if (FRONTIER_FLOOR_PROFILES.includes(role.escalationProfile) && role.tier !== 'frontier') {
-      errors.push(`${role.slug}: ${role.escalationProfile} roles require the frontier tier`);
+    if (FRONTIER_FLOOR_ROLES.includes(role.slug) && role.tier !== 'frontier') {
+      errors.push(`${role.slug}: critical responsibilities require the frontier tier`);
     }
+    const expectedProfile = Object.entries(BASELINE_PROFILE_ROLES).find(([, slugs]) => slugs.includes(role.slug))?.[0];
+    if (!expectedProfile || role.executionProfile !== expectedProfile) errors.push(`${role.slug}: executionProfile must be the reviewed ${expectedProfile ?? 'known role'} baseline`);
+    if (policy?.executionProfiles?.[role.executionProfile]?.tier !== role.tier) errors.push(`${role.slug}: executionProfile tier must match the role tier`);
     if (role.tier === 'standard' && !allowlisted.has(role.slug)) errors.push(`${role.slug}: standard tier requires a justified baseline.standardAllowlist entry`);
     if (!Number.isInteger(role.maxTurns) || role.maxTurns < 1) errors.push(`${role.slug}: maxTurns must be a positive integer`);
     if (!policy?.escalationProfiles?.[role.escalationProfile]?.length) errors.push(`${role.slug}: escalation profile is missing or empty`);
@@ -402,7 +428,7 @@ export function resolveModelDecision(policy, adapters, {
     throw new Error('trusted runtime adapter snapshot is not argus/runtime-adapters@3');
   }
 
-  const baselineConfig = modelConfig(policy, role.tier, runtime, role.maxTurns);
+  const baselineConfig = roleModelConfig(policy, role, runtime);
   let selectedConfig = baselineConfig;
   let status = 'selected';
   let reasonCode = 'BASELINE_SELECTED';
@@ -471,7 +497,7 @@ export function resolveModelDecision(policy, adapters, {
       }
     } else {
       if (operatorDecision !== null) throw new Error('standard model unavailability cannot carry an operator decision');
-      selectedConfig = modelConfig(policy, 'frontier', runtime, role.maxTurns);
+      selectedConfig = standardEscalationConfig(policy, role, runtime);
       reasonCode = 'ESCALATION_SELECTED';
       reason = 'standard model unavailable; upward-only frontier route requested';
       fallbackUsed = true;
@@ -504,7 +530,7 @@ export function resolveModelDecision(policy, adapters, {
     reasonCode = 'SIGNAL_NOT_ALLOWED';
     reason = `signal ${signal} is not allowed by escalation profile ${role.escalationProfile}`;
   } else if (role.tier === 'standard') {
-    selectedConfig = modelConfig(policy, 'frontier', runtime, role.maxTurns);
+    selectedConfig = standardEscalationConfig(policy, role, runtime);
     reasonCode = 'ESCALATION_SELECTED';
     reason = `${signal} requires an upward-only frontier route`;
     fallbackUsed = true;
@@ -530,12 +556,45 @@ export function resolveModelDecision(policy, adapters, {
     }
   }
 
-  const adapterMode = selectedConfig.tier === baselineConfig.tier ? 'baseline' : 'escalation';
+  // Astra is a bounded, checkpoint-bound reasoning route, never a baseline or an
+  // availability/turn-limit retry. Frontier roles retain the operator gate above.
+  // The adapter must prove native enforcement even after operator approval.
+  const reasoning = policy.routing.codexReasoningEscalation;
+  if (runtime === 'codex' && triggers.includes(signal) && reasoning.signals.includes(signal) &&
+      escalationBinding !== null && (status === 'selected' || reasonCode === 'OPERATOR_ESCALATION_REQUIRED')) {
+    selectedConfig = executionProfileConfig(policy, reasoning.executionProfile, runtime, Math.min(role.maxTurns, reasoning.maxTurns));
+    fallbackUsed = true;
+    reason = status === 'selected'
+      ? `${signal} selected the bounded Astra reasoning profile from the existing checkpoint`
+      : `${signal} selected the bounded Astra reasoning profile but requires an explicit operator decision`;
+  }
+  // A standard role's first retry is its only upward allocation. Reclassifying
+  // each later failure as another escalation would renew its native cap forever.
+  if (role.tier === 'standard' && status === 'selected' && fallbackUsed &&
+      attempt > 1 + policy.fallbackPolicies['upward-only'].maxEscalations) {
+    status = 'blocked';
+    reasonCode = 'AUTO_CONTINUATION_EXHAUSTED';
+    reason = 'standard role exhausted its single upward escalation; repeated frontier allocations require an explicit continuation policy';
+  }
+  // An opaque prior decision ID cannot prove whether attempt 2 used Astra.
+  // Until prior selected profiles are authenticated routing inputs, every later
+  // Codex retry stays blocked, so an Astra attempt can never fall back to Sol.
+  // This does not alter the supported Claude frontier continuation budget.
+  if (runtime === 'codex' && signal !== 'normal' && attempt > 2 &&
+      (status === 'selected' || reasonCode === 'OPERATOR_ESCALATION_REQUIRED')) {
+    status = 'blocked';
+    reasonCode = 'AUTO_CONTINUATION_EXHAUSTED';
+    reason = 'Codex retries after attempt 2 require an authenticated prior selected profile; retaining Astra or changing its model is not yet supported';
+    operatorEscalation = false;
+  }
+  const adapterMode = stableJson(selectedConfig) === stableJson(baselineConfig) ? 'baseline' : 'escalation';
   const capabilities = effectiveRoutingCapabilities({
     adapters,
     runtime,
+    trust,
     runtimeAdapter,
     adapterMode,
+    baselineConfig,
     selectedConfig,
     engagementId,
     dispatchId,
@@ -648,7 +707,7 @@ export function buildModelRoutingPreview(policy, adapters, { slug, runtime = 'cl
     agent: slug,
     runtime,
     status: missingCapabilities.length ? 'blocked' : 'ready',
-    baselineConfig: modelConfig(policy, role.tier, runtime, role.maxTurns),
+    baselineConfig: roleModelConfig(policy, role, runtime),
     requiredOverrides: [],
     requiredEnforcements: [...REQUIRED_ENFORCEMENTS],
     adapterId: runtimeAdapter.adapterId,
@@ -781,18 +840,52 @@ export function buildModelTelemetryEvent(policy, decision, metrics, timestamp = 
   return event;
 }
 
-function modelConfig(policy, tierName, runtime, maxTurns) {
-  const runtimePolicy = policy.tiers[tierName][runtime];
-  return {
-    tier: tierName,
-    model: runtimePolicy.model,
-    effort: runtime === 'claude' ? runtimePolicy.effort : runtimePolicy.reasoningEffort,
-    maxTurns,
-  };
+function standardEscalationConfig(policy, role, runtime) {
+  const profile = role.executionProfile === 'standard-high' ? 'frontier-high' : 'critical';
+  return executionProfileConfig(policy, profile, runtime, role.maxTurns);
 }
 
-function effectiveRoutingCapabilities({ runtimeAdapter, adapterMode }) {
-  return structuredClone(runtimeAdapter.routingCapabilities[adapterMode]);
+// A single normalized baseline resolver is shared by routing, previews, native
+// launch requests, and both generated agent variants. No missing profile falls
+// back to the tier default; that would silently lose a role's reviewed effort.
+export function roleModelConfig(policy, roleOrSlug, runtime) {
+  const slug = typeof roleOrSlug === 'string' ? roleOrSlug : roleOrSlug?.slug;
+  const role = policy?.roles?.find((item) => item.slug === slug);
+  if (!role) throw new Error(`unknown model-policy role: ${slug}`);
+  const config = executionProfileConfig(policy, role.executionProfile, runtime, role.maxTurns);
+  if (config.tier !== role.tier || role.executionProfile === 'astra-reasoning') {
+    throw new Error(`${slug}: execution profile is not a valid role baseline`);
+  }
+  return config;
+}
+
+function executionProfileConfig(policy, profileName, runtime, maxTurns) {
+  if (!['claude', 'codex'].includes(runtime)) throw new Error('runtime must be claude or codex');
+  const profile = policy?.executionProfiles?.[profileName];
+  const runtimePolicy = profile?.[runtime];
+  const effort = runtime === 'claude' ? runtimePolicy?.effort : runtimePolicy?.reasoningEffort;
+  if (!runtimePolicy?.model || !effort || !Number.isInteger(maxTurns) || maxTurns < 1) {
+    throw new Error(`execution profile ${profileName} does not resolve to a model, effort, and native turn cap for ${runtime}`);
+  }
+  return { tier: profile.tier, model: runtimePolicy.model, effort, maxTurns };
+}
+
+function effectiveRoutingCapabilities({ runtime, trust, runtimeAdapter, adapterMode, baselineConfig, selectedConfig }) {
+  const capabilities = structuredClone(runtimeAdapter.routingCapabilities[adapterMode]);
+  // Claude's Agent model override preserves the role's static frontmatter effort
+  // and cap. That proves unchanged effort; it does not provide an effort override.
+  // Never infer the same behavior for Codex, whose native agent config wins.
+  if (runtime === 'claude' && adapterMode === 'escalation' &&
+      runtimeAdapter.routingCapabilities.baseline.effort === true &&
+      baselineConfig.effort === selectedConfig.effort && baselineConfig.maxTurns === selectedConfig.maxTurns) {
+    capabilities.effort = true;
+  }
+  // Agent accepts family aliases for model overrides. Only the authenticated
+  // launcher can attest their exact provider-model pins; an unattested baseline
+  // uses its full-ID definition but cannot advertise a dispatchable override.
+  if (runtime === 'claude' && trust === 'unattested' && adapterMode === 'escalation' &&
+      selectedConfig.model !== baselineConfig.model) capabilities.model = false;
+  return capabilities;
 }
 
 function requireStableId(value, label) {

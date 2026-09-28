@@ -4,7 +4,7 @@ description: Run an Argus QA engagement from the main Claude Code thread, dispat
 argument-hint: "<target URL, running stack, repo path, and QA scope>"
 disable-model-invocation: true
 allowed-tools: Read, Agent, Bash(argus-assets *)
-model: opus
+model: claude-opus-5-5
 effort: max
 ---
 

@@ -243,9 +243,11 @@ non-aliased/single-link file guards; lease-token capability checks; and the OS s
 
 Still fail-closed, by design and with no way to opt out:
 
-- **Codex dispatch is unavailable.** A Codex allocation needs a signed JIT
-  `MODEL_DISPATCH_AUTHORIZATION`, which cannot exist without a runtime-attestation key.
-  Unattested mode is Claude-only, enforced at decision creation, not just at the CLI.
+- **Codex dispatch is unavailable.** No verified native hard turn cap means routing
+  fails with `CAPABILITY_DRIFT` in both trust modes. A Codex allocation also needs a
+  signed JIT `MODEL_DISPATCH_AUTHORIZATION`, which cannot exist without a
+  runtime-attestation key. Unattested mode is Claude-only, enforced at decision
+  creation, not just at the CLI.
 - **Operator-approved escalations are unavailable.** Automatic frontier continuation under
   the policy's `autoContinue` flag needs no operator signature, so its three paths work
   unattested exactly as attested: checkpoint-resume for a checkpointed `turn-limit` or
@@ -258,8 +260,10 @@ Still fail-closed, by design and with no way to opt out:
   `maxAutoContinuations` produces `OPERATOR_ESCALATION_REQUIRED`, and frontier
   `model-unavailable` after the last backoff produces `FRONTIER_UNAVAILABLE`. A spent
   checkpoint-less restart is `AUTO_CONTINUATION_EXHAUSTED`, reported as a residual. Weaker
-  fallback is forbidden in both modes. Standard-role `model-unavailable` still routes upward
-  to frontier as usual.
+  fallback is forbidden in both modes. Standard roles may request at most one upward
+  escalation per dispatch, including `model-unavailable`; selected model, effort and
+  turn cap must still pass native enforcement. Model-only Claude escalation requires
+  signed launcher proof of its pinned aliases and is unavailable in unattested mode.
 
 ### Named residual risk
 

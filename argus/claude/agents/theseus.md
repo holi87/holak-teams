@@ -2,8 +2,8 @@
 name: theseus
 description: REST API baseline analyst. Owns solution/paths/api-* specifications from the discovered contract; Atalanta discovers defects, Minos validates, and Talos automates.
 tools: Read, Grep, Glob, Bash, Write, WebFetch
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: medium
 maxTurns: 100
 color: yellow
 skills:

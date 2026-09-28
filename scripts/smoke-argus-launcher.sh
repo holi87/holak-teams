@@ -21,6 +21,17 @@ fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 readonly FIXTURE_OAUTH_TOKEN="argus-launcher-smoke-oauth-token-$$"
 export CLAUDE_CODE_OAUTH_TOKEN="$FIXTURE_OAUTH_TOKEN"
 unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
+readonly MODEL_OVERRIDE_ENVIRONMENT=(ANTHROPIC_DEFAULT_OPUS_MODEL=forged-opus ANTHROPIC_DEFAULT_SONNET_MODEL=forged-sonnet
+  CLAUDE_CODE_EFFORT_LEVEL=max CLAUDE_CODE_SUBAGENT_MODEL=haiku CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 ANTHROPIC_MODEL=haiku)
+
+assert_model_environment() {
+  local path="$1" name
+  grep -Fxq 'ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-5-5' "$path" &&
+    grep -Fxq 'ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5-5' "$path" || fail 'native family aliases were not pinned by the launcher'
+  for name in CLAUDE_CODE_EFFORT_LEVEL CLAUDE_CODE_SUBAGENT_MODEL CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_MODEL; do
+    ! grep -q "^$name=" "$path" || fail "native launch inherited $name"
+  done
+}
 
 known_argus_environment=(
   ARGUS_ALLOWED_WRITE_ROOTS ARGUS_ASSETS ARGUS_AUTH_DIRECTORY ARGUS_AUTHORIZATION_MANIFEST
@@ -40,6 +51,14 @@ set -e
 [ "$small_cap_status" -eq 42 ] || fail 'bounded runtime fixture did not stop on the supervisor turn-cap outcome'
 jq -e '.requestedTurns == 4 and .completedTurns == 3 and .outcome == "error_max_turns" and .supervisorObserved == true' \
   "$WORK/small-turn-cap.json" >/dev/null || fail 'small native turn-cap behavior was not observed at the exact boundary'
+
+mkdir "$WORK/old-claude-bin"
+sed 's/2\.1\.284 (Claude Code fixture)/2.1.283 (Claude Code fixture)/' "$FIXTURE_BIN/claude" >"$WORK/old-claude-bin/claude"
+chmod +x "$WORK/old-claude-bin/claude"
+if PATH="$WORK/old-claude-bin:$FIXTURE_PATH:$PATH" "$LAUNCHER" doctor >"$WORK/old-claude.stdout" 2>"$WORK/old-claude.stderr"; then
+  fail 'launcher accepted Claude older than the reviewed Sonnet 5.5 minimum'
+fi
+grep -Fq 'reviewed native --max-turns/error_max_turns contract' "$WORK/old-claude.stderr" || fail 'old Claude failed for the wrong reason'
 
 # The controller turn cap lives in four places that must never drift: the model-policy
 # controllerBudget role, the launcher constant (source and packaged copy), and the
@@ -81,6 +100,8 @@ for launcher_copy in "$ROOT/argus/bin/argus-launch" "$ROOT/argus/claude/bin/argu
   # shellcheck disable=SC2016 # The marker quotes the launcher's literal shell source.
   [ "$(grep -Fc -- '--permission-mode dontAsk --allowedTools "$CLAUDE_ALLOWED_TOOLS"' "$launcher_copy")" -eq 2 ] || \
     fail "$launcher_copy must start both controller forms with --permission-mode dontAsk --allowedTools \$CLAUDE_ALLOWED_TOOLS"
+  [ "$(grep -Fc -- "--settings '{\"switchModelsOnFlag\":false}'" "$launcher_copy")" -eq 2 ] || \
+    fail "$launcher_copy must retain flagged-request refusals in both controller forms"
   ! grep -Eq -- '--dangerously-skip-permissions|bypassPermissions' "$launcher_copy" || fail "$launcher_copy bypasses permissions"
 done
 
@@ -94,6 +115,9 @@ assert_permission_posture() {
     [ "$(grep -Fx -A 1 -- '--allowedTools' "$arguments" | tail -n 1 | tr ',' '\n' | LC_ALL=C sort -u | paste -sd, -)" = "$agents_tool_union" ] || \
     { cat "$arguments" >&2; fail "$name Claude argv does not grant exactly the packaged agents' tools through one --allowedTools"; }
   ! grep -Eq -- 'dangerously|bypassPermissions' "$arguments" || fail "$name Claude argv bypasses permissions"
+  [ "$(grep -Fxc -- '--settings' "$arguments")" -eq 1 ] && \
+    [ "$(grep -Fx -A 1 -- '--settings' "$arguments" | tail -n 1)" = '{"switchModelsOnFlag":false}' ] || \
+    fail "$name Claude argv must refuse flagged requests without switching models"
 }
 
 # os-native-target-readonly@3 widens the @2 Darwin profile only by what headless Chromium
@@ -185,7 +209,7 @@ run_authenticated_launch() {
   for environment_name in "${known_argus_environment[@]}"; do
     seeded_environment+=("$environment_name=forged-$environment_name")
   done
-  PATH="$FIXTURE_PATH:$PATH" env "${seeded_environment[@]}" "${command[@]}" >"$output" 2>"$error" &
+  PATH="$FIXTURE_PATH:$PATH" env "${seeded_environment[@]}" "${MODEL_OVERRIDE_ENVIRONMENT[@]}" "${command[@]}" >"$output" 2>"$error" &
   pid=$!
   wait_for_file "$request" || { cat "$error" >&2; fail "$name launch request was not created"; }
   sign_request "$operator" "$request" "$authorization"
@@ -225,6 +249,7 @@ run_authenticated_launch() {
     '.target == $target and .artifactRoot == $artifact and .maxTurns == 400 and .sandboxPolicy == "os-native-target-readonly@3" and .environmentPolicy == "argus-launch-allowlist@1"' \
     "$authorization" >/dev/null || fail "$name signed authorization omitted exact launch bindings"
   env_file="$artifact/ai_agents_internal/fixture-child-environment.txt"
+  assert_model_environment "$env_file"
   [ "$(grep -c '^ARGUS_' "$env_file")" -eq 4 ] || { cat "$env_file" >&2; fail "$name child received an unexpected Argus environment variable"; }
   for forbidden in "${known_argus_environment[@]}"; do
     case "$forbidden" in
@@ -287,6 +312,8 @@ manifest_digest() {
 mkdir -p "$WORK/path target" "$WORK/path artifacts"
 printf 'immutable\n' >"$WORK/path target/sentinel.txt"
 run_authenticated_launch path "$WORK/path target" "$WORK/path artifacts"
+grep -Fxq signed-baseline-and-pinned-alias-verified "$WORK/path artifacts/ai_agents_internal/fixture-dispatch-verified.txt" || \
+  fail 'signed native Agent hook baseline and alias enforcement were not exercised'
 [ "$(cat "$WORK/path target/sentinel.txt")" = immutable ] || fail 'path launch changed the target sentinel'
 
 mkdir -p "$WORK/url-artifacts"
@@ -1125,7 +1152,7 @@ done
 run_usage_case() {
   local name="$1" engagement="$2"
   shift 2
-  env -u ARGUS_MODEL_TRUST_STORE "${usage_seeded_environment[@]}" HOME="$WORK/usage-home" PATH="$FIXTURE_PATH:$PATH" \
+  env -u ARGUS_MODEL_TRUST_STORE "${usage_seeded_environment[@]}" "${MODEL_OVERRIDE_ENVIRONMENT[@]}" HOME="$WORK/usage-home" PATH="$FIXTURE_PATH:$PATH" \
     "$LAUNCHER" claude --target "$WORK/usage-unattested-target" --artifact-root "$WORK/usage-artifacts-$name" \
     --mode A --engagement-id "$engagement" --unattested "$@" \
     >"$WORK/usage-unattested-$name.stdout" 2>"$WORK/usage-unattested-$name.stderr"
@@ -1156,6 +1183,7 @@ jq -e '.type == "result" and .subtype == "success" and (.usage | type) == "objec
   and .modelUsage["claude-opus-fixture"].inputTokens == 10 and .result == "ARGUS_FIXTURE_UNATTESTED_PROMPT_OK"' \
   "$WORK/usage-reports/launch.json" >/dev/null || { cat "$WORK/usage-reports/launch.json" >&2; fail 'unattested usage report is not the Claude JSON result document'; }
 usage_env_file="$WORK/usage-artifacts-launch/ai_agents_internal/fixture-child-environment.txt"
+assert_model_environment "$usage_env_file"
 [ "$(grep -c '^ARGUS_' "$usage_env_file")" -eq 2 ] && grep -Fxq 'ARGUS_LAUNCH_UNATTESTED=1' "$usage_env_file" \
   && grep -Fxq "ARGUS_LAUNCH_ARTIFACT_ROOT=$WORK/usage-artifacts-launch" "$usage_env_file" || \
   { grep '^ARGUS_' "$usage_env_file" >&2; fail 'unattested child did not receive exactly ARGUS_LAUNCH_UNATTESTED=1 and its ARGUS_LAUNCH_ARTIFACT_ROOT'; }

@@ -2,8 +2,8 @@
 name: aegis
 description: Security automation engineer. Owns tests/security/ and automates Minos-confirmed security defects; does not discover, validate, deduplicate, or persist canonical defects.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: opus
-effort: max
+model: claude-sonnet-5-5
+effort: medium
 maxTurns: 100
 color: green
 skills:

@@ -1,8 +1,8 @@
 name = "perseus"
 description = "Security hunter. Persists PER candidates from authorized STRIDE and OWASP probes; Minos validates and Aegis automates canonical security defects."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 developer_instructions = '''
 # Runtime capability delta

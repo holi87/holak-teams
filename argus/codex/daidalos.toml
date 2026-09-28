@@ -1,8 +1,8 @@
 name = "daidalos"
 description = "UI automation engineer. Owns tests/ui/, implements Penelope baselines, and automates Minos-confirmed ORI, LYN, and ANG defects; does not hunt or validate them."
-model = "sol"
+model = "gpt-6-sol"
 sandbox_mode = "workspace-write"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "medium"
 
 developer_instructions = '''
 # Runtime capability delta

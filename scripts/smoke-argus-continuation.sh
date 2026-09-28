@@ -23,6 +23,8 @@ fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 
 jq -e '.fallbackPolicies["frontier-fail-closed"].autoContinue | .enabled == true and .maxCheckpointlessRetries == 1 and .unavailableBackoffSeconds[0] == 60' \
   "$POLICY" >/dev/null || fail 'packaged model policy no longer enables autoContinue with one checkpoint-less restart and a 60 s first backoff'
+jq -e '.roles[] | select(.slug == "ariadne") | .tier == "frontier" and .executionProfile == "frontier-high"' \
+  "$POLICY" >/dev/null || fail 'continuation fixture requires Ariadne on the frontier-high execution profile'
 
 TARGET="$WORK/target"
 mkdir -p "$TARGET"
@@ -33,22 +35,22 @@ argus_smoke_prepare_model_control "$CLI" "$MANIFEST" "$TARGET" "$TARGET" B \
 DECISIONS="$TARGET/ai_agents_internal/model-decisions"
 
 ODYSSEUS="$(argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST" odysseus | jq -r .token)"
-ORION="$(argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST" orion "$ODYSSEUS" | jq -r .token)"
+ARIADNE="$(argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST" ariadne "$ODYSSEUS" | jq -r .token)"
 KALCHAS="$(argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST" kalchas "$ODYSSEUS" | jq -r .token)"
 PERSEUS="$(argus_smoke_allocate "$CLI" "$MANIFEST" "$HOST" perseus "$ODYSSEUS" | jq -r .token)"
-ISSUED_TOKENS=("$ODYSSEUS" "$ORION" "$KALCHAS" "$PERSEUS")
+ISSUED_TOKENS=("$ODYSSEUS" "$ARIADNE" "$KALCHAS" "$PERSEUS")
 for token in "${ISSUED_TOKENS[@]}"; do
   [[ "$token" =~ ^[a-f0-9]{64}$ ]] || fail 'allocation did not return a 64-hex lease token'
 done
 
 ODYSSEUS_INITIAL="$(argus_smoke_model_decision "$MANIFEST" "$HOST" odysseus)"
-ORION_INITIAL="$(argus_smoke_model_decision "$MANIFEST" "$HOST" orion)"
+ARIADNE_INITIAL="$(argus_smoke_model_decision "$MANIFEST" "$HOST" ariadne)"
 KALCHAS_INITIAL="$(argus_smoke_model_decision "$MANIFEST" "$HOST" kalchas)"
 PERSEUS_INITIAL="$(argus_smoke_model_decision "$MANIFEST" "$HOST" perseus)"
-ORION_DISPATCH="$(jq -r .dispatchId "$ORION_INITIAL")"
+ARIADNE_DISPATCH="$(jq -r .dispatchId "$ARIADNE_INITIAL")"
 KALCHAS_DISPATCH="$(jq -r .dispatchId "$KALCHAS_INITIAL")"
 PERSEUS_DISPATCH="$(jq -r .dispatchId "$PERSEUS_INITIAL")"
-ORION_TURNS="$(jq -r '.roles[] | select(.slug == "orion") | .maxTurns' "$POLICY")"
+ARIADNE_TURNS="$(jq -r '.roles[] | select(.slug == "ariadne") | .maxTurns' "$POLICY")"
 
 # route <agent> <dispatch-id> <signal> <attempt> [extra options]: the controller routes
 # every post-allocation decision with its own token.
@@ -160,29 +162,29 @@ jq -e '.status == "blocked" and .reasonCode == "AUTO_CONTINUATION_EXHAUSTED" and
 
 # c1: a hunter's RACI accountable-artifact list is empty, yet the candidates it files under its
 # capability-matrix prefix are its output: they contradict both no-artifact and zero-candidates.
-jq -e '.agents[] | select(.slug == "orion" or .slug == "perseus") | .accountableArtifacts == []' \
-  "$ROOT/argus/claude/references/raci.json" >/dev/null || fail 'c1: orion or perseus gained a RACI accountable artifact; the fixture no longer isolates filed candidates'
+jq -e '.agents[] | select(.slug == "perseus") | .accountableArtifacts == []' \
+  "$ROOT/argus/claude/references/raci.json" >/dev/null || fail 'c1: perseus gained a RACI accountable artifact; the fixture no longer isolates filed candidates'
 mkdir -p "$TARGET/bugs" "$TARGET/solution"
-printf '# ORI-001 cart total ignores the discount\n' >"$TARGET/bugs/ORI-001-cart-total.md"
-refuse_route c1 'no-artifact is contradicted by bugs/ORI-001-cart-total.md; route turn-limit instead' \
-  orion "$ORION_DISPATCH" no-artifact 2
-refuse_route c1 'zero-candidates is contradicted by bugs/ORI-001-cart-total.md; route turn-limit instead' \
-  orion "$ORION_DISPATCH" zero-candidates 2
-rm "$TARGET/bugs/ORI-001-cart-total.md"
+printf '# PER-001 checkout accepts another account identity\n' >"$TARGET/bugs/PER-001-checkout-identity.md"
+refuse_route c1 'no-artifact is contradicted by bugs/PER-001-checkout-identity.md; route turn-limit instead' \
+  perseus "$PERSEUS_DISPATCH" no-artifact 2
+refuse_route c1 'zero-candidates is contradicted by bugs/PER-001-checkout-identity.md; route turn-limit instead' \
+  perseus "$PERSEUS_DISPATCH" zero-candidates 2
+rm "$TARGET/bugs/PER-001-checkout-identity.md"
 
 # c2: a lane-submitted fragment is an artifact of that lane, so it contradicts no-artifact.
-printf '## Orion notes\n' >"$WORK/orion-fragment.md"
-fragment="$("$CLI" engagement fragment --manifest "$MANIFEST" --lane orion --token "$ORION" \
-  --canonical solution/FINDINGS.md --id orion-notes --input "$WORK/orion-fragment.md")"
+printf '## Ariadne notes\n' >"$WORK/ariadne-fragment.md"
+fragment="$("$CLI" engagement fragment --manifest "$MANIFEST" --lane ariadne --token "$ARIADNE" \
+  --canonical solution/FINDINGS.md --id ariadne-notes --input "$WORK/ariadne-fragment.md")"
 fragment_path="$(jq -r .path <<<"$fragment")"
-[ -f "$TARGET/$fragment_path" ] || fail "c2: orion could not submit a fragment: $fragment"
+[ -f "$TARGET/$fragment_path" ] || fail "c2: ariadne could not submit a fragment: $fragment"
 refuse_route c2 "no-artifact is contradicted by $fragment_path; route turn-limit instead" \
-  orion "$ORION_DISPATCH" no-artifact 2
+  ariadne "$ARIADNE_DISPATCH" no-artifact 2
 
 # c3: another lane's candidate is not perseus's output, while perseus's sole-owned
 # technique-coverage ledger is: it contradicts no-artifact but not zero-candidates, which
 # selects the fresh restart and records the ledger as the observed evidence.
-printf '# ORI-002 checkout total drops the tax line\n' >"$TARGET/bugs/ORI-002-checkout-tax.md"
+printf '# ARI-002 checkout total drops the tax line\n' >"$TARGET/bugs/ARI-002-checkout-tax.md"
 printf '{}\n' >"$TARGET/solution/perseus-ledger.json"
 refuse_route c3 'no-artifact is contradicted by solution/perseus-ledger.json; route turn-limit instead' \
   perseus "$PERSEUS_DISPATCH" no-artifact 2
@@ -194,66 +196,66 @@ jq -e --arg previous "$(jq -r .decisionId "$PERSEUS_INITIAL")" \
 
 # o1: a checkpointed turn-limit resumes from the checkpoint on the same frontier baseline with
 # a fresh native per-attempt cap.
-printf '{"completedUnits":["SRF-UI-CART"],"nextUnit":"SRF-UI-CHECKOUT"}\n' >"$WORK/orion-checkpoint.json"
-checkpoint="$("$CLI" engagement checkpoint --manifest "$MANIFEST" --lane orion --token "$ORION" --phase hunting \
-  --sequence 0 --dispatch-id "$ORION_DISPATCH" --attempt 1 --input "$WORK/orion-checkpoint.json")"
+printf '{"completedUnits":["SRF-UI-CART"],"nextUnit":"SRF-UI-CHECKOUT"}\n' >"$WORK/ariadne-checkpoint.json"
+checkpoint="$("$CLI" engagement checkpoint --manifest "$MANIFEST" --lane ariadne --token "$ARIADNE" --phase hunting \
+  --sequence 0 --dispatch-id "$ARIADNE_DISPATCH" --attempt 1 --input "$WORK/ariadne-checkpoint.json")"
 checkpoint_ref="$(jq -r .path <<<"$checkpoint")"
 # A turn-limit on a lane that holds a resumable checkpoint is not uncheckpointed: the
 # checkpoint-less route is refused, so the lane keeps its checkpoint-resume path and the
 # dispatch keeps its single fresh restart.
 refuse_route o1 "turn-limit is checkpointed at $checkpoint_ref; persist the envelope with model request --checkpoint-ref $checkpoint_ref and route it with --request" \
-  orion "$ORION_DISPATCH" turn-limit 2
-request="$("$CLI" model request --manifest "$MANIFEST" --agent orion --runtime claude --signal turn-limit \
-  --dispatch-id "$ORION_DISPATCH" --attempt 2 --checkpoint-ref "$checkpoint_ref" --token "$ORION")"
+  ariadne "$ARIADNE_DISPATCH" turn-limit 2
+request="$("$CLI" model request --manifest "$MANIFEST" --agent ariadne --runtime claude --signal turn-limit \
+  --dispatch-id "$ARIADNE_DISPATCH" --attempt 2 --checkpoint-ref "$checkpoint_ref" --token "$ARIADNE")"
 request_path="$(sed -n 's/^MODEL_REQUEST  persisted path=\([^ ]*\) sha256=.*$/\1/p' <<<"$request")"
 [ -f "$request_path" ] || fail 'o1: model request did not persist a turn-limit envelope'
-route orion "$ORION_DISPATCH" turn-limit 2 --request "$request_path" >"$WORK/o1.json" || fail 'o1: checkpointed turn-limit did not select'
-jq -e --argjson turns "$ORION_TURNS" --arg ref "$checkpoint_ref" --arg previous "$(jq -r .decisionId "$ORION_INITIAL")" \
+route ariadne "$ARIADNE_DISPATCH" turn-limit 2 --request "$request_path" >"$WORK/o1.json" || fail 'o1: checkpointed turn-limit did not select'
+jq -e --argjson turns "$ARIADNE_TURNS" --arg ref "$checkpoint_ref" --arg previous "$(jq -r .decisionId "$ARIADNE_INITIAL")" \
   '.status == "selected" and .reasonCode == "AUTO_CONTINUE_SELECTED" and .continuation.kind == "checkpoint-resume" and
-   .selectedConfig.model == "opus" and .selectedConfig.maxTurns == $turns and .selectedConfig == .baselineConfig and
+   .selectedConfig.model == "claude-opus-5-5" and .selectedConfig.effort == "high" and .selectedConfig.maxTurns == $turns and .selectedConfig == .baselineConfig and
    .continuation.perAttemptMaxTurns == $turns and .continuation.cumulativeTurnBudget == ($turns * 2) and
    .escalationBinding.checkpointRef == $ref and .escalationBinding.previousDecisionId == $previous and
    .availabilityBinding == null and .outcomeBinding == null' \
-  "$WORK/o1.json" >/dev/null || fail 'o1: checkpointed turn-limit was not a checkpoint-resume on opus with the policy maxTurns'
-ORION_O1="$(decision_file "$WORK/o1.json")"
-heartbeat orion "$ORION" >/dev/null || fail 'o1: the active orion token could not heartbeat before the rebind'
-telemetry "$ORION_INITIAL" "$ORION"
-o1_start="$(start_attempt orion "$ORION_O1" "$ORION")"
+  "$WORK/o1.json" >/dev/null || fail 'o1: checkpointed turn-limit was not a checkpoint-resume on claude-opus-5-5/high with the policy maxTurns'
+ARIADNE_O1="$(decision_file "$WORK/o1.json")"
+heartbeat ariadne "$ARIADNE" >/dev/null || fail 'o1: the active ariadne token could not heartbeat before the rebind'
+telemetry "$ARIADNE_INITIAL" "$ARIADNE"
+o1_start="$(start_attempt ariadne "$ARIADNE_O1" "$ARIADNE")"
 jq -e '.attemptStarted == true and .attempt == 2 and .previousAttempt == 1' <<<"$o1_start" >/dev/null || \
-  fail 'o1: start-attempt did not advance orion to attempt 2'
-ORION_NEXT="$(jq -r .token <<<"$o1_start")"
-[[ "$ORION_NEXT" =~ ^[a-f0-9]{64}$ && "$ORION_NEXT" != "$ORION" ]] || fail 'o1: start-attempt did not rotate the orion token'
-ISSUED_TOKENS+=("$ORION_NEXT")
-if heartbeat orion "$ORION" >/dev/null 2>&1; then
-  fail 'o1: heartbeat accepted the consumed pre-rotation orion token'
+  fail 'o1: start-attempt did not advance ariadne to attempt 2'
+ARIADNE_NEXT="$(jq -r .token <<<"$o1_start")"
+[[ "$ARIADNE_NEXT" =~ ^[a-f0-9]{64}$ && "$ARIADNE_NEXT" != "$ARIADNE" ]] || fail 'o1: start-attempt did not rotate the ariadne token'
+ISSUED_TOKENS+=("$ARIADNE_NEXT")
+if heartbeat ariadne "$ARIADNE" >/dev/null 2>&1; then
+  fail 'o1: heartbeat accepted the consumed pre-rotation ariadne token'
 fi
-heartbeat orion "$ORION_NEXT" >/dev/null || fail 'o1: heartbeat rejected the rotated orion token'
-if telemetry "$ORION_INITIAL" "$ORION_NEXT" 2>/dev/null; then
+heartbeat ariadne "$ARIADNE_NEXT" >/dev/null || fail 'o1: heartbeat rejected the rotated ariadne token'
+if telemetry "$ARIADNE_INITIAL" "$ARIADNE_NEXT" 2>/dev/null; then
   fail 'o1: telemetry accepted the superseded attempt-1 decision after the rebind'
 fi
 
 # o2: frontier unavailability retries the same baseline after the first policy backoff; the
 # retry cannot start before it elapses.
 o2_started="$(date +%s)"
-route orion "$ORION_DISPATCH" model-unavailable 3 >"$WORK/o2.json" || fail 'o2: model-unavailable at attempt 3 did not select'
+route ariadne "$ARIADNE_DISPATCH" model-unavailable 3 >"$WORK/o2.json" || fail 'o2: model-unavailable at attempt 3 did not select'
 jq -e --arg previous "$(jq -r .decisionId "$WORK/o1.json")" \
   '.status == "selected" and .reasonCode == "BACKOFF_RETRY_SELECTED" and .continuation.kind == "backoff-retry" and
    .continuation.backoffSeconds == 60 and .selectedConfig == .baselineConfig and
    .availabilityBinding.priorUnavailableRetries == 0 and .availabilityBinding.previousDecisionId == $previous and
    .escalationBinding == null and .outcomeBinding == null' \
   "$WORK/o2.json" >/dev/null || fail 'o2: model-unavailable was not a 60 s BACKOFF_RETRY_SELECTED'
-ORION_O2="$(decision_file "$WORK/o2.json")"
-telemetry "$ORION_O1" "$ORION_NEXT"
-if start_attempt orion "$ORION_O2" "$ORION_NEXT" >"$WORK/o2-start.out" 2>"$WORK/o2-start.err"; then
+ARIADNE_O2="$(decision_file "$WORK/o2.json")"
+telemetry "$ARIADNE_O1" "$ARIADNE_NEXT"
+if start_attempt ariadne "$ARIADNE_O2" "$ARIADNE_NEXT" >"$WORK/o2-start.out" 2>"$WORK/o2-start.err"; then
   fail 'o2: start-attempt ignored the pending backoff'
 fi
 grep -Eq 'retry backoff has not elapsed; retry at [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z or pass --wait true' "$WORK/o2-start.err" || \
   fail "o2: pending backoff was not refused with its retry time: $(cat "$WORK/o2-start.err")"
-if start_attempt orion "$ORION_O2" "$ORION_NEXT" --wait false >/dev/null 2>&1; then
+if start_attempt ariadne "$ARIADNE_O2" "$ARIADNE_NEXT" --wait false >/dev/null 2>&1; then
   fail 'o2: start-attempt --wait false ignored the pending backoff'
 fi
 # The runtime enforces the same rule under its own state lock for a caller that bypasses the CLI.
-node --input-type=module - "$ENGAGEMENT_LIB" "$MANIFEST" "$ORION_O2" "$ORION_NEXT" "$ODYSSEUS" <<'NODE'
+node --input-type=module - "$ENGAGEMENT_LIB" "$MANIFEST" "$ARIADNE_O2" "$ARIADNE_NEXT" "$ODYSSEUS" <<'NODE'
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 const [library, manifestPath, decisionPath, token, controllerToken] = process.argv.slice(2);
@@ -268,45 +270,45 @@ const executionBinding = {
   runtime: decision.runtime,
 };
 try {
-  startWorkerAttempt(manifest, 'orion', { token, controllerToken, executionBinding });
+  startWorkerAttempt(manifest, 'ariadne', { token, controllerToken, executionBinding });
 } catch (error) {
-  if (error.message === 'orion retry backoff has not elapsed') process.exit(0);
+  if (error.message === 'ariadne retry backoff has not elapsed') process.exit(0);
   console.error(`FAIL  o2: runtime backoff refusal differed: ${error.message}`);
   process.exit(1);
 }
-console.error('FAIL  o2: the runtime rebound orion before its backoff elapsed');
+console.error('FAIL  o2: the runtime rebound ariadne before its backoff elapsed');
 process.exit(1);
 NODE
-heartbeat orion "$ORION_NEXT" >/dev/null || fail 'o2: a refused backoff retry consumed the active orion token'
+heartbeat ariadne "$ARIADNE_NEXT" >/dev/null || fail 'o2: a refused backoff retry consumed the active ariadne token'
 
 # o3: --wait true sleeps out the remaining backoff, then rebinds on the availability lineage.
-o3_start="$(start_attempt orion "$ORION_O2" "$ORION_NEXT" --wait true)"
+o3_start="$(start_attempt ariadne "$ARIADNE_O2" "$ARIADNE_NEXT" --wait true)"
 elapsed=$(( $(date +%s) - o2_started ))
 [ "$elapsed" -ge 59 ] || fail "o3: start-attempt --wait true returned after ${elapsed}s, before the 60 s backoff"
 node -e 'const [createdAt] = process.argv.slice(1); if (Date.now() < Date.parse(createdAt) + 60000) process.exit(1);' \
   "$(jq -r .createdAt "$WORK/o2.json")" || fail 'o3: the retry started before decision createdAt + backoff'
 jq -e --arg decision "$(jq -r .decisionId "$WORK/o2.json")" \
   '.attemptStarted == true and .attempt == 3 and .previousAttempt == 2 and .modelDecisionId == $decision' \
-  <<<"$o3_start" >/dev/null || fail 'o3: start-attempt --wait true did not advance orion to the backoff decision'
-ORION_FINAL="$(jq -r .token <<<"$o3_start")"
-[[ "$ORION_FINAL" =~ ^[a-f0-9]{64}$ && "$ORION_FINAL" != "$ORION_NEXT" ]] || fail 'o3: start-attempt did not rotate the orion token'
-ISSUED_TOKENS+=("$ORION_FINAL")
+  <<<"$o3_start" >/dev/null || fail 'o3: start-attempt --wait true did not advance ariadne to the backoff decision'
+ARIADNE_FINAL="$(jq -r .token <<<"$o3_start")"
+[[ "$ARIADNE_FINAL" =~ ^[a-f0-9]{64}$ && "$ARIADNE_FINAL" != "$ARIADNE_NEXT" ]] || fail 'o3: start-attempt did not rotate the ariadne token'
+ISSUED_TOKENS+=("$ARIADNE_FINAL")
 
 # Terminal cleanup: each lane's last attempt emits telemetry before its lease is released.
-telemetry "$ORION_O2" "$ORION_FINAL"
+telemetry "$ARIADNE_O2" "$ARIADNE_FINAL"
 telemetry "$KALCHAS_K3" "$KALCHAS_NEXT"
 telemetry "$ODYSSEUS_INITIAL" "$ODYSSEUS"
 jq -s -e '
   length == 6 and all(.[]; .schema == "argus/model-telemetry-event@3") and
   (map(.reasonCode) | index("AUTO_CONTINUE_SELECTED") != null and index("BACKOFF_RETRY_SELECTED") != null) and
-  (map(select(.agent == "orion") | .attempt) == [1, 2, 3]) and (map(select(.agent == "kalchas") | .attempt) == [1, 2])' \
+  (map(select(.agent == "ariadne") | .attempt) == [1, 2, 3]) and (map(select(.agent == "kalchas") | .attempt) == [1, 2])' \
   "$TARGET/ai_agents_internal/model-telemetry.jsonl" >/dev/null || fail 'telemetry did not record exactly one @3 event per continuation attempt'
-"$CLI" engagement cleanup --manifest "$MANIFEST" --lane orion --token "$ORION_FINAL" --outcome interrupted >/dev/null
+"$CLI" engagement cleanup --manifest "$MANIFEST" --lane ariadne --token "$ARIADNE_FINAL" --outcome interrupted >/dev/null
 "$CLI" engagement cleanup --manifest "$MANIFEST" --lane kalchas --token "$KALCHAS_NEXT" --outcome interrupted >/dev/null
 "$CLI" engagement cleanup --manifest "$MANIFEST" --lane perseus --token "$PERSEUS" --outcome interrupted >/dev/null
 "$CLI" engagement cleanup --manifest "$MANIFEST" --lane odysseus --token "$ODYSSEUS" --outcome interrupted >/dev/null
 "$CLI" engagement status --manifest "$MANIFEST" >"$WORK/status.json"
-jq -e '[.allocations.odysseus, .allocations.orion, .allocations.kalchas, .allocations.perseus] | all(.status == "released" and .outcome == "interrupted")' \
+jq -e '[.allocations.odysseus, .allocations.ariadne, .allocations.kalchas, .allocations.perseus] | all(.status == "released" and .outcome == "interrupted")' \
   "$WORK/status.json" >/dev/null || fail 'cleanup did not release every continuation lane'
 
 # No issued lease or controller token may exist anywhere in the worker-readable artifact root.
@@ -316,4 +318,4 @@ for token in "${ISSUED_TOKENS[@]}"; do
   fi
 done
 
-printf 'PASS  Argus continuation: no-artifact and zero-candidates checked against RACI artifacts, filed candidates, owned ledgers, and fragments, zero-candidates scope, one fresh restart then exhaustion, checkpointed turn-limit kept on the resume path, checkpoint-resume on opus, 60 s backoff enforced and waited, token rotation, and no persisted token\n'
+printf 'PASS  Argus continuation: no-artifact and zero-candidates checked against RACI artifacts, filed candidates, owned ledgers, and fragments, zero-candidates scope, one fresh restart then exhaustion, checkpointed turn-limit kept on the resume path, checkpoint-resume on claude-opus-5-5/high, 60 s backoff enforced and waited, token rotation, and no persisted token\n'

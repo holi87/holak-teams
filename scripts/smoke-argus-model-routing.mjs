@@ -15,6 +15,7 @@ import {
   modelDecisionIntegritySha256,
   modelPublicKeyFingerprint,
   resolveModelDecision,
+  roleModelConfig,
   validateModelDecisionBinding,
   validateModelPolicy,
 } from '../argus/runtime/model-policy.mjs';
@@ -65,8 +66,65 @@ assert(validateBenchmark(benchmark).length === 0, 'model benchmark is invalid');
 const derivedCounts = tierCounts(policy);
 assert(policy.baseline.frontierRoles === derivedCounts.frontier && policy.baseline.standardRoles === derivedCounts.standard, 'baseline counts differ from the role tiers');
 assert(policy.baseline.decision === `adopt-${derivedCounts.frontier}-frontier-${derivedCounts.standard}-standard`, 'baseline decision differs from the derived role tiers');
-assert(policy.tiers.frontier.codex.model === 'sol' && policy.tiers.standard.codex.model === 'terra', 'Codex tier mapping drifted');
-assert(policy.tiers.frontier.claude.model === 'opus' && policy.tiers.standard.claude.model === 'sonnet', 'Claude tier mapping drifted');
+assert(policy.tiers.frontier.codex.model === 'gpt-6-sol' && policy.tiers.standard.codex.model === 'gpt-6-sol', 'Codex tier mapping drifted');
+assert(policy.tiers.frontier.claude.model === 'claude-opus-5-5' && policy.tiers.standard.claude.model === 'claude-sonnet-5-5', 'Claude tier mapping drifted');
+
+// Every complete role has one reviewed profile in both runtimes. Tier defaults
+// must never erase the high-effort profiles during preview or dispatch.
+const expectedProfileGroups = [
+  ['critical', 'frontier', 'claude-opus-5-5', 'max', 'xhigh', ['odysseus', 'metis', 'minos', 'aristarchus']],
+  ['frontier-high', 'frontier', 'claude-opus-5-5', 'high', 'high', ['ariadne', 'perseus', 'tyche', 'tiresias', 'atlas', 'kalchas', 'kleio']],
+  ['standard-high', 'standard', 'claude-sonnet-5-5', 'high', 'high', ['antigone', 'atalanta', 'charon', 'hermes', 'lynceus', 'orion', 'proteus', 'nike', 'asklepios']],
+  ['standard-medium', 'standard', 'claude-sonnet-5-5', 'medium', 'medium', ['aegis', 'daidalos', 'mnemosyne', 'talos', 'penelope', 'pistis', 'theseus']],
+];
+const profiledRoles = new Set();
+for (const [executionProfile, tier, claudeModel, claudeEffort, codexEffort, slugs] of expectedProfileGroups) {
+  for (const slug of slugs) {
+    assert(!profiledRoles.has(slug), `${slug}: duplicate profile test assignment`);
+    profiledRoles.add(slug);
+    const role = policy.roles.find((item) => item.slug === slug);
+    assert(role.executionProfile === executionProfile && role.tier === tier, `${slug}: reviewed profile assignment drifted`);
+    for (const [runtime, model, effort] of [['claude', claudeModel, claudeEffort], ['codex', 'gpt-6-sol', codexEffort]]) {
+      const expected = { tier, model, effort, maxTurns: role.maxTurns };
+      const config = roleModelConfig(policy, role, runtime);
+      const preview = buildModelRoutingPreview(policy, adapters, { slug, runtime });
+      const decision = decide(adapters, { slug, runtime, signal: 'normal' });
+      assert(stable(config) === stable(expected) && stable(preview.baselineConfig) === stable(expected) &&
+        stable(decision.selectedConfig) === stable(expected), `${slug}/${runtime}: baseline resolver, preview, or dispatch lost the profile`);
+    }
+  }
+}
+assert(profiledRoles.size === 27 && derivedCounts.frontier === 11 && derivedCounts.standard === 16, 'reviewed model allocation is not 11 frontier and 16 standard roles');
+assert(policy.tiers.mechanical.claude.model === 'claude-haiku-4-5-20251001' &&
+  !Object.hasOwn(policy.tiers.mechanical.claude, 'effort') && policy.tiers.mechanical.codex.model === 'gpt-6-luna',
+  'dormant helper models are unpinned or Haiku has an unsupported effort parameter');
+assert(decide(adapters, { slug: 'aegis', runtime: 'claude', signal: 'schema-validated-mechanical' }).reasonCode === 'MECHANICAL_FULL_ROLE_FORBIDDEN',
+  'a validated schema silently enabled a complete mechanical role');
+const missingProfile = structuredClone(policy);
+delete missingProfile.roles.find(({ slug }) => slug === 'orion').executionProfile;
+assertPolicyRejected(missingProfile, 'executionProfile must be the reviewed', 'a missing role execution profile was accepted');
+assert(validatePolicySchema(missingProfile).length > 0, 'schema accepted a missing role execution profile');
+assertThrows(() => roleModelConfig(missingProfile, 'orion', 'claude'), 'missing profile silently fell back to a tier default');
+const weakerProfile = structuredClone(policy);
+weakerProfile.executionProfiles['standard-high'].codex.model = 'gpt-6-luna';
+assertPolicyRejected(weakerProfile, 'execution profiles differ', 'a full-role Luna downgrade was accepted');
+assert(validatePolicySchema(weakerProfile).length > 0, 'schema accepted a full-role Luna model');
+const loweredCritical = structuredClone(policy);
+loweredCritical.roles.find(({ slug }) => slug === 'minos').executionProfile = 'frontier-high';
+assertPolicyRejected(loweredCritical, 'executionProfile must be the reviewed critical', 'critical adjudication silently lost its effort floor');
+const astraBaseline = structuredClone(policy);
+astraBaseline.roles.find(({ slug }) => slug === 'minos').executionProfile = 'astra-reasoning';
+assertPolicyRejected(astraBaseline, 'executionProfile must be the reviewed critical', 'Astra became a complete-role baseline');
+assertThrows(() => roleModelConfig(astraBaseline, 'minos', 'codex'), 'baseline helper accepted the escalation-only Astra profile');
+for (const mutate of [
+  (value) => { value.routing.codexReasoningEscalation.signals.push('turn-limit'); },
+  (value) => { value.routing.codexReasoningEscalation.maxTurns = 81; },
+]) {
+  const invalid = structuredClone(policy);
+  mutate(invalid);
+  assertPolicyRejected(invalid, 'codexReasoningEscalation must bind', 'unbounded or non-reasoning Astra escalation was accepted');
+  assert(validatePolicySchema(invalid).length > 0, 'schema accepted an invalid Astra escalation');
+}
 
 // The controller turn budget binds the native launch cap and its closeout reserve.
 const controllerBudget = controllerTurnBudget(policy);
@@ -98,15 +156,52 @@ assert(same(codex.missingCapabilities, ['maxTurns']), 'Codex route reported the 
 const ignoredRetiredClaim = resolveModelDecision(policy, adapters, { ...context, slug: 'aegis', runtime: 'codex', signal: 'normal', runtimeAttestation: {} });
 assert(ignoredRetiredClaim.status === 'blocked' && !Object.hasOwn(ignoredRetiredClaim, 'runtimeAttestation'), 'retired runtime attestation changed routing');
 
-// The standard tier survives only as an allowlisted, upward-only path. A synthetic
-// fixture keeps that path exercised while the committed policy runs all-frontier.
+// Standard baselines remain allowlisted and upward-only; every supported baseline
+// still requires native model, effort, and turn-cap enforcement.
 const standardAegis = withStandardRole(policy, 'aegis', 'Synthetic routing fixture for the upward-only standard path.');
 const standardAegisErrors = [...validateModelPolicy(standardAegis, slugsOf(standardAegis)), ...validatePolicySchema(standardAegis).map((error) => JSON.stringify(error))];
 assert(standardAegisErrors.length === 0, `allowlisted standard fixture is invalid: ${standardAegisErrors.join('; ')}`);
 const claudeEscalation = decide(adapters, { slug: 'aegis', runtime: 'claude', signal: 'safety' }, standardAegis);
 assert(claudeEscalation.status === 'blocked' && same(claudeEscalation.missingCapabilities, ['effort']), 'Claude escalation hid its missing effort override');
-const frontierAegis = decide(adapters, { slug: 'aegis', runtime: 'claude', signal: 'safety' });
-assert(frontierAegis.status === 'blocked' && frontierAegis.reasonCode === 'OPERATOR_ESCALATION_REQUIRED', 'committed frontier aegis escalation bypassed the operator');
+const highClaudeEscalation = decide(adapters, { slug: 'orion', runtime: 'claude', signal: 'safety', attempt: 2, escalationBinding: escalationBinding() });
+assert(highClaudeEscalation.status === 'selected' && highClaudeEscalation.selectedConfig.model === 'claude-opus-5-5' &&
+  highClaudeEscalation.selectedConfig.effort === 'high' && same(highClaudeEscalation.requiredOverrides, ['model']) &&
+  highClaudeEscalation.selectedConfig.maxTurns === highClaudeEscalation.baselineConfig.maxTurns,
+  'Claude model-only escalation did not preserve the native high effort and role turn cap');
+assert(adapters.claude.routingCapabilities.escalation.effort === false, 'derived unchanged-effort enforcement mutated the adapter override claim');
+const unattestedHighEscalation = decide(adapters, {
+  slug: 'orion', runtime: 'claude', signal: 'safety', attempt: 2, escalationBinding: escalationBinding(), trust: 'unattested',
+});
+assert(unattestedHighEscalation.status === 'blocked' && unattestedHighEscalation.reasonCode === 'CAPABILITY_DRIFT' &&
+  same(unattestedHighEscalation.missingCapabilities, ['model']) && unattestedHighEscalation.continuation === null,
+  'unattested Claude advertised a model override without authenticated alias pins');
+assert(decide(adapters, { slug: 'orion', runtime: 'claude', signal: 'normal', trust: 'unattested' }).status === 'selected',
+  'unattested full-ID baseline was incorrectly blocked with model overrides');
+const noBaselineEffort = structuredClone(adapters);
+noBaselineEffort.claude.routingCapabilities.baseline.effort = false;
+assert(decide(noBaselineEffort, { slug: 'orion', runtime: 'claude', signal: 'safety' }).reasonCode === 'CAPABILITY_DRIFT',
+  'Claude inferred unchanged effort without native baseline enforcement');
+assert(decide(adapters, { slug: 'orion', runtime: 'codex', signal: 'safety' }).reasonCode === 'CAPABILITY_DRIFT',
+  'Codex inherited the Claude-only unchanged-effort capability');
+// Once attempt 2 uses Opus, another standard-tier branch must not allocate a
+// fresh full cap forever under the name of upward escalation.
+for (const signal of ['turn-limit', 'repeated-failure', 'safety', 'cross-lane', 'oracle-ambiguity']) {
+  const repeat = decide(adapters, { slug: 'orion', runtime: 'claude', signal, attempt: 3, escalationBinding: escalationBinding() });
+  assert(repeat.status === 'blocked' && repeat.reasonCode === 'AUTO_CONTINUATION_EXHAUSTED' &&
+    repeat.selectedConfig.model === 'claude-opus-5-5' && repeat.continuation === null && repeat.operatorEscalation === false,
+    `${signal}: an already escalated standard role renewed its budget or silently downgraded`);
+}
+const repeatUnavailable = decide(adapters, { slug: 'orion', runtime: 'claude', signal: 'model-unavailable', attempt: 3, availabilityBinding: availabilityBinding(1) });
+assert(repeatUnavailable.reasonCode === 'AUTO_CONTINUATION_EXHAUSTED', 'repeated standard unavailability renewed the frontier allocation');
+for (const maxEscalations of [undefined, 0, 2]) {
+  const invalid = structuredClone(policy);
+  if (maxEscalations === undefined) delete invalid.fallbackPolicies['upward-only'].maxEscalations;
+  else invalid.fallbackPolicies['upward-only'].maxEscalations = maxEscalations;
+  assertPolicyRejected(invalid, 'upward-only must allow exactly one', 'an absent or changed standard escalation cap was accepted');
+  assert(validatePolicySchema(invalid).length > 0, 'schema accepted an absent or changed standard escalation cap');
+}
+const frontierMinos = decide(adapters, { slug: 'minos', runtime: 'claude', signal: 'safety' });
+assert(frontierMinos.status === 'blocked' && frontierMinos.reasonCode === 'OPERATOR_ESCALATION_REQUIRED', 'committed frontier minos escalation bypassed the operator');
 
 const unlisted = withStandardRole(policy, 'aegis', null);
 assertPolicyRejected(unlisted, 'standardAllowlist', 'standard role without an allowlist entry was accepted');
@@ -121,6 +216,45 @@ wrongDecision.baseline.decision = `adopt-${derivedCounts.frontier - 1}-frontier-
 assertPolicyRejected(wrongDecision, 'baseline decision must be', 'a decision string that differs from the role tiers was accepted');
 const full = structuredClone(adapters);
 for (const runtime of ['claude', 'codex']) for (const mode of ['baseline', 'escalation']) for (const field of ['model', 'effort', 'maxTurns']) full[runtime].routingCapabilities[mode][field] = true;
+// Even a stronger model on the same quality tier must take the escalation
+// adapter. Current Codex cannot dispatch it, including after signed approval.
+const astraRoute = { slug: 'ariadne', runtime: 'codex', signal: 'ambiguity', attempt: 2, escalationBinding: escalationBinding() };
+const astraPending = decide(adapters, astraRoute);
+assertOperatorGate(astraPending, 'OPERATOR_ESCALATION_REQUIRED', 'Astra frontier reasoning before operator approval');
+assert(astraPending.selectedConfig.model === 'gpt-6-astra' && astraPending.selectedConfig.effort === 'high' &&
+  astraPending.selectedConfig.maxTurns === 80 && astraPending.adapter.mode === 'escalation',
+  'Astra did not use the bounded escalation profile');
+const astraBlocked = decide(adapters, { ...astraRoute, operatorDecision: operatorDecisionBinding(astraPending, 'continue-frontier') });
+assert(astraBlocked.status === 'blocked' && astraBlocked.reasonCode === 'CAPABILITY_DRIFT' &&
+  same(astraBlocked.missingCapabilities, ['effort', 'maxTurns', 'model']), 'operator approval fabricated Codex native Astra enforcement');
+const astraSupportedPending = decide(full, astraRoute);
+const astraSupported = decide(full, { ...astraRoute, operatorDecision: operatorDecisionBinding(astraSupportedPending, 'continue-frontier') });
+assert(astraSupported.status === 'selected' && astraSupported.selectedConfig.maxTurns === 80 && astraSupported.continuation === null,
+  'a hypothetical fully enforced Astra route did not retain its bound');
+for (const retry of [
+  { signal: 'ambiguity', escalationBinding: escalationBinding() },
+  { signal: 'turn-limit', escalationBinding: escalationBinding() },
+  { signal: 'repeated-failure', escalationBinding: escalationBinding() },
+  { signal: 'model-unavailable', availabilityBinding: availabilityBinding(1) },
+  { signal: 'no-artifact', outcomeBinding: outcomeBinding(0) },
+]) {
+  const afterAstra = decide(full, { slug: 'ariadne', runtime: 'codex', attempt: 3, ...retry });
+  assert(afterAstra.status === 'blocked' && afterAstra.reasonCode === 'AUTO_CONTINUATION_EXHAUSTED' &&
+    afterAstra.continuation === null && afterAstra.operatorEscalation === false,
+    `${retry.signal}: Codex repeated an escalation or lost the prior Astra profile without authenticated context`);
+}
+for (const [snapshot, decision] of [[adapters, highClaudeEscalation], [adapters, astraBlocked], [full, astraSupported]]) {
+  const errors = validateModelDecisionBinding(policy, snapshot, decision, {
+    engagementId: context.engagementId, engagementManifestSha256: context.engagementManifestSha256, modelTrust,
+  });
+  assert(errors.length === 0, `${decision.agent}/${decision.runtime}: escalation profile binding failed: ${errors.join('; ')}`);
+}
+const unboundAstra = decide(full, { slug: 'ariadne', runtime: 'codex', signal: 'ambiguity', attempt: 2 });
+assert(unboundAstra.selectedConfig.model === 'gpt-6-sol', 'Astra routed without an exact checkpoint binding');
+for (const signal of ['safety', 'turn-limit', 'repeated-failure']) {
+  const ordinary = decide(full, { ...astraRoute, signal });
+  assert(ordinary.selectedConfig.model === 'gpt-6-sol', `${signal}: routine continuation or safety gate silently selected Astra`);
+}
 const frontierPending = decide(full, { slug: 'ariadne', runtime: 'claude', signal: 'safety' });
 assert(frontierPending.status === 'blocked' && frontierPending.reasonCode === 'OPERATOR_ESCALATION_REQUIRED', 'frontier escalation bypassed the operator');
 const approved = decide(full, {
@@ -167,51 +301,51 @@ for (const forbidden of ['prompt', 'completion', 'target', 'url', 'path', 'accou
 const autoContinue = policy.fallbackPolicies['frontier-fail-closed'].autoContinue;
 assert(autoContinue.enabled === true && autoContinue.maxAutoContinuations === 3 && autoContinue.maxCheckpointlessRetries === 1, 'committed autoContinue flag drifted');
 assert(same(autoContinue.unavailableBackoffSeconds, [60, 180, 300]) && same(autoContinue.excludedAgents, ['odysseus']), 'committed autoContinue backoff or exclusions drifted');
-const orionTurns = policy.roles.find(({ slug }) => slug === 'orion').maxTurns;
-const orion = { slug: 'orion', runtime: 'claude', dispatchId: 'dispatch-orion-001' };
+const ariadneTurns = policy.roles.find(({ slug }) => slug === 'ariadne').maxTurns;
+const ariadne = { slug: 'ariadne', runtime: 'claude', dispatchId: 'dispatch-ariadne-001' };
 
-const resumed = decide(adapters, { ...orion, signal: 'turn-limit', attempt: 2, escalationBinding: escalationBinding() });
-assertAutoContinue(resumed, 'AUTO_CONTINUE_SELECTED', { kind: 'checkpoint-resume', sequence: 1, perAttemptMaxTurns: orionTurns, cumulativeTurnBudget: orionTurns * 2, backoffSeconds: 0 }, 'orion turn-limit checkpoint resume');
-const repeated = decide(adapters, { ...orion, signal: 'repeated-failure', attempt: 4, escalationBinding: escalationBinding() });
-assertAutoContinue(repeated, 'AUTO_CONTINUE_SELECTED', { kind: 'checkpoint-resume', sequence: 3, perAttemptMaxTurns: orionTurns, cumulativeTurnBudget: orionTurns * 4, backoffSeconds: 0 }, 'orion repeated-failure at the continuation ceiling');
-const pastCeiling = decide(adapters, { ...orion, signal: 'turn-limit', attempt: 5, escalationBinding: escalationBinding() });
-assertOperatorGate(pastCeiling, 'OPERATOR_ESCALATION_REQUIRED', 'orion turn-limit past maxAutoContinuations');
-const orionSafety = decide(adapters, { ...orion, signal: 'safety', attempt: 2, escalationBinding: escalationBinding() });
-assertOperatorGate(orionSafety, 'OPERATOR_ESCALATION_REQUIRED', 'orion safety');
-const unboundTurnLimit = decide(adapters, { ...orion, signal: 'turn-limit', attempt: 2 });
-assertOperatorGate(unboundTurnLimit, 'OPERATOR_ESCALATION_REQUIRED', 'orion turn-limit without a checkpoint or outcome binding');
+const resumed = decide(adapters, { ...ariadne, signal: 'turn-limit', attempt: 2, escalationBinding: escalationBinding() });
+assertAutoContinue(resumed, 'AUTO_CONTINUE_SELECTED', { kind: 'checkpoint-resume', sequence: 1, perAttemptMaxTurns: ariadneTurns, cumulativeTurnBudget: ariadneTurns * 2, backoffSeconds: 0 }, 'ariadne turn-limit checkpoint resume');
+const repeated = decide(adapters, { ...ariadne, signal: 'repeated-failure', attempt: 4, escalationBinding: escalationBinding() });
+assertAutoContinue(repeated, 'AUTO_CONTINUE_SELECTED', { kind: 'checkpoint-resume', sequence: 3, perAttemptMaxTurns: ariadneTurns, cumulativeTurnBudget: ariadneTurns * 4, backoffSeconds: 0 }, 'ariadne repeated-failure at the continuation ceiling');
+const pastCeiling = decide(adapters, { ...ariadne, signal: 'turn-limit', attempt: 5, escalationBinding: escalationBinding() });
+assertOperatorGate(pastCeiling, 'OPERATOR_ESCALATION_REQUIRED', 'ariadne turn-limit past maxAutoContinuations');
+const ariadneSafety = decide(adapters, { ...ariadne, signal: 'safety', attempt: 2, escalationBinding: escalationBinding() });
+assertOperatorGate(ariadneSafety, 'OPERATOR_ESCALATION_REQUIRED', 'ariadne safety');
+const unboundTurnLimit = decide(adapters, { ...ariadne, signal: 'turn-limit', attempt: 2 });
+assertOperatorGate(unboundTurnLimit, 'OPERATOR_ESCALATION_REQUIRED', 'ariadne turn-limit without a checkpoint or outcome binding');
 
-const freshRestart = decide(adapters, { ...orion, signal: 'no-artifact', attempt: 2, outcomeBinding: outcomeBinding(0) });
-assertAutoContinue(freshRestart, 'AUTO_CONTINUE_SELECTED', { kind: 'fresh-restart', sequence: 1, perAttemptMaxTurns: orionTurns, cumulativeTurnBudget: orionTurns * 2, backoffSeconds: 0 }, 'orion no-artifact fresh restart');
-const restartExhausted = decide(adapters, { ...orion, signal: 'no-artifact', attempt: 3, outcomeBinding: outcomeBinding(1) });
+const freshRestart = decide(adapters, { ...ariadne, signal: 'no-artifact', attempt: 2, outcomeBinding: outcomeBinding(0) });
+assertAutoContinue(freshRestart, 'AUTO_CONTINUE_SELECTED', { kind: 'fresh-restart', sequence: 1, perAttemptMaxTurns: ariadneTurns, cumulativeTurnBudget: ariadneTurns * 2, backoffSeconds: 0 }, 'ariadne no-artifact fresh restart');
+const restartExhausted = decide(adapters, { ...ariadne, signal: 'no-artifact', attempt: 3, outcomeBinding: outcomeBinding(1) });
 assert(restartExhausted.status === 'blocked' && restartExhausted.reasonCode === 'AUTO_CONTINUATION_EXHAUSTED' && restartExhausted.operatorEscalation === false && restartExhausted.continuation === null, 'a second checkpoint-less restart was not exhausted');
-const continuationsExhausted = decide(adapters, { ...orion, signal: 'no-artifact', attempt: 5, outcomeBinding: outcomeBinding(0) });
+const continuationsExhausted = decide(adapters, { ...ariadne, signal: 'no-artifact', attempt: 5, outcomeBinding: outcomeBinding(0) });
 assert(continuationsExhausted.reasonCode === 'AUTO_CONTINUATION_EXHAUSTED', 'a fresh restart beyond maxAutoContinuations was selected');
-const contradicted = decide(adapters, { ...orion, signal: 'no-artifact', attempt: 2, outcomeBinding: outcomeBinding(0, ['solution/FINDINGS.md']) });
+const contradicted = decide(adapters, { ...ariadne, signal: 'no-artifact', attempt: 2, outcomeBinding: outcomeBinding(0, ['solution/FINDINGS.md']) });
 assert(contradicted.status === 'blocked' && contradicted.reasonCode === 'SIGNAL_NOT_ALLOWED' && contradicted.continuation === null, 'no-artifact with observed artifacts was not refused');
-assertThrows(() => decide(adapters, { ...orion, signal: 'no-artifact', attempt: 2 }), 'no-artifact without an outcome binding was routed');
-const uncheckpointed = decide(adapters, { ...orion, signal: 'turn-limit', attempt: 2, outcomeBinding: outcomeBinding(0, ['solution/FINDINGS.md']) });
-assertAutoContinue(uncheckpointed, 'AUTO_CONTINUE_SELECTED', { kind: 'fresh-restart', sequence: 1, perAttemptMaxTurns: orionTurns, cumulativeTurnBudget: orionTurns * 2, backoffSeconds: 0 }, 'uncheckpointed orion turn-limit');
-const zeroCandidates = decide(adapters, { ...orion, signal: 'zero-candidates', attempt: 2, outcomeBinding: outcomeBinding(0, ['solution/FINDINGS.md']) });
-assert(zeroCandidates.status === 'selected' && zeroCandidates.reasonCode === 'AUTO_CONTINUE_SELECTED', 'orion zero-candidates restart was not selected');
+assertThrows(() => decide(adapters, { ...ariadne, signal: 'no-artifact', attempt: 2 }), 'no-artifact without an outcome binding was routed');
+const uncheckpointed = decide(adapters, { ...ariadne, signal: 'turn-limit', attempt: 2, outcomeBinding: outcomeBinding(0, ['solution/FINDINGS.md']) });
+assertAutoContinue(uncheckpointed, 'AUTO_CONTINUE_SELECTED', { kind: 'fresh-restart', sequence: 1, perAttemptMaxTurns: ariadneTurns, cumulativeTurnBudget: ariadneTurns * 2, backoffSeconds: 0 }, 'uncheckpointed ariadne turn-limit');
+const zeroCandidates = decide(adapters, { ...ariadne, signal: 'zero-candidates', attempt: 2, outcomeBinding: outcomeBinding(0, ['solution/FINDINGS.md']) });
+assert(zeroCandidates.status === 'selected' && zeroCandidates.reasonCode === 'AUTO_CONTINUE_SELECTED', 'ariadne zero-candidates restart was not selected');
 const kalchasZero = decide(adapters, { slug: 'kalchas', runtime: 'claude', dispatchId: 'dispatch-kalchas-001', signal: 'zero-candidates', attempt: 2, outcomeBinding: outcomeBinding(0) });
 assert(kalchasZero.status === 'blocked' && kalchasZero.reasonCode === 'SIGNAL_NOT_ALLOWED', 'kalchas zero-candidates bypassed the hunter-only rule');
 
-const backoffFirst = decide(adapters, { ...orion, signal: 'model-unavailable', attempt: 2, availabilityBinding: availabilityBinding(0) });
-assertAutoContinue(backoffFirst, 'BACKOFF_RETRY_SELECTED', { kind: 'backoff-retry', sequence: 1, perAttemptMaxTurns: orionTurns, cumulativeTurnBudget: orionTurns * 2, backoffSeconds: 60 }, 'first orion unavailability retry');
-const backoffLast = decide(adapters, { ...orion, signal: 'model-unavailable', attempt: 4, availabilityBinding: availabilityBinding(2) });
-assertAutoContinue(backoffLast, 'BACKOFF_RETRY_SELECTED', { kind: 'backoff-retry', sequence: 3, perAttemptMaxTurns: orionTurns, cumulativeTurnBudget: orionTurns * 4, backoffSeconds: 300 }, 'third orion unavailability retry');
-const backoffExhausted = decide(adapters, { ...orion, signal: 'model-unavailable', attempt: 5, availabilityBinding: availabilityBinding(3) });
-assertOperatorGate(backoffExhausted, 'FRONTIER_UNAVAILABLE', 'orion unavailability after every backoff');
+const backoffFirst = decide(adapters, { ...ariadne, signal: 'model-unavailable', attempt: 2, availabilityBinding: availabilityBinding(0) });
+assertAutoContinue(backoffFirst, 'BACKOFF_RETRY_SELECTED', { kind: 'backoff-retry', sequence: 1, perAttemptMaxTurns: ariadneTurns, cumulativeTurnBudget: ariadneTurns * 2, backoffSeconds: 60 }, 'first ariadne unavailability retry');
+const backoffLast = decide(adapters, { ...ariadne, signal: 'model-unavailable', attempt: 4, availabilityBinding: availabilityBinding(2) });
+assertAutoContinue(backoffLast, 'BACKOFF_RETRY_SELECTED', { kind: 'backoff-retry', sequence: 3, perAttemptMaxTurns: ariadneTurns, cumulativeTurnBudget: ariadneTurns * 4, backoffSeconds: 300 }, 'third ariadne unavailability retry');
+const backoffExhausted = decide(adapters, { ...ariadne, signal: 'model-unavailable', attempt: 5, availabilityBinding: availabilityBinding(3) });
+assertOperatorGate(backoffExhausted, 'FRONTIER_UNAVAILABLE', 'ariadne unavailability after every backoff');
 const missingRetryCount = availabilityBinding(0);
 delete missingRetryCount.priorUnavailableRetries;
-assertThrows(() => decide(adapters, { ...orion, signal: 'model-unavailable', attempt: 2, availabilityBinding: missingRetryCount }), 'an availability binding without priorUnavailableRetries was routed');
+assertThrows(() => decide(adapters, { ...ariadne, signal: 'model-unavailable', attempt: 2, availabilityBinding: missingRetryCount }), 'an availability binding without priorUnavailableRetries was routed');
 
 const controllerTurnLimit = decide(adapters, { slug: 'odysseus', runtime: 'claude', dispatchId: 'dispatch-odysseus-001', signal: 'turn-limit', attempt: 2, escalationBinding: escalationBinding() });
 assertOperatorGate(controllerTurnLimit, 'OPERATOR_ESCALATION_REQUIRED', 'odysseus turn-limit');
 const controllerOutcome = decide(adapters, { slug: 'odysseus', runtime: 'claude', dispatchId: 'dispatch-odysseus-001', signal: 'no-artifact', attempt: 2, outcomeBinding: outcomeBinding(0) });
 assert(controllerOutcome.reasonCode === 'SIGNAL_NOT_ALLOWED', 'the excluded controller received an automatic restart');
-const codexContinuation = decide(adapters, { ...orion, runtime: 'codex', signal: 'turn-limit', attempt: 2, escalationBinding: escalationBinding() });
+const codexContinuation = decide(adapters, { ...ariadne, runtime: 'codex', signal: 'turn-limit', attempt: 2, escalationBinding: escalationBinding() });
 assert(codexContinuation.reasonCode === 'CAPABILITY_DRIFT' && codexContinuation.continuation === null, 'Codex continuation bypassed the missing native turn cap');
 
 for (const [overrides, message] of [
@@ -223,23 +357,23 @@ for (const [overrides, message] of [
   [{ signal: 'no-artifact', attempt: 2, outcomeBinding: { ...outcomeBinding(0), observedArtifacts: 'solution/FINDINGS.md' } }, 'a non-array observedArtifacts'],
   [{ signal: 'turn-limit', attempt: 2, outcomeBinding: outcomeBinding(0), operatorDecision: operatorDecisionBinding(pastCeiling, 'continue-frontier') }, 'an outcome binding with an operator decision'],
 ]) {
-  assertThrows(() => resolveModelDecision(policy, adapters, { ...context, ...orion, ...overrides }), `resolver accepted ${message}`);
+  assertThrows(() => resolveModelDecision(policy, adapters, { ...context, ...ariadne, ...overrides }), `resolver accepted ${message}`);
 }
 
 // With the flag disabled every path returns to the 4.x operator-gated behaviour.
 const disabled = structuredClone(policy);
 disabled.fallbackPolicies['frontier-fail-closed'].autoContinue.enabled = false;
 assert(validateModelPolicy(disabled, slugsOf(disabled)).length === 0 && validatePolicySchema(disabled).length === 0, 'a disabled autoContinue flag is not a valid policy');
-assertOperatorGate(decide(adapters, { ...orion, signal: 'turn-limit', attempt: 2, escalationBinding: escalationBinding() }, disabled), 'OPERATOR_ESCALATION_REQUIRED', 'disabled-flag turn-limit');
-const disabledUnavailable = decide(adapters, { ...orion, signal: 'model-unavailable', attempt: 2, availabilityBinding: availabilityBinding(0) }, disabled);
+assertOperatorGate(decide(adapters, { ...ariadne, signal: 'turn-limit', attempt: 2, escalationBinding: escalationBinding() }, disabled), 'OPERATOR_ESCALATION_REQUIRED', 'disabled-flag turn-limit');
+const disabledUnavailable = decide(adapters, { ...ariadne, signal: 'model-unavailable', attempt: 2, availabilityBinding: availabilityBinding(0) }, disabled);
 assertOperatorGate(disabledUnavailable, 'FRONTIER_UNAVAILABLE', 'disabled-flag unavailability');
 assert(disabledUnavailable.reason === 'frontier model unavailable; weaker fallback is forbidden and retry or abort requires an external operator decision', 'disabled-flag unavailability reason drifted from 4.x');
-assert(decide(adapters, { ...orion, signal: 'no-artifact', attempt: 2, outcomeBinding: outcomeBinding(0) }, disabled).reasonCode === 'SIGNAL_NOT_ALLOWED', 'disabled flag still restarted a no-artifact lane');
+assert(decide(adapters, { ...ariadne, signal: 'no-artifact', attempt: 2, outcomeBinding: outcomeBinding(0) }, disabled).reasonCode === 'SIGNAL_NOT_ALLOWED', 'disabled flag still restarted a no-artifact lane');
 
 // Unattested engagements have no operator anchor, so the automatic paths are their only continuation.
-const unattestedResume = decide(adapters, { ...orion, signal: 'turn-limit', attempt: 2, escalationBinding: escalationBinding(), trust: 'unattested' });
+const unattestedResume = decide(adapters, { ...ariadne, signal: 'turn-limit', attempt: 2, escalationBinding: escalationBinding(), trust: 'unattested' });
 assert(unattestedResume.trust === 'unattested' && unattestedResume.reasonCode === 'AUTO_CONTINUE_SELECTED', 'unattested turn-limit did not take the automatic path');
-const unattestedBackoff = decide(adapters, { ...orion, signal: 'model-unavailable', attempt: 2, availabilityBinding: availabilityBinding(1), trust: 'unattested' });
+const unattestedBackoff = decide(adapters, { ...ariadne, signal: 'model-unavailable', attempt: 2, availabilityBinding: availabilityBinding(1), trust: 'unattested' });
 assert(unattestedBackoff.reasonCode === 'BACKOFF_RETRY_SELECTED' && unattestedBackoff.continuation.backoffSeconds === 180, 'unattested unavailability did not back off');
 const unattestedErrors = validateModelDecisionBinding(policy, adapters, unattestedResume, {
   engagementId: context.engagementId, engagementManifestSha256: context.engagementManifestSha256, modelTrust: null, launchAssurance: 'unattested',
@@ -259,7 +393,7 @@ assert(validateModelDecisionBinding(policy, adapters, tamperedOutcome, {
   engagementId: context.engagementId, engagementManifestSha256: context.engagementManifestSha256, modelTrust,
 }).length > 0, 'a rewritten outcome retry count passed binding');
 const tamperedContinuation = structuredClone(resumed);
-tamperedContinuation.continuation.perAttemptMaxTurns = orionTurns * 2;
+tamperedContinuation.continuation.perAttemptMaxTurns = ariadneTurns * 2;
 tamperedContinuation.integritySha256 = modelDecisionIntegritySha256(tamperedContinuation);
 assert(validateModelDecisionBinding(policy, adapters, tamperedContinuation, {
   engagementId: context.engagementId, engagementManifestSha256: context.engagementManifestSha256, modelTrust,
@@ -320,7 +454,7 @@ assert(validatePolicySchema(openFallback).length > 0, 'model policy schema accep
 
 conditionalSealScenario();
 
-console.log('PASS  Argus model routing: derived tier counts, controller turn budget, allowlisted standard path, native Claude enforcement, fail-closed Codex, authenticated frontier decisions, automatic frontier continuation and backoff, immutable telemetry, sealed conditional lanes released only by resolve-gates');
+console.log('PASS  Argus model routing: 27 reviewed execution profiles, critical effort floors, bounded Astra reasoning, model-only Claude escalation, fail-closed effort changes and Codex, controller turn budget, authenticated decisions, automatic frontier continuation and backoff, immutable telemetry, sealed conditional lanes released only by resolve-gates');
 
 // End to end through the packaged CLI: preflight marks recon-provable lanes conditional, the
 // model-control seal binds their attempt-1 decisions, allocation waits for resolve-gates, and
@@ -472,12 +606,14 @@ function withStandardRole(source, slug, justification) {
   const role = fixture.roles.find((item) => item.slug === slug);
   assert(role, `${slug}: fixture role missing`);
   role.tier = 'standard';
+  role.executionProfile = 'standard-medium';
   role.fallbackPolicy = 'upward-only';
   const counts = tierCounts(fixture);
   fixture.baseline.frontierRoles = counts.frontier;
   fixture.baseline.standardRoles = counts.standard;
   fixture.baseline.decision = `adopt-${counts.frontier}-frontier-${counts.standard}-standard`;
-  fixture.baseline.standardAllowlist = justification === null ? [] : [{ slug, justification }];
+  fixture.baseline.standardAllowlist = fixture.baseline.standardAllowlist.filter((entry) => entry.slug !== slug);
+  if (justification !== null) fixture.baseline.standardAllowlist.push({ slug, justification });
   return fixture;
 }
 
@@ -486,7 +622,7 @@ function withStandardRole(source, slug, justification) {
 function escalationBinding() {
   return {
     requestSha256: 'e'.repeat(64),
-    checkpointRef: 'ai_agents_internal/checkpoints/orion/00000001.json',
+    checkpointRef: 'ai_agents_internal/checkpoints/ariadne/00000001.json',
     checkpointSha256: 'f'.repeat(64),
     previousDecisionId: `MDR-${'1'.repeat(24)}`,
   };
