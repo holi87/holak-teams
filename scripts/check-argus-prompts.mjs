@@ -38,6 +38,28 @@ assert(files.length === 27, `expected 27 Claude agents, found ${files.length}`);
 assert(codexFiles.length === 27, `expected 27 Codex TOMLs, found ${codexFiles.length}`);
 assertSharedExecutionEnvelope(sourceSkills.get('qa-core'));
 
+// Inside an engagement the runner refuses a reset or fault opt-in without the calling lane and
+// a window its owner holds (reset: odysseus, fault: tyche), so every lane that runs one and
+// each owner carries the exact handshake.
+const EXCLUSIVE_WINDOW_DOCTRINE = Object.freeze({
+  atlas: ['`ARGUS_ENGAGEMENT_LANE=atlas`', 'exclusive reset window that Odysseus claims on your request'],
+  nike: ['`ARGUS_ENGAGEMENT_LANE=nike`', 'Only Tyche can hold the window'],
+  tyche: ['`argus-assets engagement claim --manifest <manifest> --lane tyche --token <lane-token> --resource fault`', '`engagement release` it after the last verified restore'],
+});
+// The selection record that grants the harness root is the operator's, installed at launch;
+// the harness architect consumes it and never writes it.
+const TEMPLATE_SELECTION_DOCTRINE = Object.freeze({
+  atlas: ['which `argus-launch --template-selection` installs and no lane can write; never write, infer, or relocate it',
+    '`argus-assets template scaffold --selection ai_agents_internal/template-selection.json'],
+});
+assert(!sourceSkills.get('orchestration-core').includes('persist explicit `template select`'), 'orchestration-core: the controller must consume, never persist, the template selection');
+for (const [profile, fragments] of Object.entries({
+  'qa-framework-runner': ['`ARGUS_ENGAGEMENT_LANE=<own slug>`', '`argus-assets engagement claim --resource <reset|fault>`', 'Odysseus claims `reset`', 'Tyche claims `fault`'],
+  'orchestration-core': ['You own the exclusive `reset` window', '<controller-token> --resource reset`', 'Tyche owns `fault`'],
+})) {
+  for (const fragment of fragments) assert(sourceSkills.get(profile).includes(fragment), `${profile}: exclusive reset/fault window handshake missing: ${fragment}`);
+}
+
 const agents = new Map();
 const agentWords = {};
 const profileCounts = new Map();
@@ -82,6 +104,12 @@ for (const file of files) {
 
   const body = content.replace(/^---[\s\S]*?---\s*/, '');
   assert(!body.includes('qa-doctrine'), `${slug}: legacy qa-doctrine reference remains`);
+  for (const fragment of EXCLUSIVE_WINDOW_DOCTRINE[slug] ?? []) {
+    assert(body.includes(fragment), `${slug}: exclusive reset/fault window handshake missing: ${fragment}`);
+  }
+  for (const fragment of TEMPLATE_SELECTION_DOCTRINE[slug] ?? []) {
+    assert(body.includes(fragment), `${slug}: operator template selection doctrine missing: ${fragment}`);
+  }
   if (slug === 'odysseus') {
     assert(body.includes('<!-- MODEL_CONTROLLER_START -->'), 'odysseus: model-controller block missing');
     assert(body.includes('Mode/strategy is immutable: `A=FULL_AUDIT`, `B=BUG_HUNT`'), 'odysseus: local Mode A/B strategy binding missing');

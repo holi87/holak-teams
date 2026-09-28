@@ -212,10 +212,17 @@ legacy, cross-engagement, duplicate, or wrong-owner fragments.
 
 Mode B accepts reproduction with evidence and runner=null. Automation duties in role prose apply only when funded and dispatchable; otherwise report automation-unfunded.
 
-Before framework work run `argus-assets template detect`; persist explicit `template select`.
+Before framework work run `argus-assets template detect` and consume the operator's explicit
+`template select` record, `ai_agents_internal/template-selection.json`, which `argus-launch
+--template-selection` installs; never write or infer it. Without it, report the missing
+selection as operator-required residual risk.
 `adapt` forbids scaffolding; `build` allows `template scaffold` only at selected roots. The
 runner defines `baseline`, `defect-evidence`, `candidate-regression`, and `full-suite`;
 preserve product, automation, infrastructure, skip, and policy outcomes with truthful exits.
+You own the exclusive `reset` window: before a lane's `ARGUS_ENVIRONMENT_RESET=execute` run,
+`argus-assets engagement claim --manifest <manifest> --lane odysseus --token
+<controller-token> --resource reset`, and `engagement release` after it. Tyche owns `fault`
+and claims it only while her lease is active; a server fault without it is residual risk.
 
 The validated surface inventory is the coverage denominator. Calculate canonical
 coverage from versioned observations before reporting; test/defect counts contribute
@@ -376,6 +383,11 @@ The complete installed framework contract is
   `full-suite`. A disabled lane leaves native selection, and a test never self-skips on a
   prerequisite. `solution/environment.tsv` declares reset and verify scripts; reset runs
   only with `ARGUS_ENVIRONMENT_RESET=execute` under the destructive grant and reset window.
+- Inside an engagement the runner refuses `ARGUS_ENVIRONMENT_RESET=execute` and
+  `ARGUS_FAULT_INJECTION=authorized` (exit 13) unless the caller sets
+  `ARGUS_ENGAGEMENT_LANE=<own slug>` and the window's owner holds it: Odysseus claims `reset`
+  and Tyche claims `fault` with `argus-assets engagement claim --resource <reset|fault>`, then
+  runs `engagement release` after the run. Ask Odysseus for the window; never run without it.
 - A defect regression is RED on the faulty target at the assertion naming the defect and
   GREEN after the target is fixed. Use the framework-native regression selector plus the
   canonical defect provenance marker; neither marker substitutes for the other.

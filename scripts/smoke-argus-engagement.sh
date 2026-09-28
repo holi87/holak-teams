@@ -436,6 +436,69 @@ test -f "$TARGET/reports/self-guard-allowed.json" || fail 'self-guard denied an 
 guard_shell "argus-assets engagement init --target app --artifact-root app --mode A" GUARD-SHELL-AMBIGUOUS
 cp "$MANIFEST" "$WORK/alternate-engagement.json"
 guard_shell "argus-assets engagement validate --manifest $WORK/alternate-engagement.json" GUARD-SHELL-AMBIGUOUS
+# The guard reads whole shell words, as bash and zsh build argv. A quote joined to unquoted
+# text, an open quote, and expansion, glob, brace, escape, or tilde syntax make a packaged
+# command ambiguous, so the manifest binding and every destination check see the real word.
+LITERAL_WORDS='GUARD-SHELL-AMBIGUOUS: packaged command words must be literal'
+for quote in "'" '"'; do
+  concatenated="${quote}ai_agents_internal/engagement.json${quote}/../../reports/alt/ai_agents_internal/engagement.json"
+  guard_as argus:hermes Bash "argus-assets engagement status --manifest $concatenated" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "argus-assets engagement merge --manifest $concatenated --owner hermes --token x --canonical solution/BUG-LEDGER.md" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "argus-assets engagement claim --manifest $concatenated --lane hermes --token x --resource fault" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "argus-assets engagement fragment --manifest $concatenated --lane hermes --token x --canonical solution/BUG-LEDGER.md --id forged --input reports/x.md" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "argus-assets model telemetry --manifest $concatenated --decision reports/decision.json" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "argus-assets redact --input reports/result.txt --output ${quote}reports${quote}/../app/escape.txt" "$LITERAL_WORDS"
+  guard_as argus:hermes Bash "printf x > ${quote}reports${quote}/../app/escape.txt" GUARD-TARGET-IMMUTABLE
+  guard_as argus:hermes Bash "printf x > reports/${quote}../app/escape.txt${quote}" GUARD-TARGET-IMMUTABLE
+done
+guard_as argus:hermes Bash 'argus-assets engagement status --manifest ${X:-reports/alt/ai_agents_internal/engagement.json}' "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets engagement status --manifest {reports/alt/,}ai_agents_internal/engagement.json' "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets engagement status --manifest ai_agents_internal/engagement.jso?' "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets engagement status --manifest ~/ai_agents_internal/engagement.json' "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets engagement status --manifest ai_agents_internal/engagement.json\ x' "$LITERAL_WORDS"
+guard_as argus:hermes Bash "argus-assets engagement status --manifest 'ai_agents_internal/engagement.json" "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets redact --input reports/result.txt --output "reports/$HOME.txt"' "$LITERAL_WORDS"
+guard_as argus:hermes Bash 'argus-assets redact --input reports/result.txt --output =reports' "$LITERAL_WORDS"
+guard_as argus:hermes Bash "argus-assets redact --input reports/result.txt --output 'reports/quoted output.txt'" allow
+guard_as argus:hermes Bash "argus-assets engagement status --manifest \"ai_agents_internal/engagement.json\"" allow
+guard_as argus:hermes Bash "rm -rf reports/'../app'" GUARD-TARGET-IMMUTABLE
+# The CLI binds --manifest to the active engagement on its own, so a manifest copy that a lane
+# writes under reports/ never lends its owners or exclusive operations to the shared state.
+mkdir -p "$TARGET/reports/alt/ai_agents_internal"
+FORGED="$TARGET/reports/alt/ai_agents_internal/engagement.json"
+jq '(.writePolicy.canonicalArtifacts[] | select(.path == "solution/BUG-LEDGER.md") | .owner) = "hermes"
+  | .resourcePolicy.exclusiveOperations.fault = "hermes"' "$MANIFEST" >"$FORGED"
+chmod 600 "$FORGED"
+printf '# BUG ledger forged by hermes\n' >"$TARGET/reports/forged-ledger.md"
+state_before_forgery="$(digest_file "$STATE")"
+solution_before_forgery="$(ls -la "$TARGET/solution")"
+forged_operations=(
+  "fragment --lane hermes --token $(token_for hermes) --canonical solution/BUG-LEDGER.md --id forged --input reports/forged-ledger.md"
+  "merge --owner hermes --token $(token_for hermes) --canonical solution/BUG-LEDGER.md"
+  "claim --lane hermes --token $(token_for hermes) --resource fault"
+  "status"
+  "validate"
+)
+for operation in "${forged_operations[@]}"; do
+  # shellcheck disable=SC2086 # each entry is a word list of fixed, space-free arguments
+  if (cd "$TARGET" && "$CLI" engagement $operation --manifest reports/alt/ai_agents_internal/engagement.json) >"$WORK/forged.out" 2>&1; then
+    fail "engagement ${operation%% *} accepted a lane-written manifest copy"
+  fi
+  grep -Fq 'is not the active engagement manifest' "$WORK/forged.out" || fail "forged-manifest ${operation%% *} failed for the wrong reason: $(<"$WORK/forged.out")"
+done
+if ARGUS_NATIVE_LAUNCH_RECEIPT="$TARGET/ai_agents_internal/native-launch-receipt.json" \
+  "$CLI" engagement claim --manifest "$FORGED" --lane hermes --token "$(token_for hermes)" --resource fault >"$WORK/forged.out" 2>&1; then
+  fail 'a lane-written manifest copy was accepted outside the artifact root of a launched engagement'
+fi
+grep -Fq 'is not the active engagement manifest' "$WORK/forged.out" || fail "receipt-bound forged claim failed for the wrong reason: $(<"$WORK/forged.out")"
+if (cd "$TARGET" && "$CLI" model telemetry --manifest reports/alt/ai_agents_internal/engagement.json --decision reports/decision.json \
+  --input-tokens 1 --output-tokens 1 --duration-ms 1 --success true) >"$WORK/forged.out" 2>&1; then
+  fail 'model telemetry accepted a lane-written manifest copy'
+fi
+grep -Fq 'is not the active engagement manifest' "$WORK/forged.out" || fail "forged-manifest telemetry failed for the wrong reason: $(<"$WORK/forged.out")"
+[ "$(digest_file "$STATE")" = "$state_before_forgery" ] || fail 'a forged-manifest operation changed the real engagement state'
+[ "$(ls -la "$TARGET/solution")" = "$solution_before_forgery" ] || fail 'a forged-manifest merge changed the canonical artifacts'
+rm -rf "$TARGET/reports/alt" "$TARGET/reports/forged-ledger.md"
 guard_shell "argus-assets engagement heartbeat --manifest $MANIFEST --lane odysseus --token $(token_for odysseus) --phase hunting --completed 1 --total 4 --status running" allow
 guard_shell "argus-assets engagement barrier skip --manifest $MANIFEST --lane odysseus --token $(token_for odysseus) --reason converged" allow
 guard_shell "argus-assets engagement barrier skip --manifest $WORK/alternate-engagement.json --lane odysseus --token $(token_for odysseus) --reason converged" GUARD-SHELL-AMBIGUOUS
@@ -464,6 +527,25 @@ guard_shell "node -e \"import('./runtime/engagement.mjs').then(function (m) { m.
 guard_shell "argus-assets redact --input reports/result.txt --output app/redacted.txt" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets redact --input reports/result.txt --output ai_agents_internal/operator-decisions/forged.json" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets preflight --target app --artifact-root app --mode A" GUARD-TARGET-IMMUTABLE
+# Preflight resolves --output against the artifact root, as the CLI does, and writes only its
+# report or a new diagnostic beside it; the artifact root defaults to a path target.
+PREFLIGHT_OUTPUT='GUARD-SHELL-AMBIGUOUS: preflight --output must be ai_agents_internal/preflight.json or a diagnostic'
+guard_shell "argus-assets preflight --target $TARGET --artifact-root $TARGET --mode A" allow
+guard_shell "argus-assets preflight --target $TARGET --artifact-root $TARGET --mode A --output ai_agents_internal/preflight-diagnostic.json" allow
+guard_shell "argus-assets preflight --target $TARGET --mode A --output ./ai_agents_internal/preflight.json" allow
+for output in ai_agents_internal/../solution/preflight-escape.json ai_agents_internal/../solution/BUG-LEDGER.md \
+  ai_agents_internal/../app/preflight.json ai_agents_internal/engagement-state.json ai_agents_internal/heartbeat/preflight.json \
+  reports/preflight.json; do
+  guard_shell "argus-assets preflight --target $TARGET --artifact-root $TARGET --mode A --output $output" "$PREFLIGHT_OUTPUT"
+done
+guard_shell 'argus-assets preflight --target app --mode A' GUARD-TARGET-IMMUTABLE
+if (cd "$TARGET" && "$CLI" preflight --target "$TARGET" --artifact-root "$TARGET" --mode A \
+  --output ai_agents_internal/../solution/preflight-escape.json) >"$WORK/preflight-escape.out" 2>&1; then
+  fail 'preflight accepted a report path outside the control directory'
+fi
+grep -Fq 'preflight --output must stay inside <artifact-root>/ai_agents_internal' "$WORK/preflight-escape.out" \
+  || fail "preflight output escape failed for the wrong reason: $(<"$WORK/preflight-escape.out")"
+test ! -e "$TARGET/solution/preflight-escape.json" || fail 'a refused preflight wrote outside the control directory'
 guard_shell "argus-assets copy-browser-driver $TARGET" allow
 guard_shell "argus-assets copy-browser-driver $WORK/outside-target" GUARD-TARGET-IMMUTABLE
 guard_shell "argus-assets browser provision --artifact-root $TARGET" GUARD-SHELL-AMBIGUOUS
@@ -488,6 +570,33 @@ if (cd "$TARGET" && "$CLI" authorization check --manifest ai_agents_internal/aut
   fail 'authorization check accepted --at inside an active engagement'
 fi
 grep -Fq 'authorization check --at is a test-only clock override and is refused while an engagement is active' "$WORK/authorization-at.out" || fail "authorization check --at was not refused by the engagement rule: $(<"$WORK/authorization-at.out")"
+# The CLI appends its audit beside --manifest, so inside an engagement only the engagement's
+# own authorization manifest is accepted, by the guard and by the CLI on its own.
+printf '{"name":"app"}\n' >"$TARGET/app/package.json"
+AUTH_READ="--lane talos --action read --target $TARGET --source-trust manifest"
+for manifest in app/package.json solution/package.json ai_agents_internal/../reports/authorization.json "$WORK/alternate-authorization.json"; do
+  guard_as talos Bash "argus-assets authorization check --manifest $manifest $AUTH_READ" \
+    'GUARD-SHELL-AMBIGUOUS: authorization check must name the active engagement authorization manifest'
+done
+guard_as talos Bash "argus-assets authorization check --manifest $TARGET/ai_agents_internal/authorization.json $AUTH_READ" allow
+# shellcheck disable=SC2086 # AUTH_READ is a word list of fixed, space-free arguments
+if (cd "$TARGET" && "$CLI" authorization check --manifest app/package.json $AUTH_READ) >"$WORK/authorization-bind.out" 2>&1; then
+  fail 'authorization check accepted a foreign manifest inside an active engagement'
+fi
+grep -Eq 'authorization check inside an active engagement must name /.*/ai_agents_internal/authorization\.json$' "$WORK/authorization-bind.out" \
+  || fail "foreign-manifest authorization check failed for the wrong reason: $(<"$WORK/authorization-bind.out")"
+test ! -e "$TARGET/app/authorization-audit.jsonl" || fail 'authorization check appended its audit beside a target-source file'
+# shellcheck disable=SC2086
+(cd "$TARGET" && "$CLI" authorization check --manifest ai_agents_internal/authorization.json $AUTH_READ) >"$WORK/authorization-bind.out" 2>&1 || true
+grep -Eq '^AUTHORIZATION  (ALLOW|DENY) .* audit=/.*/ai_agents_internal/authorization-audit\.jsonl ' "$WORK/authorization-bind.out" \
+  || fail "the engagement authorization manifest was not audited in the control directory: $(<"$WORK/authorization-bind.out")"
+rm "$TARGET/app/package.json"
+# The exclusive reset/fault window handshake the prompts document passes the guard as written.
+guard_as main Bash "argus-assets engagement claim --manifest $MANIFEST --lane odysseus --token $CONTROLLER_TOKEN --resource reset" allow
+guard_as argus:tyche Bash "argus-assets engagement claim --manifest $MANIFEST --lane tyche --token $(token_for tyche) --resource fault" allow
+guard_as argus:tyche Bash "argus-assets engagement release --manifest $MANIFEST --lane tyche --token $(token_for tyche) --resource fault" allow
+guard_as argus:atlas Bash 'ARGUS_ENGAGEMENT_LANE=atlas ARGUS_ENVIRONMENT_RESET=execute ./run-tests.sh --mode full-suite' allow
+guard_as argus:nike Bash 'ARGUS_ENGAGEMENT_LANE=nike ARGUS_FAULT_INJECTION=authorized ./run-tests.sh --mode candidate-regression' allow
 atlas_tmp="$(jq -r .temporaryDirectory "$ALLOCATIONS/atlas.json")"
 guard_shell "argus-assets copy-template typescript $atlas_tmp/template" allow
 guard_shell "argus-assets copy-runner-kit typescript $atlas_tmp/runner-kit" allow
@@ -769,6 +878,72 @@ jq --arg root "$TARGET" '.targetRoot = $root | .harnessRoot = "app"' "$WORK/sele
 guard_as argus:atlas Write app/source.ts GUARD-TARGET-IMMUTABLE
 guard_as argus:talos Write quality/specs/api/orders.spec.ts GUARD-TARGET-IMMUTABLE
 rm "$TARGET/ai_agents_internal/template-selection.json"
+
+# The record reaches the control plane only through the host-side `template verify|install`
+# that argus-launch --template-selection runs before the sandbox: bound to the launch target
+# or artifact root and to that tree's current capabilities, never replacing another record,
+# and never into a started engagement. Inside an engagement the guard denies both verbs.
+INSTALL_CASE="$WORK/install-selection"
+mkdir -p "$INSTALL_CASE/target/src" "$INSTALL_CASE/operator" "$INSTALL_CASE/other"
+chmod 700 "$INSTALL_CASE/operator"
+INSTALL_CASE="$(cd "$INSTALL_CASE" && pwd -P)"
+INSTALL_TARGET="$INSTALL_CASE/target"
+INSTALL_ROOT="$INSTALL_CASE/artifacts"
+OPERATOR_SELECTION="$INSTALL_CASE/operator/template-selection.json"
+printf 'export const app = 1;\n' >"$INSTALL_TARGET/src/app.ts"
+"$CLI" template select --target "$INSTALL_TARGET" --runtime typescript --package-manager npm \
+  --test-root quality/specs --harness-root quality/support --output "$OPERATOR_SELECTION" >/dev/null
+# Usage: selection_step <verify|install> [<selection>] [<artifact-root>]
+selection_step() {
+  "$CLI" template "$1" --selection "${2:-$OPERATOR_SELECTION}" --artifact-root "${3:-$INSTALL_ROOT}" \
+    --target "$INSTALL_TARGET" >"$WORK/selection-step.out" 2>&1
+}
+expect_selection_refusal() {
+  local message="$1"
+  shift
+  if selection_step "$@"; then fail "template ${1} accepted a record it must refuse: $message"; fi
+  grep -Fq -- "$message" "$WORK/selection-step.out" || fail "template ${1} refusal did not report: $message: $(<"$WORK/selection-step.out")"
+}
+selection_step verify || fail "template verify refused a valid record before the artifact root exists: $(<"$WORK/selection-step.out")"
+grep -Fq 'TEMPLATE  verified runtime=typescript action=build testRoot=quality/specs harnessRoot=quality/support' "$WORK/selection-step.out" \
+  || fail "template verify did not report the record: $(<"$WORK/selection-step.out")"
+test ! -e "$INSTALL_ROOT" || fail 'template verify created the artifact root'
+expect_selection_refusal 'template install artifact root is unavailable' install
+mkdir -m 700 "$INSTALL_ROOT"
+selection_step install || fail "template install refused a valid record: $(<"$WORK/selection-step.out")"
+cmp -s "$OPERATOR_SELECTION" "$INSTALL_ROOT/ai_agents_internal/template-selection.json" || fail 'template install did not copy the exact record'
+[ -n "$(find "$INSTALL_ROOT/ai_agents_internal/template-selection.json" -maxdepth 0 -type f -perm 600 -print)" ] || fail 'installed template selection is not mode 0600'
+selection_step install || fail "reinstalling the same record was refused: $(<"$WORK/selection-step.out")"
+grep -Fq 'TEMPLATE  unchanged' "$WORK/selection-step.out" || fail "reinstalling the same record was not idempotent: $(<"$WORK/selection-step.out")"
+jq '.harnessRoot = "quality/shared"' "$OPERATOR_SELECTION" >"$INSTALL_CASE/operator/changed.json"
+chmod 600 "$INSTALL_CASE/operator/changed.json"
+expect_selection_refusal 'a different template selection already exists' install "$INSTALL_CASE/operator/changed.json"
+jq --arg root "$INSTALL_CASE/other" '.targetRoot = $root' "$OPERATOR_SELECTION" >"$INSTALL_CASE/operator/foreign.json"
+chmod 600 "$INSTALL_CASE/operator/foreign.json"
+expect_selection_refusal 'targetRoot must name the launch target or the artifact root' verify "$INSTALL_CASE/operator/foreign.json"
+jq '.choiceSource = "inferred"' "$OPERATOR_SELECTION" >"$INSTALL_CASE/operator/inferred.json"
+chmod 600 "$INSTALL_CASE/operator/inferred.json"
+expect_selection_refusal 'does not satisfy its schema' verify "$INSTALL_CASE/operator/inferred.json"
+cp -p "$OPERATOR_SELECTION" "$INSTALL_ROOT/selection-copy.json"
+expect_selection_refusal 'must stay outside the target and artifact roots' verify "$INSTALL_ROOT/selection-copy.json"
+ln -s "$OPERATOR_SELECTION" "$INSTALL_CASE/operator/linked.json"
+expect_selection_refusal 'must be a physical single-link regular file' verify "$INSTALL_CASE/operator/linked.json"
+printf '{"devDependencies":{"jest":"29.0.0"}}\n' >"$INSTALL_TARGET/package.json"
+expect_selection_refusal 'operator template selection is stale' verify
+rm "$INSTALL_TARGET/package.json"
+# The installed record grants its roots once the engagement starts, and nothing can add one later.
+"$CLI" engagement init --target "$INSTALL_TARGET" --artifact-root "$INSTALL_ROOT" --mode A --engagement-id install-selection >/dev/null
+guard_as argus:atlas Write quality/support/config.ts allow "$INSTALL_ROOT"
+guard_as argus:hermes Write quality/support/config.ts "GUARD-OWNED-ARTIFACT: lane-owned quality/support is written only by $HARNESS_OWNERS, not hermes" "$INSTALL_ROOT"
+guard_as argus:talos Write quality/specs/api/orders.spec.ts allow "$INSTALL_ROOT"
+for operation in verify install; do
+  guard_as main Bash "argus-assets template $operation --selection $OPERATOR_SELECTION --artifact-root $INSTALL_ROOT --target $INSTALL_TARGET" \
+    'GUARD-SHELL-AMBIGUOUS: template selection verify/install is host/operator-only' "$INSTALL_ROOT"
+done
+mkdir -m 700 "$INSTALL_CASE/started"
+"$CLI" engagement init --target "$INSTALL_TARGET" --artifact-root "$INSTALL_CASE/started" --mode A --engagement-id install-started >/dev/null
+expect_selection_refusal 'the engagement in this artifact root has already started' install "$OPERATOR_SELECTION" "$INSTALL_CASE/started"
+test ! -e "$INSTALL_CASE/started/ai_agents_internal/template-selection.json" || fail 'template install added a record to a started engagement'
 # Executed from inside the engagement, the allowed queries leave the artifact tree untouched.
 COVERAGE_FIXTURES="$ROOT/scripts/fixtures/argus-coverage"
 COVERAGE_EVIDENCE=(--evidence "$COVERAGE_FIXTURES/evidence-reference.json" --ledger "$COVERAGE_FIXTURES/bug-ledger.json" --root "$COVERAGE_FIXTURES")

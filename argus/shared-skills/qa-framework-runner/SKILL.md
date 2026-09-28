@@ -37,6 +37,11 @@ The complete installed framework contract is
   `full-suite`. A disabled lane leaves native selection, and a test never self-skips on a
   prerequisite. `solution/environment.tsv` declares reset and verify scripts; reset runs
   only with `ARGUS_ENVIRONMENT_RESET=execute` under the destructive grant and reset window.
+- Inside an engagement the runner refuses `ARGUS_ENVIRONMENT_RESET=execute` and
+  `ARGUS_FAULT_INJECTION=authorized` (exit 13) unless the caller sets
+  `ARGUS_ENGAGEMENT_LANE=<own slug>` and the window's owner holds it: Odysseus claims `reset`
+  and Tyche claims `fault` with `argus-assets engagement claim --resource <reset|fault>`, then
+  runs `engagement release` after the run. Ask Odysseus for the window; never run without it.
 - A defect regression is RED on the faulty target at the assertion naming the defect and
   GREEN after the target is fixed. Use the framework-native regression selector plus the
   canonical defect provenance marker; neither marker substitutes for the other.

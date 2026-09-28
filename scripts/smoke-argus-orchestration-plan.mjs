@@ -66,7 +66,7 @@ for (const fragment of [
   '`deferred`, `skipped`, or `blocked`', 'untrusted evidence',
   'argus-assets authorization check', 'argus-assets redact', 'success`, `failure`, or `interrupted',
   'selected-dispatchable-predecessors', 'argus-assets raci route', 'argus-assets template detect',
-  'template select', 'template scaffold', '`baseline`, `defect-evidence`, `candidate-regression`, and',
+  'template select', 'template scaffold', "consume the operator's explicit", 'never write or infer it', '`baseline`, `defect-evidence`, `candidate-regression`, and',
   'argus-assets model route', 'argus/model-escalation-request@1', 'argus-assets model telemetry',
   'product, automation,', 'infrastructure, skip, and policy outcomes', 'Never claim an agent ran',
   '`deferred` record with `downgradedFrom=blocked`', 'report it from `residualRisks`',

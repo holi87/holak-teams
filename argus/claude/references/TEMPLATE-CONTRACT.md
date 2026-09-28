@@ -10,13 +10,23 @@ records languages, frameworks, test runners, package managers, existing source/t
 CI systems, confidence-bearing signals, and unsupported capabilities. It never invents a
 `src/`, `tests/`, package-manager, or runner convention.
 
-Selection requires an explicit operator choice:
+Selection requires an explicit operator choice. For an engagement the operator makes it on the
+host, against the launch target path or the artifact root, and hands the record to the
+launcher:
 
 ```bash
-argus-assets template select --target <repo> --runtime <typescript|java|python> \
+argus-assets template select --target <repo-or-artifact-root> --runtime <typescript|java|python> \
   --package-manager <npm|maven|pip> --test-root <path> --harness-root <path> \
-  --output <repo>/ai_agents_internal/template-selection.json
+  --output <operator-dir>/template-selection.json
+argus-launch claude ... --template-selection <operator-dir>/template-selection.json
 ```
+
+`argus-assets template verify` (read-only) and `template install` bind the record: a physical
+file outside the target and artifact roots, schema- and contract-valid, whose `targetRoot`
+names the target or the artifact root and whose `capabilitiesSha256` still matches that tree.
+`install` copies the exact bytes to `<artifact-root>/ai_agents_internal/template-selection.json`
+(mode 0600), never replaces a different record, and refuses once the engagement has started.
+No agent writes that record, and the write guard denies both verbs inside an engagement.
 
 Detected existing suites produce `action: adapt`; the target's framework, paths, package
 manager, and CI entry point win, and `template scaffold` refuses to create a competing

@@ -845,6 +845,75 @@ for existing_case in manifest environment; do
     fail "existing different manifest refusal (--$existing_case) still started the controller"
 done
 
+# (a6b) --template-selection binds the operator's own host-side `template select` record. A dry
+# run verifies it and installs nothing; a launch installs the exact record (mode 0600) before
+# the sandbox starts, where it alone grants the selected roots; refusals come before any write.
+mkdir -p "$WORK/template-target/src" "$WORK/template-operator"
+chmod 700 "$WORK/template-operator"
+TEMPLATE_TARGET="$(cd "$WORK/template-target" && pwd -P)"
+TEMPLATE_SELECTION="$(cd "$WORK/template-operator" && pwd -P)/selection.json"
+printf 'export const app = 1;\n' >"$TEMPLATE_TARGET/src/app.ts"
+"$CLI" template select --target "$TEMPLATE_TARGET" --runtime typescript --package-manager npm \
+  --test-root quality/specs --harness-root quality/support --output "$TEMPLATE_SELECTION" >/dev/null
+# Usage: run_template_case <name> [<launcher option>...]
+run_template_case() {
+  local name="$1"
+  shift
+  mkdir -p "$WORK/unattested-home-template"
+  env -u ARGUS_MODEL_TRUST_STORE HOME="$WORK/unattested-home-template" PATH="$FIXTURE_PATH:$PATH" \
+    "$LAUNCHER" claude --target "$TEMPLATE_TARGET" --artifact-root "$WORK/template-artifacts-$name" \
+    --mode A --engagement-id "launcher-template-$name" --unattested "$@" \
+    >"$WORK/template-$name.stdout" 2>"$WORK/template-$name.stderr"
+}
+expect_template_refusal() {
+  local name="$1" status="$2" message="$3"
+  [ "$status" -ne 0 ] || fail "launcher accepted the $name template selection"
+  grep -Fq -- "$message" "$WORK/template-$name.stderr" || \
+    { cat "$WORK/template-$name.stderr" >&2; fail "$name template selection refusal did not report: $message"; }
+  [ ! -e "$WORK/template-artifacts-$name/ai_agents_internal/template-selection.json" ] || fail "$name template selection refusal installed a record"
+  [ ! -e "$WORK/template-artifacts-$name/ai_agents_internal/fixture-claude-arguments.txt" ] || fail "$name template selection refusal started the controller"
+}
+set +e
+run_template_case dry-run --template-selection "$TEMPLATE_SELECTION" --dry-run
+template_status=$?
+set -e
+[ "$template_status" -eq 0 ] || { cat "$WORK/template-dry-run.stderr" >&2; fail 'template selection dry run failed'; }
+grep -Fq 'TEMPLATE  verified runtime=typescript action=build testRoot=quality/specs harnessRoot=quality/support' "$WORK/template-dry-run.stderr" || \
+  { cat "$WORK/template-dry-run.stderr" >&2; fail 'dry run did not verify the operator template selection'; }
+[ ! -e "$WORK/template-artifacts-dry-run/ai_agents_internal/template-selection.json" ] || fail 'dry run installed the template selection'
+set +e
+run_template_case launch --template-selection "$TEMPLATE_SELECTION"
+template_status=$?
+set -e
+[ "$template_status" -eq 0 ] || { cat "$WORK/template-launch.stderr" >&2; fail 'unattested template selection launch failed'; }
+grep -Fxq 'ARGUS_FIXTURE_UNATTESTED_PROMPT_OK' "$WORK/template-launch.stdout" || fail 'template selection launch did not reach the sandboxed controller'
+grep -Fq 'TEMPLATE  installed runtime=typescript action=build' "$WORK/template-launch.stderr" || \
+  { cat "$WORK/template-launch.stderr" >&2; fail 'launch did not install the operator template selection'; }
+installed_selection="$WORK/template-artifacts-launch/ai_agents_internal/template-selection.json"
+cmp -s "$TEMPLATE_SELECTION" "$installed_selection" || fail 'launcher did not install the exact template selection'
+assert_mode_0600 "$installed_selection" 'installed template selection'
+ln -s "$TEMPLATE_SELECTION" "$WORK/template-operator/linked.json"
+set +e
+run_template_case symlink --template-selection "$WORK/template-operator/linked.json" --dry-run
+template_status=$?
+set -e
+expect_template_refusal symlink "$template_status" 'template selection may not be a symbolic link'
+mkdir -p "$WORK/template-artifacts-inside"
+cp -p "$TEMPLATE_SELECTION" "$WORK/template-artifacts-inside/selection.json"
+set +e
+run_template_case inside --template-selection "$WORK/template-artifacts-inside/selection.json" --dry-run
+template_status=$?
+set -e
+expect_template_refusal inside "$template_status" 'artifact root and template selection must be physically disjoint'
+printf '{"devDependencies":{"jest":"29.0.0"}}\n' >"$TEMPLATE_TARGET/package.json"
+set +e
+run_template_case stale --template-selection "$TEMPLATE_SELECTION"
+template_status=$?
+set -e
+expect_template_refusal stale "$template_status" 'operator template selection is stale'
+[ ! -e "$WORK/template-artifacts-stale" ] || fail 'a stale template selection refusal created the artifact root'
+rm "$TEMPLATE_TARGET/package.json"
+
 # (a7) --usage-json on keyless launches. Every case runs with a fresh HOME that holds no trust
 # store and with every other known Argus variable forged, so the child environment proves the
 # unattested allowlist. Usage: run_usage_case <name> <engagement-id> [<launcher option>...]

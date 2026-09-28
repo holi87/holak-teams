@@ -189,6 +189,13 @@
       ]
     },
     {
+      "value": "ai_agents_internal/template-selection.json",
+      "consumers": [
+        "atlas",
+        "skill:orchestration-core"
+      ]
+    },
+    {
       "value": "bugs/",
       "consumers": [
         "antigone",

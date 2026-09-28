@@ -6,7 +6,10 @@ copy is `${CLAUDE_PLUGIN_ROOT}/references/ENGAGEMENT-POLICY.md`.
 ## One manifest and one state file
 
 `argus-assets preflight` creates or loads `ai_agents_internal/engagement.json` before
-specialists run. The manifest fixes the target and artifact roots, selected workers,
+specialists run. Its `--output` resolves against the artifact root and must stay inside
+`ai_agents_internal`; inside an active engagement the guard further allows only
+`ai_agents_internal/preflight.json` or a diagnostic `ai_agents_internal/preflight-<name>.json`,
+so a rerun never overwrites a canonical or control artifact. The manifest fixes the target and artifact roots, selected workers,
 phase participants, canonical owners, allowed write roots, isolated resource policy,
 exclusive-operation owners, ID allocators, cleanup obligations, and the resumable state
 path. The manifest is operator-owned and is never modified by target, repository, issue,
@@ -53,6 +56,18 @@ denial returns a `GUARD-*` rule and appends a redacted event to
 `ai_agents_internal/immutability-audit.jsonl`. Audit records contain a command digest,
 never raw command or file content.
 
+The guard reads a command as whole shell words, the way bash and zsh build argv: adjacent
+quoted and unquoted pieces join, so `'reports'/../app` is the word `reports/../app`. A
+packaged command whose every word is not literal is denied with `GUARD-SHELL-AMBIGUOUS`: a
+word that joins quoted and unquoted text, leaves a quote open, uses expansion, glob, brace,
+escape, or tilde syntax outside single quotes, or holds `$`, a backslash, a backtick, or `!`
+inside double quotes. Single-quote each whole word that needs quoting. Independently of the
+guard, every engagement and model command binds `--manifest` to the active engagement (a
+non-empty `ARGUS_ENGAGEMENT_MANIFEST`, the `engagement.json` beside the launch receipt, or the
+first `ai_agents_internal/engagement.json` at or above the working directory) and refuses any
+other file, so a manifest copy a lane writes under `reports/` never lends its owners or
+exclusive operations to the shared state.
+
 The default generated-test allowlist is deliberately conservative: unambiguous test
 directories plus the exact isolated-driver files. It never broadly allows `src/`, all of
 `scripts/`, or root build configuration because those are application source/config in
@@ -75,7 +90,9 @@ Each catalog-owning hunter also owns its blocking technique-coverage ledger
 (`solution/<perseus|orion|lynceus|antigone|charon>-ledger.json`, and Ariadne's
 `solution/journey-ledger.json`), which Minos and Kleio read.
 `writePolicy.selectedTemplateRoots` adds the roots of the operator's explicit
-`ai_agents_internal/template-selection.json`, which no lane can write: its `testRoot` joins
+`ai_agents_internal/template-selection.json`, which no lane can write and which only
+`argus-launch --template-selection` installs, through the host-side `argus-assets template
+verify|install`, before the sandbox starts (the guard denies both verbs inside an engagement): its `testRoot` joins
 the generated test roots and its `harnessRoot` is owned by `harnessRootOwners` (Atlas, the
 lane automation engineers, and Asklepios, who extend the shared layer). The record
 must be schema-valid and name the artifact or target root. Each root must lie below the
