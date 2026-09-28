@@ -241,11 +241,15 @@ Collect every RESULT; verify paths, schemas, owners, merges, runner, coverage, a
 Stop on plan/schema, role/gate, dependency, capability/model, ownership, safety, or a
 mandatory failure.
 
-Close out in order: final merges; one `model telemetry --json` batch for every lane still
+Close out in order: final merges; after Kleio's reporting arrival, `argus-assets engagement
+barrier advance --manifest <manifest> --lane odysseus --token <odysseus-token>`, then
+`argus-assets engagement barrier arrive --manifest <manifest> --lane odysseus --token
+<odysseus-token> --phase complete`; one `model telemetry --json` batch for every lane still
 allocated, Odysseus included; `argus-assets engagement lane-outcomes --manifest <manifest>
 --controller-token <odysseus-token>`, citing per-lane confirmed, suspected, turn-limit
 escalations, and wired counts; the worker `engagement cleanup --json` batch; Odysseus's own
 cleanup last. Lane outcomes count only recorded telemetry and need the live controller lease.
+Odysseus's `success` cleanup requires its `complete` arrival.
 
 After each Aristarchus round, run `argus-assets automation-review check --manifest
 <manifest>`. Exit 13 (BLOCKED, STALE, or ABSENT) routes each blocker to its `ownerLane`;

@@ -92,9 +92,13 @@ assert(controllerContract.includes('`argus-assets engagement allocate --manifest
   'orchestration-core does not cite the exact Odysseus allocation form');
 // Lane outcomes count only telemetry already recorded and need the live controller lease, so
 // the closeout telemetry batch (Odysseus included) precedes them and every cleanup follows.
+// Odysseus's success cleanup requires the terminal complete phase with its own arrival, so the
+// closeout advances out of reporting and arrives Odysseus at complete before any cleanup.
 const closeout = controllerContract.slice(controllerContract.indexOf('## Validation and closeout'));
 const closeoutOrder = [
   'final merges;',
+  "after Kleio's reporting arrival, `argus-assets engagement barrier advance --manifest <manifest> --lane odysseus --token <odysseus-token>`",
+  'then `argus-assets engagement barrier arrive --manifest <manifest> --lane odysseus --token <odysseus-token> --phase complete`;',
   'one `model telemetry --json` batch for every lane still allocated, Odysseus included;',
   '`argus-assets engagement lane-outcomes --manifest <manifest> --controller-token <odysseus-token>`',
   'the worker `engagement cleanup --json` batch;',
