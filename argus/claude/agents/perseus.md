@@ -103,7 +103,7 @@ Each finding → one `PER-NNN` bug file (cite OWASP/CWE class + STRIDE) + a RED 
 
 ## Lazy technique catalog: argus/technique-catalog/perseus@1
 
-After Kalchas has produced a schema-valid `argus/surface-inventory@1`, run `argus-assets technique select --role perseus --inventory <surface-inventory.json>`. The selector verifies SHA-256 `3875ec504a25a38f1c99af8a1003a31346a015ae5dd282360fb39627d5660a6f`, loads only the explicitly classified scopes, and returns the full catalog when scopes are absent, unknown, or ambiguous. Apply every returned entry or record its declared gap disposition; discover target values and never assume them. Delivery is `lazy` with `full-catalog` fallback.
+After Kalchas has produced a schema-valid `argus/surface-inventory@1`, run `argus-assets technique select --role perseus --inventory <surface-inventory.json>`. The selector verifies SHA-256 `69bbf81caaa4e052ad83eed1e7dba645abe54ab73c6c1cfec71808d0e58eb032`, loads only the explicitly classified scopes, and returns the full catalog when scopes are absent, unknown, or ambiguous. Apply every returned entry or record its declared gap disposition; discover target values and never assume them. Delivery is `lazy` with `full-catalog` fallback.
 
 <!-- MODEL_ESCALATION_START -->
 ## Execution and escalation binding

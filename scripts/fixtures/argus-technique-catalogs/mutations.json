@@ -345,9 +345,9 @@
       "name": "perseus-entry-count",
       "catalog": "perseus",
       "operation": "remove",
-      "pointer": "/entries/21",
+      "pointer": "/entries/22",
       "rejects": ["runtime"],
-      "runtimeIncludes": "exactly 22 entries"
+      "runtimeIncludes": "exactly 23 entries"
     },
     {
       "name": "perseus-foreign-prefix-id",
@@ -402,6 +402,15 @@
       "value": "Every download endpoint requires an authenticated session before it returns a file, report, or export",
       "rejects": ["runtime"],
       "runtimeIncludes": "missing semantic marker: per-object authorization"
+    },
+    {
+      "name": "perseus-csv-injection-oracle-drift",
+      "catalog": "perseus",
+      "operation": "replace",
+      "pointer": "/entries/22/oracles/0",
+      "value": "The downloaded export opens in a spreadsheet and shows every stored field value",
+      "rejects": ["runtime"],
+      "runtimeIncludes": "missing semantic marker: formula-trigger character"
     }
   ]
 }

@@ -70,7 +70,10 @@ assert_scoped_subset() {
       and all($excluded[]; . as $id | $selected | index($id) == null)
       and ($selected | length) < $count and (.catalog.entries | length) == ($selected | length)'
 }
-assert_scoped_subset perseus file-upload '["PER-T18", "PER-T01"]' '["PER-T19", "PER-T21", "PER-T22"]'
+assert_scoped_subset perseus file-upload '["PER-T18", "PER-T01"]' '["PER-T19", "PER-T21", "PER-T22", "PER-T23"]'
+# Kalchas's export-generation feature selects the formula/CSV-injection row that Ariadne's
+# ARI-T19 and Kalchas's routing hints send to Perseus, without the download-authorization row.
+assert_scoped_subset perseus export-generation '["PER-T23", "PER-T01"]' '["PER-T18", "PER-T21", "PER-T22"]'
 assert_scoped_subset orion file-upload '["ORI-T11", "ORI-T04"]' '["ORI-T01", "ORI-T12"]'
 assert_scoped_subset lynceus pagination '["LYN-T05", "LYN-T01"]' '["LYN-T04", "LYN-T09"]'
 assert_scoped_subset antigone drag-interaction '["ANG-T17", "ANG-T18"]' '["ANG-T03", "ANG-T11"]'
