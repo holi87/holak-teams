@@ -26,6 +26,7 @@ const GENERATED_INVENTORY_PATH = join(PLUGIN_ROOT, 'runtime-reference-inventory.
 const AGENTS_DIR = join(PLUGIN_ROOT, 'agents');
 const ENTRYPOINTS = [
   { id: '/argus:run', path: 'skills/run/SKILL.md' },
+  { id: '/argus:launch', path: 'skills/launch/SKILL.md' },
 ];
 const HOST_COMMANDS = [
   'autocannon', 'bash', 'chmod', 'claude', 'cp', 'curl', 'date', 'docker-compose',
@@ -323,6 +324,7 @@ function expectedPackagedPaths() {
     'bin/package.json',
     'hooks/hooks.json',
     'skills/run/SKILL.md',
+    'skills/launch/SKILL.md',
     'runtime-assets.json',
     'runtime-reference-inventory.json',
   ]) add(path);
@@ -1273,11 +1275,11 @@ function validatePromptReferences(manifest, inventory) {
   }
   if (inventory.agentsScanned !== 27) fail(`prompt inventory scanned ${inventory.agentsScanned} agents; expected 27`);
   if (inventory.schemaVersion !== 2) fail(`runtime inventory schemaVersion must be 2, got ${inventory.schemaVersion}`);
-  if (inventory.skillsScanned !== 7) {
-    fail(`runtime inventory scanned ${inventory.skillsScanned} packaged skills; expected 7`);
+  if (inventory.skillsScanned !== 8) {
+    fail(`runtime inventory scanned ${inventory.skillsScanned} packaged skills; expected 8`);
   }
-  if (inventory.entrypointsScanned !== 1) {
-    fail(`prompt inventory scanned ${inventory.entrypointsScanned} entrypoints; expected 1`);
+  if (inventory.entrypointsScanned !== ENTRYPOINTS.length) {
+    fail(`prompt inventory scanned ${inventory.entrypointsScanned} entrypoints; expected ${ENTRYPOINTS.length}`);
   }
   for (const field of [
     'unconsumedAssets',

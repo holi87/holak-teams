@@ -11,7 +11,8 @@ effort: max
 # Run Argus from the main thread
 
 Only a session started by `${CLAUDE_PLUGIN_ROOT}/bin/argus-launch` may execute this skill.
-Direct invocation stops before probing or dispatch.
+Direct invocation stops before probing or dispatch; tell the operator to start Argus with
+`/argus:launch` instead.
 
 `$ARGUMENTS` contains one `authenticatedLaunch` JSON object and QA scope; reject duplicate
 or prose coordinates, except the unattested form below. Stay the sole controller; never
@@ -32,8 +33,9 @@ An `argus-launch --unattested` session instead receives exactly
 plus optional `features=<csv>` and operator `authorizationSource`/`targetEnvironment`/
 `authorizationSha256` tokens. Run `argus-assets preflight --target <target> --mode <mode>
 --artifact-root <artifact-root> --engagement-id <engagement-id> --unattested-launch`, with
-`--feature <id>` per `features` entry. Its refusal (no `ARGUS_LAUNCH_UNATTESTED=1`, or host
-key material) returns `ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED`. Report the
+`--feature <id>` per `features` entry. Its refusal (no `ARGUS_LAUNCH_UNATTESTED=1` or other
+launcher context, or host key material) returns
+`ARGUS_PREFLIGHT_ERROR: AUTHENTICATED_LAUNCH_REQUIRED` with its reason. Report the
 engagement `UNATTESTED`.
 Attested preflight pins the signed `runtime-attestation` and `operator-approval` anchors when
 it creates the engagement; never run `model trust`, sign, access private keys, or accept

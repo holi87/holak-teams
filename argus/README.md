@@ -27,7 +27,14 @@ key or generic signing service enters the launcher or agent boundary. URL-only t
 supported, with the artifact root as the default workspace. Hosts without Ed25519 keys can
 replace the five signer flags with the explicit `--unattested` opt-in; every report then
 names the engagement UNATTESTED (see `INSTALL.md`). The launch config holds no stored login:
-export `ANTHROPIC_API_KEY` or a `claude setup-token` `CLAUDE_CODE_OAUTH_TOKEN` first.
+export `ANTHROPIC_API_KEY` or a `claude setup-token` `CLAUDE_CODE_OAUTH_TOKEN` first, or on
+macOS pass `--credential-keychain-service <name>` to load the token from the Keychain.
+
+From a Claude Code session, "run argus qa on <target>" invokes the `/argus:launch` skill. It
+runs `argus-assets launch detect --json` (`unattested-eligible`, `attested-required`, or
+`mixed`, plus the credential source), asks before any UNATTESTED run, prepares the operator
+files outside the artifact root, and starts `argus-launch` in the background. It never runs
+preflight or dispatches agents itself.
 
 Claude runs with `--permission-mode dontAsk --allowedTools <declared tool union>`. The
 packaged write guard and OS sandbox enforce each call from every workspace; unattested

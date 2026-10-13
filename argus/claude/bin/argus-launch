@@ -72,7 +72,7 @@ require_host_commands() {
 usage() {
   cat <<'EOF'
 Usage:
-  argus-launch doctor [--browser]
+  argus-launch doctor [--browser] [--credential-keychain-service <name>]
   argus-launch probe-browser [--module <absolute-dir>]
   argus-launch claude --target <url-or-absolute-path> --artifact-root <absolute-path> \
     --mode <A|B|C|D> --engagement-id <id> --trust-store <absolute-path> \
@@ -80,12 +80,14 @@ Usage:
     --launch-authorization <absolute-path> [--workspace <absolute-path>] \
     [--wait-seconds <30..300>] [--feature <capability-id>]... [--provision-browser] \
     [--authorization <absolute-path>] [--environment <local|test|staging|production>] \
-    [--template-selection <absolute-path>] [--usage-json <absolute-path>] [--dry-run]
+    [--template-selection <absolute-path>] [--usage-json <absolute-path>] \
+    [--credential-keychain-service <name>] [--dry-run]
   argus-launch claude --target <url-or-absolute-path> --artifact-root <absolute-path> \
     --mode <A|B|C|D> --engagement-id <id> --unattested [--workspace <absolute-path>] \
     [--feature <capability-id>]... [--provision-browser] \
     [--authorization <absolute-path>] [--environment <local|test|staging|production>] \
-    [--template-selection <absolute-path>] [--usage-json <absolute-path>] [--dry-run]
+    [--template-selection <absolute-path>] [--usage-json <absolute-path>] \
+    [--credential-keychain-service <name>] [--dry-run]
 
 The launcher writes an unsigned, process-bound request to --request-output, then waits for
 the isolated runtime-attestation signer to create --launch-authorization. The signer must
@@ -187,6 +189,9 @@ ANTHROPIC_API_KEY, or run `claude setup-token` and export CLAUDE_CODE_OAUTH_TOKE
 may use ANTHROPIC_AUTH_TOKEN with ANTHROPIC_BASE_URL); the launcher passes each through only
 when set and never copies a credential file. doctor and every launch, dry runs included, run
 `claude auth status` in that isolated shape first and stop when it reports no login.
+--credential-keychain-service <name> (macOS only) loads a `claude setup-token` token stored with
+`security add-generic-password -U -s <name> -a "$USER" -w` into CLAUDE_CODE_OAUTH_TOKEN for this
+launch only; an exported credential variable wins. The token is never printed or written.
 
 Codex execution remains unavailable until its CLI exposes a native hard turn cap.
 EOF
@@ -596,6 +601,25 @@ require_isolated_claude_login() {
     fail 'Claude reports no login for the isolated launch CLAUDE_CONFIG_DIR (claude auth status), which no keychain or claude.ai subscription login reaches; export ANTHROPIC_API_KEY, or run `claude setup-token` and export CLAUDE_CODE_OAUTH_TOKEN, then retry'
 }
 
+# --credential-keychain-service: on macOS, load a `claude setup-token` OAuth token stored as a
+# generic Keychain password into CLAUDE_CODE_OAUTH_TOKEN for this process only, so it reaches
+# the login probe and the controller through the pass-through allowlist. An exported credential
+# variable always wins. The token is never printed, logged, or written to disk.
+load_keychain_credential() {
+  local service="$1" token=''
+  [ -n "$service" ] || return 0
+  if [ -n "${ANTHROPIC_API_KEY:-}" ] || [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] || [ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]; then
+    return 0
+  fi
+  [ "$(uname -s)" = Darwin ] || fail '--credential-keychain-service reads the macOS Keychain and is unavailable on this host'
+  command -v security >/dev/null 2>&1 || fail '--credential-keychain-service needs the macOS security command'
+  # shellcheck disable=SC2016 # The remedy names a literal command.
+  token="$(security find-generic-password -s "$service" -w 2>/dev/null)" || \
+    fail "no macOS Keychain generic password for service $service; store one with: security add-generic-password -U -s $service -a \"\$USER\" -w"
+  [ -n "$token" ] || fail "the macOS Keychain item for service $service is empty"
+  export CLAUDE_CODE_OAUTH_TOKEN="$token"
+}
+
 # Prints the package version when $1 is a Playwright package root with an ESM entry point.
 playwright_module_version() {
   local directory="$1"
@@ -727,12 +751,16 @@ case "${1:-}" in
   doctor)
     shift
     doctor_browser=false
+    credential_keychain_service=''
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --browser) doctor_browser=true; shift ;;
+        --credential-keychain-service) [ "$#" -ge 2 ] || fail '--credential-keychain-service requires a service name'
+          credential_keychain_service="$2"; shift 2 ;;
         *) usage; fail "unknown doctor option: $1" ;;
       esac
     done
+    load_keychain_credential "$credential_keychain_service"
     require_host_commands
     command -v claude >/dev/null 2>&1 || fail 'Claude Code CLI is unavailable'
     claude_executable="$(command -v claude)"
@@ -786,6 +814,7 @@ operator_authorization=''
 operator_environment=''
 template_selection=''
 usage_json=''
+credential_keychain_service=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --target) [ "$#" -ge 2 ] || fail '--target requires a value'; target="$2"; shift 2 ;;
@@ -806,6 +835,8 @@ while [ "$#" -gt 0 ]; do
     --environment) [ "$#" -ge 2 ] || fail '--environment requires a value'; operator_environment="$2"; shift 2 ;;
     --template-selection) [ "$#" -ge 2 ] || fail '--template-selection requires a path'; template_selection="$2"; shift 2 ;;
     --usage-json) [ "$#" -ge 2 ] || fail '--usage-json requires a path'; usage_json="$2"; shift 2 ;;
+    --credential-keychain-service) [ "$#" -ge 2 ] || fail '--credential-keychain-service requires a service name'
+      credential_keychain_service="$2"; shift 2 ;;
     --dry-run) dry_run=true; shift ;;
     *) fail "unknown option: $1" ;;
   esac
@@ -908,6 +939,7 @@ claude_executable="$(physical_file "$claude_executable" 'Claude Code CLI')"
 claude_supports_native_turn_cap "$claude_executable" || fail 'Claude Code version or binary does not match the reviewed native --max-turns/error_max_turns contract'
 [ -x "$ASSETS" ] || fail 'packaged argus-assets runtime is unavailable'
 # Before the artifact root, browser provisioning, a request, or a manifest exists (dry runs too).
+load_keychain_credential "$credential_keychain_service"
 require_isolated_claude_login "$claude_executable"
 
 artifact_existed=false

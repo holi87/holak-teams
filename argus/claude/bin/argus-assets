@@ -290,6 +290,7 @@ Usage:
   argus-assets model telemetry --manifest <engagement.json> --decision <model-decision.json> --token <lane-token> --input-tokens <n> --output-tokens <n> --duration-ms <n> --success <true|false> [options]
   argus-assets launch request --target <url-or-path> --workspace <absolute-path> --artifact-root <absolute-path> --mode <A|B|C|D> --engagement-id <id> --launcher <path> --launcher-pid <pid> --claude-executable <path> --runtime-key-id <id> [--operator-key-id <id>] --trust-store <path> --output <path>
   argus-assets launch verify --request <json> --authorization <json> --receipt <path> --trust-store <path>
+  argus-assets launch detect [--keychain-service <name>] [--json]
   argus-assets browser provision --artifact-root <absolute-path> [--version <x.y.z>] [--package <absolute .tgz>] [--skip-browser-install] [--json]
   argus-assets orchestration plan --mode <A|B|C|D> [--dispatchable <slug,slug>] [--artifact-root <path>] [--output <json|->]
   argus-assets template <detect|select|scaffold> [options]
@@ -913,7 +914,66 @@ function launchCommand(args) {
     console.log(`LAUNCH_VERIFIED  launch=${document.launchId} receipt=${receipt}`);
     return 0;
   }
-  fail('usage: argus-assets launch <request|verify> [options]');
+  if (operation === 'detect') return launchDetect(rest);
+  fail('usage: argus-assets launch <request|verify|detect> [options]');
+}
+
+// Host-only launch readiness for an operator or the /argus:launch skill, run before any
+// engagement exists. It reuses hostAttestationMaterial(), the check that admits
+// --unattested-launch, so `unattested-eligible` here means preflight will accept the
+// launcher's unattested context. It reports credential sources by name, never by value.
+function launchDetect(args) {
+  const json = args.includes('--json');
+  const options = parseNamedOptions(args.filter((arg) => arg !== '--json'), new Set(['--keychain-service']));
+  const keychainService = options.keychainService ?? 'argus-claude-oauth';
+  const material = hostAttestationMaterial();
+  let assurance = 'unattested-eligible';
+  let detail = 'no host attestation key material; argus-launch claude --unattested is available after explicit operator consent';
+  const keys = [];
+  if (material) {
+    const configured = process.env.ARGUS_MODEL_TRUST_STORE;
+    const storePath = configured ? resolve(configured) : join(userInfo().homedir, '.config', 'argus', 'model-trust.json');
+    const previous = guardChecksActive;
+    guardChecksActive = true; // fail() throws instead of exiting, as in the guard
+    let storeError = null;
+    try {
+      for (const key of readNativeLaunchTrustStore(storePath, {}).document.keys) {
+        if (key.status === 'active') keys.push({ keyId: key.keyId, purpose: key.purpose });
+      }
+    } catch (error) {
+      storeError = error.message;
+    } finally {
+      guardChecksActive = previous;
+    }
+    const missing = ['runtime-attestation', 'operator-approval'].filter((purpose) => !keys.some((key) => key.purpose === purpose));
+    if (storeError) {
+      assurance = 'mixed';
+      detail = `${material}, but the trust store is unusable: ${storeError}; unattested launches stay refused until it is fixed or removed`;
+    } else if (missing.length > 0) {
+      assurance = 'mixed';
+      detail = `trust store ${storePath} has no active ${missing.join(' or ')} key; unattested launches stay refused until it is completed or removed`;
+    } else {
+      assurance = 'attested-required';
+      detail = `trust store ${storePath} holds active runtime-attestation and operator-approval keys; launch attested through the external signer`;
+    }
+  }
+  const variable = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_AUTH_TOKEN'].find((name) => nonEmptyString(process.env[name]));
+  let credential = 'missing';
+  if (variable) credential = `environment:${variable}`;
+  else if (process.platform === 'darwin') {
+    // Without -w, `security` prints only the item's attributes; both streams are discarded.
+    try {
+      execFileSync('security', ['find-generic-password', '-s', keychainService], { stdio: 'ignore' });
+      credential = `keychain:${keychainService}`;
+    } catch { /* no such item */ }
+  }
+  const result = { assurance, detail, keys, credential };
+  if (json) console.log(JSON.stringify(result, null, 2));
+  else {
+    console.log(`LAUNCH_DETECT  assurance=${assurance} credential=${credential}`);
+    console.log(`DETAIL  ${detail}`);
+  }
+  return 0;
 }
 
 function requireStableIdentifier(value, label) {
@@ -1029,10 +1089,21 @@ function claudeExecutableVersion(path) {
 
 function loadNativeLaunchTrust(keyId, explicitStorePath, { artifactRoot, targetRoot }) {
   requireStableIdentifier(keyId, 'native launch runtime key ID');
+  const { document, raw } = readNativeLaunchTrustStore(explicitStorePath, { artifactRoot, targetRoot });
+  const record = document.keys.find((candidate) => candidate.keyId === keyId);
+  if (!record || record.status !== 'active' || record.purpose !== 'runtime-attestation') {
+    fail(`native launch trust store has no active runtime-attestation key ${keyId}`);
+  }
+  return { record, keys: document.keys, path: explicitStorePath, sha256: createHash('sha256').update(raw).digest('hex') };
+}
+
+// Reads and validates the trust store file itself. artifactRoot is absent only for the
+// host-only `launch detect`, which runs before any engagement exists.
+function readNativeLaunchTrustStore(explicitStorePath, { artifactRoot, targetRoot }) {
   if (typeof explicitStorePath !== 'string' || !explicitStorePath.startsWith('/') || resolve(explicitStorePath) !== explicitStorePath) {
     fail('native launch trust store path must be absolute and normalized');
   }
-  if (isWithin(artifactRoot, explicitStorePath) || (targetRoot && isWithin(targetRoot, explicitStorePath))) {
+  if ((artifactRoot && isWithin(artifactRoot, explicitStorePath)) || (targetRoot && isWithin(targetRoot, explicitStorePath))) {
     fail('native launch trust store must stay outside target and artifact roots');
   }
   const directory = dirname(explicitStorePath);
@@ -1059,11 +1130,7 @@ function loadNativeLaunchTrust(keyId, explicitStorePath, { artifactRoot, targetR
   catch (error) { fail(`native launch trust store is not valid JSON: ${error.message}`); }
   assertSchemaDocument(validateModelTrustStoreSchema, document, 'native launch trust store');
   if (new Set(document.keys.map((record) => record.keyId)).size !== document.keys.length) fail('native launch trust store key IDs must be unique');
-  const record = document.keys.find((candidate) => candidate.keyId === keyId);
-  if (!record || record.status !== 'active' || record.purpose !== 'runtime-attestation') {
-    fail(`native launch trust store has no active runtime-attestation key ${keyId}`);
-  }
-  return { record, keys: document.keys, path: explicitStorePath, sha256: createHash('sha256').update(raw).digest('hex') };
+  return { document, raw };
 }
 
 function modelCommand(args) {
@@ -4066,8 +4133,8 @@ function loadVerifiedRuntimeInventory() {
   }
   const counts = [
     ['agentsScanned', 27],
-    ['skillsScanned', 7],
-    ['entrypointsScanned', 1],
+    ['skillsScanned', 8],
+    ['entrypointsScanned', 2],
   ];
   for (const [field, expected] of counts) {
     if (inventory[field] !== expected) throw new Error(`runtime inventory ${field} is ${inventory[field]}; expected ${expected}`);
@@ -4344,7 +4411,7 @@ function unattestedLaunchContextError(artifactRoot) {
 function requireUnattestedLaunchPreconditions({ options, modelRuntime, nativeLaunch, artifactRootPath }) {
   const contextError = unattestedLaunchContextError(artifactRootPath);
   if (contextError) {
-    fail(`--unattested-launch refused: ${contextError}. The Agent dispatch guard reads these from the Claude Code process environment, so start the controller with \`argus-launch claude --unattested\`; a per-command prefix satisfies preflight but never the dispatch guard`);
+    fail(`--unattested-launch refused: ${contextError}. The Agent dispatch guard reads these from the Claude Code process environment, so start the controller with \`argus-launch claude --unattested\` (or the /argus:launch skill); a per-command prefix satisfies preflight but never the dispatch guard`);
   }
   if (modelRuntime !== 'claude') {
     fail('--unattested-launch is claude-only: the Codex CLI exposes no native hard turn cap, so its mandatory native-host-execution check can never be waived');

@@ -87,7 +87,7 @@ node "$PLUGIN/templates/typescript/scripts/hunt-driver.mjs" --help >/dev/null
 INVENTORY="$PLUGIN/runtime-reference-inventory.json"
 jq -e '
   .schemaVersion == 2 and
-  .agentsScanned == 27 and .skillsScanned == 7 and .entrypointsScanned == 1 and
+  .agentsScanned == 27 and .skillsScanned == 8 and .entrypointsScanned == 2 and
   (.unconsumedAssets | length) == 0 and
   (.unknownAssetReferences | length) == 0 and
   (.unknownProfileReferences | length) == 0 and

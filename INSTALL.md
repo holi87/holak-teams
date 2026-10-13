@@ -35,7 +35,22 @@ marcus, deliver the requested increment with tests and CI.
 
 Argus 5 requires its packaged authenticated launcher. A direct `/argus:run` session fails
 preflight because it lacks the signed launch authorization, verified receipt, and inherited
-one-shot OS capability. Every flag is listed by `argus-launch --help`.
+one-shot OS capability. An unattested preflight also fails unless the Claude process carries
+the full `argus-launch --unattested` context. Every flag is listed by `argus-launch --help`.
+
+The quickest start is a Claude Code session: ask "run argus qa on <target>". The
+`/argus:launch` skill runs `argus-assets launch detect --json`, which reports one of:
+
+- `unattested-eligible` — no attestation key material on this host. The skill asks before it
+  starts an UNATTESTED run and never starts one silently.
+- `attested-required` — a trust store exists, so the run must be attested through your
+  external signer. The skill shows the attested command and stops.
+- `mixed` — partial key material (for example an inherited `ARGUS_NATIVE_LAUNCH_*` binding or
+  an invalid trust store). Unattested runs are refused until it is resolved.
+
+It also reports the credential the launch will use (`environment:<NAME>`,
+`keychain:<service>`, or `missing`), then writes the operator files outside the artifact root
+and starts `argus-launch` in the background. The sections below are the manual equivalent.
 
 #### Check the host
 
@@ -67,6 +82,17 @@ export ANTHROPIC_API_KEY='<api-key>'
 claude setup-token
 export CLAUDE_CODE_OAUTH_TOKEN='<token>'
 ```
+
+On macOS you can keep the subscription token in the Keychain instead of exporting it:
+
+```bash
+claude setup-token
+security add-generic-password -U -s argus-claude-oauth -a "$USER" -w   # paste the token at the prompt
+"$PLUGIN_ROOT/bin/argus-launch" doctor --credential-keychain-service argus-claude-oauth
+```
+
+`--credential-keychain-service <name>` on `doctor` and `claude` loads that item into
+`CLAUDE_CODE_OAUTH_TOKEN` for one launch only. An exported credential variable wins.
 
 A gateway can use `ANTHROPIC_AUTH_TOKEN` with `ANTHROPIC_BASE_URL`. The launcher passes each
 variable through only when it is set and never copies a credential file. `doctor` and every
