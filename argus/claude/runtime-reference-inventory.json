@@ -2,8 +2,8 @@
   "schemaVersion": 2,
   "generatedFrom": "all packaged Argus agents, skills, entrypoints, capability declarations, runtime imports, hooks, CLI commands, and template compositions",
   "agentsScanned": 27,
-  "skillsScanned": 7,
-  "entrypointsScanned": 1,
+  "skillsScanned": 8,
+  "entrypointsScanned": 2,
   "runtimeFilesScanned": 10,
   "runtimeImportsScanned": 24,
   "hooksScanned": 1,
@@ -15,8 +15,15 @@
       ]
     },
     {
+      "value": "policies/authorization.template.json",
+      "consumers": [
+        "/argus:launch"
+      ]
+    },
+    {
       "value": "references/AUTHORIZATION-POLICY.md",
       "consumers": [
+        "/argus:launch",
         "skill:qa-core"
       ]
     },
@@ -167,6 +174,12 @@
         "daidalos",
         "kalchas",
         "penelope"
+      ]
+    },
+    {
+      "value": "ai_agents_internal/engagement.json",
+      "consumers": [
+        "/argus:launch"
       ]
     },
     {
@@ -1046,6 +1059,7 @@
     {
       "value": "claude",
       "consumers": [
+        "/argus:launch",
         "odysseus",
         "skill:orchestration-core"
       ]
@@ -1129,6 +1143,7 @@
     {
       "value": "java",
       "consumers": [
+        "/argus:launch",
         "atlas"
       ]
     },
@@ -1180,6 +1195,12 @@
       ]
     },
     {
+      "value": "mkdir",
+      "consumers": [
+        "/argus:launch"
+      ]
+    },
+    {
       "value": "nc",
       "consumers": [
         "proteus"
@@ -1204,9 +1225,16 @@
     {
       "value": "npm",
       "consumers": [
+        "/argus:launch",
         "hermes",
         "metis",
         "tiresias"
+      ]
+    },
+    {
+      "value": "pip",
+      "consumers": [
+        "/argus:launch"
       ]
     },
     {
@@ -1232,6 +1260,7 @@
     {
       "value": "python",
       "consumers": [
+        "/argus:launch",
         "ariadne",
         "atlas"
       ]
@@ -1315,6 +1344,12 @@
       "assetId": "authorization-policy",
       "destination": "references/AUTHORIZATION-POLICY.md",
       "consumers": [
+        {
+          "consumer": "/argus:launch",
+          "kind": "entrypoint",
+          "mechanism": "plugin-path",
+          "reference": "references/AUTHORIZATION-POLICY.md"
+        },
         {
           "consumer": "orchestration:controller",
           "kind": "orchestration",
@@ -2443,6 +2478,12 @@
       "assetId": "authorization-policies",
       "destination": "policies",
       "consumers": [
+        {
+          "consumer": "/argus:launch",
+          "kind": "entrypoint",
+          "mechanism": "plugin-path",
+          "reference": "policies/authorization.template.json"
+        },
         {
           "consumer": "command:argus-assets schema validate (schema compatibility)",
           "kind": "command",

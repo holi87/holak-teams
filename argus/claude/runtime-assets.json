@@ -29,8 +29,8 @@
       "source": "argus/bin/argus-launch",
       "destination": "bin/argus-launch",
       "files": 1,
-      "bytes": 60468,
-      "sha256": "b3c6b90e8577b77b25dcf3529e52208d13aca49dd2332baeae5d91128d72b6d1"
+      "bytes": 62653,
+      "sha256": "ba3b6a877864857d837892e0006323c54f85009cd919013ca7c882541c286959"
     },
     {
       "id": "browser-isolation",
@@ -56,8 +56,8 @@
       "source": "argus/ENGAGEMENT-POLICY.md",
       "destination": "references/ENGAGEMENT-POLICY.md",
       "files": 1,
-      "bytes": 63453,
-      "sha256": "6788042564a20e07a5c8994561b80055305c909d293887c74da4af5aa9d13901"
+      "bytes": 64131,
+      "sha256": "6cb67699d0370278196a0458a5a796c0c306145d5d509b05f581a9ed74afbad9"
     },
     {
       "id": "canonical-contracts",
@@ -355,7 +355,7 @@
   "inventory": {
     "path": "runtime-reference-inventory.json",
     "schemaVersion": 2,
-    "bytes": 65080,
-    "sha256": "9fe64c4e91e70fa355db53cccfa2a1b818b429146546b0180159363568e243bc"
+    "bytes": 66005,
+    "sha256": "d39f815ab2bf808275dc48b2d4aca7eee6aec452fa2bab5cd9a00d5b814daa18"
   }
 }

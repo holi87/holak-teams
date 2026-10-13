@@ -1392,4 +1392,64 @@ if [ "$probe_browser_status" -ne 2 ]; then
     grep -Fq 'WARN  no Playwright module is resolvable' "$WORK/doctor-browser.stdout" || fail 'doctor --browser did not warn about the skipped browser probe'
   fi
 fi
-printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, signed operator anchor pinned at engagement creation, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, browser-provisioning dry run, unsigned operator feature passthrough to preflight, operator authorization manifest and environment binding/installation, one-shot --usage-json Claude result capture and path containment, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, and fail-closed Codex\n'
+
+# --credential-keychain-service loads a Keychain token for one launch. A stub `security`
+# stands in for the macOS Keychain, so the smoke never touches a real keychain; other hosts
+# refuse the option. The token must never reach the launcher's output.
+keychain_bin="$WORK/keychain-bin"
+mkdir -p "$keychain_bin"
+cat >"$keychain_bin/security" <<'STUB'
+#!/usr/bin/env bash
+[ "${1:-}" = find-generic-password ] && [ "${2:-}" = -s ] && [ "${3:-}" = argus-smoke-keychain ] || exit 44
+[ "${4:-}" = -w ] && printf 'smoke-keychain-token-value\n'
+exit 0
+STUB
+chmod 700 "$keychain_bin/security"
+if [ "$(uname -s)" = Darwin ]; then
+  env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$keychain_bin:$FIXTURE_BIN:$PATH" "$LAUNCHER" doctor \
+    --credential-keychain-service argus-smoke-keychain >"$WORK/doctor-keychain.stdout" 2>"$WORK/doctor-keychain.stderr" || \
+    { cat "$WORK/doctor-keychain.stderr" >&2; fail 'doctor did not log in with the Keychain credential'; }
+  ! grep -Fq 'smoke-keychain-token-value' "$WORK/doctor-keychain.stdout" "$WORK/doctor-keychain.stderr" || \
+    fail 'doctor printed the Keychain token'
+  if env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$keychain_bin:$FIXTURE_BIN:$PATH" "$LAUNCHER" doctor \
+      --credential-keychain-service argus-smoke-missing >/dev/null 2>"$WORK/doctor-keychain-missing.stderr"; then
+    fail 'doctor accepted a missing Keychain item'
+  fi
+  grep -Fq 'no macOS Keychain generic password for service argus-smoke-missing' "$WORK/doctor-keychain-missing.stderr" || \
+    { cat "$WORK/doctor-keychain-missing.stderr" >&2; fail 'missing Keychain item was not named'; }
+else
+  if env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$FIXTURE_BIN:$PATH" "$LAUNCHER" doctor \
+      --credential-keychain-service argus-smoke-keychain >/dev/null 2>"$WORK/doctor-keychain-host.stderr"; then
+    fail '--credential-keychain-service was accepted on a host without the macOS Keychain'
+  fi
+  grep -Fq 'reads the macOS Keychain and is unavailable on this host' "$WORK/doctor-keychain-host.stderr" || \
+    { cat "$WORK/doctor-keychain-host.stderr" >&2; fail '--credential-keychain-service refusal was not explained'; }
+fi
+
+# launch detect: no key material, a complete trust store, and an incomplete one, plus the
+# credential source by name only.
+detect_home="$WORK/detect-home"
+mkdir -p "$detect_home"
+detect() {
+  env -u ARGUS_MODEL_TRUST_STORE -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN \
+    HOME="$detect_home" PATH="$keychain_bin:$PATH" "$@" "$CLI" launch detect --keychain-service argus-smoke-keychain --json
+}
+expected_keychain=missing
+[ "$(uname -s)" != Darwin ] || expected_keychain=keychain:argus-smoke-keychain
+detect | jq -e --arg credential "$expected_keychain" \
+  '.assurance == "unattested-eligible" and .keys == [] and .credential == $credential' >/dev/null || \
+  fail 'launch detect did not report a keyless host as unattested-eligible'
+detect CLAUDE_CODE_OAUTH_TOKEN=smoke-detect-secret-value >"$WORK/detect-env.json"
+jq -e '.credential == "environment:CLAUDE_CODE_OAUTH_TOKEN"' "$WORK/detect-env.json" >/dev/null || fail 'launch detect did not name the exported credential'
+! grep -Fq smoke-detect-secret-value "$WORK/detect-env.json" || fail 'launch detect printed a credential value'
+prepare_signer "$WORK/detect-signer" detect-runtime
+detect_store="$(cd "$WORK/detect-signer" && pwd -P)/model-trust.json"
+detect ARGUS_MODEL_TRUST_STORE="$detect_store" | jq -e '.assurance == "attested-required" and (.keys | length) == 2' >/dev/null || \
+  fail 'launch detect did not require an attested launch for a complete trust store'
+jq '.keys |= map(select(.purpose != "operator-approval"))' "$detect_store" >"$detect_store.next"
+mv "$detect_store.next" "$detect_store"
+chmod 600 "$detect_store"
+detect ARGUS_MODEL_TRUST_STORE="$detect_store" | jq -e '.assurance == "mixed" and (.detail | contains("operator-approval"))' >/dev/null || \
+  fail 'launch detect did not report an incomplete trust store as mixed'
+
+printf 'PASS  Authenticated native launcher: signed invocation, live sandbox, URL/path JSON, signed operator anchor pinned at engagement creation, pre-write containment, alias denial, exact environment, turn-cap behavior and four-site consistency, signed-cap cross-check, authenticated dry run, browser-provisioning dry run, unsigned operator feature passthrough to preflight, operator authorization manifest and environment binding/installation, one-shot --usage-json Claude result capture and path containment, sandbox policy @3 scope, headless Chromium probe, unattested downgrade guards, direct/replay rejection, Keychain credential loading, launch detect, and fail-closed Codex\n'

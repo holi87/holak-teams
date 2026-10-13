@@ -950,4 +950,38 @@ const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 if (report.status !== 'blocked' || report.artifactRoot.safePaths !== false) throw new Error('unsafe artifact path was not blocked');
 NODE
 
+# --unattested-launch needs the complete launcher context the Agent dispatch guard demands.
+# A bare ARGUS_LAUNCH_UNATTESTED=1 prefix must refuse, name the missing variable, and write
+# no engagement; the full argus-launch --unattested context must still pass.
+unattested_home="$WORK/unattested-home"
+unattested_target="$WORK/unattested-target"
+mkdir -p "$unattested_home" "$unattested_target" "$WORK/unattested-artifacts"
+unattested_root="$(cd "$WORK/unattested-artifacts" && pwd -P)"
+frontier_model="$(node -p "require('$ROOT/argus/model-policy.json').tiers.frontier.claude.model")"
+standard_model="$(node -p "require('$ROOT/argus/model-policy.json').tiers.standard.claude.model")"
+run_unattested_preflight() {
+  env -u ARGUS_MODEL_TRUST_STORE -u ARGUS_NATIVE_LAUNCH_AUTHORIZATION -u ARGUS_NATIVE_LAUNCH_RECEIPT \
+    -u ARGUS_LAUNCH_UNATTESTED -u ARGUS_LAUNCH_ARTIFACT_ROOT -u ANTHROPIC_DEFAULT_OPUS_MODEL \
+    -u ANTHROPIC_DEFAULT_SONNET_MODEL HOME="$unattested_home" "$@" \
+    "$REAL_CLI" preflight --target "$unattested_target" --mode B --artifact-root "$unattested_root" \
+    --engagement-id unattested-context --model-runtime claude --unattested-launch
+}
+if run_unattested_preflight ARGUS_LAUNCH_UNATTESTED=1 >/dev/null 2>"$WORK/unattested-bare.stderr"; then
+  fail 'unattested preflight accepted a bare ARGUS_LAUNCH_UNATTESTED=1 prefix'
+fi
+grep -Fq "ARGUS_LAUNCH_ARTIFACT_ROOT must equal the artifact root $unattested_root" "$WORK/unattested-bare.stderr" || \
+  { cat "$WORK/unattested-bare.stderr" >&2; fail 'unattested preflight refusal did not name the missing launcher variable'; }
+test ! -e "$unattested_root/ai_agents_internal/engagement.json" || fail 'refused unattested preflight still wrote an engagement manifest'
+if run_unattested_preflight ARGUS_LAUNCH_UNATTESTED=1 ARGUS_LAUNCH_ARTIFACT_ROOT="$unattested_root" \
+    ANTHROPIC_DEFAULT_OPUS_MODEL=forged-opus ANTHROPIC_DEFAULT_SONNET_MODEL="$standard_model" >/dev/null 2>"$WORK/unattested-forged.stderr"; then
+  fail 'unattested preflight accepted a forged native model pin'
+fi
+grep -Fq "ANTHROPIC_DEFAULT_OPUS_MODEL must be $frontier_model" "$WORK/unattested-forged.stderr" || \
+  { cat "$WORK/unattested-forged.stderr" >&2; fail 'unattested preflight refusal did not name the forged model pin'; }
+run_unattested_preflight ARGUS_LAUNCH_UNATTESTED=1 ARGUS_LAUNCH_ARTIFACT_ROOT="$unattested_root" \
+  ANTHROPIC_DEFAULT_OPUS_MODEL="$frontier_model" ANTHROPIC_DEFAULT_SONNET_MODEL="$standard_model" \
+  >/dev/null 2>"$WORK/unattested-full.stderr" || \
+  { cat "$WORK/unattested-full.stderr" >&2; fail 'unattested preflight refused the complete launcher context'; }
+node -e "if (require('$unattested_root/ai_agents_internal/engagement.json').launchAssurance !== 'unattested') throw new Error('complete unattested context did not record launchAssurance unattested')"
+
 printf 'PASS  Argus preflight: bound projections, target identity, physical paths, and capability profiles\n'

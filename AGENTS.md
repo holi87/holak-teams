@@ -25,8 +25,13 @@ work, dispatches specialists, and reports back. Specialists never talk to each o
   registers the marketplace (`autoUpdate: true`) and enables both plugins once trusted.
 - **Hephaestus** — ask Marcus in a Claude Code session, for example
   `marcus, build a REST API for task management with tests and CI`.
-- **Argus** — run the packaged `argus/claude/bin/argus-launch` from a terminal, not a session:
+- **Argus** — ask for it in a Claude Code session ("run argus qa on <url>"). The `/argus:launch`
+  skill runs `argus-assets launch detect`, asks before an UNATTESTED run when the host has no
+  attestation keys, writes the operator files, and starts `argus-launch` in the background. Or run
+  the packaged `argus/claude/bin/argus-launch` from a terminal yourself:
   - `argus-launch doctor [--browser]` checks the host and Claude login; `probe-browser` tests Chromium.
+  - `--credential-keychain-service <name>` (macOS) loads a `claude setup-token` token from the
+    Keychain for one launch, so no credential needs to be exported.
   - `argus-launch claude --target … --artifact-root … --mode <A|B|C|D> --engagement-id …` plus
     `--trust-store`, `--runtime-key-id`, `--operator-key-id`, `--request-output`, and
     `--launch-authorization` has the isolated signer sign one request, then starts `/argus:run`
@@ -36,7 +41,8 @@ work, dispatches specialists, and reports back. Specialists never talk to each o
     `--usage-json <path>`. None widens what the authorization evaluator allows.
   - `--unattested` is an explicit opt-in for hosts without Ed25519 keys. It skips only the
     cryptographic attestation; every report names the engagement UNATTESTED.
-  - A direct `/argus:run` or `claude --agent argus:odysseus` session fails preflight.
+  - A direct `/argus:run` or `claude --agent argus:odysseus` session fails preflight, including
+    an unattested preflight whose Claude process lacks the full launcher context.
   - Full command sequence: **INSTALL.md** → "Start Argus". Every flag: `argus-launch --help`.
 - Manual `--plugin-dir` installs and the Codex setup: **INSTALL.md**.
 
@@ -79,7 +85,8 @@ Never hand-edit a generated file. Edit its source, then regenerate:
 | `hephaestus/claude/agents/<slug>.md` | `scripts/sync-hephaestus-codex-variants.mjs --write` | `hephaestus/codex/*` |
 
 - Edited in place, not generated: `argus/claude/bin/argus-assets`, `argus/claude/bin/package.json`,
-  `argus/claude/skills/run/SKILL.md`, `argus/claude/hooks/hooks.json`, `argus/claude/.claude-plugin/plugin.json`.
+  `argus/claude/skills/run/SKILL.md`, `argus/claude/skills/launch/SKILL.md`,
+  `argus/claude/hooks/hooks.json`, `argus/claude/.claude-plugin/plugin.json`.
 - Each sync script also accepts `--check`; the release gate runs every check. A prompt or
   profile change also moves the corpus hash (see "Prompt budgets" below).
 
