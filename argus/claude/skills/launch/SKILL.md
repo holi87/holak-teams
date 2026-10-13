@@ -15,7 +15,9 @@ never set `ARGUS_LAUNCH_*` or model pins yourself; never read, print, or pass a 
 1. **Scope.** From `$ARGUMENTS`, take the target (HTTP(S) URL or existing absolute path),
    mode, and requirement files. Ask with `AskUserQuestion` for anything missing. Modes:
    `A` full audit, `B` deep bug hunt, `C` greenfield suite, `D` brownfield extension.
-2. **Detect.** Run `argus-assets launch detect --json` and branch on `assurance`:
+2. **Detect.** Run `argus-assets launch detect --json`. A write-guard denial here means the
+   session's working directory is inside an engagement root: stop and ask the operator to
+   start Claude Code from another directory. Then branch on `assurance`:
    - `mixed`: stop. Show `detail`; partial key material forbids an unattested run.
    - `attested-required`: keys exist, so the run must be attested through the external
      signer. Show the attested `argus-launch claude` form from `argus-launch --help` with
