@@ -42,11 +42,11 @@
       "qa-coverage-reporting": 393,
       "qa-framework-runner": 798
     },
-    "releaseVersion": "5.1.1",
-    "approvedFor": "Argus 5.1.1 fixes template runner dependency drift; role prompts and model profiles are unchanged from 5.0.1",
+    "releaseVersion": "5.1.2",
+    "approvedFor": "Argus 5.1.2 fixes template runner dependency drift; role prompts and model profiles are unchanged from 5.0.1",
     "benchmark": {
       "status": "pending",
-      "reason": "No role prompt or model profile changed in 5.1.1; paired real-model discovery quality and cost evaluation has not been recorded."
+      "reason": "No role prompt or model profile changed in 5.1.2; paired real-model discovery quality and cost evaluation has not been recorded."
     }
   },
   "nonRegression": {

@@ -17,7 +17,10 @@ TEST_ROOT="${ARGUS_TEST_ROOT:-src/test/java}"
 # Maven 3.10 (Resolver 2) defaults to file locks under ~/.m2/repository/.locks. The
 # argus-launch sandbox mounts that repository read-only, so every resolution fails with
 # "Could not open file channel". In-JVM locks, the Maven 3.9 default, need no write there.
-export MAVEN_ARGS="${MAVEN_ARGS:+$MAVEN_ARGS }-Daether.syncContext.named.factory=rwlock-local"
+# Its remote-repository prefix filter also re-checks the prefix files of repositories with no
+# such file and records each check in ~/.m2/repository/.meta/resolver-status.properties; that
+# write fails the build with "Read-only file system". Maven 3.9 had no prefix filter.
+export MAVEN_ARGS="${MAVEN_ARGS:+$MAVEN_ARGS }-Daether.syncContext.named.factory=rwlock-local -Daether.remoteRepositoryFilter.prefixes=false"
 
 # Compile gate — a suite that doesn't compile doesn't run (the Java analog of the TS
 # typecheck gate; catches hallucinated/wrong-typed APIs before we hit the live app). Then the
