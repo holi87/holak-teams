@@ -14,7 +14,7 @@ description = "Argus QA test framework — pytest + Playwright + httpx (API + UI
 requires-python = ">=3.11"
 dependencies = [
   "pytest>=8.2",
-  "pytest-playwright>=0.5.2",   # UI lane: page/browser/context fixtures (Playwright)
+  "pytest-playwright>=0.10",    # UI lane: page/browser/context fixtures; 0.10 parametrizes overridden browser fixtures, so case IDs stay stable
   "playwright>=1.49,<2",        # browser automation (NO Selenium anywhere)
   "httpx>=0.27",                # API / contract lane HTTP client
   "jsonschema>=4.21",           # OpenAPI / JSON-schema oracle

@@ -14,6 +14,11 @@ ARGUS_RUNTIME=java
 ARGUS_PACKAGE_MANAGER=maven
 TEST_ROOT="${ARGUS_TEST_ROOT:-src/test/java}"
 
+# Maven 3.10 (Resolver 2) defaults to file locks under ~/.m2/repository/.locks. The
+# argus-launch sandbox mounts that repository read-only, so every resolution fails with
+# "Could not open file channel". In-JVM locks, the Maven 3.9 default, need no write there.
+export MAVEN_ARGS="${MAVEN_ARGS:+$MAVEN_ARGS }-Daether.syncContext.named.factory=rwlock-local"
+
 # Compile gate — a suite that doesn't compile doesn't run (the Java analog of the TS
 # typecheck gate; catches hallucinated/wrong-typed APIs before we hit the live app). Then the
 # optional Playwright browser install for the browser lanes.
