@@ -584,7 +584,9 @@ def test_ui_session_without_the_real_login(storage_state):
 PY
 cf_pass cf-session cf-correct -- tests/contract/test_cf_session_fixture.py
 rm -f tests/contract/test_cf_session_fixture.py
-expect_only_event cf-session tests.contract.test_cf_session_fixture.py::test_ui_session_without_the_real_login.cf-correct product pass false reproduced BUG-0001 counterfactual-correct-pass
+# pytest-playwright >= 0.10 (the template floor) keeps browser_name in the closure of a test
+# that overrides `browser`, so the case carries the -chromium parametrization like every UI case.
+expect_only_event cf-session tests.contract.test_cf_session_fixture.py::test_ui_session_without_the_real_login-chromium.cf-correct product pass false reproduced BUG-0001 counterfactual-correct-pass
 
 # An exemption records one event in cf-correct and nothing in a tamper pass.
 jq '{"$schema": ."$schema", schemaVersion, bugId, exemption: {reason: "front-end-logic", justification: "The defect lives in client-side rendering."}}' \

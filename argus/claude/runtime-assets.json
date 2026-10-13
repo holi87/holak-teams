@@ -281,8 +281,8 @@
       "source": "argus/framework-template-java",
       "destination": "templates/java",
       "files": 58,
-      "bytes": 471855,
-      "sha256": "63a7571963b6873327809eea60d5ae3a0642746567d0f3877541215116d7653b"
+      "bytes": 472214,
+      "sha256": "c3d7fbd1b4aa3c29f0439229aca3d86370f41c7a08185ace6f1dca9622bca2c5"
     },
     {
       "id": "python-template",
@@ -290,8 +290,8 @@
       "source": "argus/framework-template-python",
       "destination": "templates/python",
       "files": 56,
-      "bytes": 416059,
-      "sha256": "dcfa417280d20204a1f433008b65fe4655c22dd9a662d38bd56035025fee7460"
+      "bytes": 416117,
+      "sha256": "04e54a30e72a2a2714da30a2ab216cead3447223f96116d081203bcb032d53d9"
     }
   ],
   "buildOnly": [
