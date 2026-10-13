@@ -42,11 +42,11 @@
       "qa-coverage-reporting": 393,
       "qa-framework-runner": 798
     },
-    "releaseVersion": "5.0.1",
-    "approvedFor": "Argus 5.0.1 approved Opus 5.5, Sonnet 5.5 and GPT-6 role profiles with authenticated native dispatch binding",
+    "releaseVersion": "5.1.0",
+    "approvedFor": "Argus 5.1.0 adds the /argus:launch entrypoint and the launcher-context preflight refusal; role prompts and model profiles are unchanged from 5.0.1",
     "benchmark": {
       "status": "pending",
-      "reason": "Owner-approved model allocation and dispatch contract for 5.0.1; paired real-model discovery quality and cost evaluation has not been recorded."
+      "reason": "No role prompt or model profile changed in 5.1.0; paired real-model discovery quality and cost evaluation has not been recorded."
     }
   },
   "nonRegression": {
