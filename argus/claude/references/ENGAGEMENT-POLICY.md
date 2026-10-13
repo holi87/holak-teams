@@ -178,10 +178,18 @@ hard failure with its own named error unless *every* precondition below holds, s
 controller that was launched attested cannot reach keyless mode by simply omitting the
 three signed coordinates from the preflight command it composes:
 
-1. `ARGUS_LAUNCH_UNATTESTED=1` must be present. `argus-launch --unattested` exports it into
-   its `env -i` child; the attested launcher never does. An operator running `preflight`
-   by hand on a keyless host must set it explicitly:
-   `env ARGUS_LAUNCH_UNATTESTED=1 argus-assets preflight ... --unattested-launch`.
+1. The complete unattested launcher context must be present: `ARGUS_LAUNCH_UNATTESTED=1`,
+   `ARGUS_LAUNCH_ARTIFACT_ROOT` equal to the resolved artifact root, and
+   `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` equal to the frontier
+   and standard Claude pins in `model-policy.json`. `argus-launch --unattested` exports all
+   four into its `env -i` child; the attested launcher never exports the first. The Agent
+   dispatch guard checks the same predicate against the Claude Code process environment,
+   so preflight refuses any context the guard would later deny. A per-command prefix such
+   as `env ARGUS_LAUNCH_UNATTESTED=1 argus-assets preflight ...` therefore fails: it would
+   reach the preflight subprocess but never the dispatch hook, and seal an engagement that
+   cannot dispatch a single worker. Start the controller through `argus-launch claude
+   --unattested` instead. The refusal and the dispatch denial both name the first missing
+   or wrong variable.
 2. `--model-runtime` must be `claude`. Codex's `native-host-execution` mandate covers the
    absence of a native hard turn cap and can never be waived.
 3. None of `--trust-store`, `--launch-authorization`, `--launch-receipt` may be supplied.

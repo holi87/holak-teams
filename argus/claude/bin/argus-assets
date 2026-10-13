@@ -3706,15 +3706,21 @@ function guardCommand(args) {
         });
         if (!native.ready) throw new Error('the pinned native launch could not be revalidated for a model override');
         nativeModelAliases = { opus: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL, sonnet: process.env.ANTHROPIC_DEFAULT_SONNET_MODEL };
-      } else if (process.env.ARGUS_LAUNCH_UNATTESTED !== '1' || process.env.ARGUS_LAUNCH_ARTIFACT_ROOT !== context.artifactRoot ||
-          process.env.ANTHROPIC_DEFAULT_OPUS_MODEL !== modelPolicy.tiers.frontier.claude.model ||
-          process.env.ANTHROPIC_DEFAULT_SONNET_MODEL !== modelPolicy.tiers.standard.claude.model) {
-        throw new Error('unattested dispatch must retain its explicit launcher context and fixed model pins');
+      } else {
+        const contextError = unattestedLaunchContextError(context.artifactRoot);
+        if (contextError) {
+          throw Object.assign(new Error(`unattested dispatch must run in an argus-launch --unattested controller: ${contextError}`),
+            { dispatchContext: true });
+        }
       }
       decision = evaluateAgentDispatchGuard({ manifest: engagement, payload, modelPolicy, nativeModelAliases });
-    } catch {
+    } catch (error) {
+      // Only the launcher-context reason is surfaced: it names environment variables and
+      // the public model pins, never tokens or state. Every other failure stays generic.
       decision = { decision: 'deny', ruleId: 'GUARD-MODEL-DISPATCH',
-        reason: 'native dispatch context, sealed preflight or pinned role definition could not be verified', paths: [], commandSha256: null };
+        reason: error?.dispatchContext === true ? error.message
+          : 'native dispatch context, sealed preflight or pinned role definition could not be verified',
+        paths: [], commandSha256: null };
     } finally { guardChecksActive = false; }
   } else decision = evaluateWriteGuard({
     manifest: engagement,
@@ -4311,18 +4317,34 @@ function strictPhysicalDirectoryInput(value, label) {
   return value;
 }
 
+// The context argus-launch --unattested exports into its controller: the unattested
+// signal, the artifact root naming the engagement, and the fixed native model pins.
+// Preflight and the Agent dispatch guard share this one predicate. Returns null when the
+// context is complete, otherwise a reason naming the first missing or wrong variable.
+function unattestedLaunchContextError(artifactRoot) {
+  const env = process.env;
+  const frontier = modelPolicy.tiers.frontier.claude.model;
+  const standard = modelPolicy.tiers.standard.claude.model;
+  if (env.ARGUS_LAUNCH_UNATTESTED !== '1') return 'ARGUS_LAUNCH_UNATTESTED=1 is not set';
+  if (env.ARGUS_LAUNCH_ARTIFACT_ROOT !== artifactRoot) return `ARGUS_LAUNCH_ARTIFACT_ROOT must equal the artifact root ${artifactRoot}`;
+  if (env.ANTHROPIC_DEFAULT_OPUS_MODEL !== frontier) return `ANTHROPIC_DEFAULT_OPUS_MODEL must be ${frontier}`;
+  if (env.ANTHROPIC_DEFAULT_SONNET_MODEL !== standard) return `ANTHROPIC_DEFAULT_SONNET_MODEL must be ${standard}`;
+  return null;
+}
+
 // --unattested-launch is honoured only for a run that provably could not have been
 // attested. The decisive check is hostAttestationMaterial(): it reads the host trust
 // store and the attested launcher's environment bindings, both outside the engagement
 // artifact root and therefore outside the sandbox write grant an in-sandbox controller
 // holds, so a controller launched attested cannot reach keyless mode by dropping the
-// three signed coordinates from the command it composes. ARGUS_LAUNCH_UNATTESTED=1 is
-// additionally required: it is the unattested launcher's own positive signal (exported
-// by argus-launch --unattested into an `env -i` child), and an operator running preflight
-// by hand on a keyless host sets it explicitly.
+// three signed coordinates from the command it composes. The full unattested launcher
+// context is additionally required (unattestedLaunchContextError): the Agent dispatch
+// guard demands the same context from the Claude process environment, so a preflight
+// that accepted less would seal an engagement whose first dispatch is always denied.
 function requireUnattestedLaunchPreconditions({ options, modelRuntime, nativeLaunch, artifactRootPath }) {
-  if (process.env.ARGUS_LAUNCH_UNATTESTED !== '1') {
-    fail('--unattested-launch requires the unattested launcher signal ARGUS_LAUNCH_UNATTESTED=1; it is exported only by argus-launch --unattested, or set explicitly by an operator running preflight on a keyless host');
+  const contextError = unattestedLaunchContextError(artifactRootPath);
+  if (contextError) {
+    fail(`--unattested-launch refused: ${contextError}. The Agent dispatch guard reads these from the Claude Code process environment, so start the controller with \`argus-launch claude --unattested\`; a per-command prefix satisfies preflight but never the dispatch guard`);
   }
   if (modelRuntime !== 'claude') {
     fail('--unattested-launch is claude-only: the Codex CLI exposes no native hard turn cap, so its mandatory native-host-execution check can never be waived');
